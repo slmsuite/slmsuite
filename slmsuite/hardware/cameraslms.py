@@ -10,9 +10,9 @@ import numpy as np
 from scipy import optimize
 from tqdm import tqdm
 
-from slmsuite.holography import image_analysis
+from slmsuite.holography import analysis
 from slmsuite.holography.algorithms import SpotHologram
-from slmsuite.holography.lcos_toolbox import blaze, imprint, clean_2vectors
+from slmsuite.holography.toolbox import blaze, imprint, clean_2vectors
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
 from slmsuite.misc.fitfunctions import cos_fitfun
 
@@ -114,7 +114,7 @@ class FourierSLM(CameraSLM):
         A an array produced by 
         :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
         is projected for analysis by 
-        :meth:`~slmsuite.holography.image_analysis.blob_array_detect()`.
+        :meth:`~slmsuite.holography.analysis.blob_array_detect()`.
 
         Parameters
         ----------
@@ -183,7 +183,7 @@ class FourierSLM(CameraSLM):
         img = self.cam.get_image()
 
         # 2) Get orientation of projected array
-        orientation = image_analysis.blob_array_detect(img, array_shape, plot=plot)
+        orientation = analysis.blob_array_detect(img, array_shape, plot=plot)
 
         a = clean_2vectors(array_center)
         M = np.array(orientation["M"])
@@ -337,7 +337,7 @@ class FourierSLM(CameraSLM):
         ----------
         kxy : array_like
             2-vector or array of 2-vectors to convert.
-            Cleaned with :meth:`~slmsuite.holography.lcos_toolbox.clean_2vectors()`.
+            Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
 
         Returns
         -------
@@ -368,7 +368,7 @@ class FourierSLM(CameraSLM):
         ----------
         ij : array_like
             2-vector or array of 2-vectors to convert.
-            Cleaned with :meth:`~slmsuite.holography.lcos_toolbox.clean_2vectors()`.
+            Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
 
         Returns
         -------
@@ -736,7 +736,7 @@ class FourierSLM(CameraSLM):
 
             # Blur a lot and assume the maximum corresponds to the center.
             blur = 2 * int(np.min(interference_size)) + 1
-            masked_pic_mode = image_analysis.make8bit(masked_pic_mode)
+            masked_pic_mode = analysis.make8bit(masked_pic_mode)
             masked_pic_mode = cv2.GaussianBlur(masked_pic_mode, (blur, blur), 0)
             _, _, _, max_loc = cv2.minMaxLoc(masked_pic_mode)
             found_center = (

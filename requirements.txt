@@ -1,0 +1,8 @@
+scipy>=1.6.1
+matplotlib>=3.3.4
+numpy>=1.19.2
+opencv>=4.5.1
+wxPython
+cupy
+tqdm
+h5py

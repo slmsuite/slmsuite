@@ -50,7 +50,7 @@ except ImportError:
     print("No cupy installed, using numpy.")
 
 # Import helper functions
-from slmsuite.holography import lcos_toolbox, image_analysis
+from slmsuite.holography import analysis, toolbox
 
 class Hologram:
     r"""
@@ -469,7 +469,7 @@ class Hologram:
         nearfield = cp.exp(1j * self.target)
 
         # Helper variables for speeding up source phase and amplitude fixing.
-        (i0, i1, i2, i3) = lcos_toolbox.unpad(self.shape, self.slm_shape)
+        (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
         for _ in iterations:
             # Fix the relevant part of the nearfield amplitude to the source amplitude.
@@ -860,13 +860,13 @@ class Hologram:
             phase = self.phase
 
         if isinstance(amp, float):
-            axs[0].imshow(lcos_toolbox.pad(amp * np.ones(self.slm_shape),
+            axs[0].imshow(toolbox.pad(amp * np.ones(self.slm_shape),
                 self.shape if padded else self.slm_shape), vmin=0, vmax=amp)
         else:
-            axs[0].imshow(lcos_toolbox.pad(amp,
+            axs[0].imshow(toolbox.pad(amp,
                 self.shape if padded else self.slm_shape), vmin=0, vmax=np.amax(amp))
 
-        axs[1].imshow(lcos_toolbox.pad(phase, self.shape if padded else self.slm_shape), 
+        axs[1].imshow(toolbox.pad(phase, self.shape if padded else self.slm_shape), 
             vmin=-np.pi, vmax=np.pi, interpolation='none')
         
         if len(title) > 0:
@@ -1141,9 +1141,9 @@ class FeedbackHologram(Hologram):
             ur = [cam_shape[1]-1, cam_shape[0]-1]
             ul = [cam_shape[1]-1, 0]
             
-            points_ij = lcos_toolbox.clean_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
+            points_ij = toolbox.clean_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
             points_kxy = self.cameraslm.ijcam_to_kxyslm(points_ij)
-            self.cam_points = lcos_toolbox.convert_blaze_vector(points_kxy, "kxy", "knm", 
+            self.cam_points = toolbox.convert_blaze_vector(points_kxy, "kxy", "knm", 
                                                 slm=self.cameraslm.slm, shape=self.shape)
             self.cam_shape = cam_shape
         else:
@@ -1183,10 +1183,10 @@ class FeedbackHologram(Hologram):
         assert self.cameraslm.fourier_calibration is not None
 
         # First transformation.
-        conversion = lcos_toolbox.convert_blaze_vector([1, 1], "knm", "kxy", 
+        conversion = toolbox.convert_blaze_vector([1, 1], "knm", "kxy", 
             slm=self.cameraslm.slm, shape=self.shape)
         M1 = np.diag(np.squeeze(conversion))
-        b1 = -lcos_toolbox.clean_2vectors(np.flip(np.squeeze(self.shape))/2)
+        b1 = -toolbox.clean_2vectors(np.flip(np.squeeze(self.shape))/2)
 
         # Second transformation.
         M2 = self.cameraslm.fourier_calibration["M"]
@@ -1308,7 +1308,7 @@ class SpotHologram(FeedbackHologram):
     ----------
     spot_knm, spot_kxy, spot_ij : array_like OR None
         Stored vectors with shape ``(2, N)`` in the style of 
-        :meth:`~slmsuite.holography.lcos_toolbox.clean_2vectors()`.
+        :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
         The subscript refers to the basis of the vectors, the transformations between
         which are autocomputed.
         If necessary transformations do not exist, :attr:`spot_ij` is set to ``None``.
@@ -1337,7 +1337,7 @@ class SpotHologram(FeedbackHologram):
             Computational shape of the SLM. See :meth:`.Hologram.__init__()`.
         spot_vectors : array_like
             Spot position vectors with shape ``(2, N)`` in the style of 
-            :meth:`~slmsuite.holography.lcos_toolbox.clean_2vectors()`.
+            :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
         basis : str
             The spots can be in any of the following bases:
 
@@ -1356,7 +1356,7 @@ class SpotHologram(FeedbackHologram):
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
-        vectors = lcos_toolbox.clean_2vectors(spot_vectors)
+        vectors = toolbox.clean_2vectors(spot_vectors)
 
         if spot_amp is not None:
             assert np.shape(vectors)[1] == len(spot_amp.ravel()), \
@@ -1367,7 +1367,7 @@ class SpotHologram(FeedbackHologram):
             self.spot_knm = vectors
 
             if cameraslm is not None:
-                self.spot_kxy = lcos_toolbox.convert_blaze_vector(
+                self.spot_kxy = toolbox.convert_blaze_vector(
                     self.spot_knm, "knm", "kxy", cameraslm.slm, shape)
 
                 if cameraslm.fourier_calibration is not None:
@@ -1387,7 +1387,7 @@ class SpotHologram(FeedbackHologram):
             except:     # This is okay for non-feedback GS, so we don't error.
                 self.spot_ij = None
 
-            self.spot_knm = lcos_toolbox.convert_blaze_vector(
+            self.spot_knm = toolbox.convert_blaze_vector(
                 self.spot_kxy, "kxy", "knm", cameraslm.slm, shape)
         elif basis == "ij":                     # Pixel on the camera
             assert cameraslm is not None, "We need an cameraslm to interpret ij."
@@ -1397,7 +1397,7 @@ class SpotHologram(FeedbackHologram):
 
             self.spot_ij = vectors
             self.spot_kxy = cameraslm.ijcam_to_kxyslm(vectors)
-            self.spot_knm = lcos_toolbox.convert_blaze_vector(
+            self.spot_knm = toolbox.convert_blaze_vector(
                 self.spot_kxy, "kxy", "knm", cameraslm.slm, shape)
         else:
             raise Exception("Unrecognized basis '{}'.".format(basis))
@@ -1491,12 +1491,12 @@ class SpotHologram(FeedbackHologram):
         # Erase previous target in-place. Future: Optimize speed if positions haven't shifted?
         self.target.fill(0)
 
-        shape = lcos_toolbox.clean_2vectors(self.shape).astype(np.float)
+        shape = toolbox.clean_2vectors(self.shape).astype(np.float)
 
         self.spot_knm_rounded = np.ceil(shape/2 + self.spot_knm.astype(np.float)).astype(np.int)
 
         if self.cameraslm is not None:
-            self.spot_kxy_rounded = lcos_toolbox.convert_blaze_vector(
+            self.spot_kxy_rounded = toolbox.convert_blaze_vector(
                 self.spot_knm_rounded - shape/2, "knm", "kxy", self.cameraslm.slm, self.shape)
 
             if self.cameraslm.fourier_calibration is not None:
@@ -1566,7 +1566,7 @@ class SpotHologram(FeedbackHologram):
         psf = 11 # TODO
         blur = 2*int(psf/8)+1
 
-        regions = image_analysis.take(img, self.spot_ij, psf, centered=True, integrate=False)
+        regions = analysis.take(img, self.spot_ij, psf, centered=True, integrate=False)
 
         # Filter the images, but not the stack.
         sp_gaussian_filter1d(regions, blur, axis=1, output=regions)
@@ -1579,7 +1579,7 @@ class SpotHologram(FeedbackHologram):
 
         if basis is None or basis == "kxy" or basis == "knm":   # Don't modify any camera spots.
             self.spot_kxy = self.spot_kxy_rounded - self.cameraslm.ijcam_to_kxyslm(shift_vector)
-            self.spot_knm = lcos_toolbox.convert_blaze_vector(
+            self.spot_knm = toolbox.convert_blaze_vector(
                 self.spot_kxy, "kxy", "knm", self.cameraslm.slm, self.shape)
             self.update_target()
         elif basis == "ij":     # Don't modify any k-vectors.
@@ -1604,7 +1604,7 @@ class SpotHologram(FeedbackHologram):
             self.measure(basis="ij")
 
             psf = 3 # TODO: Fix
-            feedback = image_analysis.take(self.img_ij, self.spot_ij, psf, centered=True, integrate=True)
+            feedback = analysis.take(self.img_ij, self.spot_ij, psf, centered=True, integrate=True)
 
             self._update_weights_generic(
                 self.weights[self.spot_knm_rounded[1,:], self.spot_knm_rounded[0,:]],
@@ -1620,7 +1620,7 @@ class SpotHologram(FeedbackHologram):
             self.measure(basis="ij")
 
             psf = 3 # TODO: Fix
-            feedback = image_analysis.take(  self.img_ij, self.spot_ij, psf,
+            feedback = analysis.take(  self.img_ij, self.spot_ij, psf,
                                             centered=True, integrate=True)
 
             total = cp.sum(self.img_ij)

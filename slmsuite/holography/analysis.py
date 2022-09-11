@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from functools import reduce
 from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
 
-from slmsuite.holography.lcos_toolbox import clean_2vectors
+from slmsuite.holography.toolbox import clean_2vectors
 
 def make8bit(img):
     """
@@ -105,7 +105,7 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
         2D image or array of 2D images.
     points : array_like
         2-vector (or 2-vector array) listing location(s) of integration region(s).
-        See :meth:`~slmsuite.holography.lcos_toolbox.clean_2vectors`.
+        See :meth:`~slmsuite.holography.toolbox.clean_2vectors`.
     size : int or (int, int)
         Size of the rectangular integration region in ``(w,h)`` format. If a scalar is given,
         assume square ``(w,w)``.

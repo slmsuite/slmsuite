@@ -29,8 +29,8 @@ divided into slm- and camera- centric categories:
    :template: custom-module-template.rst
    :recursive:
 
-   lcos_toolbox
-   image_analysis
+   toolbox
+   analysis
 
 Hardware
 ========

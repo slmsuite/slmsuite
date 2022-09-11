@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
-from slmsuite.holography import image_analysis
+from slmsuite.holography import analysis
 from slmsuite.misc import lorentzian_fitfun, lorentzian_jacobian
 
 
@@ -55,7 +55,7 @@ class Camera:
         Initializes a camera.
 
         In addition to the other class attributes, accepts the following parameters
-        to set :attr:`transform`. See :meth:`~slmsuite.holograpy.image_analysis.get_transform()`.
+        to set :attr:`transform`. See :meth:`~slmsuite.holograpy.analysis.get_transform()`.
 
         Parameters
         ----------
@@ -96,7 +96,7 @@ class Camera:
         self.dy_um = dy_um
 
         # Create image transformation.
-        self.transform = image_analysis.get_transform(rot, fliplr, flipud)
+        self.transform = analysis.get_transform(rot, fliplr, flipud)
 
     def close(self):
         """

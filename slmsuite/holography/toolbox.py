@@ -29,7 +29,7 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     function : lambda
-        A function in the style of :mod:`~slmsuite.holography.lcos_toolbox` helper functions,
+        A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
         which accept ``grid`` as the first argument.
     imprint_operation : str {"replace" OR "add"}
         Decides how the ``function`` is imparted to the ``matrix``.
@@ -280,7 +280,7 @@ def clean_2vectors(vectors):
 #     v0, v1, v2 : array_like
 #         2-vectors defining the affine transformation. ``v0`` is always the base/origin.
 #         The action of ``v1`` and ``v2`` depends on ``mode``.
-#         Cleaned with :meth:`~slmsuite.holography.lcos_toolbox.clean_2vectors()`.
+#         Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
 #     N : int or (int, int)
 #         Size of the grid ``(N1, N2)``. If a scalar is passed, then the grid is assumed square.
 #     mode : {"delta", "corner"}
@@ -323,7 +323,7 @@ def get_affine_vectors(v0, v1, v2, N, i0=(0,0), i1=(1,0), i2=(0,1)):
     v0, v1, v2 : array_like
         2-vectors defining the affine transformation. ``v0`` is always the base/origin.
         The action of ``v1`` and ``v2`` depends on ``mode``.
-        Cleaned with :meth:`~slmsuite.holography.lcos_toolbox.clean_2vectors()`.
+        Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
     N : int or (int, int)
         Size of the grid ``(N1, N2)``. If a scalar is passed, then the grid is assumed square.
     i0, i1, i2 : array_like OR None
@@ -392,7 +392,7 @@ def get_affine_vectors(v0, v1, v2, N, i0=(0,0), i1=(1,0), i2=(0,1)):
 # Basic functions
 def _process_grid(grid):
     """
-    Functions in :mod:`.lcos_toolbox` make use of normalized meshgrids containing the normalized
+    Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
     coordinate of each corresponding pixel. This helper function interprets what the user passes.
 
     Parameters
@@ -433,7 +433,7 @@ def blaze(grid, vector=[0,0], offset=0):
         such a class can be passed instead of the grids directly.
     vector : (float, float)
         Blaze vector in normalized (kx/k) units.
-        See :meth:`~slmsuite.holography.lcos_toolbox.convert_blaze_vector()`
+        See :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`
     offset :
         Phase offset for this blaze.
     """
@@ -474,7 +474,7 @@ def determine_source_radius(grid, w=None):
     """
     Helper function to determine the assumed Gaussian source radius for various
     structured light conversion functions.  For instance, see the ``w`` parameter in 
-    :meth:`~slmsuite.holography.lcos_toolbox.laguerre_gaussian()`.
+    :meth:`~slmsuite.holography.toolbox.laguerre_gaussian()`.
 
     Note
     ~~~~
@@ -520,7 +520,7 @@ def laguerre_gaussian(grid, l, p, w=None):
     p : int
         The radial wavenumber. Should be non-negative.
     w : float OR None
-        See :meth:`~slmsuite.holography.lcos_toolbox.determine_source_radius()`.
+        See :meth:`~slmsuite.holography.toolbox.determine_source_radius()`.
     """
     (x_grid, y_grid) = _process_grid(grid)
 
@@ -544,7 +544,7 @@ def hermite_gaussian(grid, nx, ny, w=None):
         The horizontal (`nx`) and vertical (`ny`) wavenumbers. `nx = ny = 0` yields a flat
         phase or a standard Gaussian beam.
     w : float
-        See :meth:`~slmsuite.holography.lcos_toolbox.determine_source_radius()`.
+        See :meth:`~slmsuite.holography.toolbox.determine_source_radius()`.
     """
     (x_grid, y_grid) = _process_grid(grid)
 

@@ -1,5 +1,5 @@
 <p align="center">
-<img src="docs/static/qp-slm.svg" width="256">
+<img src="docs/source/static/qp-slm.svg" width="256">
 </p>
 
 # slmsuite

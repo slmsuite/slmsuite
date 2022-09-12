@@ -17,5 +17,5 @@ Additionally, all contributed code will be licensced under slmsuite's
 ## Attribution
 This contribution guide was influenced by
 [scipy/CONTRIBUTING.rst](https://github.com/scipy/scipy/blob/main/CONTRIBUTING.rst),
-[scipy/HACKING.rst.txt]([https://github.com/scipy/scipy/blob/main/HACKING.rst.txt),
+[scipy/HACKING.rst.txt](https://github.com/scipy/scipy/blob/main/HACKING.rst.txt),
 and [linux/MAINTAINERS](https://github.com/torvalds/linux/blob/master/MAINTAINERS).

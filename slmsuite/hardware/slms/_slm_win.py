@@ -22,12 +22,8 @@ from ctypes.wintypes import LPCWSTR
 from ctypes.wintypes import FILETIME
 import os
 
-if (sys.version_info.major*100 + sys.version_info.minor) >= 308:
-    if hasattr(os, "add_dll_directory"):
-        os.add_dll_directory(os.getcwd())
-    else:
-        print("`os` has no attribute `add_dll_directory`.")
-        raise FileNotFoundError()
+if (sys.version_info.major * 100 + sys.version_info.minor) >= 308:
+    os.add_dll_directory(os.getcwd())
 
 _libname = 'SLMFunc.dll'
 _libraries = {}

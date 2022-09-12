@@ -15,8 +15,8 @@ import os
 import sys
 
 module_paths = [
-    os.path.abspath(".."),
-    os.path.abspath("../slmsuite"),
+    os.path.abspath("../.."),
+    os.path.abspath("../../slmsuite"),
     ]
 for module_path in module_paths:
     sys.path.insert(0, module_path)

@@ -35,8 +35,8 @@ References
 .. [5] https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam
 """
 from .camera import Camera
-from .allied_vision import AlliedVision
+from .alliedvision import AlliedVision
 from .xenics import Cheetah640
 from .flir import FLIR
-from .mm_core import MMCore
+from .mmcore import MMCore
 from .thorlabs import ThorCam

@@ -4,8 +4,8 @@ Abstract functionality for SLMs.
 
 import time
 import numpy as np
-from slmsuite.holography.lcos_toolbox import blaze
-from slmsuite.holography import lcos_toolbox
+from slmsuite.holography.toolbox import blaze
+from slmsuite.holography import toolbox
 
 
 class SLM:
@@ -247,7 +247,7 @@ class SLM:
         wait_for_settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
         blaze_vector : (float, float)
-            See :meth:`~slmsuite.holography.lcos_toolbox.blaze`.
+            See :meth:`~slmsuite.holography.toolbox.blaze`.
             If `None`, no blaze is applied.
 
         Returns
@@ -263,7 +263,7 @@ class SLM:
             # Copy the pattern.
             # Unpad if necessary.
             if self.phase.shape != self.shape:
-                np.copyto(self.phase, lcos_toolbox.unpad(self.phase, self.shape))
+                np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
             else:
                 np.copyto(self.phase, phase)
 

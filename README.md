@@ -6,7 +6,7 @@
 A package for high-performance spatial light modulator (SLMs) control and holography.
 
 ## Installation
-TODO: once pypi is resolved.
+TODO: pypi
 
 ## Documentation
 TODO: link docs in readme.

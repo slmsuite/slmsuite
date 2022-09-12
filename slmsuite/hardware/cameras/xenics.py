@@ -1,9 +1,11 @@
 """
 Hardware control for Xenics camera via the :mod:`Xeneth` interface.
+
+Python wrapper for Xenith C++ SDK 2.7 from Xenics; see xeneth-sdk.chm 
+there for additional documentation.
 """
 
-# TODO: document where the header file was obtained and where documentation exists.
-
+from socket import timeout
 import time
 from ctypes import *
 
@@ -289,17 +291,11 @@ class Cheetah640(Camera):
         Object to talk with the Xeneth SDK.
     cam : ptr
         Object to talk with the desired camera.
-    profile : {'ir', 'vis', 'spots', 'calibration'}
-        Current operation mode.
+    profile : {'triggered', 'free'}
+        Current pre-configured operation mode.
 
-        ``'ir'``
-          ...
-        ``'vis'``
-          ...
-        ``'spots'``
-          ...
-        ``'calibration'``
-          ...
+        ``'triggered'`` - Captures on external trigger \n
+        ``'free'`` - Continuous capture
         
     frame_size : int
         Size of the frame in bytes for use in grabbing data for the buffer.
@@ -315,13 +311,11 @@ class Cheetah640(Camera):
         Dictionary with enabled filters. See Xeneth documentation for more information.
     """
 
-    # TODO: document profile meanings. Probably should be removed.
-
     ### Camera Interface ###
 
     def __init__(self, virtual=False, temperature=None, verbose=True, **kwargs):
         """
-        Initialize camera. Default `profile` is `'vis'`.
+        Initialize camera. Default `profile` is `'free'`.
 
         Parameters
         ----------
@@ -412,7 +406,7 @@ class Cheetah640(Camera):
                 self.set_framerate(0)
 
                 # Load visible setup by default
-                self.setup("vis")
+                self.setup("free")
 
             self.default_shape = self.shape
 
@@ -713,6 +707,38 @@ class Cheetah640(Camera):
             self.cam, b"_API_FPC_BFRNUM", byref(frame_current)
         )
         print("     New API buffer size: %d frames" % (frame_current.value))
+        if err1 or err2 or err3:
+            print(
+                "Warning -- error encountered! Error codes: %d, %d, %d"
+                % (err1, err2, err3)
+            )
+
+    def set_timeout_api(self, timeout_ms=10000):
+        """
+        Set the get_frame time allowed before issuing E_NOFRAME error.
+
+        Warning
+        ~~~~~~~~
+        Implementation unfinished and untested.
+
+        Parameters
+        ----------
+        timeout_ms : int
+            Time in ms to wait for blocking frame capture.
+        """
+        print("Setting API timeout to %d ms..." % (timeout_ms))
+        timeout_current = c_ulong(0)
+        err1 = self.xeneth.XC_GetPropertyValueL(
+            self.cam, b"_API_GETFRAME_TIMEOUT", byref(timeout_current)
+        )
+        print("Previous API timeout: %d ms" % (timeout_current.value))
+        err2 = self.xeneth.XC_SetPropertyValueL(
+            self.cam, b"_API_GETFRAME_TIMEOUT", c_long(timeout_ms), ""
+        )
+        err3 = self.xeneth.XC_GetPropertyValueL(
+            self.cam, b"_API_GETFRAME_TIMEOUT", byref(timeout_current)
+        )
+        print("     New API timeout: %d ms" % (timeout_current.value))
         if err1 or err2 or err3:
             print(
                 "Warning -- error encountered! Error codes: %d, %d, %d"
@@ -1284,7 +1310,9 @@ class Cheetah640(Camera):
 
     def setup(self, profile, fpt=1):
         """
-        Preconfigured imaging profiles.
+        Sample pre-configured imaging profiles.
+
+        Likely to be reconfigured by end-user for various imaging tasks.
 
         Parameters
         ----------
@@ -1293,32 +1321,22 @@ class Cheetah640(Camera):
         fpt : int
             Frames per trigger for intput trigger.
         """
-        # TODO: Clean up
-        if profile == "ir":
-            self.set_exposure(
-                100e-6
-            )  # 0.1 ms exposure (allows 1kHz imaging w/ 350x350 WOI)
-            self.setup_input_trigger(
-                mode=2, source=0, fpt=1
-            )  # Rising edge trigger on camera; 1 frame each trigger
-            self.setup_input_trigger(
-                mode=2, source=0, fpt=fpt
-            )  # Need 2x avoid pre-trigger
-            # self.setLowGain(False)                 # Enable low gain
-        elif profile == "vis":
-            self.setup_input_trigger()  # Free running, software trigger
-            self.set_exposure(7e-3)  # 30 ms fixed exposure
-            self.start_capture()  # Start free-running capture
-        elif profile == "spots":
-            self.setup_input_trigger()  # Free running, software trigger
-            self.set_exposure(10e-6)  # 30 us = approx exposure for min input power
-            self.start_capture()  # Start free-running capture
-        elif profile == "calibration":
-            self.setup_input_trigger()  # Free running, software trigger
-            self.set_exposure(3e-3)  # 30 us = approx exposure for min input power
-            self.start_capture()  # Start free-running capture
-            # self.enable_cooling()                   # We need best possible image
-            # self.set_temperature(10)                #  ...so cool down the imager...
+        if profile == "triggered":
+            # 0.1 ms exposure (allows 1kHz imaging w/ 350x350 WOI w/ 400Hz Cheetah 640)
+            self.set_exposure(100e-6)
+            # Rising edge trigger on camera; 1 frame each trigger
+            self.setup_input_trigger(mode=2, source=0, fpt=1) 
+            # Need 2x avoid pre-trigger
+            self.setup_input_trigger(mode=2, source=0, fpt=fpt)  
+            # Enable low gain
+            self.set_low_gain(False)                 
+        elif profile == "free":
+            # Free running, software trigger
+            self.setup_input_trigger()
+            # 30 ms fixed exposure  
+            self.set_exposure(7e-3)
+            # Start free-running capture
+            self.start_capture()  
         else:
             print("Profile not found! Returning...")
 
@@ -1367,16 +1385,22 @@ class Cheetah640(Camera):
                     return self.transform(im)
         return -1
 
-    def get_image(self, frame_type=FT_NATIVE, block=True, convert=True):
+    def get_image(self, timeout_s=10, frame_type=FT_NATIVE, block=True, convert=True):
         """
         Main grabbing function; captures latest image into single frame buffer.
 
+        Warning
+        ~~~~~~~~
+        `timeout_s` parameter is currently untested; setting it may lead to unintended behavior.
+
         Parameters
         ----------
+        timeout_s : float
+            The time in seconds to wait for frames to catch up with triggers.
         frame_type : FT_NATIVE, 0
             Sets type of frame conversion.
         block : bool
-            Blocking read; waits up to 10s for frame.
+            Blocking read; waits up to `timeout_s` for frame.
         convert : bool
             Makes internal 8 bit buffer, set false for max performance.
 
@@ -1385,7 +1409,11 @@ class Cheetah640(Camera):
         int, numpy.ndarray
             Error code in the event of an error, otherwise the current frame.
         """
-        # TODO: parameters should conform to superclass.
+        
+        # Update the timeout time (in ms) if different than API default
+        # Note: To be renovated to only set timeout if different than current camera value...
+        if timeout_s != 10 and block:
+            self.set_timeout_api(int(1000*timeout_s))
 
         # Set flag based on input options
         flag = XGF_BLOCKING if block else 0
@@ -1486,9 +1514,11 @@ class Cheetah640(Camera):
             self.xeneth.XC_RemImageFilter(self.cam, self.filters["autogain"])
             self.filters.pop("autogain")
 
-    def autoexposure(self, enable=True, t_settle=0):
+    def autoexpose_xenics(self, enable=True, t_settle=0):
         """
-        Adds autogain and offset to current filter stack. Makes use of full dynmaic range.
+        Adds Xenics autogain and offset filters to current filter stack.
+        
+        Makes use of the camera's full dynamic range.
 
         Parameters
         ----------
@@ -1497,7 +1527,6 @@ class Cheetah640(Camera):
         t_settle : float
             Time to allow autoexposure to settle.
         """
-        # TODO: parameters should conform to superclass.
         if enable and "autoexposure" not in self.filters.keys():
             print("Enabling autoexposure...")
             tag = self.xeneth.XC_FLT_Queue(self.cam, b"AutoExposure", "")

@@ -18,6 +18,7 @@ CLKFREQ = 80e6
 ### Imaging Constants from XFilters.h ###
 
 # pylint: disable=C0301
+# fmt: off
 #ErrorCodes
 I_OK                    = 0        # Success.
 I_DIRTY                 = 1        # Internal.
@@ -264,6 +265,7 @@ XDS_AVAILABLE = 0x0    # The device is available to establish a connection.
 XDS_BUSY = 0x1         # The device is currently in use.
 XDS_UNREACHABLE = 0x2  # The device was detected but is unreachable.
 # pylint: enable=C0301
+# fmt: on
 
 
 class _XDeviceInformation(Structure):
@@ -296,7 +298,7 @@ class Cheetah640(Camera):
 
         ``'triggered'`` - Captures on external trigger \n
         ``'free'`` - Continuous capture
-        
+
     frame_size : int
         Size of the frame in bytes for use in grabbing data for the buffer.
     frame_buffer : c_ushort array
@@ -1325,18 +1327,18 @@ class Cheetah640(Camera):
             # 0.1 ms exposure (allows 1kHz imaging w/ 350x350 WOI w/ 400Hz Cheetah 640)
             self.set_exposure(100e-6)
             # Rising edge trigger on camera; 1 frame each trigger
-            self.setup_input_trigger(mode=2, source=0, fpt=1) 
+            self.setup_input_trigger(mode=2, source=0, fpt=1)
             # Need 2x avoid pre-trigger
-            self.setup_input_trigger(mode=2, source=0, fpt=fpt)  
+            self.setup_input_trigger(mode=2, source=0, fpt=fpt)
             # Enable low gain
-            self.set_low_gain(False)                 
+            self.set_low_gain(False)
         elif profile == "free":
             # Free running, software trigger
             self.setup_input_trigger()
-            # 30 ms fixed exposure  
+            # 30 ms fixed exposure
             self.set_exposure(7e-3)
             # Start free-running capture
-            self.start_capture()  
+            self.start_capture()
         else:
             print("Profile not found! Returning...")
 
@@ -1409,11 +1411,11 @@ class Cheetah640(Camera):
         int, numpy.ndarray
             Error code in the event of an error, otherwise the current frame.
         """
-        
+
         # Update the timeout time (in ms) if different than API default
         # Note: To be renovated to only set timeout if different than current camera value...
         if timeout_s != 10 and block:
-            self.set_timeout_api(int(1000*timeout_s))
+            self.set_timeout_api(int(1000 * timeout_s))
 
         # Set flag based on input options
         flag = XGF_BLOCKING if block else 0
@@ -1517,7 +1519,7 @@ class Cheetah640(Camera):
     def autoexpose_xenics(self, enable=True, t_settle=0):
         """
         Adds Xenics autogain and offset filters to current filter stack.
-        
+
         Makes use of the camera's full dynamic range.
 
         Parameters

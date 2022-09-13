@@ -23,10 +23,10 @@ for module_path in module_paths:
 
 # -- Project information -----------------------------------------------------
 
-project = 'slmsuite'
-copyright = '2022, mit-qpg'
-author = 'mit-qpg'
-release = '0.0.0'
+project = "slmsuite"
+copyright = "2022, slmsuite Developers"
+author = "slmsuite Developers"
+release = "0.0.0"
 
 # -- General configuration ---------------------------------------------------
 

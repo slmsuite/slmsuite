@@ -5,7 +5,7 @@
 </picture>
 </p>
 
-<h2 align="center">High-performance Spatial Light Modulator Control and Holography</h2>
+<h2 align="center">High-Performance Spatial Light Modulator Control and Holography</h2>
 
 <p align="center">
 <a href="https://slmsuite.readthedocs.io/en/latest"><img alt="Documentation Status" src="https://readthedocs.org/projects/slmsuite/badge/?version=latest"></a>
@@ -17,7 +17,7 @@
 
 ## Install
 ```console
-> pip install slmsuite
+pip install slmsuite
 ```
 
 ## Documentation

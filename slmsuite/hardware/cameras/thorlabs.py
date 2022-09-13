@@ -211,7 +211,6 @@ class ThorCam(Camera):
 
     def reset(self):
         """See :meth:`.Camera.reset`."""
-        # TODO: Check if this restarts without arguments?
         self.close()
         self.__init__()
 

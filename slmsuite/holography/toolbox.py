@@ -4,6 +4,7 @@ Helper functions for manipulating phase patterns.
 
 import numpy as np
 from scipy import special
+from scipy.spatial.distance import cityblock
 
 # Phase pattern collation and manipulation
 def imprint(matrix, window, grid, function, imprint_operation="replace",
@@ -379,6 +380,38 @@ def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
             indices = np.vstack((x_grid.ravel(), y_grid.ravel()))
 
         return np.matmul(M, indices - a) + b
+def get_smallest_distance(vectors, metric=cityblock):
+    """
+    Returns the smallest distance between pairs of points under a given ``metric``.
+
+    Note
+    ~~~~
+    An :math:`\mathcal{O}(N^2)` brute force approach is currently implemented.
+    Future work will involve an :math:`\mathcal{O}(N\log(N))` 
+    divide and conquer algorithm.
+
+    Parameters
+    ----------
+    vectors : array_like
+        Points to compare.
+        Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
+    metric : lambda
+        Function to use to compare.
+        Defaults to :meth:`scipy.spatial.distance.cityblock`.
+    """
+    vectors = clean_2vectors(vectors)
+    N = vectors.shape[1]
+
+    minimum = np.inf
+
+    for x in range(N):
+        for y in range(x+1, N):
+            distance = metric(vectors[:,x], vectors[:,y])
+            if distance < minimum:
+                minimum = distance
+
+    return minimum
+
 
 # Basic functions
 def _process_grid(grid):

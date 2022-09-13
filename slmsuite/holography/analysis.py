@@ -148,8 +148,8 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
     shape = np.shape(imgs)
 
     if clip:    # Prevent out-of-range errors by clipping.
-        mask =  (integration_x < 0) | (integration_x >= shape[-1]) | \
-                (integration_y < 0) | (integration_y >= shape[-2])
+        mask = ((integration_x < 0) | (integration_x >= shape[-1]) |
+                (integration_y < 0) | (integration_y >= shape[-2]))
 
         # Clip these indices to prevent errors.
         np.clip(integration_x, 0, shape[-1]-1, out=integration_x)
@@ -413,10 +413,10 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
         top =       np.argmax([k[:, 1]])  # Largest y
 
         # 2.3) Calculate the vectors in the imaging domain
-        x = 2 * (k[right, :] - k[left, :]) / \
-            (blob_dist[right] + blob_dist[left])**2
-        y = 2 * (k[top, :] - k[bottom, :]) / \
-            (blob_dist[top] + blob_dist[bottom])**2
+        x = (2 * (k[right, :] - k[left, :]) /
+            (blob_dist[right] + blob_dist[left])**2)
+        y = (2 * (k[top, :] - k[bottom, :]) /
+            (blob_dist[top] + blob_dist[bottom])**2)
 
         M = np.array([[x[0], y[0]], [x[1], y[1]]])
     else:
@@ -437,8 +437,10 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
     x_list_larger = np.arange(-(size[0]+p-1)/2., (size[0]+p+1)/2.)
     y_list_larger = np.arange(-(size[1]+p-1)/2., (size[1]+p+1)/2.)
 
-    x_centergrid_larger, y_centergrid_larger = np.meshgrid(x_list_larger, y_list_larger)
-    centers_larger = np.vstack((x_centergrid_larger.ravel(), y_centergrid_larger.ravel()))
+    x_centergrid_larger, y_centergrid_larger = np.meshgrid( x_list_larger, 
+                                                            y_list_larger)
+    centers_larger = np.vstack((x_centergrid_larger.ravel(), 
+                                y_centergrid_larger.ravel()))
 
     # If we're not sure about how things are flipped, consider alternatives
     if size[0] != size[1] and orientation is None:
@@ -509,13 +511,16 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
 
                 integration_x, integration_y = np.meshgrid(edge, edge)
 
-                rotated_integration_x = np.add(integration_x.ravel()[:, np.newaxis].T, 
-                                               rotated_centers[:][0][:, np.newaxis]).astype(np.int)
-                rotated_integration_y = np.add(integration_y.ravel()[:, np.newaxis].T, 
-                                               rotated_centers[:][1][:, np.newaxis]).astype(np.int)
+                rotated_integration_x = np.add( 
+                            integration_x.ravel()[:, np.newaxis].T, 
+                            rotated_centers[:][0][:, np.newaxis]).astype(np.int)
+                rotated_integration_y = np.add( 
+                            integration_y.ravel()[:, np.newaxis].T, 
+                            rotated_centers[:][1][:, np.newaxis]).astype(np.int)
 
                 spotpowers = np.reshape(np.sum(match[rotated_integration_y,
-                                                     rotated_integration_x], 1), np.flip(size))
+                                                     rotated_integration_x], 1), 
+                                        np.flip(size))
 
                 # Find the two dimmest pixels.
                 spotbooleans = spotpowers <= np.sort(spotpowers.ravel())[1]
@@ -537,7 +542,8 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
                 rotation = np.array([[c, -s], [s, c]])
 
                 # Look for the second missing spot.
-                flip_parity = int(spotbooleans_rotated[-1,-2]) - int(spotbooleans_rotated[-2,-1])
+                flip_parity = ( int(spotbooleans_rotated[-1,-2]) - 
+                                int(spotbooleans_rotated[-2,-1]) )
 
                 assert abs(flip_parity) == 1
 
@@ -580,7 +586,7 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
 
             plt_img = make8bit(dft_amp.copy())
 
-            # Determine the bounds of the zoom region, padded by `zoom_pad`
+            # Determine the bounds of the zoom region, padded by zoom_pad
             zoom_pad = 50
 
             x = np.array([blob.pt[0] for blob in blobs])
@@ -625,7 +631,8 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
         psf = 2*int(np.floor(np.amin(np.amax(orientation["M"], axis=0)))/2) + 1
         blur = 2*int(psf/16)+1
 
-        regions = take(img, guess_positions, psf, centered=True, integrate=False, clip=True)
+        regions = take( img, guess_positions, psf, 
+                        centered=True, integrate=False, clip=True)
 
         # Filter the images, but not the stack.
         sp_gaussian_filter1d(regions, blur, axis=1, output=regions) 
@@ -664,7 +671,8 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
 
         showmatch = False
 
-        _, axs = plt.subplots(1, 2 + showmatch, constrained_layout=True, figsize=(12, 6))
+        _, axs = plt.subplots(1, 2 + showmatch, 
+                    constrained_layout=True, figsize=(12, 6))
 
         # Determine the bounds of the zoom region, padded by 50
         x = true_centers[0, :]

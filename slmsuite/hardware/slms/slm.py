@@ -17,7 +17,7 @@ class SLM:
     name : str
         Name of the SLM.
     shape : (int, int)
-        Stores (`height`, `width`) of the SLM in pixels, same form as :attr:`numpy.ndarray.shape`.
+        Stores ``(height, width)`` of the SLM in pixels, same form as :attr:`numpy.ndarray.shape`.
     wav_um : float
         Operating wavelength targeted by the SLM in microns.
     wav_design_um : float
@@ -28,16 +28,16 @@ class SLM:
         capability to change their voltage lookup tables (e.g. Thorlabs).
     wav_norm : float
         Wavelength normalized to the phase range of the SLM. Subclasses which pass
-        `wav_design_um` should set ``wav_norm = wav_um / wav_design_um``
+        ``wav_design_um`` should set ``wav_norm = wav_um / wav_design_um``
         or otherwise upon construction.
     bitdepth : int
         Depth of SLM pixel well in bits. This is useful for converting the floats which
-        the user provides to the `bitdepth`-bit ints that the SLM reads (see :meth:`_phase2gray`).
+        the user provides to the ``bitdepth``-bit ints that the SLM reads (see :meth:`_phase2gray`).
     bitresolution : int
         Stores ``2 ** bitdepth``.
     settle_time_s : float
         Delay in seconds to allow the SLM to settle. This is mostly useful for applications
-        requiring high precision. This delay is applied if the user flags `wait_for_settle`
+        requiring high precision. This delay is applied if the user flags ``wait_for_settle``
         in :meth:`write()`.
     dx_um : float
         x pixel pitch in um.
@@ -48,23 +48,23 @@ class SLM:
     dy : float
         See :attr:`dx`.
     x_grid : numpy.ndarray of floats
-        Point grid of the SLM's `shape` derived from `numpy.meshgrid` ing.
+        Point grid of the SLM's :attr:`shape` derived from :meth:`numpy.meshgrid` ing.
     y_grid : numpy.ndarray of floats
         See :attr:`x_grid`.
     flatmap : numpy.ndarray
         Correction provided by, for instance, the supplier, loaded from npz.
         Looks for correction upon intialization with :meth:`load_flatmap()`,
-        but defaults to None if no correction is found.
+        but defaults to ``None`` if no correction is found.
     measured_amplitude : numpy.ndarray or None
         Amplitude measured on the SLM b
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate()`.
         Of size :attr:`shape`.
         Also see :meth:`set_analytic_amplitude()` to set :attr:`measured_amplitude`
-        without wavefront calibration. Defaults to None when no correction is provided.
+        without wavefront calibration. Defaults to ``None`` when no correction is provided.
     phase_correction : numpy.ndarray or None
         Phase correction devised for the SLM by
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
-        Of size :attr:`shape`. Defaults to None when no correction is provided.
+        Of size :attr:`shape`. Defaults to ``None`` when no correction is provided.
     phase : numpy.ndarray
         Displayed data in units of phase delay (normalized).
     display : numpy.ndarray
@@ -107,7 +107,7 @@ class SLM:
             See :attr:`settle_time_s`.
         flatmap_path : str or None
             Path to look for vendor-provided wavefront calibration. Passed to :meth:`load_flatmap`.
-            If `None`, no flatmap is loaded.
+            If ``None``, no flatmap is loaded.
         """
         self.name = name
         self.shape = (int(height), int(width))
@@ -237,18 +237,18 @@ class SLM:
         ----------
         phase : numpy.ndarray or None
             Data to display in units of phase delay. Data must be larger than the SLM. If larger,
-            the data is cropped to size in a centered manner. If None, data is zeroed.
+            the data is cropped to size in a centered manner. If ``None``, data is zeroed.
             Usually, this is an exact stored copy of the data passed by the user. However, in cases
             where :attr:`wav_norm` not one, this copy is modified to include how the data was wrapped.
         flatmap : bool
-            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.flatmap` to `phase`.
+            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.flatmap` to ``phase``.
         phase_correct : bool
-            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction` to `phase`.
+            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction` to ``phase``.
         wait_for_settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
         blaze_vector : (float, float)
             See :meth:`~slmsuite.holography.toolbox.blaze`.
-            If `None`, no blaze is applied.
+            If ``None``, no blaze is applied.
 
         Returns
         ----------
@@ -374,8 +374,8 @@ class SLM:
 
     def set_analytic_amplitude(self, radius_mm):
         """
-        Sets :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude` used for hologram generation in the absence
-        of a proper wavefront calibration.
+        Sets :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude` used 
+        for hologram generation in the absence of a proper wavefront calibration.
         :class:`~slmsuite.hardware.cameraslms.FourierSLM` includes
         capabilities for wavefront calibration via
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.

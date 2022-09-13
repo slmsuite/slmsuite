@@ -78,9 +78,11 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
 
         # Modify the matrix
         if imprint_operation == "replace":
-            matrix[yi:yf,xi:xf] = function((x_grid[yi:yf,xi:xf], y_grid[yi:yf,xi:xf]), **kwargs)
+            matrix[yi:yf,xi:xf] =   function(  (x_grid[yi:yf,xi:xf], 
+                                                y_grid[yi:yf,xi:xf]), **kwargs)
         elif imprint_operation == "add":
-            matrix[yi:yf,xi:xf] = matrix[yi:yf,xi:xf] + function((x_grid[yi:yf,xi:xf], y_grid[yi:yf,xi:xf]), **kwargs)
+            matrix[yi:yf,xi:xf] +=  function(  (x_grid[yi:yf,xi:xf], 
+                                                y_grid[yi:yf,xi:xf]), **kwargs)
         else:
             raise ValueError()
     elif len(window) == 2:  # (y_ind, x_ind) format
@@ -102,18 +104,20 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
 
         # Modify the matrix
         if imprint_operation == "replace":
-            matrix[y_ind, x_ind] = function((x_grid[y_ind, x_ind], y_grid[y_ind, x_ind]), **kwargs)
+            matrix[y_ind, x_ind] =  function(  (x_grid[y_ind, x_ind], 
+                                                y_grid[y_ind, x_ind]), **kwargs)
         elif imprint_operation == "add":
-            matrix[y_ind, x_ind] = matrix[y_ind, x_ind] + function((x_grid[y_ind, x_ind], y_grid[y_ind, x_ind]), **kwargs)
+            matrix[y_ind, x_ind] += function(  (x_grid[y_ind, x_ind], 
+                                                y_grid[y_ind, x_ind]), **kwargs)
         else:
             raise ValueError()
     elif np.shape(window) == np.shape(matrix):      # Boolean numpy array. Future: extra checks?
         
         # Modify the matrix
         if imprint_operation == "replace":
-            matrix[window] = function((x_grid[window], y_grid[window]), **kwargs)
+            matrix[window] =  function((x_grid[window], y_grid[window]), **kwargs)
         elif imprint_operation == "add":
-            matrix[window] = matrix[window] + function((x_grid[window], y_grid[window]), **kwargs)
+            matrix[window] += function((x_grid[window], y_grid[window]), **kwargs)
         else:
             raise ValueError()
     else:
@@ -123,7 +127,8 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
 
 # Unit and vector helper functions
 blaze_units = ["norm", "kxy", "rad", "knm", "freq", "lpmm", "mrad", "deg"]
-def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, shape=None):
+def convert_blaze_vector(   vector, from_units="norm", to_units="norm", 
+                            slm=None, shape=None):
         r"""
         Helper function for unit conversions.
 
@@ -200,18 +205,18 @@ def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, s
 
             knm_conv = pitch * shape
 
-        if      from_units == "norm" or \
-                from_units == "kxy" or \
-                from_units == "rad":  rad = vector
+        if     (from_units == "norm" or
+                from_units == "kxy" or
+                from_units == "rad"): rad = vector
         elif    from_units == "knm":  rad = vector / knm_conv
         elif    from_units == "freq": rad = vector * wav_um / pitch_um
         elif    from_units == "lpmm": rad = vector * wav_um / 1000
         elif    from_units == "mrad": rad = vector / 1000
         elif    from_units == "deg":  rad = vector * np.pi / 180
 
-        if      to_units == "norm" or \
-                to_units == "kxy" or \
-                to_units == "rad":  return rad
+        if     (to_units == "norm" or
+                to_units == "kxy" or
+                to_units == "rad"): return rad
         elif    to_units == "knm":  return rad * knm_conv
         elif    to_units == "freq": return rad * pitch_um / wav_um
         elif    to_units == "lpmm": return rad * 1000 / wav_um
@@ -271,123 +276,109 @@ def clean_2vectors(vectors):
     assert vectors.shape[0] == 2
 
     return vectors
-# def get_affine_vectors(v0, v1, v2, N, mode="delta"):
-#     """
-#     Returns vectors corresponding to the points in an affine grid.
-
-#     Parameters
-#     ----------
-#     v0, v1, v2 : array_like
-#         2-vectors defining the affine transformation. ``v0`` is always the base/origin.
-#         The action of ``v1`` and ``v2`` depends on ``mode``.
-#         Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
-#     N : int or (int, int)
-#         Size of the grid ``(N1, N2)``. If a scalar is passed, then the grid is assumed square.
-#     mode : {"delta", "corner"}
-#         If ``"delta"``, then ``v1`` and ``v2`` are **differences** between the origin at 
-#         index ``(0,0)`` and two closest indices ``(1,0)`` and ``(0,1)``, respectively.
-#         Otherwise, ``v1`` and ``v2`` are the **positions** of the corners of the grid.
-
-#     Returns
-#     -------
-#     numpy.ndarray
-#         2-vector or array of 2-vectors in slm coordinates.
-#     """
-#     v0 = clean_2vectors(v0)
-#     v1 = clean_2vectors(v1)
-#     v2 = clean_2vectors(v2)
-
-#     if isinstance(N, int):
-#         N = (N, N)
-
-#     if mode == "corner":
-#         v1 = (v1 - v0)/N[0]
-#         v2 = (v2 - v0)/N[1]
-
-#     M = np.squeeze(np.array([[v1[0], v2[0]], [v1[1], v2[1]]]))
-#     b = v0
-
-#     x_list = np.arange(N[0])
-#     y_list = np.arange(N[1])
-
-#     x_grid, y_grid = np.meshgrid(x_list, y_list)
-#     indices = np.vstack((x_grid.ravel(), y_grid.ravel()))
-
-#     return np.matmul(M, indices) + b
-def get_affine_vectors(v0, v1, v2, N, i0=(0,0), i1=(1,0), i2=(0,1)):
-    """
-    Returns vectors corresponding to the points in an affine grid.
+def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
+    r"""
+    Fits three points to an affine transformation. This transformation is given by:
+    
+    .. math:: \vec{y} = M \cdot \vec{x} + \vec{b}
 
     Parameters
     ----------
-    v0, v1, v2 : array_like
-        2-vectors defining the affine transformation. ``v0`` is always the base/origin.
-        The action of ``v1`` and ``v2`` depends on ``mode``.
+    y0, y1, y2 : array_like
+        2-vectors defining the affine transformation. These vectors correspond to 
+        positions which we will fit our transformation to. These vectors have 
+        corresponding indices ``x0``, ``x1``, ``x2``; see these variables for more
+        information. With the default values for the indices, ``y0`` is base/origin
+        and ``y1`` and ``y2`` are the postions of the first point in 
+        the ``x`` and ``y`` directions of index-space, respectively.
         Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
-    N : int or (int, int)
-        Size of the grid ``(N1, N2)``. If a scalar is passed, then the grid is assumed square.
-    i0, i1, i2 : array_like OR None
+    N : int or (int, int) or numpy.ndarray or None
+        Size of the grid of vectors to return ``(N1, N2)``.
+        If a scalar is passed, then the grid is assumed square.
+        If ``None`` or any non-positive integer is passed, then a dictionary 
+        with the affine transformation is instead returned.
+    x0, x1, x2 : array_like OR None
         Should not be colinear.
-        If ``i0`` is ``None``, defaults to the origin ``(0,0)``.
-        If ``i1`` or ``i2`` are ``None``, ``v1`` or ``v2`` are interpreted as
+        If ``x0`` is ``None``, defaults to the origin ``(0,0)``.
+        If ``x1`` or ``x2`` are ``None``, ``y1`` or ``y2`` are interpreted as
         **differences** between ``(0,0)`` and ``(1,0)`` or ``(0,0)`` and ``(0,1)``,
         respectively, instead of as positions.
+        Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
 
     Returns
     -------
-    numpy.ndarray
+    numpy.ndarray OR dict
         2-vector or array of 2-vectors in slm coordinates.
+        If ``N`` is ``None`` or non-positive, then returns a dictionary with keys
+        ``"M"`` and ``"b"`` (transformation matrix and shift, respectively).
     """
-    v0 = clean_2vectors(v0)
-    v1 = clean_2vectors(v1)
-    v2 = clean_2vectors(v2)
+    # Parse vectors
+    y0 = clean_2vectors(y0)
+    y1 = clean_2vectors(y1)
+    y2 = clean_2vectors(y2)
 
-    if i0 is None:
-        i0 = (0,0)
-    i0 = clean_2vectors(i0)
+    # Parse index vectors
+    if x0 is None:
+        x0 = (0,0)
+    x0 = clean_2vectors(x0)
 
-    if i1 is None:
-        i1 = i0 + clean_2vectors((1,0))
-        v1 = v0 + v1
+    if x1 is None:
+        x1 = x0 + clean_2vectors((1,0))
     else:
-        i1 = clean_2vectors(i1)
+        x1 = clean_2vectors(x1)
+        y1 = y1 - y0
 
-    if i2 is None:
-        i2 = i0 + clean_2vectors((0,1))
-        v2 = v0 + v2
+    if x2 is None:
+        x2 = x0 + clean_2vectors((0,1))
     else:
-        i2 = clean_2vectors(i2)
+        x2 = clean_2vectors(x2)
+        y2 = y2 - y0
 
-    di1 = i1 - i0
-    di2 = i2 - i0
+    dx1 = x1 - x0
+    dx2 = x2 - x0
 
-    colinear = np.abs(np.sum(di1 * di2)) == np.sqrt(np.sum(di1 * di1)*np.sum(di2 * di2))
+    # Invert the index matrix.
+    colinear = np.abs(np.sum(dx1 * dx2)) == np.sqrt(np.sum(dx1 * dx1)*np.sum(dx2 * dx2))
     assert not colinear, "Indices must not be colinear."
+
+    J = np.linalg.inv(np.squeeze(np.array([[dx1[0], dx2[0]], [dx1[1], dx2[1]]])))
+
+    # Construct the matrix.
+    M = np.matmul(np.squeeze(np.array([[y1[0], y2[0]], [y1[1], y2[1]]])), J)
+    b = y0 - np.matmul(M, x0)
 
     # Deal with N and make indices.
     indices = None
+    affine_return = False
 
-    if isinstance(N, int):
-        N = (N, N)
+    if N is None:
+        affine_return = True
+    elif isinstance(N, int):
+        if N <= 0:
+            affine_return = True
+        else:
+            N = (N, N)
     elif len(N) == 2 and isinstance(N[0], int) and isinstance(N[1], int):
-        pass
+        if N[0] <= 0 or N[1] <= 0:
+            affine_return = True
+        else:
+            pass
     elif isinstance(N, np.ndarray):
-        indices = N
+        indices = clean_2vectors(N)
     else:
         raise ValueError("N={} not recognized.".format(N))
 
-    if indices is None:
-        x_list = np.arange(N[0])
-        y_list = np.arange(N[1])
+    if affine_return:
+        return {"M":M, "b":b}
+    else:
+        if indices is None:
+            x_list = np.arange(N[0])
+            y_list = np.arange(N[1])
 
-        x_grid, y_grid = np.meshgrid(x_list, y_list)
-        indices = np.vstack((x_grid.ravel(), y_grid.ravel()))
+            x_grid, y_grid = np.meshgrid(x_list, y_list)
+            indices = np.vstack((x_grid.ravel(), y_grid.ravel()))
 
-    # Construct the matrix and return the vectors.
-    M = np.squeeze(np.array([[v1[0], v2[0]], [v1[1], v2[1]]]))
-    b = v0
-
-    return np.matmul(M, indices - i0) + b
+        return np.matmul(M, indices - a) + b
 
 # Basic functions
 def _process_grid(grid):
@@ -405,7 +396,7 @@ def _process_grid(grid):
     Returns
     --------
     2-tuple of numpy.ndarray of floats
-        The grids in `(x_grid, y_grid)` form.
+        The grids in ``(x_grid, y_grid)`` form.
     """
 
     # See if grid has x_grid or y_grid (==> SLM class)
@@ -467,7 +458,8 @@ def lens(grid, f, center=[0, 0]):
     else:
         raise ValueError("Expected f to be a tuple of length 1 (f = fx = fy) or 2 ([fx, fy])")
 
-    return np.pi * (np.square(x_grid - center[0]) / f[0] + np.square(y_grid - center[1]) / f[1])
+    return np.pi * (np.square(x_grid - center[0]) / f[0] + 
+                    np.square(y_grid - center[1]) / f[1])
 
 # Structured light
 def determine_source_radius(grid, w=None):
@@ -529,7 +521,10 @@ def laguerre_gaussian(grid, l, p, w=None):
     theta_grid = np.arctan2(x_grid, y_grid)
     radius_grid = y_grid*y_grid + x_grid*x_grid
 
-    return np.mod(l*theta_grid + np.pi * np.heaviside(-special.genlaguerre(p, np.abs(l))(2*radius_grid/w/w), 0) + np.pi, 2*np.pi)
+    return np.mod(  l*theta_grid + 
+        np.pi * np.heaviside(-special.genlaguerre(p, np.abs(l))(2*radius_grid/w/w), 0)
+                    + np.pi, 
+                    2*np.pi)
 def hermite_gaussian(grid, nx, ny, w=None):
     """
     **(NotImplemented)** Returns the phase farfield for a Hermite-Gaussian beam.
@@ -541,7 +536,7 @@ def hermite_gaussian(grid, nx, ny, w=None):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     nx, ny : int
-        The horizontal (`nx`) and vertical (`ny`) wavenumbers. `nx = ny = 0` yields a flat
+        The horizontal (``nx``) and vertical (``ny``) wavenumbers. ``nx = ny = 0`` yields a flat
         phase or a standard Gaussian beam.
     w : float
         See :meth:`~slmsuite.holography.toolbox.determine_source_radius()`.
@@ -592,7 +587,8 @@ def pad(matrix, shape):
     padL = int(np.floor(deltashape[1]))
     padR = int(np.ceil( deltashape[1]))
 
-    toReturn = np.pad(matrix, [(padB, padT), (padL, padR)], mode='constant', constant_values=0)
+    toReturn = np.pad(  matrix, [(padB, padT), (padL, padR)], 
+                        mode='constant', constant_values=0)
 
     assert np.all(toReturn.shape == shape)
 

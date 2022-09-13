@@ -26,7 +26,7 @@ if (sys.version_info.major*100 + sys.version_info.minor) >= 308:
     if hasattr(os, "add_dll_directory"):
         os.add_dll_directory(os.getcwd())
     else:
-        print("`os` has no attribute `add_dll_directory`.")
+        print("os has no attribute add_dll_directory.")
         raise FileNotFoundError()
 
 _libname = 'SLMFunc.dll'

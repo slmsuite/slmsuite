@@ -6,7 +6,10 @@ import numpy as np
 
 
 def cos_fitfun(x, a, b, c, k=1):
-    r"""Offset sinusoid for fitting:  :math:`y(x)=\frac{a}{2} \left[1+\cos(kx+b) \right]+c`.
+    r"""For fitting an offset sinusoid.
+    
+    .. math:: y(x)=\frac{a}{2} \left[1+\cos(kx+b) \right]+c.
+    
     Parameters
     ----------
     x : numpy.ndarray
@@ -23,14 +26,18 @@ def cos_fitfun(x, a, b, c, k=1):
     Returns
     -------
     y : numpy.ndarray
-        Cosine fit evaluated at all `x`.
+        Cosine fit evaluated at all ``x``.
     """
     return a * 0.5 * (1 + np.cos(k * x - b)) + c
 
 
 def lorentzian_fitfun(x, x0, a, Q, c):
     r"""
-    For fitting:  :math:`y(x)=\frac{a - c}{1 + [\frac{x - x_0}{x_0/2Q}]^2} + c`.
+    For fitting an offset resonance.
+    
+    .. math:: y(x)=\frac{a - c}{1 + \left[\frac{x - x_0}{x_0/2Q}\right]^2} + c`.
+
+    :math:`Q` is the quality factor of the resonance. 
 
     Parameters
     ----------
@@ -48,7 +55,7 @@ def lorentzian_fitfun(x, x0, a, Q, c):
     Returns
     -------
     y : numpy.ndarray
-        Lorentzian fit evaluated at all `x`.
+        Lorentzian fit evaluated at all ``x``.
     """
     return (a - c) / (1 + ((x - x0) / (x0 / Q / 2)) ** 2) + c
 
@@ -73,7 +80,7 @@ def lorentzian_jacobian(x, x0, a, Q, c):
     Returns
     -------
     gradf : numpy.ndarray
-        Jacobian of Lorentzian fit evaluated at all `x`.
+        Jacobian of Lorentzian fit evaluated at all ``x``.
     """
     return np.array(
         [

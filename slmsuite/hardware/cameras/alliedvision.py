@@ -1,7 +1,7 @@
 """
 Hardware control for AlliedVision cameras via the :mod:`vimba` interface.
 Install :mod:`vimba` by following the instructions at [1]_. Include the
-`numpy-export` flag in the `pip install` command, as the :class:`AlliedVision` class
+``numpy-export`` flag in the ``pip install`` command, as the :class:`AlliedVision` class
 makes use of these features. See especially the vimba python manual [2]_ for reference.
 
 References
@@ -57,7 +57,7 @@ class AlliedVision(Camera):
         ----------
         serial : str
             Serial number of the camera to open. If empty, defaults to the first camera in the list
-            returned by `vimba.get_all_cameras()`.
+            returned by :meth:`vimba.get_all_cameras()`.
         verbose : bool
             Whether or not to print extra information.
         kwargs
@@ -160,7 +160,7 @@ class AlliedVision(Camera):
         Parameters
         ----------
         properties : dict or None
-            The target camera's property dictionary. If `None`, the property
+            The target camera's property dictionary. If ``None``, the property
             dictionary is fetched from the camera associated with the calling instance.
         """
         if properties is None:

@@ -6,7 +6,7 @@
 
 # jupyter
 *.ipynb_checkpoints/
-#*.ipynb
+*.ipynb
 
 # macos
 *.DS_Store
@@ -23,8 +23,7 @@
 *.h5
 *.gif
 *.png
-!qp-slm.png
-!qp-slm-small.png
+!slmsuite/misc/img/*
 
 # editor
 *.vscode

@@ -15,17 +15,25 @@
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 </p>
 
-## Install
+## Installation
+
+Install the latest version :mod:`slmsuite` from PyPi using:
+
 ```console
 pip install slmsuite
 ```
 
-## Documentation
-[https://slmsuite.readthedocs.io/en/latest/](https://slmsuite.readthedocs.io/en/latest/)
+## Documentation and Examples
 
-## Examples
-Online:
-[https://nbviewer.org/github/QPG-MIT/slmsuite-examples/tree/main/examples/](https://nbviewer.org/github/QPG-MIT/slmsuite-examples/tree/main/examples/)
+Extensive
+[documentation](https://slmsuite.readthedocs.io/en/latest/)
+and
+[API reference](https://slmsuite.readthedocs.io/en/latest/api.html)
+are available through readthedocs.
 
-Source:
-[https://github.com/QPG-MIT/slmsuite-examples](https://github.com/QPG-MIT/slmsuite-examples)
+Examples can be found embedded in
+[documentation](https://slmsuite.readthedocs.io/en/latest/examples.html),
+live through
+[nbviewer](https://nbviewer.org/github/QPG-MIT/slmsuite-examples/tree/main/examples/),
+or directly in
+[source](https://github.com/QPG-MIT/slmsuite-examples).

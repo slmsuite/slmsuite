@@ -23,7 +23,6 @@
 *.h5
 *.gif
 *.png
-!slmsuite/misc/img/*
 
 # editor
 *.vscode

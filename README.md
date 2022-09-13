@@ -17,7 +17,7 @@
 
 ## Installation
 
-Install the latest version :mod:`slmsuite` from PyPi using:
+Install the latest version of `slmsuite` from PyPi using:
 
 ```console
 pip install slmsuite

@@ -24,24 +24,21 @@ import cv2
 
 from .slm import SLM
 
-try:
-    if hasattr(os, "add_dll_directory"):
+if hasattr(os, "add_dll_directory"):
+    try:
         # Python >= 3.8 requires the search path for .dll loading.
         os.add_dll_directory(os.path.dirname(os.path.abspath(__file__)))
         # Load Santec's header file.
         from . import _slm_win as slm_funcs
-    else:
-        print("`os` has no attribute `add_dll_directory`.")
-        raise FileNotFoundError()
-except BaseException as e:
-    # Provide an informative error should something go wrong.
-    print("Santec SLM files not installed. Add these to use Santec SLMs.")
-    print(
-        "  Files from Santec must be present in the slms directory:\n"
-        "  - A header file (_slm_win.py) and\n"
-        "  - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).\n"
-        "Check that theses files are present and are error-free.\n{}".format(e)
-    )
+    except BaseException as e:
+        # Provide an informative error should something go wrong.
+        print("Santec DLLs not installed. Install these to use Santec SLMs.")
+        print(  "  Files from Santec must be present in the slms directory:\n"
+                "  - A header file (_slm_win.py) and\n"
+                "  - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).\n"
+                "Check that theses files are present and are error-free.\n{}".format(e))
+else:
+    print("santec.py: os has no attribute add_dll_directory.")
 
 
 class Santec(SLM):

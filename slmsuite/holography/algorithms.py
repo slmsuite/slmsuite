@@ -47,7 +47,7 @@ except ImportError:
     cp_gaussian_filter1d = sp_gaussian_filter1d
     cp_gaussian_filter = sp_gaussian_filter
     cp_affine_transform = sp_affine_transform
-    print("No cupy installed, using numpy.")
+    print("cupy not installed. Using numpy.")
 
 # Import helper functions
 from slmsuite.holography import analysis, toolbox

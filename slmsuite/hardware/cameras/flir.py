@@ -27,7 +27,7 @@ class FLIR(Camera):
     Attributes
     ----------
     sdk : PySpin.System
-        AlliedVision SDK.
+        Spinnaker SDK.
     cam : PySpin.Camera
         Object to talk with the desired camera.
     """

@@ -8,7 +8,7 @@ Note
 :mod:`~slmsuite.hardware.slms` directory:
 
  - A header file (_slm_win.py) and
- - Dynamically linked libaries (SLMFunc.dll and FTD3XX.dll).
+ - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).
 
 These files should be copied in before use.
 
@@ -39,7 +39,7 @@ except BaseException as e:
     print(
         "  Files from Santec must be present in the slms directory:\n"
         "  - A header file (_slm_win.py) and\n"
-        "  - Dynamically linked libaries (SLMFunc.dll and FTD3XX.dll).\n"
+        "  - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).\n"
         "Check that theses files are present and are error-free.\n{}".format(e)
     )
 
@@ -247,7 +247,7 @@ class Santec(SLM):
             real = cv2.GaussianBlur(real, (size_blur, size_blur), 0)
             imag = cv2.GaussianBlur(imag, (size_blur, size_blur), 0)
 
-            # Recombind the components
+            # Recombine the components
             phase = np.arctan2(imag, real) + np.pi
 
             self.flatmap = phase

@@ -1470,7 +1470,7 @@ class Cheetah640(Camera):
 
     def autogain(self, enable=True):
         """
-        Adds autogain and offset to current filter stack. Makes use of full dynmaic range.
+        Adds autogain and offset to current filter stack. Makes use of full dynamic range.
 
         Parameters
         ----------
@@ -1488,7 +1488,7 @@ class Cheetah640(Camera):
 
     def autoexposure(self, enable=True, t_settle=0):
         """
-        Adds autogain and offset to current filter stack. Makes use of full dynmaic range.
+        Adds autogain and offset to current filter stack. Makes use of full dynamic range.
 
         Parameters
         ----------

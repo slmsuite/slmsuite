@@ -68,7 +68,7 @@ class FourierSLM(CameraSLM):
         the k-space of the SLM (kxy) and the pixel-space of the camera (ij).
         See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibrate`.
         In the future, including pincushion or other distortions might be implemented
-        using :meth:`scipy.ndimage.spline_filter`, though this mapping would be seperable.
+        using :meth:`scipy.ndimage.spline_filter`, though this mapping would be separable.
     wavefront_calibration_raw : dict or None
         Raw data for wavefront calibration, which corrects for aberrations
         in the optical system (phase_correction) and measures the amplitude distribution
@@ -419,7 +419,7 @@ class FourierSLM(CameraSLM):
         elif basis == "ij":
             ret = np.abs(self.kxyslm_to_ijcam([0, 0]) - self.kxyslm_to_ijcam(size_kxy))
         else:
-            raise ValueError("Unrecgonized basis \"{}\".".format(basis))
+            raise ValueError("Unrecognized basis \"{}\".".format(basis))
 
         return ret
 
@@ -691,8 +691,8 @@ class FourierSLM(CameraSLM):
 
         def plot_labeled(img, plot=False, title=""):
             if plot_everything or plot:
-                _, ax = plt.subplots(1, 1)
-                ax.imshow(np.log10(img + 1), cmap="Blues")
+                _, axs = plt.subplots(1, 2, figsize=(12,6))
+                axs[0].imshow(np.log10(img + 1), cmap="Blues")
 
                 dpoint = field_point - base_point
 
@@ -714,14 +714,18 @@ class FourierSLM(CameraSLM):
                         ec="r",
                         fc="none",
                     )
-                    ax.add_patch(rect)
-                    ax.annotate(
+                    axs[0].add_patch(rect)
+                    axs[0].annotate(
                         label,
                         (point[0], point[1] + 2 * interference_size[1] + hh),
                         c="r",
                         size="x-small",
                         ha="center",
                     )
+                
+                axs[1].imshow(np.log10(img + 1), cmap="Blues")
+                axs[1].set_xlim(point[0] - wh, point[0] + wh)
+                axs[1].set_ylim(point[1] - hh, point[1] + hh)
 
                 plt.title(title)
 
@@ -754,14 +758,14 @@ class FourierSLM(CameraSLM):
             self.slm.write( superpixels(index, reference=None, target=None), 
                             wait_for_settle=True    )
             background_image = self.cam.get_image()
-            plot_labeled(background_image, plot=plot)
+            plot_labeled(background_image, plot=plot, title="Background")
             back = mask(background_image, interference_point, 2 * interference_size).sum()
 
             # Step 0.5: Measure the power in the reference mode.
             self.slm.write( superpixels(index, reference=0, target=None), 
                             wait_for_settle=True    )
             normalization_image = self.cam.get_image()
-            plot_labeled(normalization_image, plot=plot)
+            plot_labeled(normalization_image, plot=plot, title="Reference Diffraction")
             norm = mask(normalization_image, interference_point, 2 * interference_size).sum()
 
             # Step 1: Add a blaze to the target mode so that it overlaps with
@@ -769,7 +773,7 @@ class FourierSLM(CameraSLM):
             self.slm.write( superpixels(index, reference=None, target=0), 
                             wait_for_settle=True    )
             position_image = self.cam.get_image()
-            plot_labeled(position_image, plot=plot)
+            plot_labeled(position_image, plot=plot, title="Base Target Diffraction")
             found_center = find_center(position_image)
 
             blaze_difference = self.ijcam_to_kxyslm(found_center) - interference_blaze
@@ -780,7 +784,7 @@ class FourierSLM(CameraSLM):
                                         target_blaze=target_blaze_fixed),
                             wait_for_settle=True)
             fixed_image = self.cam.get_image()
-            plot_labeled(fixed_image, plot=plot)
+            plot_labeled(fixed_image, plot=plot, title="Corrected Target Diffraction")
             pwr = mask(fixed_image, interference_point, 2 * interference_size).sum()
 
             # Step 2: Measure interference and find relative phase
@@ -813,10 +817,16 @@ class FourierSLM(CameraSLM):
                     ]
                 )
 
-            plot_labeled(interference_image, plot=plot)
-
             # Step 4: Fit to sine and return.
             phase_fit, amp_fit, r2_fit, contrast_fit = fit_phase(phases, results)
+
+
+            self.slm.write( superpixels(index, reference=0, target=phase_fit, 
+                                        target_blaze=target_blaze_fixed),
+                            wait_for_settle=True)
+            interference_image = self.cam.get_image()
+            if plot:
+                plot_labeled(interference_image, plot=plot, title="Best Interference")
 
             return {
                 "power": pwr,
@@ -843,7 +853,7 @@ class FourierSLM(CameraSLM):
             self.cam.autoexposure(set_fraction=0.1, window=window)
 
         base_image = self.cam.get_image()
-        plot_labeled(base_image, plot=plot_fits)
+        plot_labeled(base_image, plot=plot_fits, title="Base Reference Diffraction")
         found_center = find_center(base_image)
 
         # Correct the original blaze using the measured result.
@@ -859,7 +869,7 @@ class FourierSLM(CameraSLM):
                     reference_blaze=reference_blaze_fixed),
                 wait_for_settle=True)
             fixed_image = self.cam.get_image()
-            plot_labeled(fixed_image, plot=plot_fits)
+            plot_labeled(fixed_image, plot=plot_fits, title="Corrected Reference Diffraction")
             found_center = find_center(fixed_image)
 
         # If we just want to debug/test one region, then do so.

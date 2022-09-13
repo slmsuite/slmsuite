@@ -1,7 +1,7 @@
 numpy
-matplotlib
 scipy
 opencv-python
+matplotlib
 h5py
 tqdm
 nbsphinx

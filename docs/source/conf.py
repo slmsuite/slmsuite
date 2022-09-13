@@ -45,10 +45,9 @@ extensions = [
     "sphinx_last_updated_by_git"
 ]
 
-# TODO: update links on live package
 extlinks = {
-    "issue": ("https://github.mit.edu/cpanuski/qp-slm/issues/%s", "GH"),
-    "pull": ("https://github.mit.edu/cpanuski/qp-slm/pull/%s", "PR"),
+    "issue": ("https://github.com/QPG-MIT/slmsuite/issues/%s", "GH"),
+    "pull": ("https://github.com/QPG-MIT/slmsuite/pull/%s", "PR"),
 }
 
 # Add any paths that contain templates here, relative to this directory.
@@ -60,7 +59,8 @@ templates_path = ["templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 autosummary_generate = True
-autodoc_member_order = "bysource"
+autodoc_member_order = "bysource"   # This doesn't work for autosummary unfortunately
+                                    # https://github.com/sphinx-doc/sphinx/issues/5379
 add_module_names = False # Remove namespaces from class/method signatures
 
 nbsphinx_execute = "never"
@@ -97,7 +97,7 @@ def skip(app, what, name, obj, would_skip, options):
     # Don't document private things.
     elif name[0] == '_':
         skip_ = True
-    
+
     return skip_
 
 def setup(app):

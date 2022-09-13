@@ -1,7 +1,7 @@
 Build
 -----
-You can build the docs on your local machine.
+You can build the docs locally on your machine.
 ```console
-$ make html
+> make html
 ```
-Then, you can view the docs by opening `_build/html/index.html` in a web browser.
+Then, view them by opening `_build/html/index.html` in a web browser.

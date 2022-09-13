@@ -13,7 +13,7 @@ help:
 	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 clean:
-	rm -rf souce/_autosummary _build
+	rm -rf "$(SOURCEDIR)/_autosummary" "$(SOURCEDIR)/examples" "$(BUILDDIR)"
 
 .PHONY: help Makefile clean
 

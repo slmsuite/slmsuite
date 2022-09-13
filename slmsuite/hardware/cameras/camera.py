@@ -58,7 +58,7 @@ class Camera:
         Initializes a camera.
 
         In addition to the other class attributes, accepts the following parameters
-        to set :attr:`transform`. See :meth:`~slmsuite.holograpy.analysis.get_transform()`.
+        to set :attr:`transform`. See :meth:`~slmsuite.holography.analysis.get_transform()`.
 
         Parameters
         ----------
@@ -186,7 +186,7 @@ class Camera:
     def get_images(self, image_count, flush=False):
         """
         Grab ``image_count`` images in succession. Overwrite this
-        impelementation if a camera supports faster batch aquisition.
+        impelementation if a camera supports faster batch acquisition.
 
         Parameters
         ----------
@@ -285,7 +285,7 @@ class Camera:
         while err > tol and time.perf_counter() - t < timeout_s:
             # Clip exposure steps to 0.5x -> 2x
             exp = exp / np.amax([0.5, np.amin([(im_max / set_val), 2])])
-            exp = np.amax([bounds_s[0], np.amin([exp, bounds_s[1]])])
+            exp = np.amax([exposure_bounds_s[0], np.amin([exp, exposure_bounds_s[1]])])
             self.set_exposure(exp)
             im_mean = np.mean(self.get_images(averages, flush=True), 0)
             im_max = np.amax(im_mean[wyi:wyf, wxi:wxf])

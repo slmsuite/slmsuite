@@ -8,7 +8,7 @@ Note
 :mod:`~slmsuite.hardware.slms` directory:
 
  - A header file (_slm_win.py) and
- - Dynamically linked libaries (SLMFunc.dll and FTD3XX.dll).
+ - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).
 
 These files should be copied in before use.
 
@@ -24,24 +24,21 @@ import cv2
 
 from .slm import SLM
 
-try:
-    if hasattr(os, "add_dll_directory"):
+if hasattr(os, "add_dll_directory"):
+    try:
         # Python >= 3.8 requires the search path for .dll loading.
         os.add_dll_directory(os.path.dirname(os.path.abspath(__file__)))
         # Load Santec's header file.
         from . import _slm_win as slm_funcs
-    else:
-        print("os has no attribute add_dll_directory.")
-        raise FileNotFoundError()
-except BaseException as e:
-    # Provide an informative error should something go wrong.
-    print("Santec SLM files not installed. Add these to use Santec SLMs.")
-    print(
-        "  Files from Santec must be present in the slms directory:\n"
-        "  - A header file (_slm_win.py) and\n"
-        "  - Dynamically linked libaries (SLMFunc.dll and FTD3XX.dll).\n"
-        "Check that theses files are present and are error-free.\n{}".format(e)
-    )
+    except BaseException as e:
+        # Provide an informative error should something go wrong.
+        print("Santec DLLs not installed. Install these to use Santec SLMs.")
+        print(  "  Files from Santec must be present in the slms directory:\n"
+                "  - A header file (_slm_win.py) and\n"
+                "  - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).\n"
+                "Check that theses files are present and are error-free.\n{}".format(e))
+else:
+    print("santec.py: os has no attribute add_dll_directory.")
 
 
 class Santec(SLM):
@@ -237,7 +234,7 @@ class Santec(SLM):
             real = cv2.GaussianBlur(real, (size_blur, size_blur), 0)
             imag = cv2.GaussianBlur(imag, (size_blur, size_blur), 0)
 
-            # Recombind the components
+            # Recombine the components
             phase = np.arctan2(imag, real) + np.pi
 
             self.flatmap = phase

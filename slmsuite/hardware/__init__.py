@@ -1,1 +1,1 @@
-"""Interface to experiment devices."""
+"""Interface to experimental devices."""

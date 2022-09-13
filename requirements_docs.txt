@@ -1,0 +1,11 @@
+numpy
+matplotlib
+scipy
+opencv-python
+h5py
+tqdm
+nbsphinx
+IPython
+sphinx_copybutton
+sphinx_last_updated_by_git
+sphinx_rtd_theme

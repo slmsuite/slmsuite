@@ -7,8 +7,7 @@ Additionally, all contributed code will be licensced under slmsuite's
 [license](https://github.mit.edu/cpanuski/qp-slm/blob/integration-formatting/LICENSE).
 
 ## Style
-
-- Code follows [PEP 8](https://peps.python.org/pep-0008/).
+- Code should be consistent with [PEP 8](https://peps.python.org/pep-0008/).
   Use [pylint](https://pylint.org) and [black](https://black.readthedocs.io/en/stable/index.html).
 - Docstrings follow [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html)
   and [PEP 257](https://www.python.org/dev/peps/pep-0257/#specification) conventions.

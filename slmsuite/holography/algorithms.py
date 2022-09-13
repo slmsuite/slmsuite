@@ -47,7 +47,7 @@ except ImportError:
     cp_gaussian_filter1d = sp_gaussian_filter1d
     cp_gaussian_filter = sp_gaussian_filter
     cp_affine_transform = sp_affine_transform
-    print("No cupy installed, using numpy.")
+    print("cupy not installed. Using numpy.")
 
 # Import helper functions
 from slmsuite.holography import analysis, toolbox
@@ -157,7 +157,7 @@ class Hologram:
             on a given iteration, then it was undefined at that point (update functions
             keep track of all this).
          - ``"stats"`` : ``dict of dicts of lists``
-            Same format as ``"flags"``, except with another layer of heirarchy corresponding
+            Same format as ``"flags"``, except with another layer of hierarchy corresponding
             to the source of the given stats. This is to differentiate standard deviations
             computed computationally and experimentally.
 
@@ -875,7 +875,7 @@ class Hologram:
                 self.shape if padded else self.slm_shape), vmin=0, vmax=np.amax(amp))
 
         axs[1].imshow(toolbox.pad(phase, self.shape if padded else self.slm_shape), 
-            vmin=-np.pi, vmax=np.pi, interpolation='none')
+            vmin=-np.pi, vmax=np.pi, interpolation='none', cmap='twilight')
         
         if len(title) > 0:
             title += ': '

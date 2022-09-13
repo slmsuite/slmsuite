@@ -3,6 +3,9 @@ Hardware control for Thorlabs cameras via :mod:`TLCameraSDK`.
 The :mod:`thorlabs_tsi_sdk` module must
 be installed (See [1]_ -> Programming Interfaces). Consider also installing ThorCam
 for testing cameras outside of Python (See [1]_ -> Software).
+After installing the SDK, extract the files in:
+``~\\Program Files\\Thorlabs\\Scientific Imaging\\Scientific Camera Support\\Scientific_Camera_Interfaces.zip``.
+Follow the instructions in Python_README.txt.
 
 References
 ----------
@@ -16,12 +19,9 @@ import time
 from slmsuite.hardware.cameras.camera import Camera
 
 def configure_tlcam_dll_path(
-    dll_path=(
-        "C:\\Program Files\\Thorlabs\\Scientific Imaging\\"
-        "Scientific Camera Support\\Scientific Camera "
-        "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"
-    ),
-):
+    dll_path=(  "C:\\Program Files\\Thorlabs\\Scientific Imaging\\"
+                "Scientific Camera Support\\Scientific Camera "
+                "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"    )):
     """
     Adds Thorlabs camera DLLs to the DLL path.
 
@@ -39,25 +39,19 @@ def configure_tlcam_dll_path(
 
     os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]
 
-    try:
-        if hasattr(os, "add_dll_directory"):
+    if hasattr(os, "add_dll_directory"):
+        try:
             os.add_dll_directory(dll_path)
-        else:
-            raise FileNotFoundError("os has no attribute add_dll_directory")
-    except FileNotFoundError as e:
-        print("thorlabs.configure_tlcam_dll_path - FileNotFoundError:\n{}".format(e))
+        except BaseException as e:
+            print("thorlabs_tsi_sdk DLL not found. Resolve to use Thorlabs cameras.")
+    else:
+        print("thorlabs.py: os has no attribute add_dll_directory.")
 
+configure_tlcam_dll_path()
 try:
-    configure_tlcam_dll_path()
     from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, ROI
-except ImportError as e:
-    print(  "thorlabs_tsi_sdk not installed. Install the Thorlabs "
-            "Scientific Imaging SDK to use ThorLabs cameras:\n"
-            "  Install ThorCam and then extract the files in:\n"
-            "  ~\\Program Files\\Thorlabs\\Scientific Imaging\\Scientific Camera Support\\"
-            "  Scientific_Camera_Interfaces.zip\n"
-            "  Follow the instructions in Python_README.txt. "
-            "Error:\n{}".format(e)   )
+except ImportError:
+    print("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
 
 
 class ThorCam(Camera):

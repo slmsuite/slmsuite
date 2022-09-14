@@ -3,14 +3,14 @@
 Installation
 ============
 
-Install the latest version :mod:`slmsuite` from PyPi using:
+Install the latest version of |slmsuite|_ from PyPi using:
 
 .. code-block:: console
 
     pip install slmsuite
 
 Required Dependencies
------------------
+---------------------
 
 - `python <https://www.python.org/>`_
 - `numpy <https://numpy.org/>`_
@@ -33,3 +33,6 @@ Hardware Dependencies
 - SLMs
     - `pyglet <https://pyglet.org/>`_
     - `Santec <https://www.santec.com/en/products/components/slm/>`_ (non-PyPi)
+
+.. |slmsuite| replace:: :mod:`slmsuite`
+.. _slmsuite: https://github.com/QPG-MIT/slmsuite

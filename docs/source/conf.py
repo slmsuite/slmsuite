@@ -13,6 +13,7 @@
 
 import os
 import sys
+import inspect
 
 module_paths = [
     os.path.abspath("../.."),
@@ -38,6 +39,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.extlinks",
+    "sphinx.ext.linkcode",
     "IPython.sphinxext.ipython_directive",
     "IPython.sphinxext.ipython_console_highlighting",
     "nbsphinx",
@@ -49,6 +51,28 @@ extlinks = {
     "issue": ("https://github.com/QPG-MIT/slmsuite/issues/%s", "GH"),
     "pull": ("https://github.com/QPG-MIT/slmsuite/pull/%s", "PR"),
 }
+
+# Adapted from https://github.com/DisnakeDev/disnake/blob/7853da70b13fcd2978c39c0b7efa59b34d298186/docs/conf.py#L192
+def linkcode_resolve(domain, info):
+    if domain != 'py':
+        return None
+
+    try:
+        obj = sys.modules[info["module"]]
+        for part in info["fullname"].split("."):
+            obj = getattr(obj, part)
+        obj = inspect.unwrap(obj)
+
+        if isinstance(obj, property):
+            obj = inspect.unwrap(obj.fget)
+
+        path = os.path.relpath(inspect.getsourcefile(obj), start="../")
+        src, lineno = inspect.getsourcelines(obj)
+    except Exception:
+        return None
+
+    path = f"{path}#L{lineno}-L{lineno + len(src) - 1}"
+    return f"https://github.com/QPG-MIT/slmsuite/blob/main/" + path
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["templates"]

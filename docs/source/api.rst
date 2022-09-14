@@ -2,11 +2,12 @@
 API Reference
 *************
 
-This page provides an auto-generated summary of slmsuite's API.
-You can find the source directly on [GitHub](https://github.com/QPG-MIT/slmsuite).
+This page provides an auto-generated summary of slmsuite's API. You can
+find the source directly on `GitHub <https://github.com/QPG-MIT/slmsuite>`_.
 
 Holography
 ==========
+
 As a core functionality, :mod:`slmsuite` optimizes nearfield phase profiles
 (applied to :mod:`~slmsuite.hardware.slms`) to produce desired farfield results
 (measured by :mod:`~slmsuite.hardware.cameras`). These methods are provided in:
@@ -33,6 +34,7 @@ divided into slm- and camera- centric categories:
 
 Hardware
 ========
+
 A core concept of :mod:`slmsuite` is **experimental** holography.
 Thus, we require interfaces to control the hardware used in experiment.
 While some common hardware implementions are included, we welcome
@@ -61,6 +63,7 @@ The unification of these two categories is stored in:
 
 Miscellaneous
 =============
+
 Additional functions to handle minutiae.
 
 .. currentmodule:: slmsuite.misc

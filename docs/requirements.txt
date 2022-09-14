@@ -9,3 +9,4 @@ IPython
 sphinx_copybutton
 sphinx_last_updated_by_git
 sphinx_rtd_theme
+pandoc

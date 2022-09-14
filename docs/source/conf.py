@@ -69,7 +69,7 @@ def linkcode_resolve(domain, info):
         if isinstance(obj, property):
             obj = inspect.unwrap(obj.fget)
 
-        path = os.path.relpath(inspect.getsourcefile(obj), start="../")
+        path = os.path.relpath(inspect.getsourcefile(obj), start="../../")
         src, lineno = inspect.getsourcelines(obj)
     except Exception:
         return None
@@ -135,7 +135,7 @@ examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "exampl
 def setup(app):
     app.connect("autodoc-skip-member", skip)
     app.add_css_file('css/custom.css')
-    
+
     # Download example notebooks.
     # NOTE: GitHub API only supports downloading files up to 100 MB.
     try:
@@ -163,4 +163,4 @@ def setup(app):
         print("WARNING: Unable to download example notebooks. "
               "Building without examples. Error:\n{}".format(e))
 
-    
+

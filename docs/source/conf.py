@@ -69,13 +69,14 @@ def linkcode_resolve(domain, info):
         if isinstance(obj, property):
             obj = inspect.unwrap(obj.fget)
 
-        path = os.path.relpath(inspect.getsourcefile(obj), start="../../")
+        path = os.path.relpath(inspect.getsourcefile(obj))
+        path = path.split('slmsuite/')[-1]
         src, lineno = inspect.getsourcelines(obj)
     except Exception:
         return None
 
     path = f"{path}#L{lineno}-L{lineno + len(src) - 1}"
-    return f"https://github.com/QPG-MIT/slmsuite/blob/main/" + path
+    return f"https://github.com/QPG-MIT/slmsuite/blob/main/slmsuite/" + path
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["templates"]

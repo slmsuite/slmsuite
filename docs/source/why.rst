@@ -51,8 +51,8 @@ fast Fourier transforms on large arrays. These problems are ideal for GPU-based
 acceleration, implemented here with |cupy|_. In most cases, |cupy|_ is a
 `drop-in replacement <https://docs.cupy.dev/en/stable/reference/comparison.html>`_
 for |numpy|_ and |scipy|_, which are used as a backup if a GPU is not present.
-We repeatably measure around two orders of magnitude speedup for common operation
-when using |cupy|_, compared with the |numpy|_ equivalent.
+We repeatably measure around two orders of magnitude speedup for standard
+optimization when using |cupy|_, compared with the |numpy|_ equivalent.
 
 .. Linked modules
 

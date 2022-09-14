@@ -18,13 +18,13 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
         The data to imprint a ``function`` onto.
     window : (int, int, int, int) OR (array_like, array_like) OR array_like
         A number of formats are accepted:
-        
+
         - List in ``(v.x, w, v.y, h)`` format, where ``w`` and ``h`` are the width and height of
           the region and  ``v`` is the lower left coordinate. If ``centered``, then ``v`` is
           instead the center of the region to imprint.
         - Tuple containing arrays of identical length corresponding to y and x indices.
         - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
-    
+
     grid : 2-tuple of numpy.ndarray of floats OR :class:`~slmsuite.hardware.slms.slm.SLM`
         Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
@@ -79,10 +79,10 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
 
         # Modify the matrix
         if imprint_operation == "replace":
-            matrix[yi:yf,xi:xf] =   function(  (x_grid[yi:yf,xi:xf], 
+            matrix[yi:yf,xi:xf] =   function(  (x_grid[yi:yf,xi:xf],
                                                 y_grid[yi:yf,xi:xf]), **kwargs)
         elif imprint_operation == "add":
-            matrix[yi:yf,xi:xf] +=  function(  (x_grid[yi:yf,xi:xf], 
+            matrix[yi:yf,xi:xf] +=  function(  (x_grid[yi:yf,xi:xf],
                                                 y_grid[yi:yf,xi:xf]), **kwargs)
         else:
             raise ValueError()
@@ -105,15 +105,15 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
 
         # Modify the matrix
         if imprint_operation == "replace":
-            matrix[y_ind, x_ind] =  function(  (x_grid[y_ind, x_ind], 
+            matrix[y_ind, x_ind] =  function(  (x_grid[y_ind, x_ind],
                                                 y_grid[y_ind, x_ind]), **kwargs)
         elif imprint_operation == "add":
-            matrix[y_ind, x_ind] += function(  (x_grid[y_ind, x_ind], 
+            matrix[y_ind, x_ind] += function(  (x_grid[y_ind, x_ind],
                                                 y_grid[y_ind, x_ind]), **kwargs)
         else:
             raise ValueError()
     elif np.shape(window) == np.shape(matrix):      # Boolean numpy array. Future: extra checks?
-        
+
         # Modify the matrix
         if imprint_operation == "replace":
             matrix[window] =  function((x_grid[window], y_grid[window]), **kwargs)
@@ -128,7 +128,7 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
 
 # Unit and vector helper functions
 blaze_units = ["norm", "kxy", "rad", "knm", "freq", "lpmm", "mrad", "deg"]
-def convert_blaze_vector(   vector, from_units="norm", to_units="norm", 
+def convert_blaze_vector(   vector, from_units="norm", to_units="norm",
                             slm=None, shape=None):
         r"""
         Helper function for unit conversions.
@@ -280,23 +280,23 @@ def clean_2vectors(vectors):
 def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
     r"""
     Fits three points to an affine transformation. This transformation is given by:
-    
+
     .. math:: \vec{y} = M \cdot \vec{x} + \vec{b}
 
     Parameters
     ----------
     y0, y1, y2 : array_like
-        2-vectors defining the affine transformation. These vectors correspond to 
-        positions which we will fit our transformation to. These vectors have 
+        2-vectors defining the affine transformation. These vectors correspond to
+        positions which we will fit our transformation to. These vectors have
         corresponding indices ``x0``, ``x1``, ``x2``; see these variables for more
         information. With the default values for the indices, ``y0`` is base/origin
-        and ``y1`` and ``y2`` are the postions of the first point in 
+        and ``y1`` and ``y2`` are the positions of the first point in
         the ``x`` and ``y`` directions of index-space, respectively.
         Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
-    N : int or (int, int) or numpy.ndarray or None
+    N : int OR (int, int) OR numpy.ndarray OR None
         Size of the grid of vectors to return ``(N1, N2)``.
         If a scalar is passed, then the grid is assumed square.
-        If ``None`` or any non-positive integer is passed, then a dictionary 
+        If ``None`` or any non-positive integer is passed, then a dictionary
         with the affine transformation is instead returned.
     x0, x1, x2 : array_like OR None
         Should not be colinear.
@@ -387,7 +387,7 @@ def get_smallest_distance(vectors, metric=cityblock):
     Note
     ~~~~
     An :math:`\mathcal{O}(N^2)` brute force approach is currently implemented.
-    Future work will involve an :math:`\mathcal{O}(N\log(N))` 
+    Future work will involve an :math:`\mathcal{O}(N\log(N))`
     divide and conquer algorithm.
 
     Parameters
@@ -446,7 +446,7 @@ def _process_grid(grid):
 def blaze(grid, vector=[0,0], offset=0):
     r"""
     Returns a simple blaze (phase ramp).
-    
+
     .. math:: \phi(\vec{x}) = 2\pi \times \vec{k}_g\cdot\vec{x} + o
 
     Parameters
@@ -467,7 +467,7 @@ def blaze(grid, vector=[0,0], offset=0):
 def lens(grid, f, center=[0, 0]):
     r"""
     Returns a simple thin lens (parabolic).
-    
+
     .. math:: \phi(\vec{x}) = \frac{\pi}{f}(|\vec{x}|^2)
 
     Parameters
@@ -491,14 +491,14 @@ def lens(grid, f, center=[0, 0]):
     else:
         raise ValueError("Expected f to be a tuple of length 1 (f = fx = fy) or 2 ([fx, fy])")
 
-    return np.pi * (np.square(x_grid - center[0]) / f[0] + 
+    return np.pi * (np.square(x_grid - center[0]) / f[0] +
                     np.square(y_grid - center[1]) / f[1])
 
 # Structured light
 def determine_source_radius(grid, w=None):
     """
     Helper function to determine the assumed Gaussian source radius for various
-    structured light conversion functions.  For instance, see the ``w`` parameter in 
+    structured light conversion functions.  For instance, see the ``w`` parameter in
     :meth:`~slmsuite.holography.toolbox.laguerre_gaussian()`.
 
     Note
@@ -554,9 +554,9 @@ def laguerre_gaussian(grid, l, p, w=None):
     theta_grid = np.arctan2(x_grid, y_grid)
     radius_grid = y_grid*y_grid + x_grid*x_grid
 
-    return np.mod(  l*theta_grid + 
+    return np.mod(  l*theta_grid +
         np.pi * np.heaviside(-special.genlaguerre(p, np.abs(l))(2*radius_grid/w/w), 0)
-                    + np.pi, 
+                    + np.pi,
                     2*np.pi)
 def hermite_gaussian(grid, nx, ny, w=None):
     """
@@ -620,7 +620,7 @@ def pad(matrix, shape):
     padL = int(np.floor(deltashape[1]))
     padR = int(np.ceil( deltashape[1]))
 
-    toReturn = np.pad(  matrix, [(padB, padT), (padL, padR)], 
+    toReturn = np.pad(  matrix, [(padB, padT), (padL, padR)],
                         mode='constant', constant_values=0)
 
     assert np.all(toReturn.shape == shape)

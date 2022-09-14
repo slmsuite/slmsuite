@@ -7,9 +7,9 @@ import numpy as np
 
 def cos_fitfun(x, a, b, c, k=1):
     r"""For fitting an offset sinusoid.
-    
+
     .. math:: y(x)=\frac{a}{2} \left[1+\cos(kx+b) \right]+c.
-    
+
     Parameters
     ----------
     x : numpy.ndarray
@@ -34,10 +34,10 @@ def cos_fitfun(x, a, b, c, k=1):
 def lorentzian_fitfun(x, x0, a, Q, c):
     r"""
     For fitting an offset resonance.
-    
-    .. math:: y(x)=\frac{a - c}{1 + \left[\frac{x - x_0}{x_0/2Q}\right]^2} + c`.
 
-    :math:`Q` is the quality factor of the resonance. 
+    .. math:: y(x)=\frac{a - c}{1 + \left[\frac{x - x_0}{x_0/2Q}\right]^2} + c.
+
+    :math:`Q` is the quality factor of the resonance.
 
     Parameters
     ----------

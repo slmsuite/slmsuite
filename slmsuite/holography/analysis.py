@@ -221,7 +221,7 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
     plot : bool
         Whether to show a debug plot.
     kwargs
-       Extra arguments for :class:`cv2.SimpleBlobDetector`, see [0].
+       Extra arguments for :class:`cv2.SimpleBlobDetector`.
 
     Returns
     -------

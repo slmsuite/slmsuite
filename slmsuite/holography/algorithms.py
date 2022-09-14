@@ -9,9 +9,9 @@ generation with or without closed-loop camera feedback are supported, especially
 the generation of optical focus arrays [3]_, a subset of general image formation.
 
 Tip
-~~~~~~~~
+~~~
 This module makes use of the GPU-accelerated computing library :mod:`cupy` [4]_.
-If :mod:`cupy` is not supported, then :mod:`numpy` is used as a fallback, though 
+If :mod:`cupy` is not supported, then :mod:`numpy` is used as a fallback, though
 CPU alone is significantly slower. Using :mod:`cupy` is highly encouraged.
 
 References
@@ -127,7 +127,7 @@ class Hologram:
         Remembers the name of the last-used optimization method. The method used for each
         iteration is stored in ``stats``.
     flags : dict
-        Helper flags to store custom persistent variables for optimization. Contains the 
+        Helper flags to store custom persistent variables for optimization. Contains the
         following keys:
 
          - ``"method"`` : ``str``
@@ -137,10 +137,10 @@ class Hologram:
             Fixes the far-field phase as mandated by certain weighted algorithms
             (see :meth:`~slmsuite.holography.algorithms.Hologram.GS()`).
          - ``"feedback"`` : ``str``
-            Stores the values passed to 
+            Stores the values passed to
             :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
          - ``"stat_groups"`` : ``list of str``
-            Stores the values passed to 
+            Stores the values passed to
             :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
          - ``"blur_ij"`` : ``float``
             See :meth:`~slmsuite.holography.algorithms.FeedbackHologram.ijcam_to_knmslm()`.
@@ -172,10 +172,12 @@ class Hologram:
         Initialize datastructures for optimization.
         Parameters additional to class attributes are described below:
 
+        Parameters
+        ----------
         target : numpy.ndarray OR cupy.ndarray OR (int, int)
             Target to optimize to. The user can also pass a shape, and this constructor
             will create an empty target of all zeros.
-            :meth:`.calculate_padding()` can be of particular help for calculating the 
+            :meth:`.calculate_padding()` can be of particular help for calculating the
             shape that will produce desired results (in terms of precision, etc).
         amp, phase : array_like OR None
             See :attr:`amp` and :attr:`phase`. :attr:`phase` should only be passed
@@ -231,11 +233,11 @@ class Hologram:
         else:
             self.slm_shape = np.nanmean(stack, axis=0).astype(np.int)
 
-            if amp is not None:         
+            if amp is not None:
                 assert np.all(self.slm_shape == np.array(amp_shape))
-            if phase is not None:       
+            if phase is not None:
                 assert np.all(self.slm_shape == np.array(phase_shape))
-            if slm_shape is not None:   
+            if slm_shape is not None:
                 assert np.all(self.slm_shape == np.array(slm_shape))
 
             self.slm_shape = tuple(self.slm_shape)
@@ -253,7 +255,7 @@ class Hologram:
                 rng = np.random.default_rng()
                 self.phase = rng.uniform(-np.pi, np.pi, self.slm_shape).astype(dtype)
             else:
-                self.phase = cp.random.uniform( -np.pi, np.pi, 
+                self.phase = cp.random.uniform( -np.pi, np.pi,
                                                 self.slm_shape, dtype=dtype)
         else:               # Initialize
             self.phase = cp.array(phase, dtype=dtype)
@@ -283,7 +285,7 @@ class Hologram:
             :class:`slmsuite.hardware.FourierSLM` instead, and should pass this
             when using the ``precision`` parameter.
         padding_order : int
-            Scales to the ``padding_order``th closest greater power of 2.
+            Scales to the ``padding_order`` th closest greater power of 2.
             A ``padding_order`` of zero does nothing.
         square_padding : bool
             Returns a square shape using the largest dimension.
@@ -321,7 +323,7 @@ class Hologram:
             precision_shape = slm_shape
 
         if padding_order > 0:
-            padding_shape = np.power(2, np.ceil(np.log2(slm_shape)) 
+            padding_shape = np.power(2, np.ceil(np.log2(slm_shape))
                                         + padding_order-1).astype(np.int)
         else:
             padding_shape = slm_shape
@@ -347,11 +349,11 @@ class Hologram:
 
             ``'GS'`` [1]_
               Implemented using fast Fourier transforms, potentially GPU-accelerated.
-        
+
         - Weighted Gerchberg-Saxton (WGS) phase retrieval algorithms of various flavors.
           Improves the uniformity of GS-computed focus arrays using weighting methods and
           techniques from literature. The ``method`` keywords are:
-        
+
             ``'WGS-Leonardo'`` [6]_
               Original WGS algorithm. Weights the target
               amplitudes by the ratio of mean amplitude to computed amplitude, which
@@ -360,12 +362,12 @@ class Hologram:
 
               .. math:: \mathcal{W} = \mathcal{W}\left(\frac{\mathcal{T}}{\mathcal{F}}\right)^p
 
-              where :math:`\mathcal{W}`, :math:`\mathcal{T}`, and :math:`\mathcal{F}` 
-              are the weight amplitudes, 
-              target (goal) amplitudes, and 
-              feedback (measured/) amplitudes, 
-              and :math:`p` is the power passed as ``"power"`` in 
-              :attr:`flags` (see ``kwargs``).
+              where :math:`\mathcal{W}`, :math:`\mathcal{T}`, and :math:`\mathcal{F}`
+              are the weight amplitudes,
+              target (goal) amplitudes, and
+              feedback (measured/) amplitudes,
+              and :math:`p` is the power passed as ``"power"`` in
+              :attr:`~slmsuite.holography.algorithms.Hologram.flags` (see ``kwargs``).
               The power :math:`p` defaults to .7 if not passed.
 
             ``'WGS-Kim'`` [3]_
@@ -377,8 +379,8 @@ class Hologram:
 
               .. math:: \mathcal{W} = \mathcal{W}/\left(1 - f\left(1 - \mathcal{F}/\mathcal{T}\right)\right)
 
-              where :math:`f` is the gain factor passed as ``"factor"`` in 
-              :attr:`flags` (see ``kwargs``).
+              where :math:`f` is the gain factor passed as ``"factor"`` in
+              :attr:`~slmsuite.holography.algorithms.Hologram.flags` (see ``kwargs``).
               The factor :math:`f` defaults to .1 if not passed.
 
               Note that while Nogrette et al compares powers, this implementation
@@ -474,7 +476,7 @@ class Hologram:
 
         Note
         ~~~~
-        FFTs are **not** in-place in this algorithm. In both non-:mod:`cupy` and 
+        FFTs are **not** in-place in this algorithm. In both non-:mod:`cupy` and
         :mod:`cupy` implementations, :mod:`numpy.fft` does not support in-place
         operations.  However, :mod:`scipy.fft` does in both. In the future, we may move to the scipy
         implementation. However, neither :mod:`numpy` or :mod:`scipy` ``fftshift`` support
@@ -526,7 +528,7 @@ class Hologram:
                     any('computational' in grp for grp in self.flags['stat_groups']):
                     # Calculate amp_ff for weighting (if None, will init; otherwise in-place).
                     self.amp_ff = cp.abs(farfield, out=self.amp_ff)
-            
+
             self.update_stats(self.flags['stat_groups'])
 
             # Decide whether to fix phase.
@@ -575,7 +577,7 @@ class Hologram:
 
             # Move to real space.
             nearfield = cp.fft.ifft2(cp.fft.ifftshift(farfield), norm='ortho')
-            cp.arctan2( nearfield.imag[i0:i1, i2:i3], 
+            cp.arctan2( nearfield.imag[i0:i1, i2:i3],
                         nearfield.real[i0:i1, i2:i3], out=self.phase)
 
             # Increment iterations.
@@ -688,7 +690,7 @@ class Hologram:
         if method == 'Leonardo' or method == 'Kim':
             if not 'power' in self.flags:
                 self.flags['power'] = .7
-            
+
             # Leonardo uses amp.
             cp.power(feedback_corrected, -self.flags['power'], out=feedback_corrected)
             weight_amp *= feedback_corrected
@@ -727,7 +729,7 @@ class Hologram:
 
     # Statistics handling
     @staticmethod
-    def _calculate_stats(   feedback_amp, target_amp, mp=cp, 
+    def _calculate_stats(   feedback_amp, target_amp, mp=cp,
                             efficiency_compensation=True, total=None):
         """
         Helper function to analyze how close the feedback is to the target.
@@ -747,13 +749,13 @@ class Hologram:
         if isinstance(feedback_amp, np.ndarray) or isinstance(target_amp, np.ndarray):
             if not isinstance(feedback_amp, np.ndarray):
                 feedback_amp = feedback_amp.get()
-                
+
             if not isinstance(target_amp, np.ndarray):
                 target_amp = target_amp.get()
 
             if total is not None:
                 total = float(total)
-            
+
             mp = np
 
         feedback_pwr = mp.square(feedback_amp)
@@ -882,7 +884,7 @@ class Hologram:
     def plot_nearfield(self, title='', padded=False):
         """
         Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
-        The amplitude is assumed (whether uniform, or experimentally computed) while the 
+        The amplitude is assumed (whether uniform, or experimentally computed) while the
         phase is the result of optimization.
 
         Parameters
@@ -913,9 +915,9 @@ class Hologram:
             axs[0].imshow(toolbox.pad(amp,
                 self.shape if padded else self.slm_shape), vmin=0, vmax=np.amax(amp))
 
-        axs[1].imshow(toolbox.pad(phase, self.shape if padded else self.slm_shape), 
+        axs[1].imshow(toolbox.pad(phase, self.shape if padded else self.slm_shape),
             vmin=-np.pi, vmax=np.pi, interpolation='none', cmap='twilight')
-        
+
         if len(title) > 0:
             title += ': '
 
@@ -937,7 +939,7 @@ class Hologram:
             If None, ``limits`` are autocomputed as the smallest bounds
             that show all non-zero values (plus ``limit_padding``).
             Note that autocomputing on :attr:`target` will perform well,
-            as zero values are set to actually be zero. However, doing so on 
+            as zero values are set to actually be zero. However, doing so on
             computational or experimental outputs (e.g. :attr:`amp_ff`) will likely perform
             poorly, as values deviate slightly from zero and artificially expand the ``limits``.
         limit_padding : float
@@ -990,7 +992,7 @@ class Hologram:
             np.diff(limits[0])[0], np.diff(limits[1])[0], ec='r', fc='none')
         axs[0].add_patch(rect)
 
-        # If cam_points is defined (i.e. is a FeedbackSLM), 
+        # If cam_points is defined (i.e. is a FeedbackSLM),
         # plot a yellow rectangle for the extents of the camera
         try:
             axs[0].plot(self.shape[1]/2. + self.cam_points[0],
@@ -1100,7 +1102,7 @@ class Hologram:
     def norm(matrix):
         r"""
         Computes the root of the sum of squares of the given ``matrix``. Implements:
-        
+
         .. math:: \sqrt{\iint |\vec{E}|^2}
 
         Parameters
@@ -1189,10 +1191,10 @@ class FeedbackHologram(Hologram):
             lr = [0, cam_shape[0]-1]
             ur = [cam_shape[1]-1, cam_shape[0]-1]
             ul = [cam_shape[1]-1, 0]
-            
+
             points_ij = toolbox.clean_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
             points_kxy = self.cameraslm.ijcam_to_kxyslm(points_ij)
-            self.cam_points = toolbox.convert_blaze_vector(points_kxy, "kxy", "knm", 
+            self.cam_points = toolbox.convert_blaze_vector(points_kxy, "kxy", "knm",
                                             slm=self.cameraslm.slm, shape=self.shape)
             self.cam_shape = cam_shape
         else:
@@ -1232,7 +1234,7 @@ class FeedbackHologram(Hologram):
         assert self.cameraslm.fourier_calibration is not None
 
         # First transformation.
-        conversion = toolbox.convert_blaze_vector([1, 1], "knm", "kxy", 
+        conversion = toolbox.convert_blaze_vector([1, 1], "knm", "kxy",
             slm=self.cameraslm.slm, shape=self.shape)
         M1 = np.diag(np.squeeze(conversion))
         b1 = -toolbox.clean_2vectors(np.flip(np.squeeze(self.shape))/2)
@@ -1241,7 +1243,7 @@ class FeedbackHologram(Hologram):
         M2 = self.cameraslm.fourier_calibration["M"]
         b2 = (self.cameraslm.fourier_calibration["b"] -
             np.matmul(M2, self.cameraslm.fourier_calibration["a"]))
-        
+
         # Composite transformation (along with xy -> yx).
         M = cp.array(np.matmul(M2, M1).T)
         b = cp.array(np.flip(np.matmul(np.matmul(M2, M1), b1) + b2))
@@ -1252,7 +1254,7 @@ class FeedbackHologram(Hologram):
                 blur_ij = self.flags["blur_ij"]
             else:
                 blur_ij = 0
-        
+
         # Future: use cp_gaussian_filter; was having trouble with this.
         if blur_ij > 0:
             img = sp_gaussian_filter(img, (blur_ij, blur_ij), output=img, truncate=2)
@@ -1279,7 +1281,7 @@ class FeedbackHologram(Hologram):
         return target
     def update_target(self, new_target, reset_weights=False):
         self.ijcam_to_knmslm(new_target, output=self.target)
-        
+
         if reset_weights:
             cp.copyto(self.weights, self.target)
 
@@ -1309,7 +1311,7 @@ class FeedbackHologram(Hologram):
             if self.img_knm is None:
                 self.ijcam_to_knmslm(np.square(self.img_ij), output=self.img_knm)
                 cp.sqrt(self.img_knm, out=self.img_knm)
-    
+
     # TODO: add this.
     def correct_image(self, img, basis="kxy"):
         return
@@ -1330,19 +1332,21 @@ class FeedbackHologram(Hologram):
         if 'experimental_knm' in stat_groups:
             self.measure("knm")  # Make sure data is there.
             stats['experimental_knm'] = self._calculate_stats(
-                                            self.img_knm, 
-                                            self.target, 
+                                            self.img_knm,
+                                            self.target,
                                             efficiency_compensation=True)
         if 'experimental_ij' in stat_groups or 'experimental' in stat_groups:
             self.measure("ij")  # Make sure data is there.
-            stats['experimental_ij'] = self._calculate_stats( 
+            stats['experimental_ij'] = self._calculate_stats(
                                             self.img_ij.astype(self.dtype),
-                                            self.target_ij, 
+                                            self.target_ij,
                                             mp=np, efficiency_compensation=True)
     def update_stats(self, stat_groups=[]):
         """
         Calculate statistics corresponding to the desired ``stat_groups``.
 
+        Parameters
+        ----------
         stat_groups : list of str
             Which groups or types of statistics to analyze.
         """
@@ -1363,17 +1367,17 @@ class SpotHologram(FeedbackHologram):
     Attributes
     ----------
     spot_knm, spot_kxy, spot_ij : array_like OR None
-        Stored vectors with shape ``(2, N)`` in the style of 
+        Stored vectors with shape ``(2, N)`` in the style of
         :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
         The subscript refers to the basis of the vectors, the transformations between
         which are autocomputed.
         If necessary transformations do not exist, :attr:`spot_ij` is set to ``None``.
     spot_knm_rounded : array_like
-        :attr:`spot_knm` rounded to nearest integers (indices). This is necessary because 
-        GS algorithms operate on a pixel grid, and the target for each spot in a 
+        :attr:`spot_knm` rounded to nearest integers (indices). This is necessary because
+        GS algorithms operate on a pixel grid, and the target for each spot in a
         :class:`SpotHologram` is a single pixel (index).
     spot_kxy_rounded, spot_ij_rounded : array_like
-        Once :attr:`spot_knm_rounded` is rounded, the original :attr:`spot_kxy` 
+        Once :attr:`spot_knm_rounded` is rounded, the original :attr:`spot_kxy`
         and :attr:`spot_ij` are no longer accurate. Transformations are again used
         to backcompute the positons in the ``"ij"`` and ``"kxy"`` bases corresponding
         to the true computational location of a given spot.
@@ -1383,7 +1387,7 @@ class SpotHologram(FeedbackHologram):
         For instance, the user can request dimmer or brighter spots.
     """
 
-    def __init__(   self, shape, spot_vectors, basis="knm", spot_amp=None, 
+    def __init__(   self, shape, spot_vectors, basis="knm", spot_amp=None,
                     cameraslm=None, **kwargs):
         """
         Initializes a :class:`SpotHologram` targeting given spots at ``spot_vectors``.
@@ -1393,7 +1397,7 @@ class SpotHologram(FeedbackHologram):
         shape : (int, int)
             Computational shape of the SLM. See :meth:`.Hologram.__init__()`.
         spot_vectors : array_like
-            Spot position vectors with shape ``(2, N)`` in the style of 
+            Spot position vectors with shape ``(2, N)`` in the style of
             :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
         basis : str
             The spots can be in any of the following bases:
@@ -1401,7 +1405,7 @@ class SpotHologram(FeedbackHologram):
             - ``"ij"`` for camera coordinates (pixels),
             - ``"kxy"`` for centered normalized SLM k-space (radians).
             - ``"knm"`` for centered computational SLM k-space (pixels).
-            
+
             Defaults to ``"knm"`` if ``None``.
         spot_amp : array_like OR None
             See :attr:`SpotHologram.spot_amp`.
@@ -1472,13 +1476,13 @@ class SpotHologram(FeedbackHologram):
                 psf = 3
             if psf > 15:
                 psf = 15
-                
-            if (np.any(self.spot_ij[0] < psf/2) or 
+
+            if (np.any(self.spot_ij[0] < psf/2) or
                 np.any(self.spot_ij[0] >= cam_shape[1] - psf/2) or
-                np.any(self.spot_ij[1] < psf/2) or 
+                np.any(self.spot_ij[1] < psf/2) or
                 np.any(self.spot_ij[1] >= cam_shape[0] - psf/2)):
                 raise ValueError("Spots outside camera bounds!")
-            
+
             self.psf = psf
         else:
             self.psf = None
@@ -1567,7 +1571,7 @@ class SpotHologram(FeedbackHologram):
 
         if self.cameraslm is not None:
             self.spot_kxy_rounded = toolbox.convert_blaze_vector(
-                self.spot_knm_rounded - shape/2, "knm", "kxy", 
+                self.spot_knm_rounded - shape/2, "knm", "kxy",
                 self.cameraslm.slm, self.shape)
 
             if self.cameraslm.fourier_calibration is not None:
@@ -1579,7 +1583,7 @@ class SpotHologram(FeedbackHologram):
             self.spot_kxy_rounded = None
             self.spot_ij_rounded = None
 
-        self.target[self.spot_knm_rounded[1, :], 
+        self.target[self.spot_knm_rounded[1, :],
                     self.spot_knm_rounded[0, :]] = self.spot_amp
         self.target /= Hologram.norm(self.target)
 
@@ -1637,7 +1641,7 @@ class SpotHologram(FeedbackHologram):
             Euclidian pixel error in the ``"ij"`` basis for each spot.
         """
         # Take regions around each point from the given image.
-        regions = analysis.take(img, self.spot_ij, self.psf, 
+        regions = analysis.take(img, self.spot_ij, self.psf,
                                 centered=True, integrate=False)
 
         # Filter the images, but not the stack.
@@ -1655,7 +1659,7 @@ class SpotHologram(FeedbackHologram):
         shift_error = np.sqrt(np.square(shift_x) + np.square(shift_y))
 
         if basis is None or basis == "kxy" or basis == "knm":   # Don't modify any camera spots.
-            self.spot_kxy = (   self.spot_kxy_rounded - 
+            self.spot_kxy = (   self.spot_kxy_rounded -
                                 self.cameraslm.ijcam_to_kxyslm(shift_vector))
             self.spot_knm = toolbox.convert_blaze_vector(
                 self.spot_kxy, "kxy", "knm", self.cameraslm.slm, self.shape)
@@ -1681,10 +1685,10 @@ class SpotHologram(FeedbackHologram):
         elif feedback == "experimental-spot":
             self.measure(basis="ij")
 
-            feedback = analysis.take(   self.img_ij, self.spot_ij, self.psf, 
+            feedback = analysis.take(   self.img_ij, self.spot_ij, self.psf,
                                         centered=True, integrate=True)
 
-            self._update_weights_generic(self.weights[self.spot_knm_rounded[1,:], 
+            self._update_weights_generic(self.weights[self.spot_knm_rounded[1,:],
                                                       self.spot_knm_rounded[0,:]],
                                             feedback, self.spot_amp)
 
@@ -1709,6 +1713,8 @@ class SpotHologram(FeedbackHologram):
         """
         Calculate statistics corresponding to the desired ``stat_groups``.
 
+        Parameters
+        ----------
         stat_groups : list of str
             Which groups or types of statistics to analyze.
         """

@@ -60,18 +60,18 @@ class ScreenMirrored(SLM):
     Most importantly, :mod:`pyglet` is well documented.
     
     However, it might be worthwhile in the future to look back into SDL options, as SDL surfaces
-    are closer to the pixels than OpenGL textures, so greater speed might be acheivable (even without
+    are closer to the pixels than OpenGL textures, so greater speed might be achievable (even without
     loading data to the GPU as a texture). Another potential improvement could come from writing
     :mod:`cupy` datastructures to ``OpenGL`` textures directly, without using the CPU as an
-    intermediary. There is some prescendent for transferring data from ``CUDA``
+    intermediary. There is some precedent for transferring data from ``CUDA``
     (on which :mod:`cupy` is based) to ``OpenGL`` [13]_, though :mod:`cupy` does not currently
     directly support this.
 
     Important
     ~~~~~~~~~
-    :class:`ScreenMirrored` uses a double-buffered and vertically syncronized (vsync) ``OpenGL``
+    :class:`ScreenMirrored` uses a double-buffered and vertically synchronized (vsync) ``OpenGL``
     context. This is to prevent "tearing" resulting from data being modified during a display write:
-    rather, all monitor writes are syncronized such that clean frames are always displayed.
+    rather, all monitor writes are synchronized such that clean frames are always displayed.
     This feature is similar to the ``isImageLock`` flag in :mod:`slmpy` [12]_, but is implemented a bit
     closer to the hardware.
 
@@ -128,7 +128,7 @@ class ScreenMirrored(SLM):
 
         Caution
         ~~~~~~~
-        There is some subtely to complex display setups with Linux [14]_.
+        There is some subtlety to complex display setups with Linux [14]_.
         Working outside the default display is currently not implemented.
 
         Parameters
@@ -150,16 +150,19 @@ class ScreenMirrored(SLM):
         screens = display.get_screens()
         if verbose:
             print("success")
-            print("Searching for window with display_number={}... ".format(display_number), end="")
+            print("Searching for window with display_number={}... "
+                    .format(display_number), end="")
 
         if len(screens) <= display_number:
-            raise ValueError("Could not find display_number={}; only {} displays"\
+            raise ValueError("Could not find display_number={}; only {} displays"
                 .format(display_number, len(screens)))
 
         screen_info = ScreenMirrored.info(verbose=False)
 
         if screen_info[display_number][3]:
-            raise ValueError("ScreenMirrored window already created on display_number={}".format(display_number))
+            raise ValueError(
+                "ScreenMirrored window already created on display_number={}"
+                .format(display_number))
 
         if verbose and screen_info[display_number][2]:
             print("warning: this is the main display... ")
@@ -175,13 +178,14 @@ class ScreenMirrored(SLM):
         # Setup the window. If failure, closes elegantly upon except().
         try:
             # Make the window and do basic setup.
-            self.window = pyglet.window.Window(screen=screen, fullscreen=True, vsync=True)
+            self.window = pyglet.window.Window( screen=screen, 
+                                                fullscreen=True, vsync=True)
             self.window.set_caption(self.name)
             self.window.set_mouse_visible(False)
 
             try:
                 # Icons. Currently hardcoded. Feel free to implement custom icons.
-                path = os.path.join('..', '..', 'docs', 'static', 'qp-slm-notext-')
+                path = os.path.join('..', 'misc', 'img', 'qp-slm-notext-')
                 img16x16 = pyglet.image.load(path + '16x16.png')
                 img32x32 = pyglet.image.load(path + '32x32.png')
                 img48x48 = pyglet.image.load(path + '48x48.png')
@@ -194,7 +198,8 @@ class ScreenMirrored(SLM):
             proj.set(self.shape[1], self.shape[0], self.shape[1], self.shape[0])
 
             # Setup shapes
-            texture_shape = tuple(np.power(2, np.ceil(np.log2(self.shape))).astype(np.int64))
+            texture_shape = tuple(np.power(2, np.ceil(np.log2(self.shape)))
+                                .astype(np.int64))
             self.tex_shape_ratio = (float(self.shape[0])/float(texture_shape[0]),
                                     float(self.shape[1])/float(texture_shape[1]))
             B = 4
@@ -319,7 +324,7 @@ class ScreenMirrored(SLM):
         list of (int, (int, int, int, int)) tuples
             The number and geometry of each display.
         """
-        # Note: in pyglet, the display is the full arrangment of screens,
+        # Note: in pyglet, the display is the full arrangement of screens,
         # unlike the terminology in other SLM subclasses
         display = pyglet.canvas.get_display()
 
@@ -328,14 +333,14 @@ class ScreenMirrored(SLM):
         windows = display.get_windows()
 
         def parse_screen(screen):
-            return "x={}, y={}, width={}, height={}"\
-                .format(screen.x, screen.y, screen.width, screen.height)
+            return ("x={}, y={}, width={}, height={}"
+                .format(screen.x, screen.y, screen.width, screen.height))
         def parse_screen_int(screen):
             return (screen.x, screen.y, screen.width, screen.height)
         def parse_window(window):
             x, y = window.get_location()
-            return "x={}, y={}, width={}, height={}"\
-                .format(x, y, window.width, window.height)
+            return ("x={}, y={}, width={}, height={}"
+                .format(x, y, window.width, window.height))
             
         default_str = parse_screen(default)
 
@@ -344,7 +349,7 @@ class ScreenMirrored(SLM):
             window_strs.append(parse_window(window))
         
         if verbose:
-            print('Display Postions:')
+            print('Display Positions:')
             print('#,  Position')
 
         screen_list = []
@@ -365,9 +370,7 @@ class ScreenMirrored(SLM):
             if verbose:
                 print('{},  {}'.format(x, screen_str))
 
-            # print(screen.get_mode())
-            # print(screen.get_modes())
-
-            screen_list.append((x, parse_screen_int(screen), main_bool, window_bool))
+            screen_list.append((x, parse_screen_int(screen), 
+                                main_bool, window_bool))
 
         return screen_list

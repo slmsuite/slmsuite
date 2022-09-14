@@ -20,15 +20,18 @@ class Camera:
     name : str
         Camera identifier.
     shape : (int, int)
-        Stores (`height`, `width`) of the camera in pixels, same form as :meth:`numpy.shape`.
+        Stores ``(height, width)`` of the camera in pixels, same form as :meth:`numpy.shape`.
     bitdepth : int
         Depth of a camera pixel well in bits.
     bitresolution : int
         Stores ``2**bitdepth``.
     dx_um : float or None
-        x pixel pitch in um. Defaults to ``None``. Potential future features will use this.
+        :math:`x` pixel pitch in microns. Defaults to ``None``.
+        Potential future features will use this.
     dy_um : float or None
-        See :attr:`dx_um`.
+        :math:`y` pixel pitch in microns. See :attr:`dx_um`.
+    exposure_bounds_s : (float, float) OR None
+        Shortest and longest allowable integration in seconds.
     window : array_like
         Window information in ``(x, width, y, height)`` form.
     default_shape : tuple
@@ -55,7 +58,7 @@ class Camera:
         Initializes a camera.
 
         In addition to the other class attributes, accepts the following parameters
-        to set :attr:`transform`. See :meth:`~slmsuite.holograpy.analysis.get_transform()`.
+        to set :attr:`transform`. See :meth:`~slmsuite.holography.analysis.get_transform()`.
 
         Parameters
         ----------
@@ -98,6 +101,9 @@ class Camera:
         # Create image transformation.
         self.transform = analysis.get_transform(rot, fliplr, flipud)
 
+        # Default to None, allow subclass constructors to fill.
+        self.exposure_bounds_s = None
+
     def close(self):
         """
         Close the camera and delete related objects.
@@ -112,7 +118,7 @@ class Camera:
 
     def get_exposure(self):
         """
-        Get integration time in seconds. Used in :meth:`.autoexposure()`.
+        Get the integration time in seconds. Used in :meth:`.autoexposure()`.
 
         Returns
         -------
@@ -123,7 +129,7 @@ class Camera:
 
     def set_exposure(self, exposure_s):
         """
-        Set integration time in seconds. Used in :meth:`.autoexposure()`.
+        Set the integration time in seconds. Used in :meth:`.autoexposure()`.
 
         Parameters
         ----------
@@ -140,7 +146,7 @@ class Camera:
         ----------
         window : list, None
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.window`.
-            If `None`, defaults to largest possible.
+            If ``None``, defaults to largest possible.
 
         Returns
         ----------
@@ -152,7 +158,7 @@ class Camera:
     def flush(self, timeout_s=1):
         """
         Cycle the image buffer (if any) such that all new :meth:`.get_image()`
-        calls yield new frames.
+        calls yield fresh frames.
 
         Parameters
         ----------
@@ -179,8 +185,8 @@ class Camera:
 
     def get_images(self, image_count, flush=False):
         """
-        Grab `image_count` images in succession. Overwrite this
-        impelementation if a camera supports faster batch aquisition.
+        Grab ``image_count`` images in succession. Overwrite this
+        impelementation if a camera supports faster batch acquisition.
 
         Parameters
         ----------
@@ -192,7 +198,7 @@ class Camera:
         Returns
         -------
         numpy.ndarray
-            Array of shape `(image_count, height, width)`.
+            Array of shape ``(image_count, height, width)``.
         """
         # Preallocate memory.
         imlist = np.empty((int(image_count), self.shape[0], self.shape[1]))
@@ -211,13 +217,14 @@ class Camera:
         self,
         set_fraction=0.5,
         tol=0.05,
-        bounds_s=(1e-6, 0.1),
+        exposure_bounds_s=None,
         window=None,
         averages=5,
         timeout_s=5,
+        verbose=True
     ):
         """
-        Sets the exposure of the camera such that the maximum value is at `set_fraction`
+        Sets the exposure of the camera such that the maximum value is at ``set_fraction``
         of the dynamic range. Useful for mitigating deleterious over- or under- exposure.
 
         Parameters
@@ -226,23 +233,33 @@ class Camera:
             Fraction of camera dynamic range to target image maximum.
         tol : float
             Fractional tolerance for exposure adjustment.
-        bounds_s : list of float
-            Shortest and longest allowable integration in seconds.
+        exposure_bounds_s : (float, float) OR None
+            Shortest and longest allowable integration in seconds. If ``None``, defaults to 
+            :attr:`exposure_bounds_s`. If this attribute was not set (or not availible on
+            a particular camera), then ``None`` instead defaults to unbounded.
         window : array_like or None
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.window`.
-            If `None`, the full camera frame will be used.
+            If ``None``, the full camera frame will be used.
         averages : int
             Number of frames to average intensity over for noise reduction.
         timeout_s : float
-            Stop attempting to autoexpose after timeout_s seconds.
+            Stop attempting to autoexpose after ``timeout_s`` seconds.
+        verbose : bool
+            Whether to print exposure updates.
 
         Returns
         --------
         float
             Resulting exposure in seconds.
         """
-        # TODO: pull `bounds_s` values from the camera.
+        # Parse exposure_bounds_s
+        if exposure_bounds_s is None:
+            if self.exposure_bounds_s is None:
+                exposure_bounds_s = (0, np.inf)
+            else:
+                exposure_bounds_s = self.exposure_bounds_s
 
+        # Parse window
         if window is None:
             wxi = 0
             wxf = self.shape[1]
@@ -254,31 +271,32 @@ class Camera:
             wyi = int(window[2] - window[3] / 2)
             wyf = int(window[2] + window[3] / 2)
 
+        # Initialize loop
         set_val = 0.5 * self.bitresolution
         exp = self.get_exposure()
-        im_mean = np.mean(self.get_images(averages, flush=True), 0)[
-            wyi:wyf, wxi:wxf
-        ].ravel()
-        im_max = np.mean(im_mean[im_mean.argsort()[-averages:]])
+        im_mean = np.mean(self.get_images(averages, flush=True), 0)
+        im_max = np.amax(im_mean[wyi:wyf, wxi:wxf])
+
         # Calculate the error as a percent of the camera's bitresolution
         err = np.abs(im_max - set_val) / self.bitresolution
         t = time.perf_counter()
 
+        # Loop until timeout expires or we meet tolerance
         while err > tol and time.perf_counter() - t < timeout_s:
             # Clip exposure steps to 0.5x -> 2x
             exp = exp / np.amax([0.5, np.amin([(im_max / set_val), 2])])
-            exp = np.amax([bounds_s[0], np.amin([exp, bounds_s[1]])])
+            exp = np.amax([exposure_bounds_s[0], np.amin([exp, exposure_bounds_s[1]])])
             self.set_exposure(exp)
-            im_mean = np.mean(self.get_images(averages, flush=True), 0)[
-                wyi:wyf, wxi:wxf
-            ].ravel()
-            im_max = np.mean(im_mean[im_mean.argsort()[-averages:]])
+            im_mean = np.mean(self.get_images(averages, flush=True), 0)
+            im_max = np.amax(im_mean[wyi:wyf, wxi:wxf])
             err = np.abs(im_max - set_val) / self.bitresolution
 
-            print(exp, im_max)
+            if verbose:
+                print(exp, im_max)
 
         exp_fin = exp * 2 * set_fraction
 
+        # The loop targets 50% of resolution 
         if set_fraction != 0.5:  # Sets for full dynamic range
             self.set_exposure(exp_fin)
 
@@ -287,19 +305,19 @@ class Camera:
     def autofocus(self, z_get, z_set, z_list=None, plot=False):
         """
         Uses an FFT contrast metric to find optimal focus when scanning over some variable
-        `z`. This `z` often takes the form of a vertical stage to position a sample precisely
+        ``z``. This ``z`` often takes the form of a vertical stage to position a sample precisely
         at the plane of imaging of a lens or objective. The contrast metric works particularly
         well when combined with a projected spot array hologram.
 
         Parameters
         ----------
         z_get : lambda
-            Gets the current position of the focusing stage. Should return a `float`.
+            Gets the current position of the focusing stage. Should return a ``float``.
         z_set : lambda
-            Sets the position of the focusing stage to a given `float`.
+            Sets the position of the focusing stage to a given ``float``.
         z_list : array_like or None
-            `z` values to sweep over during search.
-            Defaults (when `None`) to ``numpy.linspace(-4,4,16)``.
+            ``z`` values to sweep over during search.
+            Defaults (when ``None``) to ``numpy.linspace(-4,4,16)``.
         plot : bool
             Whether to provide illustrative plots.
         """

@@ -1,7 +1,7 @@
 """
 Hardware control for AlliedVision cameras via the :mod:`vimba` interface.
 Install :mod:`vimba` by following the instructions at [1]_. Include the
-`numpy-export` flag in the `pip install` command, as the :class:`AlliedVision` class
+``numpy-export`` flag in the ``pip install`` command, as the :class:`AlliedVision` class
 makes use of these features. See especially the vimba python manual [2]_ for reference.
 
 References
@@ -37,7 +37,7 @@ class AlliedVision(Camera):
     ~~~~~~~~
     The AlliedVision SDK :mod:`vimba` includes protections to maintain camera connectivity:
     specifically, the SDK :class:`vimba.Vimba` and cameras :class:`vimba.Camera` are designed
-    to be used in concert with ``with`` statements. Unforunately, this does not mesh with the
+    to be used in concert with ``with`` statements. Unfortunately, this does not mesh with the
     architecture of :mod:`slmsuite`, where notebook-style operation is desired.
     Using ``with`` statements inside :class:`.AlliedVision` methods is likewise not an option,
     as the methods to :meth:`__enter__()` and :meth:`__exit__()` the ``with`` are time-consuming
@@ -57,7 +57,7 @@ class AlliedVision(Camera):
         ----------
         serial : str
             Serial number of the camera to open. If empty, defaults to the first camera in the list
-            returned by `vimba.get_all_cameras()`.
+            returned by :meth:`vimba.get_all_cameras()`.
         verbose : bool
             Whether or not to print extra information.
         kwargs
@@ -91,7 +91,7 @@ class AlliedVision(Camera):
                 self.cam = camera_list[serial_list.index(serial)]
             else:
                 raise RuntimeError(
-                    "Serial " + serial + " not found by vimba. Availible: ", serial_list
+                    "Serial " + serial + " not found by vimba. Available: ", serial_list
                 )
 
         if verbose:
@@ -109,19 +109,22 @@ class AlliedVision(Camera):
             **kwargs
         )
         self.name = serial
-        self.cam.TriggerSource.set("Software")
-        self.cam.TriggerSelector.set("FrameStart")
-        self.cam.TriggerMode.set("Off")
-        # ('SingleFrame', 0), ('MultiFrame', 1), ('Continuous', 2)
-        self.cam.AcquisitionMode.set(2)
+
         self.cam.BinningHorizontal.set(1)
         self.cam.BinningVertical.set(1)
-        # ('Off', 0), ('Once', 1), ('Continuous', 2)
-        self.cam.ExposureAuto.set(0)
-        # ('Timed', 1), ('TriggerWidth', 2), ('TriggerControlled', 3)
-        self.cam.ExposureMode.set(1)
-        # ('Off', 0), ('Once', 1), ('Continuous', 2)
-        self.cam.GainAuto.set(0)
+
+        self.cam.GainAuto.set("Off")
+        
+        self.cam.ExposureAuto.set("Off")
+        self.cam.ExposureMode.set("Timed")
+
+        self.cam.AcquisitionMode.set("SingleFrame")
+
+        # Future: triggered instead of SingleFrame.
+        self.cam.TriggerSelector.set("AcquisitionStart")
+        self.cam.TriggerMode.set("Off")
+        self.cam.TriggerActivation.set("RisingEdge")
+        self.cam.TriggerSource.set("Software")
 
         # Initialize window variable, then set to max WOI
         self.window = None
@@ -160,21 +163,35 @@ class AlliedVision(Camera):
         Parameters
         ----------
         properties : dict or None
-            The target camera's property dictionary. If `None`, the property
+            The target camera's property dictionary. If ``None``, the property
             dictionary is fetched from the camera associated with the calling instance.
         """
         if properties is None:
             properties = self.cam.__dict__.keys()
 
         for key in properties:
+            prop = self.cam.__dict__[key]
             try:
-                prop = self.cam.__dict__[key]
                 print(prop.get_name(), end="\t")
-                print(prop.get(), end="\t")
-                print(prop.get_unit(), end="\t")
-                print(prop.get_description())
             except BaseException as e:
-                print("Error accessing property dictionary.\n{}".format(e))
+                # print(prop)
+                print("Error accessing property dictionary, '{}':{}".format(key, e))
+                continue
+
+            try:
+                print(prop.get(), end="\t")
+            except:
+                pass
+            
+            try:
+                print(prop.get_unit(), end="\t")
+            except:
+                pass
+
+            try:
+                print(prop.get_description(), end="\n")
+            except:
+                print("")
 
     def set_adc_bitdepth(self, bitdepth):
         """
@@ -183,7 +200,7 @@ class AlliedVision(Camera):
         Parameters
         ----------
         bitdepth : int
-            The digitization bitdepth.
+            Desired digitization bitdepth.
         """
         bitdepth = int(bitdepth)
 
@@ -228,16 +245,7 @@ class AlliedVision(Camera):
 
     def flush(self, timeout_s=1e-3):
         """See :meth:`.Camera.flush`."""
-        for _ in range(5):
-            self.get_image()
-        # TODO: implement full flush @ichr
-        # t = time.time()
-        # for x in range(10):
-        #     print(x, time.time() - t)
-        #     try:
-        #         self.cam.get_frame(timeout_ms=int(1e3*timeout_s))
-        #     except:
-        # break   # Frame failed to return, we know we have flushed the buffer.
+        pass
 
     def reset(self):
         """See :meth:`.Camera.reset`."""

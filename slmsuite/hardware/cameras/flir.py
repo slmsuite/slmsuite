@@ -43,8 +43,7 @@ class FLIR(Camera):
         Parameters
         ----------
         serial : str
-            Serial number of the camera to open. If empty, defaults to the first camera in the list
-            returned by `vimba.get_all_cameras()`.
+            Serial number of the camera to open.
         verbose : bool
             Whether or not to log.
         kwargs

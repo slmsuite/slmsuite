@@ -14,6 +14,7 @@
 import base64
 import os
 import sys
+import inspect
 
 import requests
 
@@ -41,6 +42,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.extlinks",
+    "sphinx.ext.linkcode",
     "IPython.sphinxext.ipython_directive",
     "IPython.sphinxext.ipython_console_highlighting",
     "nbsphinx",
@@ -48,11 +50,32 @@ extensions = [
     "sphinx_last_updated_by_git"
 ]
 
-# TODO: update links on live package
 extlinks = {
-    "issue": ("https://github.mit.edu/cpanuski/qp-slm/issues/%s", "GH"),
-    "pull": ("https://github.mit.edu/cpanuski/qp-slm/pull/%s", "PR"),
+    "issue": ("https://github.com/QPG-MIT/slmsuite/issues/%s", "GH"),
+    "pull": ("https://github.com/QPG-MIT/slmsuite/pull/%s", "PR"),
 }
+
+# Adapted from https://github.com/DisnakeDev/disnake/blob/7853da70b13fcd2978c39c0b7efa59b34d298186/docs/conf.py#L192
+def linkcode_resolve(domain, info):
+    if domain != 'py':
+        return None
+
+    try:
+        obj = sys.modules[info["module"]]
+        for part in info["fullname"].split("."):
+            obj = getattr(obj, part)
+        obj = inspect.unwrap(obj)
+
+        if isinstance(obj, property):
+            obj = inspect.unwrap(obj.fget)
+
+        path = os.path.relpath(inspect.getsourcefile(obj), start="../")
+        src, lineno = inspect.getsourcelines(obj)
+    except Exception:
+        return None
+
+    path = f"{path}#L{lineno}-L{lineno + len(src) - 1}"
+    return f"https://github.com/QPG-MIT/slmsuite/blob/main/" + path
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["templates"]
@@ -63,7 +86,8 @@ templates_path = ["templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 autosummary_generate = True
-autodoc_member_order = "bysource"
+autodoc_member_order = "bysource"   # This doesn't work for autosummary unfortunately
+                                    # https://github.com/sphinx-doc/sphinx/issues/5379
 add_module_names = False # Remove namespaces from class/method signatures
 
 nbsphinx_execute = "never"
@@ -100,7 +124,7 @@ def skip(app, what, name, obj, would_skip, options):
     # Don't document private things.
     elif name[0] == '_':
         skip_ = True
-    
+
     return skip_
 
 examples_repo_owner = "QPG-MIT"

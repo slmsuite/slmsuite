@@ -19,12 +19,9 @@ import time
 from slmsuite.hardware.cameras.camera import Camera
 
 def configure_tlcam_dll_path(
-    dll_path=(
-        "C:\\Program Files\\Thorlabs\\Scientific Imaging\\"
-        "Scientific Camera Support\\Scientific Camera "
-        "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"
-    ),
-):
+    dll_path=(  "C:\\Program Files\\Thorlabs\\Scientific Imaging\\"
+                "Scientific Camera Support\\Scientific Camera "
+                "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"    )):
     """
     Adds Thorlabs camera DLLs to the DLL path.
 
@@ -48,7 +45,7 @@ def configure_tlcam_dll_path(
         except BaseException as e:
             print("thorlabs_tsi_sdk DLL not found. Resolve to use Thorlabs cameras.")
     else:
-        print("thorlabs.py: `os` has no attribute `add_dll_directory`.")
+        print("thorlabs.py: os has no attribute add_dll_directory.")
 
 configure_tlcam_dll_path()
 try:
@@ -81,13 +78,13 @@ class ThorCam(Camera):
 
     def __init__(self, serial="", verbose=True, **kwargs):
         """
-        Initialize camera and attributes. Initial profile is `"single"`.
+        Initialize camera and attributes. Initial profile is ``"single"``.
 
         Parameters
         ----------
         serial : str
             Serial number of the camera to open. If empty, defaults to the first camera in the list
-            returned by `TLCameraSDK().discover_available_cameras()`.
+            returned by :meth:`TLCameraSDK.discover_available_cameras()`.
         verbose : bool
             Whether or not to print extra information.
         kwargs
@@ -214,7 +211,6 @@ class ThorCam(Camera):
 
     def reset(self):
         """See :meth:`.Camera.reset`."""
-        # TODO: Check if this restarts without arguments?
         self.close()
         self.__init__()
 
@@ -344,11 +340,11 @@ class ThorCam(Camera):
 
     def get_image(self, timeout_s=1, trigger=True, grab=True):
         """
-        See :meth:`.Camera.get_image`. By default `trigger=True` and `grab=True` which
-        will result in synchronous image acquisition.
-        For asynchronous acquisition,
-        set `trigger=True` and `grab=False` to issue a software trigger;
-        then, call the method again with `trigger=False` and `grab=True`
+        See :meth:`.Camera.get_image`. By default ``trigger=True`` and ``grab=True`` which
+        will result in blocking image acquisition.
+        For non-blocking acquisition,
+        set ``trigger=True`` and ``grab=False`` to issue a software trigger;
+        then, call the method again with ``trigger=False`` and ``grab=True``
         to grab the resulting frame.
 
         Parameters
@@ -361,7 +357,7 @@ class ThorCam(Camera):
         Returns
         -------
         numpy.ndarray or None
-            Array of shape `self.shape` if `grab=True`, else `None`.
+            Array of shape :attr:`shape` if ``grab=True``, else ``None``.
         """
         if trigger:
             if self.profile == "single":

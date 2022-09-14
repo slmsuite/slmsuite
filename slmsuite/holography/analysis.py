@@ -57,7 +57,7 @@ def threshold(img, thresh=50, thresh_type=cv2.THRESH_TOZERO):
 def get_transform(rot="0", fliplr=False, flipud=False):
     """
     Compile a transformation lambda from simple rotates and flips.
-    
+
     Useful to turn an image to an orientation which is user-friendly.
     Used by :class:`~slmsuite.hardware.cameras.camera.Camera` and subclasses.
 
@@ -95,8 +95,8 @@ def get_transform(rot="0", fliplr=False, flipud=False):
 def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=False):
     """
     Crop integration regions around an array of ``points``.
-    
-    Each integration region is a rectangle of the same ``size``. Similar to but more 
+
+    Each integration region is a rectangle of the same ``size``. Similar to but more
     general than :meth:`numpy.take`; useful for gathering data from spots in spot arrays.
 
     Parameters
@@ -113,12 +113,12 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
         Whether to center the integration region on the ``points``.
         If False, lower left corner is used.
     integrate : bool
-        If true, the spatial dimension are integrated (summed), yielding a result of the 
+        If true, the spatial dimension are integrated (summed), yielding a result of the
         same length as the number of points.
     clip : bool
         Whether to allow out-of-range integration regions. ``True`` allows regions outside
         the valid area, setting the invalid region to ``np.nan``
-        (or zero if the array datatype does not support ``np.nan``). 
+        (or zero if the array datatype does not support ``np.nan``).
         ``False`` throws an error upon out of range.
 
     Returns
@@ -148,8 +148,8 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
     shape = np.shape(imgs)
 
     if clip:    # Prevent out-of-range errors by clipping.
-        mask =  (integration_x < 0) | (integration_x >= shape[-1]) | \
-                (integration_y < 0) | (integration_y >= shape[-2])
+        mask = ((integration_x < 0) | (integration_x >= shape[-1]) |
+                (integration_y < 0) | (integration_y >= shape[-2]))
 
         # Clip these indices to prevent errors.
         np.clip(integration_x, 0, shape[-1]-1, out=integration_x)
@@ -203,10 +203,10 @@ def plot_taken(taken):
 
     plt.show()
 
-def blob_detect(img, plot=False, title="", filter_=None, **kwargs):
+def blob_detect(img, plot=False, title="", filter=None, **kwargs):
     """
     Detect blobs in an image.
-
+    Wraps :class:`cv2.SimpleBlobDetector` [1]_. See also [2]_.
     Default parameters are optimized for bright spot detection on dark background,
     but can be changed with **kwargs.
 
@@ -214,10 +214,12 @@ def blob_detect(img, plot=False, title="", filter_=None, **kwargs):
     ----------
     img : numpy.ndarray
         The image to perform blob detection on.
-    filter_ : str or None
+    filter : str or None
         One of ``dist_to_center`` or ``max_amp``.
     title : str
         Plot title.
+    plot : bool
+        Whether to show a debug plot.
     kwargs
        Extra arguments for :class:`cv2.SimpleBlobDetector`, see [0].
 
@@ -228,12 +230,10 @@ def blob_detect(img, plot=False, title="", filter_=None, **kwargs):
     detector : :class:`cv2.SimpleBlobDetector`
         A blob detector with customized parameters.
 
-    Notes
-    -----
-    - List of `cv2.SimpleBlobDetector` params [0].
-    - Helpful but basic tutorial [1].
-    [0] https://docs.opencv.org/3.4/d8/da7/structcv_1_1SimpleBlobDetector_1_1Params.html
-    [1] https://learnopencv.com/blob-detection-using-opencv-python-c/
+    References
+    ~~~~~~~~~~
+    .. [1] https://docs.opencv.org/3.4/d8/da7/structcv_1_1SimpleBlobDetector_1_1Params.html
+    .. [2] https://learnopencv.com/blob-detection-using-opencv-python-c/
     """
     cv2img = make8bit(np.copy(img))
     params = cv2.SimpleBlobDetector_Params()
@@ -272,11 +272,11 @@ def blob_detect(img, plot=False, title="", filter_=None, **kwargs):
         print([blob.size for blob in blobs])
 
     # Downselect blobs if desired by kwargs:
-    if filter_ == 'dist_to_center':
+    if filter == 'dist_to_center':
         dist_to_center = [np.linalg.norm(
             np.array(blob.pt) - np.array(img.shape[::-1]) / 2) for blob in blobs]
         blobs = [blobs[np.argmin(dist_to_center)]]
-    elif filter_ == 'max_amp':
+    elif filter == 'max_amp':
         bin_size = int(np.mean([blob.size for blob in blobs]))
         for i, blob in enumerate(blobs):
             # Try fails when blob is on edge of camera.
@@ -306,7 +306,7 @@ def blob_detect(img, plot=False, title="", filter_=None, **kwargs):
 def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False):
     r"""Detect an array of spots and return orientation. Primarily used for calibration.
 
-    For a rectangular array of spots imaged in ``img``, 
+    For a rectangular array of spots imaged in ``img``,
     find the variables :math:`\vec{M}` and :math:`\vec{b}` for the  affine transformation
 
     .. math:: \vec{y} = M \cdot \vec{x} + \vec{b}
@@ -413,10 +413,10 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
         top =       np.argmax([k[:, 1]])  # Largest y
 
         # 2.3) Calculate the vectors in the imaging domain
-        x = 2 * (k[right, :] - k[left, :]) / \
-            (blob_dist[right] + blob_dist[left])**2
-        y = 2 * (k[top, :] - k[bottom, :]) / \
-            (blob_dist[top] + blob_dist[bottom])**2
+        x = (2 * (k[right, :] - k[left, :]) /
+            (blob_dist[right] + blob_dist[left])**2)
+        y = (2 * (k[top, :] - k[bottom, :]) /
+            (blob_dist[top] + blob_dist[bottom])**2)
 
         M = np.array([[x[0], y[0]], [x[1], y[1]]])
     else:
@@ -437,8 +437,10 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
     x_list_larger = np.arange(-(size[0]+p-1)/2., (size[0]+p+1)/2.)
     y_list_larger = np.arange(-(size[1]+p-1)/2., (size[1]+p+1)/2.)
 
-    x_centergrid_larger, y_centergrid_larger = np.meshgrid(x_list_larger, y_list_larger)
-    centers_larger = np.vstack((x_centergrid_larger.ravel(), y_centergrid_larger.ravel()))
+    x_centergrid_larger, y_centergrid_larger = np.meshgrid( x_list_larger,
+                                                            y_list_larger)
+    centers_larger = np.vstack((x_centergrid_larger.ravel(),
+                                y_centergrid_larger.ravel()))
 
     # If we're not sure about how things are flipped, consider alternatives
     if size[0] != size[1] and orientation is None:
@@ -509,13 +511,16 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
 
                 integration_x, integration_y = np.meshgrid(edge, edge)
 
-                rotated_integration_x = np.add(integration_x.ravel()[:, np.newaxis].T, 
-                                               rotated_centers[:][0][:, np.newaxis]).astype(np.int)
-                rotated_integration_y = np.add(integration_y.ravel()[:, np.newaxis].T, 
-                                               rotated_centers[:][1][:, np.newaxis]).astype(np.int)
+                rotated_integration_x = np.add(
+                            integration_x.ravel()[:, np.newaxis].T,
+                            rotated_centers[:][0][:, np.newaxis]).astype(np.int)
+                rotated_integration_y = np.add(
+                            integration_y.ravel()[:, np.newaxis].T,
+                            rotated_centers[:][1][:, np.newaxis]).astype(np.int)
 
                 spotpowers = np.reshape(np.sum(match[rotated_integration_y,
-                                                     rotated_integration_x], 1), np.flip(size))
+                                                     rotated_integration_x], 1),
+                                        np.flip(size))
 
                 # Find the two dimmest pixels.
                 spotbooleans = spotpowers <= np.sort(spotpowers.ravel())[1]
@@ -537,7 +542,8 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
                 rotation = np.array([[c, -s], [s, c]])
 
                 # Look for the second missing spot.
-                flip_parity = int(spotbooleans_rotated[-1,-2]) - int(spotbooleans_rotated[-2,-1])
+                flip_parity = ( int(spotbooleans_rotated[-1,-2]) -
+                                int(spotbooleans_rotated[-2,-1]) )
 
                 assert abs(flip_parity) == 1
 
@@ -580,7 +586,7 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
 
             plt_img = make8bit(dft_amp.copy())
 
-            # Determine the bounds of the zoom region, padded by `zoom_pad`
+            # Determine the bounds of the zoom region, padded by zoom_pad
             zoom_pad = 50
 
             x = np.array([blob.pt[0] for blob in blobs])
@@ -625,10 +631,11 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
         psf = 2*int(np.floor(np.amin(np.amax(orientation["M"], axis=0)))/2) + 1
         blur = 2*int(psf/16)+1
 
-        regions = take(img, guess_positions, psf, centered=True, integrate=False, clip=True)
+        regions = take( img, guess_positions, psf,
+                        centered=True, integrate=False, clip=True)
 
         # Filter the images, but not the stack.
-        sp_gaussian_filter1d(regions, blur, axis=1, output=regions) 
+        sp_gaussian_filter1d(regions, blur, axis=1, output=regions)
         sp_gaussian_filter1d(regions, blur, axis=2, output=regions)
 
         # Future: fit gaussians instead of taking the (integer) max point for floating accuracy.
@@ -664,7 +671,8 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
 
         showmatch = False
 
-        _, axs = plt.subplots(1, 2 + showmatch, constrained_layout=True, figsize=(12, 6))
+        _, axs = plt.subplots(1, 2 + showmatch,
+                    constrained_layout=True, figsize=(12, 6))
 
         # Determine the bounds of the zoom region, padded by 50
         x = true_centers[0, :]

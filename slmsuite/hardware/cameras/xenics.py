@@ -317,14 +317,14 @@ class Cheetah640(Camera):
 
     def __init__(self, virtual=False, temperature=None, verbose=True, **kwargs):
         """
-        Initialize camera. Default `profile` is `'free'`.
+        Initialize camera. Default ``profile`` is ``'free'``.
 
         Parameters
         ----------
         virtual : bool
             Whether or not the camera is virtual.
         temperature : float or None
-            Temperature in degrees celcius to set on startup. `None` defaults to no cooling.
+            Temperature in degrees celcius to set on startup. ``None`` defaults to no cooling.
         verbose : bool
             Whether or not to print camera initialization information.
         kwargs
@@ -439,9 +439,9 @@ class Cheetah640(Camera):
         Parameters
         ----------
         save_file_path : str or None
-            If not `None`, the property status results will be saved to this path.
+            If not ``None``, the property status results will be saved to this path.
         verbose : True
-            Prints property results if `True`.
+            Prints property results if ``True``.
         """
         if self.xeneth.XC_IsInitialised(self.cam):
             if verbose:
@@ -1393,7 +1393,7 @@ class Cheetah640(Camera):
 
         Warning
         ~~~~~~~~
-        `timeout_s` parameter is currently untested; setting it may lead to unintended behavior.
+        ``timeout_s`` parameter is currently untested; setting it may lead to unintended behavior.
 
         Parameters
         ----------
@@ -1402,7 +1402,7 @@ class Cheetah640(Camera):
         frame_type : FT_NATIVE, 0
             Sets type of frame conversion.
         block : bool
-            Blocking read; waits up to `timeout_s` for frame.
+            Blocking read; waits up to ``timeout_s`` for frame.
         convert : bool
             Makes internal 8 bit buffer, set false for max performance.
 
@@ -1492,7 +1492,7 @@ class Cheetah640(Camera):
         Returns
         -------
         bool
-            `True` if capturing, `False` otherwise.
+            ``True`` if capturing, ``False`` otherwise.
         """
         return self.xeneth.XC_IsCapturing(self.cam)
 
@@ -1500,7 +1500,7 @@ class Cheetah640(Camera):
 
     def autogain(self, enable=True):
         """
-        Adds autogain and offset to current filter stack. Makes use of full dynmaic range.
+        Adds autogain and offset to current filter stack. Makes use of full dynamic range.
 
         Parameters
         ----------

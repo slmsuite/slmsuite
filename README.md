@@ -1,8 +1,11 @@
 <p align="center">
-<img src="docs/source/static/qp-slm.svg" width="256">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/source/static/qp-slm-dark.svg">
+<img alt="qp-slm" src="docs/source/static/qp-slm.svg" width="256">
+</picture>
 </p>
 
-<h2 align="center">High-performance SLM Control and Holography</h2>
+<h2 align="center">High-Performance Spatial Light Modulator Control and Holography</h2>
 
 <p align="center">
 <a href="https://slmsuite.readthedocs.io/en/latest"><img alt="Documentation Status" src="https://readthedocs.org/projects/slmsuite/badge/?version=latest"></a>
@@ -11,17 +14,25 @@
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 </p>
 
-## Install
+## Installation
+
+Install the latest version of `slmsuite` from PyPi using:
+
 ```console
-> pip install slmsuite
+pip install slmsuite
 ```
 
-## Documentation
-[https://slmsuite.readthedocs.io/en/latest/](https://slmsuite.readthedocs.io/en/latest/)
+## Documentation and Examples
 
-## Examples
-Online:
-[https://slmsuite.readthedocs.io/en/latest/examples.html](https://slmsuite.readthedocs.io/en/latest/examples.html)
+Extensive
+[documentation](https://slmsuite.readthedocs.io/en/latest/)
+and
+[API reference](https://slmsuite.readthedocs.io/en/latest/api.html)
+are available through readthedocs.
 
-Source:
-[https://github.com/QPG-MIT/slmsuite-examples](https://github.com/QPG-MIT/slmsuite-examples)
+Examples can be found embedded in
+[documentation](https://slmsuite.readthedocs.io/en/latest/examples.html),
+live through
+[nbviewer](https://nbviewer.org/github/QPG-MIT/slmsuite-examples/tree/main/examples/),
+or directly in
+[source](https://github.com/QPG-MIT/slmsuite-examples).

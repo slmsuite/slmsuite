@@ -8,7 +8,7 @@ Note
 :mod:`~slmsuite.hardware.slms` directory:
 
  - A header file (_slm_win.py) and
- - Dynamically linked libaries (SLMFunc.dll and FTD3XX.dll).
+ - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).
 
 These files should be copied in before use.
 
@@ -33,8 +33,12 @@ if hasattr(os, "add_dll_directory"):
     except BaseException as e:
         # Provide an informative error should something go wrong.
         print("Santec DLLs not installed. Install these to use Santec SLMs.")
+        print(  "  Files from Santec must be present in the slms directory:\n"
+                "  - A header file (_slm_win.py) and\n"
+                "  - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).\n"
+                "Check that theses files are present and are error-free.\n{}".format(e))
 else:
-    print("santec.py: `os` has no attribute `add_dll_directory`.")
+    print("santec.py: os has no attribute add_dll_directory.")
 
 
 class Santec(SLM):
@@ -105,16 +109,10 @@ class Santec(SLM):
 
         if wav_current.value != 1e3 * wav_um:
             if verbose:
-                print(
-                    "Current wavelength table: wav = {0} nm, maxphase = {1:.2f}pi".format(
-                        wav_current.value, phase_current.value / 100.0
-                    )
-                )
-                print(
-                    "Desired wavelength table: wav = {0} nm, maxphase = {1:.2f}pi...".format(
-                        wav_desired, phase_desired / 100.0
-                    )
-                )
+                print("Current wavelength table: wav = {0} nm, maxphase = {1:.2f}pi"
+                    .format(wav_current.value, phase_current.value / 100.0))
+                print("Desired wavelength table: wav = {0} nm, maxphase = {1:.2f}pi"
+                        .format(wav_desired, phase_desired / 100.0))
                 print("     ...Updating wavelength table (this may take 30 seconds)...")
 
             # Set wavelength (nm) and maximum phase (100 * number pi)
@@ -125,11 +123,8 @@ class Santec(SLM):
             # Verify wavelength
             slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current, phase_current)
             if verbose:
-                print(
-                    "Updated wavelength table: wav = {0} nm, maxphase = {1:.2f}pi".format(
-                        wav_current.value, phase_current.value / 100.0
-                    )
-                )
+                print("Updated wavelength table: wav = {0} nm, maxphase = {1:.2f}pi"
+                        .format(wav_current.value, phase_current.value / 100.0))
 
         # Check for the SLM parameters and save them
         width = ctypes.c_ushort(0)
@@ -139,9 +134,9 @@ class Santec(SLM):
         if verbose:
             print("Looking for display... ", end="")
         slm_funcs.SLM_Disp_Info2(self.display_number, width, height, display_name)
-        name = display_name.value.decode(
-            "mbcs"
-        )  # For instance, "LCOS-SLM,SOC,8001,2018021001"
+        
+        # For instance, "LCOS-SLM,SOC,8001,2018021001"
+        name = display_name.value.decode("mbcs")
         if verbose:
             print("success")
 
@@ -151,10 +146,9 @@ class Santec(SLM):
         if names[0] != "LCOS-SLM":
             slm_funcs.SLM_Ctrl_Close(self.slm_number)
 
-            raise ValueError(
-                "SLM not found at display_number {}."
-                "Use .info() to find the correct display!".format(self.display_number)
-            )
+            raise ValueError(   "SLM not found at display_number {}. " \
+                                "Use .info() to find the correct display!" \
+                                .format(self.display_number)    )
 
         # Open SLM
         if verbose:
@@ -221,7 +215,7 @@ class Santec(SLM):
         smooth : bool
             Whether to apply a Guassian blur to smooth the data.
         """
-        # TODO: Fix default `flatmap_path`
+        # TODO: Fix default flatmap_path
         try:
             if flatmap_path is None:    # Hack
                 flatmap_path = "Wavefront_correction_Data_211236000001(520nm).csv"
@@ -240,7 +234,7 @@ class Santec(SLM):
             real = cv2.GaussianBlur(real, (size_blur, size_blur), 0)
             imag = cv2.GaussianBlur(imag, (size_blur, size_blur), 0)
 
-            # Recombind the components
+            # Recombine the components
             phase = np.arctan2(imag, real) + np.pi
 
             self.flatmap = phase

@@ -5,6 +5,9 @@ Helper functions for manipulating phase patterns.
 import numpy as np
 from scipy import special
 from scipy.spatial.distance import cityblock
+from scipy.spatial import Voronoi, voronoi_plot_2d
+import cv2
+import matplotlib.pyplot as plt
 
 # Phase pattern collation and manipulation
 def imprint(matrix, window, grid, function, imprint_operation="replace",
@@ -23,9 +26,11 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
           the region and  ``v`` is the lower left coordinate. If ``centered``, then ``v`` is
           instead the center of the region to imprint.
         - Tuple containing arrays of identical length corresponding to y and x indices.
+          ``centered`` is ignored.
         - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
+          ``centered`` is ignored.
 
-    grid : 2-tuple of numpy.ndarray of floats OR :class:`~slmsuite.hardware.slms.slm.SLM`
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
         Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
@@ -126,7 +131,7 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
 
     return matrix
 
-# Unit and vector helper functions
+# Unit helper functions
 blaze_units = ["norm", "kxy", "rad", "knm", "freq", "lpmm", "mrad", "deg"]
 def convert_blaze_vector(   vector, from_units="norm", to_units="norm",
                             slm=None, shape=None):
@@ -243,6 +248,8 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
             from_units=from_units, to_units=unit, **kwargs)
 
         print("'{}' : {}".format(unit, tuple(result.T[0])))
+
+# Vector and window helper functions
 def clean_2vectors(vectors):
     """
     Makes sure a 2-vector or array of 2-vectors is arranged appropriately.
@@ -379,7 +386,7 @@ def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
             x_grid, y_grid = np.meshgrid(x_list, y_list)
             indices = np.vstack((x_grid.ravel(), y_grid.ravel()))
 
-        return np.matmul(M, indices - a) + b
+        return np.matmul(M, indices) + b
 def get_smallest_distance(vectors, metric=cityblock):
     """
     Returns the smallest distance between pairs of points under a given ``metric``.
@@ -404,14 +411,104 @@ def get_smallest_distance(vectors, metric=cityblock):
 
     minimum = np.inf
 
-    for x in range(N):
+    for x in range(N-1):
         for y in range(x+1, N):
             distance = metric(vectors[:,x], vectors[:,y])
             if distance < minimum:
                 minimum = distance
 
     return minimum
+def get_voronoi_windows(grid, vectors, radius=None, plot=True):
+    """
+    Gets boolean array windows for an array of vectors in the style of
+    :meth:`~slmsuite.holography.toolbox.imprint()`,
+    such that the ith window corresponds to the Voronoi cell centered around the ith vector.
 
+    Parameters
+    ----------
+    grid : (int, int) OR (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+        If an ``(int, int)`` is passed, this is assumed to be the shape of the device, and
+        ``vectors`` are **assumed to be in pixel units instead of normalized units**.
+    vectors : array_like
+        Points to Voronoi-ify.
+        Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
+    radius : float
+        Cells on the edge of the set of cells might be very large. This parameter bounds
+        the cells with a boolean and to the aperture of the given ``radius``.
+    plot : bool
+        Whether to plot the resulting Voronoi diagram with :meth:`scipy.spatial.voronoi_plot_2d()`.
+
+    Returns
+    -------
+    list of numpy.ndarray
+        The resulting windows.
+    """
+    vectors = clean_2vectors(vectors)
+
+    if (isinstance(grid, (list, tuple)) and
+        isinstance(grid[0], (int)) and
+        isinstance(grid[1], (int))):
+        shape = grid
+    else:
+        (x_grid, y_grid) = _process_grid(grid)
+
+        shape = x_grid.shape
+
+        x_list = x_grid[0,:]
+        y_list = y_grid[:,0]
+
+        vectors = np.vstack(np.interp(vectors[0,:], x_list, np.arange(shape[1])),
+                            np.interp(vectors[1,:], y_list, np.arange(shape[0])))
+
+    # Half shape data.
+    hsx = shape[1]/2
+    hsy = shape[0]/2
+
+    vectors_voronoi = np.concatenate((vectors.T,
+        np.array([ [hsx, -3*hsy], [hsx, 5*hsy], [-3*hsx, hsy], [5*hsx, hsy] ])))
+
+    vor = Voronoi(vectors_voronoi, furthest_site=False)
+
+    if plot:
+        sx = shape[1]
+        sy = shape[0]
+
+        fig = voronoi_plot_2d(vor)
+
+        plt.plot(   np.array([0, sx, sx, 0, 0]),
+                    np.array([0, 0, sy, sy, 0]), 'r')
+
+        plt.xlim(-.05*sx, 1.05*sx)
+        plt.ylim(1.05*sy, -.05*sy)
+
+        plt.title("Voronoi Cells")
+
+        plt.show()
+
+    N = np.shape(vectors)[1]
+    filled_regions = []
+
+    for x in range(N):
+        point = vor.points[x]
+        region = vor.regions[vor.point_region[x]]
+        pts = vor.vertices[region].astype(np.int32)
+
+        canvas1 = np.zeros(shape, dtype=np.uint8)
+        cv2.fillConvexPoly(canvas1, pts, 255, cv2.LINE_4)
+
+        if radius is not None and radius > 0:
+            canvas2 = np.zeros(shape, dtype=np.uint8)
+            cv2.circle(canvas2, tuple(point.astype(np.int32)),
+                                int(np.ceil(radius)), 255, -1)
+
+            filled_regions.append((canvas1 > 0) & (canvas2 > 0))
+        else:
+            filled_regions.append(canvas1 > 0)
+
+    return filled_regions
 
 # Basic functions
 def _process_grid(grid):
@@ -421,14 +518,14 @@ def _process_grid(grid):
 
     Parameters
     ----------
-    grid : 2-tuple of numpy.ndarray of floats OR :class:`~slmsuite.hardware.slms.slm.SLM`
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
         Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
 
     Returns
     --------
-    2-tuple of numpy.ndarray of floats
+    (array_like, array_like)
         The grids in ``(x_grid, y_grid)`` form.
     """
 
@@ -443,7 +540,7 @@ def _process_grid(grid):
 
     return grid
 
-def blaze(grid, vector=[0,0], offset=0):
+def blaze(grid, vector=(0,0), offset=0):
     r"""
     Returns a simple blaze (phase ramp).
 
@@ -451,7 +548,7 @@ def blaze(grid, vector=[0,0], offset=0):
 
     Parameters
     ----------
-    grid : 2-tuple of numpy.ndarray of floats OR :class:`~slmsuite.hardware.slms.slm.SLM`
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
         Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
@@ -464,7 +561,7 @@ def blaze(grid, vector=[0,0], offset=0):
     (x_grid, y_grid) = _process_grid(grid)
 
     return 2 * np.pi * (vector[0]*x_grid + vector[1]*y_grid) + offset
-def lens(grid, f, center=[0, 0]):
+def lens(grid, f=(np.inf, np.inf), center=(0, 0)):
     r"""
     Returns a simple thin lens (parabolic).
 
@@ -472,27 +569,81 @@ def lens(grid, f, center=[0, 0]):
 
     Parameters
     ----------
-    grid : 2-tuple of numpy.ndarray of floats OR :class:`~slmsuite.hardware.slms.slm.SLM`
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
         Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    f : float or 2-float
-        Focus in normalized (kx/k) units.
-        Future: add convert_focal_length method to parallel :meth:`.convert_blaze_vector()`
-    center : 2-float
+    f : float OR (float, float) or ((float, float), float)
+        Focus in normalized (x/lambda) units. If `((float, float), float)` is given, it is
+        interpreted as `((f_x, f_y), ang)` where `ang` is the angle in counter-clockwise
+        radians to rotate the lens by.
+        Future: add a ``convert_focal_length`` method to parallel :meth:`.convert_blaze_vector()`
+    center : (float, float)
         Center of the lens in normalized (x/lambda) coordinates.
     """
     (x_grid, y_grid) = _process_grid(grid)
 
+    # Parse center
+    center = np.squeeze(center)
+
+    assert center.shape == (2,)
+
+    # Parse focal length.
     if isinstance(f, (int, float)):
         f = [f, f]
-    elif isinstance(f, list):
-        assert len(f) == 2
-    else:
-        raise ValueError("Expected f to be a tuple of length 1 (f = fx = fy) or 2 ([fx, fy])")
+    if isinstance(f, (list, tuple, np.ndarray)):
+        f = np.squeeze(f)
 
-    return np.pi * (np.square(x_grid - center[0]) / f[0] +
-                    np.square(y_grid - center[1]) / f[1])
+        assert f.shape == (2,)
+
+        if isinstance(f[0], (list, tuple, np.ndarray)):
+            ang = f[1]
+
+            f = np.squeeze(f[0]).astype(np.float)
+            assert f.shape == (2,)
+        else:
+            ang = 0
+
+        assert not np.any(f == 0), "Cannot interpret a focal length of zero."
+
+        # Optical power of lens
+        g = [[1/f[0], 0], [0, 1/f[1]]]
+
+        # Rotate if necessary
+        if ang != 0:
+            s = np.sin(ang)
+            c = np.cos(ang)
+            rot = np.array([[c, -s], [s, c]])
+
+            g = np.matmul(np.linalg.inv(rot), np.matmul(g, rot))
+    else:
+        raise ValueError("Expected f to be a scalar, a vector of length 2, or a 2x2 matrix.")
+
+
+    # Only add a component if necessary (for speed)
+    out = None
+
+    if g[0][0] != 0:
+        if out is None:
+            out  = np.square(x_grid - center[0]) * (g[0][0] * np.pi)
+        else:
+            out += np.square(x_grid - center[0]) * (g[0][0] * np.pi)
+
+    if g[1][1] != 0:
+        if out is None:
+            out  = np.square(y_grid - center[1]) * (g[1][1] * np.pi)
+        else:
+            out += np.square(y_grid - center[1]) * (g[1][1] * np.pi)
+
+    shear = (g[1][0] + g[0][1]) * np.pi
+
+    if shear != 0:
+        if out is None:
+            out  = (x_grid - center[0]) * (y_grid - center[1]) * shear
+        else:
+            out += (x_grid - center[0]) * (y_grid - center[1]) * shear
+
+    return out
 
 # Structured light
 def determine_source_radius(grid, w=None):
@@ -510,7 +661,7 @@ def determine_source_radius(grid, w=None):
 
     Parameters
     ----------
-    grid : 2-tuple of numpy.ndarray of floats OR :class:`~slmsuite.hardware.slms.slm.SLM`
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
         Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
@@ -536,7 +687,7 @@ def laguerre_gaussian(grid, l, p, w=None):
 
     Parameters
     ----------
-    grid : 2-tuple of numpy.ndarray of floats OR :class:`~slmsuite.hardware.slms.slm.SLM`
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
         Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
@@ -564,7 +715,7 @@ def hermite_gaussian(grid, nx, ny, w=None):
 
     Parameters
     ----------
-    grid : 2-tuple of numpy.ndarray of floats OR :class:`~slmsuite.hardware.slms.slm.SLM`
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
         Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.

@@ -12,10 +12,10 @@ Why :mod:`python`?
 
 `Python <https://www.python.org/>`_ is a simple and fast programming language.
 With easy-to-learn syntax and good readability, python is ideal for scientists and
-experimentalists interested in quick development and refininement.
+experimentalists interested in quick development and refinement.
 Itself being `open-source <https://github.com/python/cpython>`_,
 python is a goto language for open-source projects, to the point that it is the
-`most pull-requested language <https://madnight.github.io/githut/#/pull_requests/>`_
+`most pull-requested language <https://madnight.github.io/githut/#/pull_requests/2022/1>`_
 on GitHub.
 
 .. Fast and hardware-compatible due to C backend.
@@ -29,7 +29,7 @@ Importantly, the accessiblity of the C backend means that hardware interfaces
 (often written in C) are
 `easy to implement <https://docs.python.org/3/library/ctypes.html>`_
 in python. This is critical for
-the |slmsuite|_ package, with a focus on experimental holography using physical
+the |slmsuite|_ package, which focuses on experimental holography using physical
 cameras and SLMs.
 
 .. jupyter is cool too.

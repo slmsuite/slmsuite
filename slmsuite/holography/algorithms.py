@@ -434,7 +434,7 @@ class Hologram:
                     "WGS-Kim",
                     "WGS-Nogrette"]
 
-        assert method in methods, ( "Unrecognized method {}. Valid methods inlcude [{}]"
+        assert method in methods, ( "Unrecognized method {}. Valid methods include [{}]"
                                     .format(method, methods))
 
         self.method = method
@@ -595,6 +595,8 @@ class Hologram:
         """
         Change the target to something new. This method handles cleaning and normalization.
 
+        Parameters
+        ----------
         new_target : numpy.ndarray OR cupy.ndarray OR None
             If ``None``, sets the target to zero.
         reset_weights : bool
@@ -648,7 +650,7 @@ class Hologram:
         Helper function to process weight feedback according to the chosen weighting method.
 
         Caution
-        ~~~~~~~~
+        ~~~~~~~
         ``weight_amp`` *is* modified in-place and ``feedback_amp`` *may be* modified in-place.
 
         Parameters
@@ -667,7 +669,7 @@ class Hologram:
             Weighting method, see the method descriptions in :meth:`optimize()`.
 
         Returns
-        ----------
+        -------
         numpy.ndarray OR cupy.ndarray
             The updated ``weight_amp``.
         """
@@ -734,6 +736,8 @@ class Hologram:
         """
         Helper function to analyze how close the feedback is to the target.
 
+        Parameters
+        ----------
         feedback_amp : numpy.ndarray OR cupy.ndarray
             Computational or measured result of holography.
         target_amp : numpy.ndarray OR cupy.ndarray
@@ -800,6 +804,9 @@ class Hologram:
         return {"efficiency":efficiency, "uniformity":uniformity,
                 "pkpk_err":pkpk_err, "std_err":std_err}
     def _calculate_stats_computational(self, stats, stat_groups=[]):
+        """
+        Wrapped by :meth:`Hologram.update_stats()`.
+        """
         if 'computational' in stat_groups:
             stats['computational'] = self._calculate_stats( self.amp_ff, self.target,
                                                     efficiency_compensation=False)
@@ -1078,7 +1085,7 @@ class Hologram:
         Helper function to set the cupy memory pool size. See [8]_.
 
         References
-        --------
+        ----------
 
         .. [8] https://docs.cupy.dev/en/stable/reference/generated/cupy.cuda.MemoryPool.html#cupy.cuda.MemoryPool
 
@@ -1145,8 +1152,10 @@ class FeedbackHologram(Hologram):
     """
     def __init__(self, shape, target_ij=None, cameraslm=None, **kwargs):
         """
+        Initializes a hologram with camera feedback.
+
         Parameters
-        --------
+        ----------
         shape : (int, int)
             Computational shape of the SLM. See :meth:`.Hologram.__init__()`.
         target_ij : array_like OR None
@@ -1207,14 +1216,14 @@ class FeedbackHologram(Hologram):
         affine transformation stored in a cameraslm's Fourier calibration.
 
         Note
-        ~~~~~~~~
+        ~~~~
         This includes two transformations:
 
          - The affine transformation ``"ij"`` -> ``"kxy"`` (camera pixels to normalized k-space).
          - The scaling ``"kxy"`` -> ``"knm"`` (normalized k-space to computational k-space pixels).
 
         Note
-        ~~~~~~~~
+        ~~~~
         Future optimizations might include default blurring of the ``image`` or ``target``,
         along with different interpolation ``order`` (see :meth:`scipy.ndimage.affine_transform()`).
 
@@ -1226,7 +1235,7 @@ class FeedbackHologram(Hologram):
             If ``output`` is not ``None``, this array will be used to write the memory in-place.
 
         Returns
-        ----------
+        -------
         numpy.ndarray OR cupy.ndarray
             Image transformed into ``"knm"`` space.
         """
@@ -1314,6 +1323,28 @@ class FeedbackHologram(Hologram):
 
     # TODO: add this.
     def correct_image(self, img, basis="kxy"):
+        """
+        Hones the position of the image to the desired target to compensate for
+        Fourier calibration imperfections.
+
+        Parameters
+        ----------
+        img : numpy.ndarray
+            Image measured by the camera.
+        basis : str
+            The correction can be in any of the following bases:
+            - ``"ij"`` changes the pixel that the spot is expected at,
+            - ``"kxy"``, ``"knm"`` changes the k-vector which the SLM targets.
+            Defaults to ``"kxy"`` if ``None``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Euclidian pixel error in the ``"ij"`` basis for each spot.
+        """
+
+
+
         return
     def _update_weights(self):
         """
@@ -1329,6 +1360,9 @@ class FeedbackHologram(Hologram):
             self._update_weights_generic(self.weights, self.img_knm, self.target)
 
     def _calculate_stats_experimental(self, stats, stat_groups=[]):
+        """
+        Wrapped by :meth:`FeedbackHologram.update_stats()`.
+        """
         if 'experimental_knm' in stat_groups:
             self.measure("knm")  # Make sure data is there.
             stats['experimental_knm'] = self._calculate_stats(
@@ -1471,6 +1505,9 @@ class SpotHologram(FeedbackHologram):
         if self.spot_ij is not None:
             cam_shape = cameraslm.cam.shape
 
+            # Calculate the width of the integration region for the spot.
+            # Currently bounded between a width of 3 and 15, but maybe this
+            # should be opened up to the user.
             psf = 2*int(toolbox.get_smallest_distance(self.spot_ij)/2) + 1
             if psf < 3:
                 psf = 3
@@ -1506,7 +1543,7 @@ class SpotHologram(FeedbackHologram):
         Helper function to initialize a rectangular 2D array of spots, with certain size and pitch.
 
         Note
-        ~~~~~~~~
+        ~~~~
         The array can be in SLM k-space coordinates or in camera pixel coordinates, depending upon
         the choice of ``basis``. For the ``"ij"`` basis, ``cameraslm`` must be included as one
         of the ``kwargs``. See :meth:`__init__()` for more ``basis`` information.
@@ -1597,14 +1634,14 @@ class SpotHologram(FeedbackHologram):
         From the spot locations stored in :attr:`spot_knm`, update the target pattern.
 
         Note
-        ~~~~~~~~
+        ~~~~
         If there's a cameraslm, updates the :attr:`spot_ij_rounded` attribute
         corresponding to where pixels in the k-space where actually placed (due to rounding
         to integers, stored in :attr:`spot_knm_rounded`), rather the
         idealized floats :attr:`spot_knm`.
 
         Note
-        ~~~~~~~~
+        ~~~~
         The :attr:`target` and :attr:`weights` matrices are modified in-place for speed,
         unlike :class:`.Hologram` or :class:`.FeedbackHologram` which make new matrices.
         This is because spot positions are expected to be corrected using :meth:`correct_spots()`.
@@ -1674,9 +1711,6 @@ class SpotHologram(FeedbackHologram):
         """
         Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
         :attr:`amp_ff`, the computed farfield amplitude. This function also updates stats.
-
-        Parameters
-        ----------
         """
         feedback = self.flags['feedback']
 
@@ -1693,6 +1727,9 @@ class SpotHologram(FeedbackHologram):
                                             feedback, self.spot_amp)
 
     def _calculate_stats_spots(self, stats, stat_groups=[]):
+        """
+        Wrapped by :meth:`SpotHologram.update_stats()`.
+        """
         if 'computational_spot' in stat_groups:
             total = cp.sum(cp.square(self.amp_ff))
             stats['computational_spot'] = self._calculate_stats(

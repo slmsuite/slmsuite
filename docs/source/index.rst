@@ -1,9 +1,8 @@
 slmsuite
 ========
 
-:mod:`slmsuite` is a
-`python package <https://github.com/QPG-MIT/slmsuite>`_
-for high-precision spatial light modulator (SLM) control and holography.
+|slmsuite|_ is a python package for high-precision
+spatial light modulator (SLM) control and holography.
 
 .. toctree::
    :maxdepth: 1
@@ -18,3 +17,6 @@ for high-precision spatial light modulator (SLM) control and holography.
 
    examples
    api
+
+.. |slmsuite| replace:: :mod:`slmsuite`
+.. _slmsuite: https://github.com/QPG-MIT/slmsuite

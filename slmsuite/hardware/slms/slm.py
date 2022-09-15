@@ -118,7 +118,7 @@ class SLM:
             self.wav_design_um = wav_um
         else:
             self.wav_design_um = wav_design_um
-        
+
         # Multiplier for when the target wavelengths differ from the design wavelength.
         self.wav_norm = self.wav_um / self.wav_design_um
 
@@ -200,21 +200,22 @@ class SLM:
         blaze_vector=None,
     ):
         r"""
-        Checks, cleans, and adds to data, then calls :meth:`_write_hw()`
-        and potentially waits for settle.
+        Checks, cleans, and adds to data, then sends the data to the SLM and
+        potentially waits for settle. This function calls the SLM-specific private method
+        :meth:`_write_hw()` which transfers the data to the SLM.
 
         Caution
         ~~~~~~~
         The sign on ``phase`` is flipped before converting to integer data. This is to
         convert between
-        the 'increasing value ==> increasing voltage (= decreasing phase delay)' convention in most SLMs and 
+        the 'increasing value ==> increasing voltage (= decreasing phase delay)' convention in most SLMs and
         :mod:`slmsuite`'s 'increasing value ==> increasing phase delay' convention.
         As a result, zero phase will appear entirely white (255 for an 8-bit SLM), and increasing phase
         will darken the displayed pattern.
 
         Important
         ~~~~~~~~~
-        The user does not need to wrap (e.g. :meth:`numpy.mod(data, 2*np.pi)`) the passed phase data, 
+        The user does not need to wrap (e.g. :meth:`numpy.mod(data, 2*np.pi)`) the passed phase data,
         unless they are pre-caching data for speed (see below).
         :meth:`.write()` uses optimized routines to wrap the phase (see :meth:`._phase2gray()`).
         Which routine is used depends on :attr:`wav_norm`:
@@ -374,7 +375,7 @@ class SLM:
 
     def set_analytic_amplitude(self, radius_mm):
         """
-        Sets :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude` used 
+        Sets :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude` used
         for hologram generation in the absence of a proper wavefront calibration.
         :class:`~slmsuite.hardware.cameraslms.FourierSLM` includes
         capabilities for wavefront calibration via

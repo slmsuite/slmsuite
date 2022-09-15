@@ -4,7 +4,7 @@ Santec LCoS SLM-200, SLM-210, SLM-300, ...
 
 Note
 ~~~~
-:class:`.Santec` requires files from Santec to be present in the 
+:class:`.Santec` requires files from Santec to be present in the
 :mod:`~slmsuite.hardware.slms` directory:
 
  - A header file (_slm_win.py) and
@@ -76,7 +76,7 @@ class Santec(SLM):
 
         Caution
         ~~~~~~~
-        :class:`.Santec` defaults to 8 micron SLM pixel size 
+        :class:`.Santec` defaults to 8 micron SLM pixel size
         (:attr:`.SLM.dx_um` = :attr:`.SLM.dy_um` = 8)
         and 10-bit :attr:`.SLM.bitdepth`.
         This is valid for SLM-200, SLM-210, and SLM-300, but may not be valid for future
@@ -134,7 +134,7 @@ class Santec(SLM):
         if verbose:
             print("Looking for display... ", end="")
         slm_funcs.SLM_Disp_Info2(self.display_number, width, height, display_name)
-        
+
         # For instance, "LCOS-SLM,SOC,8001,2018021001"
         name = display_name.value.decode("mbcs")
         if verbose:
@@ -173,7 +173,8 @@ class Santec(SLM):
     @staticmethod
     def info(verbose=True):
         """
-        Discovers the names of all the displays. Checks all 8 possible supported by Santec's SDK.
+        Discovers the names of all the displays.
+        Checks all 8 possible supported by Santec's SDK.
 
         Parameters
         ----------
@@ -213,7 +214,7 @@ class Santec(SLM):
         Parameters
         ----------
         smooth : bool
-            Whether to apply a Guassian blur to smooth the data.
+            Whether to apply a Gaussian blur to smooth the data.
         """
         # TODO: Fix default flatmap_path
         try:

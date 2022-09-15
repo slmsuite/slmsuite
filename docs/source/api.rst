@@ -8,7 +8,7 @@ find the source directly on `GitHub <https://github.com/QPG-MIT/slmsuite>`_.
 Holography
 ==========
 
-As a core functionality, :mod:`slmsuite` optimizes nearfield phase profiles
+As a core functionality, :mod:`slmsuite` **optimizes nearfield phase profiles**
 (applied to :mod:`~slmsuite.hardware.slms`) to produce desired farfield results
 (measured by :mod:`~slmsuite.hardware.cameras`). These methods are provided in:
 
@@ -21,7 +21,7 @@ As a core functionality, :mod:`slmsuite` optimizes nearfield phase profiles
    algorithms
 
 Additionally, quality-of-life support methods are provided,
-divided into slm- and camera- centric categories:
+divided into SLM- and camera- centric categories:
 
 .. currentmodule:: slmsuite.holography
 .. autosummary::
@@ -35,7 +35,7 @@ divided into slm- and camera- centric categories:
 Hardware
 ========
 
-A core concept of :mod:`slmsuite` is **experimental** holography.
+A central concept of :mod:`slmsuite` is **experimental** holography.
 Thus, we require interfaces to control the hardware used in experiment.
 While some common hardware implementions are included, we welcome
 `contributions <https://github.com/QPG-MIT/slmsuite/blob/main/CONTRIBUTING.md>`_

@@ -666,7 +666,7 @@ class FourierSLM(CameraSLM):
                 plt.plot(best_phase / np.pi, p[0] + p[2], "xr", label="Phase")
 
                 plt.legend(loc="best")
-                plt.title("Interference (r^2={:.2f})".format(r2))
+                plt.title("Interference (r^2={:.3f})".format(r2))
                 plt.grid()
                 plt.xlabel(r"$\phi$ $[\pi]$")
                 plt.ylabel("Signal")
@@ -677,8 +677,11 @@ class FourierSLM(CameraSLM):
 
         def plot_labeled(img, plot=False, title=""):
             if plot_everything or plot:
-                _, axs = plt.subplots(1, 2, figsize=(12,6))
-                axs[0].imshow(np.log10(img + 1), cmap="Blues")
+                _, axs = plt.subplots(1, 3, figsize=(20,6))
+                axs[0].imshow(np.mod(self.slm.phase, 2*np.pi), cmap=plt.get_cmap("twilight"))
+
+
+                axs[1].imshow(np.log10(img + 1))
 
                 dpoint = field_point - base_point
 
@@ -695,14 +698,14 @@ class FourierSLM(CameraSLM):
                         hh *= 2
                     rect = plt.Rectangle(   [point[0] - wh, point[1] - hh],
                                             2 * wh, 2 * hh, ec="r", fc="none")
-                    axs[0].add_patch(rect)
-                    axs[0].annotate(label,
+                    axs[1].add_patch(rect)
+                    axs[1].annotate(label,
                         (point[0], point[1] + 2 * interference_size[1] + hh),
                         c="r", size="x-small", ha="center")
 
-                axs[1].imshow(np.log10(img + 1), cmap="Blues")
-                axs[1].set_xlim(point[0] - wh, point[0] + wh)
-                axs[1].set_ylim(point[1] - hh, point[1] + hh)
+                axs[2].imshow(np.log10(img + 1))
+                axs[2].set_xlim(point[0] - wh, point[0] + wh)
+                axs[2].set_ylim(point[1] - hh, point[1] + hh)
 
                 plt.title(title)
 
@@ -712,7 +715,7 @@ class FourierSLM(CameraSLM):
             masked_pic_mode = mask(img, interference_point, 8 * interference_size)
 
             if plot_everything or plot:
-                plt.imshow(masked_pic_mode, cmap="Blues")
+                plt.imshow(masked_pic_mode)
                 plt.show()
 
             # Blur a lot and assume the maximum corresponds to the center.
@@ -803,8 +806,8 @@ class FourierSLM(CameraSLM):
                 "normalization": norm,
                 "background": back,
                 "phase": phase_fit,
-                "kx": -blaze_difference[0],
-                "ky": -blaze_difference[1],
+                "kx": -float(blaze_difference[0]),
+                "ky": -float(blaze_difference[1]),
                 "amp_fit": amp_fit,
                 "contrast_fit": contrast_fit,
                 "r2_fit": r2_fit,
@@ -1086,7 +1089,7 @@ class FourierSLM(CameraSLM):
             plt.subplot(1, 3, 1)
             plt.imshow(
                 phase_fin,
-                # cmap=plt.get_cmap("twilight"),
+                cmap=plt.get_cmap("twilight"),
                 interpolation="none",
             )
             plt.title("SLM Flatfield Phase Correction")

@@ -36,3 +36,10 @@ live through
 [nbviewer](https://nbviewer.org/github/QPG-MIT/slmsuite-examples/tree/main/examples/),
 or directly in
 [source](https://github.com/QPG-MIT/slmsuite-examples).
+
+<p align="center">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/source/static/readme-example-dark.png">
+<img alt="qp-slm" src="docs/source/static/readme-example.png" width="256">
+</picture>
+</p>

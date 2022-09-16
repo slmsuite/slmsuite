@@ -185,11 +185,12 @@ class ScreenMirrored(SLM):
 
             try:
                 # Icons. Currently hardcoded. Feel free to implement custom icons.
-                path = os.path.join('..', 'misc', 'img', 'qp-slm-notext-')
+                path, filename = os.path.split(os.path.realpath(__file__))
+                path = os.path.join(path, '..', '..', '..',
+                                    'docs', 'source', 'static', 'qp-slm-notext-')
                 img16x16 = pyglet.image.load(path + '16x16.png')
                 img32x32 = pyglet.image.load(path + '32x32.png')
-                img48x48 = pyglet.image.load(path + '48x48.png')
-                self.window.set_icon(img16x16, img32x32, img48x48)
+                self.window.set_icon(img16x16, img32x32)
             except Exception as e:
                 print(e)
             

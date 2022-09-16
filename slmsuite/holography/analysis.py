@@ -174,14 +174,14 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
         pass
 
     if plot:
-        plot_taken(np.reshape(result, (points.shape[1], size[1], size[0])))
+        take_plot(np.reshape(result, (points.shape[1], size[1], size[0])))
 
     if integrate:   # Sum over the integration axis
         return np.sum(result, -1)
     else:           # Reshape the integration axis
         return np.reshape(result, (points.shape[1], size[1], size[0]))
 
-def plot_taken(taken):
+def take_plot(taken):
     """
     Plots non-integrated results of :meth:`.take()` in a square array of subplots.
     """
@@ -202,6 +202,71 @@ def plot_taken(taken):
         ax.axes.yaxis.set_visible(False)
 
     plt.show()
+
+def take_moment(taken, moment=(1,0), normalize=True, centers=(0,0)):
+    r"""
+    Computes the batch weighted average of an array of images for a given moment
+    :math:`M_{m_xm_y}`. This involves integrating against polynomial trial functions:
+
+    .. math:: M_{m_xm_y} = \frac{\int_{-w_x/2}^{w_x/2} (x-c_x)^m_x \int_{-w_y/2}^{w_y/2} (y-c_y)^m_y P(x+x_0, y+y_0)\,dy\,dx}{\int_{-w_x/2}^{w_x/2}\int_{-w_y/2}^{w_y/2} P(x, y)\,dy\,dx}
+
+    where :math:`P(x, y)` is a given 2D image, :math:`(x_0, y_0)` is the center of a
+    window of size :math:`w_x \times w_y`, and :math:`(c_x, c_y)` is a shift in the
+    center of the trial functions.
+
+    Parameters
+    ----------
+    taken : numpy.ndarray
+        A matrix in the style of the output of :meth:`take`, with shape `(N, wy, wx)`, where
+        `(wx, wy)` is the width and height of
+    moment : (int, int)
+        The moments in the :math:`x` and :math:`y` directions: :math:`(M_x, M_y)`. For instance,
+
+        - :math:`(M_x, M_y) = (1, 0)` corresponds to the :math:`x` moment or
+          the position in the :math:`x` dimension.
+        - :math:`(M_x, M_y) = (1, 1)` corresponds to the :math:`xy` shear.
+        - :math:`(M_x, M_y) = (0, 2)` corresponds to the :math:`y^2` moment, or the (squared)
+          width in the :math:`y` direction, given zero :math:`(M_x, M_y) = (0, 1)` moment.
+
+    normalize : bool
+        Whether to normalize taken. If ``False``, normalization is assumed to have been precomputed.
+    centers : tuple or numpy.ndarray
+        Perturbations to the center of the trial function, :math:`(c_x, c_y)`.
+    """
+    (N, w_y, w_x) = taken.shape
+
+    edge_x = np.reshape(np.power(np.arange(w_x) - (w_x-1)/2., moment), (1, 1, w_x)) - centers[0]
+    edge_y = np.reshape(np.power(np.arange(w_y) - (w_y-1)/2., moment), (1, w_y, 1)) - centers[1]
+
+    if normalize:
+        normalization = np.sum(taken, axis=(1,2), keepdims=False)
+        reciprical = np.reciprocal(normalization, where=normalization != 0, out=np.zeros(N,))
+    else:
+        reciprical = 1
+
+    if moment[1] == 0:                          # x case
+        return np.sum(taken * edge_x, axis=(1,2), keepdims=False) * reciprical
+    elif moment[0] == 0:                        # y case
+        return np.sum(taken * edge_y, axis=(1,2), keepdims=False) * reciprical
+    elif moment[1] != 0 and moment[1] != 0:     # Shear case
+        return np.sum(taken * edge_x * edge_y, axis=(1,2), keepdims=False) * reciprical
+    else:                                       # 0,0 (norm) case
+        if normalize:
+            return np.ones((N,))
+        else:
+            return np.sum(taken, axis=(1,2), keepdims=False)
+
+def take_moment1(taken):
+    return np.vstack(take_moment(taken, (1,0)), take_moment(taken, (0,1)))
+
+def take_moment2(taken):
+    centers = take_moment1(taken)
+
+    m20 = take_moment(taken, (2,0), centers=centers)
+    m11 = take_moment(taken, (1,1), centers=centers)
+    m02 = take_moment(taken, (0,2), centers=centers)
+
+    return np.stack(np.vstack(m20, m11), np.vstack(m11, m02), axis=2)
 
 def blob_detect(img, plot=False, title="", filter=None, **kwargs):
     """

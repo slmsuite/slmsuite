@@ -3,7 +3,7 @@ API Reference
 *************
 
 This page provides an auto-generated summary of slmsuite's API. You can
-find the source directly on `GitHub <https://github.com/QPG-MIT/slmsuite>`_.
+find the source on `GitHub <https://github.com/QPG-MIT/slmsuite>`_.
 
 Holography
 ==========

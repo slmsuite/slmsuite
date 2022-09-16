@@ -4,7 +4,7 @@ Helper functions for manipulating phase patterns.
 
 import numpy as np
 from scipy import special
-from scipy.spatial.distance import cityblock
+from scipy.spatial.distance import euclidean
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
@@ -387,7 +387,9 @@ def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
             indices = np.vstack((x_grid.ravel(), y_grid.ravel()))
 
         return np.matmul(M, indices) + b
-def get_smallest_distance(vectors, metric=cityblock):
+def largest_difference(x, y):
+    return np.max(np.abs(x - y))
+def get_smallest_distance(vectors, metric=euclidean):
     """
     Returns the smallest distance between pairs of points under a given ``metric``.
 
@@ -404,7 +406,7 @@ def get_smallest_distance(vectors, metric=cityblock):
         Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
     metric : lambda
         Function to use to compare.
-        Defaults to :meth:`scipy.spatial.distance.cityblock`.
+        Defaults to :meth:`scipy.spatial.distance.euclidean`.
     """
     vectors = clean_2vectors(vectors)
     N = vectors.shape[1]

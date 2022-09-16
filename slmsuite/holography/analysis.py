@@ -103,7 +103,7 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
     ----------
     imgs : array_like
         2D image or array of 2D images.
-    points : array_like
+    points : array_like of floats
         2-vector (or 2-vector array) listing location(s) of integration region(s).
         See :meth:`~slmsuite.holography.toolbox.clean_2vectors`.
     size : int or (int, int)

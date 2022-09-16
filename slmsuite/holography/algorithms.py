@@ -270,7 +270,7 @@ class Hologram:
     # Initialization helper
     @staticmethod
     def calculate_padding(slm_shape, padding_order=1, square_padding=True,
-                            precision=np.inf, basis="kxy"):
+                            precision=np.inf, precision_basis="kxy"):
         """
         Helper function to calculate the shape of the computational space.
         For a given shape, pads to the user's requirements. If the user chooses
@@ -292,7 +292,7 @@ class Hologram:
         precision : float
             Returns the shape that produces a computational k-space with resolution smaller
             than ``precision``.
-        basis : str
+        precision_basis : str
             Basis for the precision. Can be ``"ij"`` (camera) or ``"kxy"`` (normalized blaze).
 
         Returns
@@ -310,10 +310,10 @@ class Hologram:
             dpixel = np.amin([cameraslm.slm.dx, cameraslm.slm.dy])
             fs = 1/dpixel   # Sampling frequency
 
-            if basis == "ij":
+            if precision_basis == "ij":
                 slm_range = np.amax(cameraslm.kxyslm_to_ijcam([fs, fs]))
                 pixels = slm_range / precision
-            elif basis == "kxy":
+            elif precision_basis == "kxy":
                 pixels = fs / precision
 
             # Raise to the nearest greater power of 2.

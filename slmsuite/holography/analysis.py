@@ -10,90 +10,6 @@ from scipy.optimize import curve_fit
 from slmsuite.holography.toolbox import clean_2vectors
 from slmsuite.misc.fitfunctions import gaussian2d_fitfun
 
-def make8bit(img):
-    """
-    Convert an image to ``numpy.uint8``, scaling to the limits.
-
-    This function is useful to convert float or larger bitdepth images to
-    8-bit, which cv2 accepts and can speedily process.
-
-    Parameters
-    ----------
-    img : numpy.ndarray
-        The image in question.
-
-    Returns
-    -------
-    ndarray
-        img as an 8-bit image.
-    """
-    img = img.astype(np.float)
-
-    img -= np.amin(img)
-    img = img / np.amax(img) * (2**8 - 1)
-
-    return img.astype(np.uint8)
-
-def threshold(img, thresh=50, thresh_type=cv2.THRESH_TOZERO):
-    """
-    Threshold an image to a certain percentage of the maximum value.
-
-    Parameters
-    ----------
-    img : numpy.ndarray
-        The image in question.
-    thresh : float
-        Threshold in percent.
-    thresh_type : int
-        :mod:`cv2` threshold type.
-
-    Returns
-    -------
-    numpy.ndarray
-        Thresholded image.
-    """
-    thresh = int(thresh / 100. * np.amax(img))
-    _, thresh = cv2.threshold(img, thresh, np.amax(img), thresh_type)
-    return thresh
-
-def get_transform(rot="0", fliplr=False, flipud=False):
-    """
-    Compile a transformation lambda from simple rotates and flips.
-
-    Useful to turn an image to an orientation which is user-friendly.
-    Used by :class:`~slmsuite.hardware.cameras.camera.Camera` and subclasses.
-
-    Parameters
-    ----------
-    rot : str OR int
-        Rotates returned image by the corresponding degrees in ``["90", "180", "270"]``
-        or :meth:`numpy.rot90` code in ``[1, 2, 3]``. Defaults to no rotation otherwise.
-    fliplr : bool
-        Flips returned image left right.
-    flipud : bool
-        Flips returned image up down.
-
-    Returns
-    -------
-    function
-        Compiled image transformation.
-    """
-    transforms = list()
-
-    if fliplr == True:
-        transforms.append(np.fliplr)
-    if flipud == True:
-        transforms.append(np.flipud)
-
-    if   rot == "90"  or rot == 1:
-        transforms.append(lambda img: np.rot90(img, 1))
-    elif rot == "180" or rot == 2:
-        transforms.append(lambda img: np.rot90(img, 2))
-    elif rot == "270" or rot == 3:
-        transforms.append(lambda img: np.rot90(img, 3))
-
-    return reduce(lambda f, g: lambda x: f(g(x)), transforms, lambda x: x)
-
 def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=False):
     """
     Crop integration regions around an array of ``points``.
@@ -126,8 +42,9 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
     Returns
     -------
     numpy.ndarray
-        If ``integrate`` is ``False``, returns a list containing the images cropped
-        from the regions. If ``integrate`` is ``True``, instead returns a list of floats
+        If ``integrate`` is ``False``, returns an array containing the images cropped
+        from the regions of size `(N, h, w)`. 
+        If ``integrate`` is ``True``, instead returns an array of floats of size `(N,)`
         where each float corresponds to the :meth:`numpy.sum` of a cropped image.
     """
     # Clean variables.
@@ -186,6 +103,11 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
 def take_plot(taken):
     """
     Plots non-integrated results of :meth:`.take()` in a square array of subplots.
+    
+    Parameters
+    ----------
+    taken : numpy.ndarray
+        array of 2D images, usually a :meth:`take()` output.
     """
     (N, sy, sx) = np.shape(taken)
     M = int(np.ceil(np.sqrt(N)))
@@ -260,6 +182,12 @@ def take_moment(taken, moment=(1,0), centers=(0,0), normalize=True, nansum=False
         :meth:`numpy.nansum()` treats ``nan`` values as zeros.
         This is useful in the case where ``clip=True`` is passed to :meth:`take()`
         (out of range is set to ``nan``).
+
+    Returns
+    -------
+    numpy.ndarray
+        The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size `(N,)`
+        for provided `taken` data of shape `(N, h, w)`.
     """
     (N, w_y, w_x) = taken.shape
 
@@ -299,12 +227,39 @@ def take_moment(taken, moment=(1,0), centers=(0,0), normalize=True, nansum=False
 def take_moment0(taken, nansum=False):
     """
     Computes the zeroth order moment, equivalent to the mass or normalization.
+
+    Parameters
+    ----------
+    taken : numpy.ndarray
+        array of 2D images, usually a :meth:`take()` output.
+    nansum : bool
+        Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
+
+    Returns
+    -------
+    numpy.ndarray
+        The normalization factor :math:`M_{11}`.
     """
     return take_moment(taken, (0,0), normalize=False, nansum=nansum)
 
 def take_moment1(taken, normalize=True, nansum=False):
     """
     Computes the first order moment, equivalent to the position.
+
+    Parameters
+    ----------
+    taken : numpy.ndarray
+        array of 2D images, usually a :meth:`take()` output.
+    normalize : bool
+        Whether to normalize ``taken``.
+        If ``False``, normalization is assumed to have been precomputed.
+    nansum : bool
+        Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
+
+    Returns
+    -------
+    numpy.ndarray
+        Stack of :math:`M_{10}`, :math:`M_{01}`.
     """
     if normalize:
         taken = take_normalize(taken)
@@ -313,8 +268,38 @@ def take_moment1(taken, normalize=True, nansum=False):
                         take_moment(taken, (0,1), normalize=False, nansum=nansum)) )
 
 def take_moment2(taken, centers=None, normalize=True, nansum=False):
-    """
-    Computes the second order moment, equivalent to the variance.
+    r"""
+    Computes the second order central moment, equivalent in the 1D case to the variance.
+    Specifically, this function returns a stack of the moments :math:`M_{20}` and
+    :math:`M_{02}`, along with :math:`M_{11}`, which are the variance in the :math:`x`
+    and :math:`y` directions, along with the so-called shear variance.
+    Recall that variance defined as
+    
+    .. math:: (\Delta x)^2 = \left<(x - \left<x\right>)^2\right>.
+
+    This equation is made central by subtraction of :math:`\left<x\right>`.
+    The user can of course use :meth:`take_moment` directly to access the 
+    non-central moments; this function is a helper to access useful quantities
+    for analysis of spot size and skewness.
+
+    Parameters
+    ----------
+    taken : numpy.ndarray
+        array of 2D images, usually a :meth:`take()` output.
+    centers : numpy.ndarray OR None
+        If the user has already computed :math:`\left<x\right>`, for example via
+        :meth:`take_moment1()`, then this can be passed though ``centers``. The default
+        None computes ``centers`` interally.
+    normalize : bool
+        Whether to normalize ``taken``.
+        If ``False``, normalization is assumed to have been precomputed.
+    nansum : bool
+        Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
+
+    Returns
+    -------
+    numpy.ndarray
+        Stack of :math:`M_{20}`, :math:`M_{02}`, and :math:`M_{11}`.
     """
     if normalize:
         taken = take_normalize(taken)
@@ -326,7 +311,101 @@ def take_moment2(taken, centers=None, normalize=True, nansum=False):
     m11 = take_moment(taken, (1,1), centers=centers, normalize=False, nansum=nansum)
     m02 = take_moment(taken, (0,2), centers=centers, normalize=False, nansum=nansum)
 
-    return np.stack((np.vstack((m20, m11)), np.vstack((m11, m02))), axis=2)
+    return np.vstack((m20, m02, m11))
+
+def take_moment2_circularity(moment2):
+    r"""
+    Given the output of :meth:`take_moment2()`, return a measure of spot circularity.
+    The output of :meth:`take_moment2()` contains the moments :math:`M_{20}`,
+    :math:`M_{02}`, and :math:`M_{11}`. These terms make up a :math:`2 \times 2` matrix,
+    which in truth is a rotated (by some rotation matrix :math:`R(\phi)`) version of 
+    an elliptical scaling according to the 
+    eigenvalues :math:`\lambda_+` and :math:`\lambda_-`.
+
+    .. math::   \begin{bmatrix}
+                    M_{20} & M_{11} \\
+                    M_{11} & M_{02} \\
+                \end{bmatrix}
+                = 
+                R(-\phi)
+                \begin{bmatrix}
+                    \lambda_+ & 0 \\
+                    0 & \lambda_- \\
+                \end{bmatrix}
+                R(-\phi)
+
+    We use this knowledge, along with tricks for eigenvalue calculations on 
+    :math:`2 \times 2` matrices, to build up a metric for circularity:
+
+    .. math:: \mathcal{C} = 1 - \frac{\lambda_+ - \lambda_-}{\lambda_+ + \lambda_-}
+
+    Notice that 
+    when :math:`\lambda_+ = \lambda_-` (isotropic scaling), :math:`\mathcal{C} = 1` and
+    when :math:`\lambda_- = 0` (flattened to a line), :math:`\mathcal{C} = 0`.
+    
+    Parameters
+    ----------
+    moment2 : numpy.ndarray
+        The output of :meth:`take_moment2()`.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of circularities for the given moments.
+    """
+    m20 = moment2[0,:]
+    m02 = moment2[1,:]
+    m11 = moment2[2,:]
+
+    # We can use a trick for eigenvalue calculations of 2x2 matrices to avoid
+    # more complicated calculations.
+    half_trace = (m20 + m02)/2
+    determinant = m20 * m20 - m11 * m11
+
+    eig_half_difference = np.sqrt(np.square(half_trace) - determinant)
+    eig_mean = half_trace
+
+    # Just to note, the above are defined to satisfy: 
+    #   eig_plus =  eig_mean + eig_half_difference
+    #   eig_minus = eig_mean - eig_half_difference
+
+    return 1 - eig_half_difference / eig_mean
+
+def take_moment2_ellipcicity_angle(moment2):
+    r"""
+    Given the output of :meth:`take_moment2()`, return the rotation angle for
+    elliptical spots. This is the angle between the :math:`x` axis and the 
+    major axis (large eigenvalue axis).
+
+    Parameters
+    ----------
+    moment2 : numpy.ndarray
+        The output of :meth:`take_moment2()`.
+    
+    Returns
+    -------
+    numpy.ndarray
+        Array of angles for the given moments.
+        For highly circular spots, this angle is not meaningful, and dominated by
+        experimental noise.
+        For perfectly circular spots, zero is returned.
+    """
+    m20 = moment2[0,:]
+    m02 = moment2[1,:]
+    m11 = moment2[2,:]
+
+    # Some quick math (see take_moment2_circularity).
+    half_trace = (m20 + m02)/2
+    determinant = m20 * m20 - m11 * m11
+
+    eig_plus =  half_trace + np.sqrt(np.square(half_trace) - determinant)
+
+    # We know that M * v = lambda * v. This yields a system of equations:
+    #   m20 * x + m11 * y = lambda * x
+    #   m11 * x + m02 * y = lambda * y
+    # We're trying to solve for angle, which is just atan(x/y). We can solve for x/y:
+    #   m11 * x = (lambda - m02) * y        ==>         x/y = (lambda - m02) / m11
+    return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 def take_normalize(taken, nansum=False):
     """
@@ -902,3 +981,88 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
         plt.show()
 
     return orientation
+
+
+def make8bit(img):
+    """
+    Convert an image to ``numpy.uint8``, scaling to the limits.
+
+    This function is useful to convert float or larger bitdepth images to
+    8-bit, which cv2 accepts and can speedily process.
+
+    Parameters
+    ----------
+    img : numpy.ndarray
+        The image in question.
+
+    Returns
+    -------
+    ndarray
+        img as an 8-bit image.
+    """
+    img = img.astype(np.float)
+
+    img -= np.amin(img)
+    img = img / np.amax(img) * (2**8 - 1)
+
+    return img.astype(np.uint8)
+
+def threshold(img, thresh=50, thresh_type=cv2.THRESH_TOZERO):
+    """
+    Threshold an image to a certain percentage of the maximum value.
+
+    Parameters
+    ----------
+    img : numpy.ndarray
+        The image in question.
+    thresh : float
+        Threshold in percent.
+    thresh_type : int
+        :mod:`cv2` threshold type.
+
+    Returns
+    -------
+    numpy.ndarray
+        Thresholded image.
+    """
+    thresh = int(thresh / 100. * np.amax(img))
+    _, thresh = cv2.threshold(img, thresh, np.amax(img), thresh_type)
+    return thresh
+
+def get_transform(rot="0", fliplr=False, flipud=False):
+    """
+    Compile a transformation lambda from simple rotates and flips.
+
+    Useful to turn an image to an orientation which is user-friendly.
+    Used by :class:`~slmsuite.hardware.cameras.camera.Camera` and subclasses.
+
+    Parameters
+    ----------
+    rot : str OR int
+        Rotates returned image by the corresponding degrees in ``["90", "180", "270"]``
+        or :meth:`numpy.rot90` code in ``[1, 2, 3]``. Defaults to no rotation otherwise.
+    fliplr : bool
+        Flips returned image left right.
+    flipud : bool
+        Flips returned image up down.
+
+    Returns
+    -------
+    function
+        Compiled image transformation.
+    """
+    transforms = list()
+
+    if fliplr == True:
+        transforms.append(np.fliplr)
+    if flipud == True:
+        transforms.append(np.flipud)
+
+    if   rot == "90"  or rot == 1:
+        transforms.append(lambda img: np.rot90(img, 1))
+    elif rot == "180" or rot == 2:
+        transforms.append(lambda img: np.rot90(img, 2))
+    elif rot == "270" or rot == 3:
+        transforms.append(lambda img: np.rot90(img, 3))
+
+    return reduce(lambda f, g: lambda x: f(g(x)), transforms, lambda x: x)

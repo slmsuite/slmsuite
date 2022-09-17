@@ -5,30 +5,30 @@ Why :mod:`slmsuite`?
 
 TODO @cpanuski
 
-Why :mod:`python`?
-------------------
+Why Python?
+-----------
 
 .. Easy and accessible to scientists.
 
 `Python <https://www.python.org/>`_ is a simple and fast programming language.
-With easy-to-learn syntax and good readability, python is ideal for scientists and
+With easy-to-learn syntax and good readability, Python is ideal for scientists and
 experimentalists interested in quick development and refinement.
 Itself being `open-source <https://github.com/python/cpython>`_,
-python is a goto language for open-source projects, to the point that it is the
+Python is a goto language for open-source projects, to the point that it is the
 `most pull-requested language <https://madnight.github.io/githut/#/pull_requests/2022/1>`_
 on GitHub.
 
 .. Fast and hardware-compatible due to C backend.
 
-The default implementation of the python language,
-`cpython <https://github.com/python/cpython>`_, is built on top of C.
+The default implementation of the Python language,
+`CPython <https://github.com/python/cpython>`_, is built on top of C.
 Scientific computing packages such as |numpy|_ and |scipy|_ implement
 algorithms in fast C code, leading to a paradigm where 'heavy lifting' is done in C,
-while higher-level logic or 'heavy coding' is done in the more user-friendly python.
+while higher-level logic or 'heavy coding' is done in the more user-friendly Python.
 Importantly, the accessiblity of the C backend means that hardware interfaces
 (often written in C) are
 `easy to implement <https://docs.python.org/3/library/ctypes.html>`_
-in python. This is critical for
+in Python. This is critical for
 the |slmsuite|_ package, which focuses on experimental holography using physical
 cameras and SLMs.
 

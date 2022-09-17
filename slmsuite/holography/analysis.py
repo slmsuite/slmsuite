@@ -12,7 +12,7 @@ from slmsuite.misc.fitfunctions import gaussian2d_fitfun
 
 def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=False):
     """
-    Crop integration regions around an array of ``points``.
+    Crop integration regions around an array of ``points``, yielding an array of images.
 
     Each integration region is a rectangle of the same ``size``. Similar to but more
     general than :meth:`numpy.take`; useful for gathering data from spots in spot arrays.
@@ -129,7 +129,7 @@ def take_plot(taken):
 
 def take_moment(taken, moment=(1,0), centers=(0,0), normalize=True, nansum=False):
     r"""
-    For each image in an array of images, computes the given moment :math:`M_{m_xm_y}`.
+    Array-wise computes the given moment :math:`M_{m_xm_y}`.
     This involves integrating each image against polynomial trial functions:
 
     .. math:: M_{m_xm_y} = \frac{   \int_{-w_x/2}^{+w_x/2} dx \, (x-c_x)^{m_x}
@@ -225,8 +225,8 @@ def take_moment(taken, moment=(1,0), centers=(0,0), normalize=True, nansum=False
 
 def take_moment0(taken, nansum=False):
     """
-    For each image in an array of images, 
-    computes the zeroth order moment, equivalent to the mass or normalization.
+    Array-wise 
+    computes the zeroth order moments, equivalent to mass or normalization.
 
     Parameters
     ----------
@@ -244,8 +244,8 @@ def take_moment0(taken, nansum=False):
 
 def take_moment1(taken, normalize=True, nansum=False):
     """
-    For each image in an array of images, 
-    computes the two first order moments, equivalent to the position.
+    Array-wise 
+    computes the two first order moments, equivalent to position.
 
     Parameters
     ----------
@@ -270,8 +270,8 @@ def take_moment1(taken, normalize=True, nansum=False):
 
 def take_moment2(taken, centers=None, normalize=True, nansum=False):
     r"""
-    For each image in an array of images, 
-    computes the three second order central moments, equivalent the variance.
+    Array-wise 
+    computes the three second order central moments, equivalent to variance.
     Specifically, this function returns a stack of the moments :math:`M_{20}` and
     :math:`M_{02}`, along with :math:`M_{11}`, which are the variance in the :math:`x`
     and :math:`y` directions, along with the so-called shear variance.
@@ -411,8 +411,8 @@ def take_moment2_ellipcicity_angle(moment2):
 
 def take_normalize(taken, nansum=False):
     """
-    For each image in an array of images, 
-    calculates the zeroth order moment and uses it to normalize the data.
+    Array-wise 
+    calculates the zeroth order moments and uses them to normalize the images.
 
     Parameters
     ----------
@@ -431,7 +431,7 @@ def take_normalize(taken, nansum=False):
 
 def take_fit(taken, function=gaussian2d_fitfun, guess=False):
     """
-    **(Untested)** For each image in an array of images, 
+    **(Untested)** Array-wise 
     fit to a given function.
 
     Parameters
@@ -609,7 +609,9 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
     return blobs, detector
 
 def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False):
-    r"""Detect an array of spots and return orientation. Primarily used for calibration.
+    r"""
+    Detect an array of spots and return the orientation as an affine transformation.
+    Primarily used for calibration.
 
     For a rectangular array of spots imaged in ``img``,
     find the variables :math:`\vec{M}` and :math:`\vec{b}` for the  affine transformation

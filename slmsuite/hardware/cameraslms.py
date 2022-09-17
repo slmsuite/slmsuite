@@ -635,20 +635,20 @@ class FourierSLM(CameraSLM):
                 a / (a + c)
             """
             guess = [
-                np.max(intensities) - np.min(intensities),
                 phases[np.argmax(intensities)],
+                np.max(intensities) - np.min(intensities),
                 np.min(intensities),
             ]
 
             try:
-                p, _ = optimize.curve_fit(cos_fitfun, phases, intensities, p0=guess)
+                popt, _ = optimize.curve_fit(cos_fitfun, phases, intensities, p0=guess)
             except BaseException:
                 return 0, 0, 0, 0
 
             # extract phase and amplitude from fit
-            best_phase = p[1]
-            amp = p[0]
-            contrast = p[0] / (p[0] + p[2])
+            best_phase = popt[0]
+            amp = popt[1]
+            contrast = popt[1] / (popt[1] + popt[2])
 
             # residual and total sum of squares, producing the r^2 metric.
             ss_res = np.sum((intensities - cos_fitfun(phases, *p)) ** 2)

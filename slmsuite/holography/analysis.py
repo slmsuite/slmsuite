@@ -5,8 +5,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from functools import reduce
 from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
+from scipy.optimize import curve_fit
 
 from slmsuite.holography.toolbox import clean_2vectors
+from slmsuite.misc.fitfunctions import gaussian2d_fitfun
 
 def make8bit(img):
     """
@@ -107,11 +109,11 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
         2-vector (or 2-vector array) listing location(s) of integration region(s).
         See :meth:`~slmsuite.holography.toolbox.clean_2vectors`.
     size : int or (int, int)
-        Size of the rectangular integration region in ``(w,h)`` format. If a scalar is given,
-        assume square ``(w,w)``.
+        Size of the rectangular integration region in ``(w, h)`` format. If a scalar is given,
+        assume square ``(w, w)``.
     centered : bool
         Whether to center the integration region on the ``points``.
-        If False, lower left corner is used.
+        If False, the lower left corner is used.
     integrate : bool
         If true, the spatial dimension are integrated (summed), yielding a result of the
         same length as the number of points.
@@ -177,7 +179,7 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
         take_plot(np.reshape(result, (points.shape[1], size[1], size[0])))
 
     if integrate:   # Sum over the integration axis
-        return np.sum(result, -1)
+        return np.sum(result, axis=-1)
     else:           # Reshape the integration axis
         return np.reshape(result, (points.shape[1], size[1], size[0]))
 
@@ -203,70 +205,190 @@ def take_plot(taken):
 
     plt.show()
 
-def take_moment(taken, moment=(1,0), normalize=True, centers=(0,0)):
+def take_moment(taken, moment=(1,0), centers=(0,0), normalize=True, nansum=False):
     r"""
-    Computes the batch weighted average of an array of images for a given moment
-    :math:`M_{m_xm_y}`. This involves integrating against polynomial trial functions:
+    Computes the weighted average of each image in an array of images for a given moment
+    :math:`M_{m_xm_y}`.
+    This involves integrating each image against polynomial trial functions:
 
-    .. math:: M_{m_xm_y} = \frac{\int_{-w_x/2}^{w_x/2} (x-c_x)^m_x \int_{-w_y/2}^{w_y/2} (y-c_y)^m_y P(x+x_0, y+y_0)\,dy\,dx}{\int_{-w_x/2}^{w_x/2}\int_{-w_y/2}^{w_y/2} P(x, y)\,dy\,dx}
+    .. math:: M_{m_xm_y} = \frac{   \int_{-w_x/2}^{+w_x/2} dx \, (x-c_x)^{m_x}
+                                    \int_{-w_y/2}^{+w_y/2} dy \, (y-c_y)^{m_y}
+                                    P(x+x_0, y+y_0)
+                                }{  \int_{-w_x/2}^{+w_x/2} dx \,
+                                    \int_{-w_y/2}^{+w_y/2} dy \,
+                                    P(x, y)},
 
     where :math:`P(x, y)` is a given 2D image, :math:`(x_0, y_0)` is the center of a
     window of size :math:`w_x \times w_y`, and :math:`(c_x, c_y)` is a shift in the
     center of the trial functions.
 
+    Warning
+    ~~~~~~~
+    This function does not check if the images in ``taken`` are non-negative, or corrects
+    for this. Negative values may produce unusual results.
+
+    Warning
+    ~~~~~~~
+    Higher order even moments (e.g. 2) will potentially yield unexpected results if
+    the images are not background-subtracted. For instance, a calculation on an image
+    with very small SNR will yield the moment of the window, rather than say anything
+    about the image.
+
     Parameters
     ----------
     taken : numpy.ndarray
-        A matrix in the style of the output of :meth:`take`, with shape `(N, wy, wx)`, where
-        `(wx, wy)` is the width and height of
+        A matrix in the style of the output of :meth:`take()`, with shape `(N, wy, wx)`, where
+        `(wx, wy)` is the width and height of the 2D images and :math:`N` is the number of
+        images.
     moment : (int, int)
-        The moments in the :math:`x` and :math:`y` directions: :math:`(M_x, M_y)`. For instance,
+        The moments in the :math:`x` and :math:`y` directions: :math:`(m_x, m_y)`. For instance,
 
-        - :math:`(M_x, M_y) = (1, 0)` corresponds to the :math:`x` moment or
+        - :math:`(m_x, m_y) = (1, 0)` corresponds to the :math:`x` moment or
           the position in the :math:`x` dimension.
-        - :math:`(M_x, M_y) = (1, 1)` corresponds to the :math:`xy` shear.
-        - :math:`(M_x, M_y) = (0, 2)` corresponds to the :math:`y^2` moment, or the (squared)
-          width in the :math:`y` direction, given zero :math:`(M_x, M_y) = (0, 1)` moment.
+        - :math:`(m_x, m_y) = (1, 1)` corresponds to the :math:`xy` shear.
+        - :math:`(m_x, m_y) = (0, 2)` corresponds to the :math:`y^2` moment, or the variance
+          (squared width for a Gaussian) in the :math:`y` direction,
+          given a zero or zeroed (via ``centers``) :math:`(m_x, m_y) = (0, 1)` moment.
 
-    normalize : bool
-        Whether to normalize taken. If ``False``, normalization is assumed to have been precomputed.
     centers : tuple or numpy.ndarray
         Perturbations to the center of the trial function, :math:`(c_x, c_y)`.
+    normalize : bool
+        Whether to normalize ``taken``.
+        If ``False``, normalization is assumed to have been precomputed.
+    nansum : bool
+        Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
+        :meth:`numpy.nansum()` treats ``nan`` values as zeros.
+        This is useful in the case where ``clip=True`` is passed to :meth:`take()`
+        (out of range is set to ``nan``).
     """
     (N, w_y, w_x) = taken.shape
 
-    edge_x = np.reshape(np.power(np.arange(w_x) - (w_x-1)/2., moment), (1, 1, w_x)) - centers[0]
-    edge_y = np.reshape(np.power(np.arange(w_y) - (w_y-1)/2., moment), (1, w_y, 1)) - centers[1]
+    if len(np.shape(centers)) == 2:
+        c_x = np.reshape(centers[0], (N, 1, 1))
+        c_y = np.reshape(centers[1], (N, 1, 1))
+    elif len(np.shape(centers)) == 1:
+        c_x = centers[0]
+        c_y = centers[1]
+
+    edge_x = np.reshape(np.power(np.arange(w_x) - (w_x-1)/2., moment[0]), (1, 1, w_x)) - c_x
+    edge_y = np.reshape(np.power(np.arange(w_y) - (w_y-1)/2., moment[1]), (1, w_y, 1)) - c_y
+
+    if nansum:
+        np_sum = np.nansum
+    else:
+        np_sum = np.sum
 
     if normalize:
-        normalization = np.sum(taken, axis=(1,2), keepdims=False)
+        normalization = np_sum(taken, axis=(1,2), keepdims=False)
         reciprical = np.reciprocal(normalization, where=normalization != 0, out=np.zeros(N,))
     else:
         reciprical = 1
 
     if moment[1] == 0:                          # x case
-        return np.sum(taken * edge_x, axis=(1,2), keepdims=False) * reciprical
+        return np_sum(taken * edge_x, axis=(1,2), keepdims=False) * reciprical
     elif moment[0] == 0:                        # y case
-        return np.sum(taken * edge_y, axis=(1,2), keepdims=False) * reciprical
+        return np_sum(taken * edge_y, axis=(1,2), keepdims=False) * reciprical
     elif moment[1] != 0 and moment[1] != 0:     # Shear case
-        return np.sum(taken * edge_x * edge_y, axis=(1,2), keepdims=False) * reciprical
+        return np_sum(taken * edge_x * edge_y, axis=(1,2), keepdims=False) * reciprical
     else:                                       # 0,0 (norm) case
         if normalize:
             return np.ones((N,))
         else:
-            return np.sum(taken, axis=(1,2), keepdims=False)
+            return np_sum(taken, axis=(1,2), keepdims=False)
 
-def take_moment1(taken):
-    return np.vstack(take_moment(taken, (1,0)), take_moment(taken, (0,1)))
+def take_moment0(taken, nansum=False):
+    """
+    Computes the zeroth order moment, equivalent to the mass or normalization.
+    """
+    return take_moment(taken, (0,0), normalize=False, nansum=nansum)
 
-def take_moment2(taken):
-    centers = take_moment1(taken)
+def take_moment1(taken, normalize=True, nansum=False):
+    """
+    Computes the first order moment, equivalent to the position.
+    """
+    if normalize:
+        taken = take_normalize(taken)
 
-    m20 = take_moment(taken, (2,0), centers=centers)
-    m11 = take_moment(taken, (1,1), centers=centers)
-    m02 = take_moment(taken, (0,2), centers=centers)
+    return np.vstack(  (take_moment(taken, (1,0), normalize=False, nansum=nansum),
+                        take_moment(taken, (0,1), normalize=False, nansum=nansum)) )
 
-    return np.stack(np.vstack(m20, m11), np.vstack(m11, m02), axis=2)
+def take_moment2(taken, centers=None, normalize=True, nansum=False):
+    """
+    Computes the second order moment, equivalent to the variance.
+    """
+    if normalize:
+        taken = take_normalize(taken)
+
+    if centers is None:
+        centers = take_moment1(taken, normalize=False, nansum=nansum)
+
+    m20 = take_moment(taken, (2,0), centers=centers, normalize=False, nansum=nansum)
+    m11 = take_moment(taken, (1,1), centers=centers, normalize=False, nansum=nansum)
+    m02 = take_moment(taken, (0,2), centers=centers, normalize=False, nansum=nansum)
+
+    return np.stack((np.vstack((m20, m11)), np.vstack((m11, m02))), axis=2)
+
+def take_normalize(taken, nansum=False):
+    """
+    Calculates the zeroth order moment and uses it to normalize the data.
+    """
+    N = taken.shape[0]
+    normalization = take_moment0(taken, nansum=nansum)
+    reciprical = np.reciprocal(normalization, where=normalization != 0, out=np.zeros(N,))
+    return taken * np.reshape(reciprical, (N, 1, 1))
+
+def take_fit(taken, function=gaussian2d_fitfun, guess=False, nanzero=True):
+    """
+    (Untested) Serially fits images in the provided list to a given function.
+    """
+    (N, w_y, w_x) = taken.shape
+
+    edge_x = np.reshape(np.arange(w_x) - (w_x-1)/2., (1, 1, w_x))
+    edge_y = np.reshape(np.arange(w_y) - (w_y-1)/2., (1, w_y, 1))
+
+    grid_x, grid_y = np.meshgrid(edge_x, edge_y)
+
+    grid_xy = (grid_x.ravel(), grid_y.ravel())
+
+    taken = np.copy(taken)
+    taken[np.isnan(taken)] = 0
+
+    if guess:
+        if function is gaussian2d_fitfun:
+            centers = take_moment1(taken, normalize=False)
+            widths = take_moment2(taken, centers=centers, normalize=False)
+        else:
+            raise RuntimeError("Do not know how to parse guess for unknown function.")
+
+    for n in range(N):
+        try:
+            img = taken[n, :, :].ravel()
+
+            if guess:
+                if function is gaussian2d_fitfun:
+                    # x0, y0, a, c, wx, wy, wxy
+                    popt0 = [   centers[n, 0], centers[n, 1],
+                                np.amax(img) - np.amin(img), np.amin(img),
+                                np.sqrt(widths[n, 0, 0]), np.sqrt(widths[n, 1, 1]), widths[n, 1, 0]]
+
+            popt, _ = curve_fit(
+                function,
+                grid_xy,
+                img,
+                ftol=1e-5,
+                p0=popt0,
+            )
+
+            ss_res = np.sum(np.square(img - function(grid_xy, *popt)))
+            ss_tot = np.sum(np.square(img - np.mean(img)))
+            r2 = 1 - (ss_res / ss_tot)
+
+            z_opt = popt[0]
+            c_opt = popt[1]
+        except BaseException:
+            z_opt = z_list[np.argmax(counts)]
+            c_opt = counts[np.argmax(counts)]
+
 
 def blob_detect(img, plot=False, title="", filter=None, **kwargs):
     """

@@ -107,7 +107,7 @@ def take_plot(taken):
     Parameters
     ----------
     taken : numpy.ndarray
-        array of 2D images, usually a :meth:`take()` output.
+        Array of 2D images, usually a :meth:`take()` output.
     """
     (N, sy, sx) = np.shape(taken)
     M = int(np.ceil(np.sqrt(N)))
@@ -129,8 +129,7 @@ def take_plot(taken):
 
 def take_moment(taken, moment=(1,0), centers=(0,0), normalize=True, nansum=False):
     r"""
-    Computes the weighted average of each image in an array of images for a given moment
-    :math:`M_{m_xm_y}`.
+    For each image in an array of images, computes the given moment :math:`M_{m_xm_y}`.
     This involves integrating each image against polynomial trial functions:
 
     .. math:: M_{m_xm_y} = \frac{   \int_{-w_x/2}^{+w_x/2} dx \, (x-c_x)^{m_x}
@@ -146,14 +145,14 @@ def take_moment(taken, moment=(1,0), centers=(0,0), normalize=True, nansum=False
 
     Warning
     ~~~~~~~
-    This function does not check if the images in ``taken`` are non-negative, or corrects
+    This function does not check if the images in ``taken`` are non-negative, or correct
     for this. Negative values may produce unusual results.
 
     Warning
     ~~~~~~~
     Higher order even moments (e.g. 2) will potentially yield unexpected results if
     the images are not background-subtracted. For instance, a calculation on an image
-    with very small SNR will yield the moment of the window, rather than say anything
+    with large background will yield the moment of the window, rather than say anything
     about the image.
 
     Parameters
@@ -165,12 +164,12 @@ def take_moment(taken, moment=(1,0), centers=(0,0), normalize=True, nansum=False
     moment : (int, int)
         The moments in the :math:`x` and :math:`y` directions: :math:`(m_x, m_y)`. For instance,
 
-        - :math:`(m_x, m_y) = (1, 0)` corresponds to the :math:`x` moment or
+        - :math:`M_{m_xm_y} = M_{10}` corresponds to the :math:`x` moment or
           the position in the :math:`x` dimension.
-        - :math:`(m_x, m_y) = (1, 1)` corresponds to the :math:`xy` shear.
-        - :math:`(m_x, m_y) = (0, 2)` corresponds to the :math:`y^2` moment, or the variance
+        - :math:`M_{m_xm_y} = M_{11}` corresponds to :math:`xy` shear.
+        - :math:`M_{m_xm_y} = M_{02}` corresponds to the :math:`y^2` moment, or the variance
           (squared width for a Gaussian) in the :math:`y` direction,
-          given a zero or zeroed (via ``centers``) :math:`(m_x, m_y) = (0, 1)` moment.
+          given a zero or zeroed (via ``centers``) :math:`M_{01}` moment.
 
     centers : tuple or numpy.ndarray
         Perturbations to the center of the trial function, :math:`(c_x, c_y)`.
@@ -226,12 +225,13 @@ def take_moment(taken, moment=(1,0), centers=(0,0), normalize=True, nansum=False
 
 def take_moment0(taken, nansum=False):
     """
-    Computes the zeroth order moment, equivalent to the mass or normalization.
+    For each image in an array of images, 
+    computes the zeroth order moment, equivalent to the mass or normalization.
 
     Parameters
     ----------
     taken : numpy.ndarray
-        array of 2D images, usually a :meth:`take()` output.
+        Array of 2D images, usually a :meth:`take()` output.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
 
@@ -244,12 +244,13 @@ def take_moment0(taken, nansum=False):
 
 def take_moment1(taken, normalize=True, nansum=False):
     """
-    Computes the first order moment, equivalent to the position.
+    For each image in an array of images, 
+    computes the two first order moments, equivalent to the position.
 
     Parameters
     ----------
     taken : numpy.ndarray
-        array of 2D images, usually a :meth:`take()` output.
+        Array of 2D images, usually a :meth:`take()` output.
     normalize : bool
         Whether to normalize ``taken``.
         If ``False``, normalization is assumed to have been precomputed.
@@ -269,7 +270,8 @@ def take_moment1(taken, normalize=True, nansum=False):
 
 def take_moment2(taken, centers=None, normalize=True, nansum=False):
     r"""
-    Computes the second order central moment, equivalent in the 1D case to the variance.
+    For each image in an array of images, 
+    computes the three second order central moments, equivalent the variance.
     Specifically, this function returns a stack of the moments :math:`M_{20}` and
     :math:`M_{02}`, along with :math:`M_{11}`, which are the variance in the :math:`x`
     and :math:`y` directions, along with the so-called shear variance.
@@ -285,7 +287,7 @@ def take_moment2(taken, centers=None, normalize=True, nansum=False):
     Parameters
     ----------
     taken : numpy.ndarray
-        array of 2D images, usually a :meth:`take()` output.
+        Array of 2D images, usually a :meth:`take()` output.
     centers : numpy.ndarray OR None
         If the user has already computed :math:`\left<x\right>`, for example via
         :meth:`take_moment1()`, then this can be passed though ``centers``. The default
@@ -315,12 +317,12 @@ def take_moment2(taken, centers=None, normalize=True, nansum=False):
 
 def take_moment2_circularity(moment2):
     r"""
-    Given the output of :meth:`take_moment2()`, return a measure of spot circularity.
+    Given the output of :meth:`take_moment2()`, 
+    return a measure of spot circularity for each moment triplet.
     The output of :meth:`take_moment2()` contains the moments :math:`M_{20}`,
     :math:`M_{02}`, and :math:`M_{11}`. These terms make up a :math:`2 \times 2` matrix,
-    which in truth is a rotated (by some rotation matrix :math:`R(\phi)`) version of 
-    an elliptical scaling according to the 
-    eigenvalues :math:`\lambda_+` and :math:`\lambda_-`.
+    which is equivalent to a rotated elliptical scaling according to the eigenvalues 
+    :math:`\lambda_+` and :math:`\lambda_-` and some rotation matrix :math:`R(\phi)`.
 
     .. math::   \begin{bmatrix}
                     M_{20} & M_{11} \\
@@ -332,16 +334,17 @@ def take_moment2_circularity(moment2):
                     \lambda_+ & 0 \\
                     0 & \lambda_- \\
                 \end{bmatrix}
-                R(-\phi)
+                R(-\phi).
 
     We use this knowledge, along with tricks for eigenvalue calculations on 
     :math:`2 \times 2` matrices, to build up a metric for circularity:
 
-    .. math:: \mathcal{C} = 1 - \frac{\lambda_+ - \lambda_-}{\lambda_+ + \lambda_-}
+    .. math:: \mathcal{C} = \frac{\lambda_-}{\lambda_+}.
 
     Notice that 
-    when :math:`\lambda_+ = \lambda_-` (isotropic scaling), :math:`\mathcal{C} = 1` and
-    when :math:`\lambda_- = 0` (flattened to a line), :math:`\mathcal{C} = 0`.
+
+    - when :math:`\lambda_+ = \lambda_-` (isotropic scaling), the metric is unity and
+    - when :math:`\lambda_- = 0` (flattened to a line), the metric is zero.
     
     Parameters
     ----------
@@ -363,18 +366,17 @@ def take_moment2_circularity(moment2):
     determinant = m20 * m20 - m11 * m11
 
     eig_half_difference = np.sqrt(np.square(half_trace) - determinant)
-    eig_mean = half_trace
 
-    # Just to note, the above are defined to satisfy: 
-    #   eig_plus =  eig_mean + eig_half_difference
-    #   eig_minus = eig_mean - eig_half_difference
+    eig_plus =  half_trace + eig_half_difference
+    eig_minus = half_trace - eig_half_difference
 
-    return 1 - eig_half_difference / eig_mean
+    return eig_minus / eig_plus
 
 def take_moment2_ellipcicity_angle(moment2):
     r"""
-    Given the output of :meth:`take_moment2()`, return the rotation angle for
-    elliptical spots. This is the angle between the :math:`x` axis and the 
+    Given the output of :meth:`take_moment2()`, 
+    return the rotation angle of the scaled basis for each moment triplet. 
+    This is the angle between the :math:`x` axis and the 
     major axis (large eigenvalue axis).
 
     Parameters
@@ -409,16 +411,47 @@ def take_moment2_ellipcicity_angle(moment2):
 
 def take_normalize(taken, nansum=False):
     """
-    Calculates the zeroth order moment and uses it to normalize the data.
+    For each image in an array of images, 
+    calculates the zeroth order moment and uses it to normalize the data.
+
+    Parameters
+    ----------
+    taken : numpy.ndarray
+        Array of 2D images, usually a :meth:`take()` output.
+
+    Returns
+    -------
+    taken_normalized : numpy.ndarray
+        A copy of ``taken``, with each image normalized.
     """
     N = taken.shape[0]
     normalization = take_moment0(taken, nansum=nansum)
     reciprical = np.reciprocal(normalization, where=normalization != 0, out=np.zeros(N,))
     return taken * np.reshape(reciprical, (N, 1, 1))
 
-def take_fit(taken, function=gaussian2d_fitfun, guess=False, nanzero=True):
+def take_fit(taken, function=gaussian2d_fitfun, guess=False):
     """
-    (Untested) Serially fits images in the provided list to a given function.
+    **(Untested)** For each image in an array of images, 
+    fit to a given function.
+
+    Parameters
+    ----------
+    taken : numpy.ndarray
+        Array of 2D images, usually a :meth:`take()` output.
+    function : lambda
+        Some fitfunction. Defaults to 
+        :meth:`~slmsuite.misc.fitfunctions.gaussian2d_fitfun()`.
+    guess : bool
+        Whether to use a guess for the peak locations. Only works for the
+        default ``function`` at the moment.
+
+    Returns
+    -------
+    numpy.ndarray
+        A matrix with the fit results. This is of shape ``(M, N)``, where ``M``
+        is the number of arguments that ``function`` accepts. The slot for the
+        ``xy`` points is replaced with measurements of the rsquared quality of
+        the fit. Failed fits have a column filled with ``np.nan``.
     """
     (N, w_y, w_x) = taken.shape
 
@@ -429,15 +462,14 @@ def take_fit(taken, function=gaussian2d_fitfun, guess=False, nanzero=True):
 
     grid_xy = (grid_x.ravel(), grid_y.ravel())
 
-    taken = np.copy(taken)
-    taken[np.isnan(taken)] = 0
-
     if guess:
         if function is gaussian2d_fitfun:
             centers = take_moment1(taken, normalize=False)
-            widths = take_moment2(taken, centers=centers, normalize=False)
+            widths =  take_moment2(taken, centers=centers, normalize=False)
         else:
             raise RuntimeError("Do not know how to parse guess for unknown function.")
+
+    result = np.full((function.__code__.co_argcount, N), np.nan)
 
     for n in range(N):
         try:
@@ -446,9 +478,15 @@ def take_fit(taken, function=gaussian2d_fitfun, guess=False, nanzero=True):
             if guess:
                 if function is gaussian2d_fitfun:
                     # x0, y0, a, c, wx, wy, wxy
-                    popt0 = [   centers[n, 0], centers[n, 1],
-                                np.amax(img) - np.amin(img), np.amin(img),
-                                np.sqrt(widths[n, 0, 0]), np.sqrt(widths[n, 1, 1]), widths[n, 1, 0]]
+                    popt0 = [   
+                        centers[n, 0], 
+                        centers[n, 1],
+                        np.amax(img) - np.amin(img), 
+                        np.amin(img),
+                        np.sqrt(widths[0, n]), 
+                        np.sqrt(widths[1, n]), 
+                        widths[2, n]
+                    ]
 
             popt, _ = curve_fit(
                 function,
@@ -462,19 +500,20 @@ def take_fit(taken, function=gaussian2d_fitfun, guess=False, nanzero=True):
             ss_tot = np.sum(np.square(img - np.mean(img)))
             r2 = 1 - (ss_res / ss_tot)
 
-            z_opt = popt[0]
-            c_opt = popt[1]
+            result[0, n] = r2
+            result[1:, n] = popt
         except BaseException:
-            z_opt = z_list[np.argmax(counts)]
-            c_opt = counts[np.argmax(counts)]
-
+            pass
+    
+    return result
 
 def blob_detect(img, plot=False, title="", filter=None, **kwargs):
     """
     Detect blobs in an image.
+
     Wraps :class:`cv2.SimpleBlobDetector` [1]_. See also [2]_.
     Default parameters are optimized for bright spot detection on dark background,
-    but can be changed with **kwargs.
+    but can be changed with ``**kwargs``.
 
     Parameters
     ----------

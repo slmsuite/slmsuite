@@ -42,7 +42,7 @@ def lorentzian_fitfun(x, x0, a, c, Q):
     Parameters
     ----------
     x : numpy.ndarray
-        Wavelength.
+        Points to fit upon.
     x0 : float
         Center wavelength.
     a : float
@@ -107,36 +107,96 @@ def gaussian_fitfun(x, x0, a, c, w):
 
     .. math:: y(x) = c + a \exp \left[\frac{(x-x_0)^2}{w^2}\right].
 
-    w :float
+    Parameters
+    ----------
+    x : numpy.ndarray
+        Points to fit upon.
+    x0 : float
+        Positional offset.
+    a : float
+        Amplitude.
+    c : float
+        constant offset.
+    w : float
         The standard deviation of the normal distribution. This is related to the
         full width at half maximum (FWHM) by a factor of :math:`2\sqrt{2\ln{2}}`.
+
+    Returns
+    -------
+    y : numpy.ndarray
+        Gaussian fit evaluated at all ``x``.
     """
     return c + a * np.exp(-.5 * np.square((x - x0) * (1/w)))
 
 def gaussian2d_fitfun(xy, x0, y0, a, c, wx, wy, wxy=0):
     r""""
-    For fitting a 2d Gaussian. (Unfinished) Shear equation
+    For fitting a 2d Gaussian.
+
+    When the shear variance ``wxy`` (equivalent to :math:`M_{11}`) is zero,
 
     .. math:: z(x,y) = c + a \exp \left[
                                 \frac{(x-x_0)^2}{w_x^2} +
-                                \frac{(x-x_0)(y-y_0)}{w_{xy}} +
                                 \frac{(y-y_0)^2}{w_y^2}
                                 \right].
+    
+    When ``wxy`` is nonzero, we want to find the Gaussian which will have second
+    order central moments (equivalent to variance) satisfying:
+    
+    .. math::   M = 
+                \begin{bmatrix}
+                    M_{20} & M_{11} \\
+                    M_{11} & M_{02} \\
+                \end{bmatrix}
+                = 
+                \begin{bmatrix}
+                    w_x^2 & w_{xy} \\
+                    w_{xy} & w_y^2 \\
+                \end{bmatrix}.
+
+    The equation satifying this turns out to be
+
+    .. math:: z(x,y) = c + a \exp \left[
+                                K_{00}(x-x_0)^2 +
+                                2*K_{10}(x-x_0)(y-y_0)
+                                K_{11}(y-y_0)^2
+                                \right].
+
+    Where :math:`K = M^{-1}`.
 
     Caution
     ~~~~~~~
     The shear variance :math:`w_{xy}` does not have the same units as the widths
     :math:`w_x` and :math:`w_y`.
 
+    Note
+    ~~~~
+    The shear variance ``wxy`` is currently bounded to ``wx*wy``, as higher values
+    are not finite. The case ``wxy = wx*wy`` is equivalent to a line.
 
+    Parameters
+    xy : numpy.ndarray
+        Points to fit upon. ``(x, y)`` form.
+    x0, y0 : float
+        Vector offset.
+    a : float
+        Amplitude.
+    c : float
+        constant offset.
+    wx, wy : float
+        The standard deviation of the normal distribution. This is related to the
+        full width at half maximum (FWHM) by a factor of :math:`2\sqrt{2\ln{2}}`.
+    wxy : float
+        Shear variance. See above.
+
+    Returns
+    -------
+    z : numpy.ndarray
+        Gaussian fit evaluated at all ``(x,y)`` in ``xy``.
     """
     x = xy[0] - x0
     y = xy[1] - y0
-
-    # if wxy != 0:
-    #     shear = -2 * wxy / (wx * wx * wy * wy - wxy * wxy)
-    # else:
-    #     shear = 0
+    
+    wxy = np.sign(wxy) * np.min([np.abs(wxy), wx*wy])
 
     M = np.linalg.inv([[wx*wx, wxy], [wxy, wy*wy]])
 

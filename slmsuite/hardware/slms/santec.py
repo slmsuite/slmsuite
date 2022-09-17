@@ -46,7 +46,7 @@ class Santec(SLM):
     Interfaces with Santec SLMs.
 
     Attributes
-    ------
+    ----------
     slm_number : int
         USB port number assigned by Santec SDK.
     display_number : int
@@ -207,36 +207,34 @@ class Santec(SLM):
 
         return display_list
 
-    def load_flatmap(self, flatmap_path=None, smooth=False):
+    def load_flatmap(self, file_path, flatmap_wav_um=0.830, smooth=False):
         """
         See :meth:`.SLM.load_flatmap`.
 
         Parameters
         ----------
+        flatmap_wav_um : float
+            The wavelength the flatmap was taken at in um. Default is 830nm.
         smooth : bool
             Whether to apply a Gaussian blur to smooth the data.
         """
-        # TODO: Fix default flatmap_path
         try:
-            if flatmap_path is None:    # Hack
-                flatmap_path = "Wavefront_correction_Data_211236000001(520nm).csv"
-
             # Load from .csv, skipping the first row and column
             # (corresponding to X and Y coordinates).
-            map = np.loadtxt(flatmap_path, skiprows=1, dtype=int, delimiter=",")[:, 1:]
-
-            phase = (-2 * np.pi / self.bitresolution) * map.astype(float)
+            map = np.loadtxt(file_path, skiprows=1, dtype=int, delimiter=",")[:, 1:]
+            phase = (-2 * np.pi / self.bitresolution * self.wav_um / flatmap_wav_um) * map.astype(float)
 
             # Smooth the map
-            real = np.cos(phase)
-            imag = np.sin(phase)
-            size_blur = 15
+            if smooth:
+                real = np.cos(phase)
+                imag = np.sin(phase)
+                size_blur = 15
 
-            real = cv2.GaussianBlur(real, (size_blur, size_blur), 0)
-            imag = cv2.GaussianBlur(imag, (size_blur, size_blur), 0)
+                real = cv2.GaussianBlur(real, (size_blur, size_blur), 0)
+                imag = cv2.GaussianBlur(imag, (size_blur, size_blur), 0)
 
-            # Recombine the components
-            phase = np.arctan2(imag, real) + np.pi
+                # Recombine the components
+                phase = np.arctan2(imag, real) + np.pi
 
             self.flatmap = phase
         except BaseException as e:

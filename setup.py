@@ -7,8 +7,7 @@ from distutils.core import setup
 NAME = "slmsuite"
 VERSION = "0.1"
 DEPENDENCIES = [
-    "scipy", "matplotlib", "numpy", "opencv-python", "wxPython",
-    "cupy", "tqdm", "h5py"
+    "scipy", "matplotlib", "numpy", "opencv-python", "tqdm", "h5py"
 ]
 DESCRIPTION = ("Package for high-performance spatial light "
                "modulator (SLMs) control and holography.")

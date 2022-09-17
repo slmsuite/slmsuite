@@ -82,6 +82,19 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
             if clip:    yf = matrix.shape[0] - 1
             else:       raise ValueError()
 
+        if xf < 0:
+            if clip:    xf = 0
+            else:       raise ValueError()
+        if xi >= matrix.shape[1]:
+            if clip:    xi = matrix.shape[1] - 1
+            else:       raise ValueError()
+        if yf < 0:
+            if clip:    yf = 0
+            else:       raise ValueError()
+        if yi >= matrix.shape[0]:
+            if clip:    yi = matrix.shape[0] - 1
+            else:       raise ValueError()
+
         # Modify the matrix
         if imprint_operation == "replace":
             matrix[yi:yf,xi:xf] =   function(  (x_grid[yi:yf,xi:xf],

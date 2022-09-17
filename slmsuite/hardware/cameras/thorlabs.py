@@ -149,7 +149,7 @@ class ThorCam(Camera):
         if verbose:
             print("success")
 
-    def close(self, close_sdk=True):
+    def close(self, close_sdk=False):
         """
         See :meth:`.Camera.close`.
 

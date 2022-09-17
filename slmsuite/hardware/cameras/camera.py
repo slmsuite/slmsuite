@@ -10,7 +10,6 @@ from scipy.optimize import curve_fit
 from slmsuite.holography import analysis
 from slmsuite.misc import lorentzian_fitfun, lorentzian_jacobian
 
-
 class Camera:
     """
     Abstract class for cameras. Comes with transformations and helper functions like autoexpose.
@@ -410,3 +409,60 @@ class Camera:
             plt.show()
 
         return z_opt, imlist
+
+def view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
+    """
+    Continuously get camera frames and plot them. Intended for use in jupyter notebooks.
+    Activate ``%matplotlib notebook`` before calling this function. This method
+    does not halt, exit with a keyboard interrupt.
+
+    Parameters
+    ----------
+    cameras : list of :class:`Camera`
+        The cameras to view continuously.
+    cmap
+        See :meth:`matplotlib.pyplot.imshow`.
+    facecolor
+        See :meth:`matplotlib.pyplot.figure`.
+    dpi
+        See :meth:`matplotlib.pyplot.figure`. Default is 300.
+    """
+    # Get camera information.
+    cam_count = len(cameras)
+    cams_max_height = cams_max_width = 0
+    for (cam_idx, cam) in enumerate(cameras):
+        cam_height = cam.shape[0]
+        cam_width = cam.shape[1]
+        cams_max_height = max(cams_max_height, cam_height)
+        cams_max_width = max(cams_max_width, cam_width)
+
+    # Create figure.
+    plt.ion()
+    figsize = np.array((cam_count * cams_max_width, cams_max_height)) * 2 ** -9
+    fig, axs = plt.subplots(
+        1, cam_count, figsize=figsize, facecolor=facecolor, dpi=dpi
+    )
+    axs = np.reshape(axs, cam_count)
+    fig.tight_layout()
+    fig.show()
+    fig.canvas.draw()
+    for cam_idx in range(cam_count):
+        axs[cam_idx].tick_params(direction="in")
+
+    # Plot continuously.
+    while True:
+        for cam_idx in range(cam_count):
+            cam = cameras[cam_idx]
+            ax = axs[cam_idx]
+            img = cam.get_image()
+            ax.clear()
+            ax.imshow(img, interpolation=None, cmap=cmap)
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+
+
+
+
+
+
+

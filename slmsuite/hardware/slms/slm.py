@@ -52,7 +52,7 @@ class SLM:
     y_grid : numpy.ndarray of floats
         See :attr:`x_grid`.
     flatmap : numpy.ndarray
-        Correction provided by, for instance, the supplier, loaded from npz.
+        Phase correction to apply to the SLM, provided by, e.g. the slm vendor.
         Looks for correction upon intialization with :meth:`load_flatmap()`,
         but defaults to ``None`` if no correction is found.
     measured_amplitude : numpy.ndarray or None
@@ -106,8 +106,8 @@ class SLM:
         settle_time_s
             See :attr:`settle_time_s`.
         flatmap_path : str or None
-            Path to look for vendor-provided wavefront calibration. Passed to :meth:`load_flatmap`.
-            If ``None``, no flatmap is loaded.
+            File path to vendor-provided wavefront calibration. If ``None``,
+            no flatmap is loaded. Otherwise, passed to :meth:`load_flatmap`.
         """
         self.name = name
         self.shape = (int(height), int(width))
@@ -145,7 +145,8 @@ class SLM:
         self.phase_correction = None
         self.measured_amplitude = None
         self.flatmap = None
-        self.load_flatmap(flatmap_path)
+        if flatmap_path is not None:
+            self.load_flatmap(flatmap_path)
 
         # Decide dtype
         if self.bitdepth <= 8:
@@ -161,7 +162,7 @@ class SLM:
         """Close the SLM and delete related objects."""
         raise NotImplementedError()
 
-    def load_flatmap(self, flatmap_path=None):
+    def load_flatmap(self, file_path):
         """
         Load vendor-provided phase correction from file.
         Subclasses should implement vendor-specific flatmap loading.
@@ -169,8 +170,8 @@ class SLM:
 
         Parameters
         ----------
-        flatmap_path : str or None
-            Path to look for vendor-provided wavefront calibration.
+        file_path : str
+            File path for the vendor-provided flatmap.
 
         Returns
         ----------

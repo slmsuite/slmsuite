@@ -233,7 +233,7 @@ class Camera:
         tol : float
             Fractional tolerance for exposure adjustment.
         exposure_bounds_s : (float, float) OR None
-            Shortest and longest allowable integration in seconds. If ``None``, defaults to 
+            Shortest and longest allowable integration in seconds. If ``None``, defaults to
             :attr:`exposure_bounds_s`. If this attribute was not set (or not availible on
             a particular camera), then ``None`` instead defaults to unbounded.
         window : array_like or None
@@ -295,7 +295,7 @@ class Camera:
 
         exp_fin = exp * 2 * set_fraction
 
-        # The loop targets 50% of resolution 
+        # The loop targets 50% of resolution
         if set_fraction != 0.5:  # Sets for full dynamic range
             self.set_exposure(exp_fin)
 
@@ -363,7 +363,7 @@ class Camera:
         counts[0] = counts[1]
 
         popt0 = np.array(
-            [z_list[np.argmax(counts)], np.max(counts), 100, np.min(counts)]
+            [z_list[np.argmax(counts)], np.max(counts)-np.min(counts), np.min(counts), 100]
         )
 
         try:
@@ -376,7 +376,7 @@ class Camera:
                 p0=popt0,
             )
             z_opt = popt[0]
-            c_opt = popt[1]
+            c_opt = popt[1] + popt[2]
         except BaseException:
             print("Autofocus fit failed, using maximum fom as optimum...")
             z_opt = z_list[np.argmax(counts)]

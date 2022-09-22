@@ -8,7 +8,7 @@ from scipy.spatial.distance import euclidean
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
-from math import factorial, comb
+from math import factorial
 
 # Phase pattern collation and manipulation
 def imprint(
@@ -735,44 +735,82 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0)):
 
 def zernike(grid, n, m, aperture=None):
     """
-    **(Untested)** Returns a single Zernike polynomial.
+    Returns a single Zernike polynomial.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    n, m : int
+        Cartesian Zernike index defining the polynomial.
+    aperture : {"square", "rectangular", "cropped"} OR (float, float) OR None
+        See :meth:`zernike_sum()`.
     """
-    return zernike_sum(grid, ((n, m), 1), aperture=aperture)
+    return zernike_sum(grid, (((n, m), 1), ), aperture=aperture)
 
 
 def zernike_sum(grid, weights, aperture=None):
     """
-    **(Untested)** Returns a summation of Zernike polynomials.
+    Returns a summation of Zernike polynomials.
 
-    Zernike polynomials are canonically defined on a circular aperture. Cropping 
-    this aperture breaks the orthogonality of the set; thus 
+    Important
+    ~~~~~~~~~
+    Zernike polynomials are canonically defined on a circular aperture. However, we may
+    want to use these polynomials on other apertures (e.g. a rectangular SLM).
+    Cropping this aperture breaks the orthogonality and normalization of the set, but
+    this is fine for many applications. While it is possible to orthonormalize the
+    cropped set, we do not do so in ``slmsuite``, as this is not critical for target
+    applications such as abberation correction.
 
     Parameters
     ----------
-    grid
-        TODO
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
     weights
         list of ((int, int), float)
-    aperture {"rectangular", "square", "cropped"} OR (float, float) OR None
+    aperture {"square", "rectangular", "cropped"} OR (float, float) OR None
+        How to scale the polynomials relative to the grid shape. This is relative
+        to the :math:`R = 1` edge of a standard Zernike pupil.
 
+        ``"square"``, ``None``
+          The circle is scaled isotropically until the pupil edge touches the grid edge.
+        ``"rectangular"``
+          The circle is scaled anisotropically until each cartesian pupil edge touches a grid
+          edge. Generally produces and ellipse.
+        ``"cropped"``
+          The circle is scaled isotropically until the rectangle of the grid is
+          circumscribed by the circle.
+        ``"(float, float)"``
+          Custom scaling. These values are multiplied to the ``x_grid`` and ``y_grid``
+          directly, respectively. The edge of the pupil corresponds to where
+          ``x_grid**2 + y_grid**2 = 1``.
     """
     (x_grid, y_grid) = _process_grid(grid)
 
     if aperture is None:
-        aperture = "cropped"
+        aperture = "square"
 
     if isinstance(aperture, str):
         if aperture == "rectangular":
             x_scale = 1 / np.amax(x_grid)
             y_scale = 1 / np.amax(y_grid)
         elif aperture == "square":
-            x_scale = y_scale = 1 / np.amin(np.amax(x_grid) + np.amax(y_grid))
+            x_scale = y_scale = 1 / np.amin([np.amax(x_grid), np.amax(y_grid)])
         elif aperture == "cropped":
             x_scale = y_scale = 1 / np.sqrt(np.amax(np.square(x_grid) + np.square(y_grid)))
+        else:
+            raise ValueError("NotImplemented")
+    elif isinstance(aperture, (list, tuple)) and len(aperture) == 2:
+        x_scale = aperture[0]
+        y_scale = aperture[1]
     else:
-        raise ValueError("NotImplemented")
+        raise ValueError("Type {} not recognized.".format(type(aperture)))
 
-    mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) > 1
+    mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
     use_mask = np.any(mask == 0)
 
     if use_mask:
@@ -787,7 +825,7 @@ def zernike_sum(grid, weights, aperture=None):
     for (key, weight) in weights:
         coefficients = _zernike_coefficients(key[0], key[1])
 
-        for (power_key, factor) in coefficients:
+        for power_key, factor in coefficients.items():
             power_factor = factor * weight
             if power_key in summed_coefficients:
                 summed_coefficients[power_key] += power_factor
@@ -796,12 +834,18 @@ def zernike_sum(grid, weights, aperture=None):
 
     canvas = np.zeros(x_grid.shape)
 
-    for (power_key, factor) in summed_coefficients:
+    for power_key, factor in summed_coefficients.items():
         if factor != 0:
-            if use_mask:
-                canvas[mask] = factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+            if power_key == (0,0):
+                if use_mask:
+                    canvas[mask] += factor
+                else:
+                    canvas += factor
             else:
-                canvas += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+                if use_mask:
+                    canvas[mask] += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+                else:
+                    canvas += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
 
     return canvas
 
@@ -809,12 +853,16 @@ _zernike_cache = {}
 
 def _zernike_coefficients(n, m):
     """
-    **(Untested)**
+    Returns the coefficients for the :math:`x^ay^b` terms of the cartesian Zernike polynomial
+    of index ``n, m``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
+    Uses the algorithm given in [0]_.
 
     .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
     """
     n = int(n)
     m = int(m)
+
+    assert 0 <= m <= n, "Invalid cartesian Zernike index."
 
     key = (n, m)
 
@@ -824,17 +872,23 @@ def _zernike_coefficients(n, m):
         l = n - 2 * m
 
         if l % 2:   # If even
-            q = (abs(l) - 1) / 2
+            q = int((abs(l) - 1) / 2)
         else:
             if l > 0:
-                q = abs(l)/2 - 1
+                q = int(abs(l)/2 - 1)
             else:
-                q = abs(l)/2
+                q = int(abs(l)/2)
 
         if l <= 0:
             p = 0
         else:
             p = 1
+
+        l = abs(l)
+        m = int((n-l)/2)
+
+        def comb(n, k):
+            return factorial(n) / (factorial(k) * factorial(n-k))
 
         for i in range(q+1):
             for j in range(m+1):
@@ -845,13 +899,13 @@ def _zernike_coefficients(n, m):
                     factor *= (float(factorial(n - j))
                         / (factorial(j) * factorial(m - j) * factorial(n - m - j)))
 
-                    power_key = (n - 2*(i + j + k) + p, 2 * (i + k) + p)
+                    power_key = (n - 2*(i + j + k) - p, 2 * (i + k) + p)
 
                     if power_key in zernike_this:
                         zernike_this[power_key] += factor
                     else:
                         zernike_this[power_key] = factor
-        
+
         _zernike_cache[key] = {power_key: factor for power_key, factor in zernike_this.items() if factor != 0}
 
     return _zernike_cache[key]
@@ -950,7 +1004,7 @@ def hermite_gaussian(grid, nx, ny, w=None):
 
 def ince_gaussian(grid, p, m, w=None):
     """
-    **(NotImplemented)** Returns the phase farfield for a Ince-Gaussian beam.
+    **(NotImplemented)** Returns the phase farfield for an Ince-Gaussian beam.
     Ref: https://doi.org/10.1364/OL.29.000144
     """
     (x_grid, y_grid) = _process_grid(grid)

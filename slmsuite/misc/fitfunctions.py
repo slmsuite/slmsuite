@@ -32,7 +32,7 @@ def hyperbola(z, w0, z0, zr):
     r"""
     For fitting a hyperbola.
 
-    .. math:: w(z) = w_0 \sqrt{1 + \left(\frac{z - z0}{z_R}\right)^2}.
+    .. math:: w(z) = w_0 \sqrt{1 + \left[\frac{z - z0}{z_R}\right]^2}.
 
     Parameters
     ----------
@@ -226,8 +226,10 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
 
     Note
     ~~~~
-    The shear variance ``wxy`` is currently bounded to ``wx*wy``, as higher values
-    are not finite. The case ``wxy = wx*wy`` is equivalent to a line.
+    The shear variance ``wxy`` is currently bounded to magnitudes below ``wx*wy``.
+    Higher values lead to solutions which cannot be normalized.
+    When ``wxy = wx*wy``, this distribution is a line (an ellipse with zeroed minor
+    axis).
 
     Parameters
     ----------

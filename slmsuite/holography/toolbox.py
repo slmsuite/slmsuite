@@ -761,7 +761,7 @@ def zernike_sum(grid, weights, aperture=None):
     want to use these polynomials on other apertures (e.g. a rectangular SLM).
     Cropping this aperture breaks the orthogonality and normalization of the set, but
     this is fine for many applications. While it is possible to orthonormalize the
-    cropped set, we do not do so in ``slmsuite``, as this is not critical for target
+    cropped set, we do not do so in :mod:`slmsuite`, as this is not critical for target
     applications such as abberation correction.
 
     Parameters
@@ -770,9 +770,10 @@ def zernike_sum(grid, weights, aperture=None):
         Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    weights
-        list of ((int, int), float)
-    aperture {"square", "rectangular", "cropped"} OR (float, float) OR None
+    weights : list of ((int, int), float)
+        Which Zernike polynomials to sum. The ``(int, int)`` is the cartesian index
+        ``(n, m)``. The float is the weight for the given index.
+    aperture : {"square", "rectangular", "cropped"} OR (float, float) OR None
         How to scale the polynomials relative to the grid shape. This is relative
         to the :math:`R = 1` edge of a standard Zernike pupil.
 
@@ -784,7 +785,7 @@ def zernike_sum(grid, weights, aperture=None):
         ``"cropped"``
           The circle is scaled isotropically until the rectangle of the grid is
           circumscribed by the circle.
-        ``"(float, float)"``
+        ``(float, float)``
           Custom scaling. These values are multiplied to the ``x_grid`` and ``y_grid``
           directly, respectively. The edge of the pupil corresponds to where
           ``x_grid**2 + y_grid**2 = 1``.

@@ -5,7 +5,17 @@ Common fit functions.
 import numpy as np
 
 
-def cos_fitfun(x, b, a, c, k=1):
+def linear(x, m, b):
+    """TODO"""
+    return m * x + b
+
+
+def hyperbola(z, w, z0, zr):
+    """TODO"""
+    return w * np.sqrt(1 + np.square((z - z0) / zr))
+
+
+def cos(x, b, a, c, k=1):
     r"""For fitting an offset sinusoid.
 
     .. math:: y(x) = c + \frac{a}{2} \left[1+\cos(kx+b) \right].
@@ -31,7 +41,7 @@ def cos_fitfun(x, b, a, c, k=1):
     return a * 0.5 * (1 + np.cos(k * x - b)) + c
 
 
-def lorentzian_fitfun(x, x0, a, c, Q):
+def lorentzian(x, x0, a, c, Q):
     r"""
     For fitting an offset resonance.
 
@@ -61,7 +71,7 @@ def lorentzian_fitfun(x, x0, a, c, Q):
 
 def lorentzian_jacobian(x, x0, a, c, Q):
     """
-    Jacobian of :meth:`lorentzian_fitfun`.
+    Jacobian of :meth:`lorentzian`.
 
     Parameters
     ----------
@@ -101,7 +111,7 @@ def lorentzian_jacobian(x, x0, a, c, Q):
     ).T
 
 
-def gaussian_fitfun(x, x0, a, c, w):
+def gaussian(x, x0, a, c, w):
     r"""
     For fitting a 1d Gaussian.
 
@@ -128,7 +138,8 @@ def gaussian_fitfun(x, x0, a, c, w):
     """
     return c + a * np.exp(-.5 * np.square((x - x0) * (1/w)))
 
-def gaussian2d_fitfun(xy, x0, y0, a, c, wx, wy, wxy=0):
+
+def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     r""""
     For fitting a 2d Gaussian.
 

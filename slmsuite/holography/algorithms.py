@@ -52,6 +52,7 @@ except ImportError:
 # Import helper functions
 from slmsuite.holography import analysis, toolbox
 
+
 class Hologram:
     r"""
     Phase retrieval methods applied to holography.
@@ -167,6 +168,7 @@ class Hologram:
     ----------
     .. [5] https://numpy.org/doc/stable/reference/routines.fft.html#type-promotion
     """
+
     def __init__(self, target, amp=None, phase=None, slm_shape=None, dtype=np.float32):
         r"""
         Initialize datastructures for optimization.
@@ -190,7 +192,7 @@ class Hologram:
             See :attr:`dtype`; type to use for stored arrays.
         """
         # Parse target and create shape.
-        if len(target) == 2:    # (int, int) was passed.
+        if len(target) == 2:  # (int, int) was passed.
             self.shape = target
             target = None
         else:
@@ -198,33 +200,39 @@ class Hologram:
 
         # Warn the user about powers of two.
         if any(np.log2(self.shape) != np.round(np.log2(self.shape))):
-            print(  "Warning: Hologram target shape {} is not a power of 2; consider using "
-                    ".calculate_padding() to pad to powers of 2 and speed up "
-                    "FFT computation.".format(self.shape))
+            print(
+                "Warning: Hologram target shape {} is not a power of 2; consider using "
+                ".calculate_padding() to pad to powers of 2 and speed up "
+                "FFT computation.".format(self.shape)
+            )
 
         # Initialize storage vars
         self.dtype = dtype
         self.N = 0
-        self.method = ''
-        self.flags = {'fixed_phase':False, 'stat_groups':[]}
+        self.method = ""
+        self.flags = {"fixed_phase": False, "stat_groups": []}
 
         # Initialize statistics dictionary
-        self.stats = {'method':[], 'flags':{}, 'stats':{}}
+        self.stats = {"method": [], "flags": {}, "stats": {}}
 
         # Determine the shape of the SLM
-        if amp is None:     amp_shape = (np.nan, np.nan)
-        else:               amp_shape = amp.shape
-
-        if phase is None:   phase_shape = (np.nan, np.nan)
-        else:               phase_shape = phase.shape
-
-        if slm_shape is None:   slm_shape = (np.nan, np.nan)
+        if amp is None:
+            amp_shape = (np.nan, np.nan)
         else:
-            try:    # Check if slm_shape is a CameraSLM.
+            amp_shape = amp.shape
+
+        if phase is None:
+            phase_shape = (np.nan, np.nan)
+        else:
+            phase_shape = phase.shape
+
+        if slm_shape is None:
+            slm_shape = (np.nan, np.nan)
+        else:
+            try:  # Check if slm_shape is a CameraSLM.
                 slm_shape = slm_shape.slm.shape
             except:
                 pass
-
 
         stack = np.vstack((amp_shape, phase_shape, slm_shape))
 
@@ -243,21 +251,22 @@ class Hologram:
             self.slm_shape = tuple(self.slm_shape)
 
         # Initialize and normalize near-field amplitude
-        if amp is None:     # Uniform amplitude by default (scalar)
-            self.amp = 1/np.sqrt(np.prod(self.slm_shape))
-        else:               # Otherwise, initialize and normalize
+        if amp is None:  # Uniform amplitude by default (scalar)
+            self.amp = 1 / np.sqrt(np.prod(self.slm_shape))
+        else:  # Otherwise, initialize and normalize
             self.amp = cp.array(amp, dtype=dtype)
-            self.amp *= 1/Hologram.norm(self.amp)
+            self.amp *= 1 / Hologram.norm(self.amp)
 
         # Initialize near-field phase
-        if phase is None:   # Random near-field phase by default
-            if cp == np:    # numpy does not support dtype=
+        if phase is None:  # Random near-field phase by default
+            if cp == np:  # numpy does not support dtype=
                 rng = np.random.default_rng()
                 self.phase = rng.uniform(-np.pi, np.pi, self.slm_shape).astype(dtype)
             else:
-                self.phase = cp.random.uniform( -np.pi, np.pi,
-                                                self.slm_shape, dtype=dtype)
-        else:               # Initialize
+                self.phase = cp.random.uniform(
+                    -np.pi, np.pi, self.slm_shape, dtype=dtype
+                )
+        else:  # Initialize
             self.phase = cp.array(phase, dtype=dtype)
 
         # Initialize target and weights.
@@ -269,8 +278,13 @@ class Hologram:
 
     # Initialization helper
     @staticmethod
-    def calculate_padding(slm_shape, padding_order=1, square_padding=True,
-                            precision=np.inf, precision_basis="kxy"):
+    def calculate_padding(
+        slm_shape,
+        padding_order=1,
+        square_padding=True,
+        precision=np.inf,
+        precision_basis="kxy",
+    ):
         """
         Helper function to calculate the shape of the computational space.
         For a given shape, pads to the user's requirements. If the user chooses
@@ -308,7 +322,7 @@ class Hologram:
 
         if np.isfinite(precision) and cameraslm is not None:
             dpixel = np.amin([cameraslm.slm.dx, cameraslm.slm.dy])
-            fs = 1/dpixel   # Sampling frequency
+            fs = 1 / dpixel  # Sampling frequency
 
             if precision_basis == "ij":
                 slm_range = np.amax(cameraslm.kxyslm_to_ijcam([fs, fs]))
@@ -323,8 +337,9 @@ class Hologram:
             precision_shape = slm_shape
 
         if padding_order > 0:
-            padding_shape = np.power(2, np.ceil(np.log2(slm_shape))
-                                        + padding_order-1).astype(np.int)
+            padding_shape = np.power(
+                2, np.ceil(np.log2(slm_shape)) + padding_order - 1
+            ).astype(np.int)
         else:
             padding_shape = slm_shape
 
@@ -337,8 +352,16 @@ class Hologram:
         return shape
 
     # Core optimization function.
-    def optimize(self, method="GS", maxiter=20, verbose=True,
-                 callback=None, feedback='', stat_groups=[], **kwargs):
+    def optimize(
+        self,
+        method="GS",
+        maxiter=20,
+        verbose=True,
+        callback=None,
+        feedback="",
+        stat_groups=[],
+        **kwargs
+    ):
         r"""
         Optimizers to solve the "phase problem": approximating the near-field phase that
         transforms a known near-field source amplitude to a desired near-field
@@ -429,13 +452,11 @@ class Hologram:
         """
 
         # Check and record method.
-        methods = [ "GS",
-                    "WGS-Leonardo",
-                    "WGS-Kim",
-                    "WGS-Nogrette"]
+        methods = ["GS", "WGS-Leonardo", "WGS-Kim", "WGS-Nogrette"]
 
-        assert method in methods, ( "Unrecognized method {}. Valid methods include [{}]"
-                                    .format(method, methods))
+        assert (
+            method in methods
+        ), "Unrecognized method {}. Valid methods include [{}]".format(method, methods)
 
         self.method = method
 
@@ -443,8 +464,8 @@ class Hologram:
         for flag in kwargs:
             self.flags[flag] = kwargs[flag]
 
-        self.flags['feedback'] = feedback
-        self.flags['stat_groups'] = stat_groups
+        self.flags["feedback"] = feedback
+        self.flags["stat_groups"] = stat_groups
 
         # Iterations to process.
         iterations = range(maxiter)
@@ -454,10 +475,10 @@ class Hologram:
             iterations = tqdm(iterations)
 
         # Switch between methods
-        if  "GS" in method:
+        if "GS" in method:
             if "WGS" in method:
-                if len(self.flags['feedback']) == 0:
-                    self.flags['feedback'] = 'computational'
+                if len(self.flags["feedback"]) == 0:
+                    self.flags["feedback"] = "computational"
 
             self.GS(iterations, callback)
 
@@ -506,16 +527,17 @@ class Hologram:
             # This is optimized for when shape is much larger than slm_shape.
             nearfield.fill(0)
             nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
-            farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm='ortho'))
+            farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm="ortho"))
 
             # Calculate amp_ff, if needed.
-            if 'computational' in self.flags['feedback'] or \
-                any('computational' in grp for grp in self.flags['stat_groups']):
+            if "computational" in self.flags["feedback"] or any(
+                "computational" in grp for grp in self.flags["stat_groups"]
+            ):
                 # Calculate amp_ff for weighting (if None, will init; otherwise in-place).
                 self.amp_ff = cp.abs(farfield, out=self.amp_ff)
 
             # Erase irrelevant images from the past loop.
-            if hasattr(self, 'img_ij'):
+            if hasattr(self, "img_ij"):
                 self.img_ij = None
 
             # Weight, if desired. This function also updates stats.
@@ -524,12 +546,13 @@ class Hologram:
 
                 # Calculate amp_ff again, as _update_weights may have modified it.
                 # This is to reduce memory use at the slight cost of performance.
-                if 'computational' in self.flags['feedback'] or \
-                    any('computational' in grp for grp in self.flags['stat_groups']):
+                if "computational" in self.flags["feedback"] or any(
+                    "computational" in grp for grp in self.flags["stat_groups"]
+                ):
                     # Calculate amp_ff for weighting (if None, will init; otherwise in-place).
                     self.amp_ff = cp.abs(farfield, out=self.amp_ff)
 
-            self.update_stats(self.flags['stat_groups'])
+            self.update_stats(self.flags["stat_groups"])
 
             # Decide whether to fix phase.
             if "Kim" in self.method:
@@ -550,9 +573,11 @@ class Hologram:
                 break
 
             # Fix amplitude, potentially also fixing the phase.
-            if ("fixed_phase" in self.flags and
-                self.flags["fixed_phase"] and
-                self.phase_ff is not None):
+            if (
+                "fixed_phase" in self.flags
+                and self.flags["fixed_phase"]
+                and self.phase_ff is not None
+            ):
                 # Set the farfield to the stored phase and updated weights.
                 cp.exp(1j * self.phase_ff, out=farfield)
                 cp.multiply(farfield, self.weights, out=farfield)
@@ -576,9 +601,12 @@ class Hologram:
                 # cp.multiply(farfield[mask], self.weights[mask], out=farfield[mask])
 
             # Move to real space.
-            nearfield = cp.fft.ifft2(cp.fft.ifftshift(farfield), norm='ortho')
-            cp.arctan2( nearfield.imag[i0:i1, i2:i3],
-                        nearfield.real[i0:i1, i2:i3], out=self.phase)
+            nearfield = cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho")
+            cp.arctan2(
+                nearfield.imag[i0:i1, i2:i3],
+                nearfield.real[i0:i1, i2:i3],
+                out=self.phase,
+            )
 
             # Increment iterations.
             self.N += 1
@@ -586,7 +614,7 @@ class Hologram:
         # Update the final far-field
         nearfield.fill(0)
         nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
-        farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm='ortho'))
+        farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm="ortho"))
         cp.abs(farfield, out=self.amp_ff)
         self.phase_ff = cp.angle(farfield)
 
@@ -605,15 +633,17 @@ class Hologram:
         if new_target is None:
             self.target = cp.zeros(shape=self.shape, dtype=self.dtype)
         else:
-            assert new_target.shape == self.shape, \
-                "Target must be of appropriate shape. "\
+            assert new_target.shape == self.shape, (
+                "Target must be of appropriate shape. "
                 "Initialize a new Hologram if a different shape is desired."
+            )
 
             self.target = cp.abs(cp.array(new_target, dtype=self.dtype))
-            self.target *= 1/Hologram.norm(self.target)
+            self.target *= 1 / Hologram.norm(self.target)
 
         if reset_weights:
             self.weights = cp.copy(self.target)
+
     def update_target(self, new_target, reset_weights=False):
         """
         Allows the user to change the target to something new.
@@ -629,6 +659,7 @@ class Hologram:
             Whether to update the :attr:`weights` to this new :attr:`target`.
         """
         self._update_target(new_target=new_target, reset_weights=reset_weights)
+
     def extract_phase(self):
         r"""
         Collects the current near-field phase from the GPU with :meth:`cupy.ndarray.get()`.
@@ -678,61 +709,64 @@ class Hologram:
 
         if target_amp is None:  # Uniform
             feedback_corrected = feedback_amp
-        else:                   # Non-uniform
+        else:  # Non-uniform
             feedback_corrected = feedback_amp
             norm = Hologram.norm(feedback_amp)
-            feedback_corrected *= 1/norm
+            feedback_corrected *= 1 / norm
 
-            cp.divide(  feedback_corrected,
-                        target_amp,
-                        out=feedback_corrected)
+            cp.divide(feedback_corrected, target_amp, out=feedback_corrected)
 
             cp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
-        if method == 'Leonardo' or method == 'Kim':
-            if not 'power' in self.flags:
-                self.flags['power'] = .7
+        if method == "Leonardo" or method == "Kim":
+            if not "power" in self.flags:
+                self.flags["power"] = 0.7
 
             # Leonardo uses amp.
-            cp.power(feedback_corrected, -self.flags['power'], out=feedback_corrected)
+            cp.power(feedback_corrected, -self.flags["power"], out=feedback_corrected)
             weight_amp *= feedback_corrected
-        elif method == 'Nogrette':
-            if not 'factor' in self.flags:
-                self.flags['factor'] = .1
+        elif method == "Nogrette":
+            if not "factor" in self.flags:
+                self.flags["factor"] = 0.1
 
             # Taylor expand 1/(1-g(1-x)) -> 1 + g(1-x) + (g(1-x))^2 ~ 1 + g(1-x)
             feedback_corrected *= -(1 / cp.nanmean(feedback_corrected))
             feedback_corrected += 1
-            feedback_corrected *= -self.flags['factor']
+            feedback_corrected *= -self.flags["factor"]
             feedback_corrected += 1
             cp.reciprocal(feedback_corrected, out=feedback_corrected)
 
             weight_amp *= feedback_corrected
         else:
-            raise RuntimeError("Method ""{}"" not recognized by Hologram.optimize()"
-                .format(self.method))
+            raise RuntimeError(
+                "Method "
+                "{}"
+                " not recognized by Hologram.optimize()".format(self.method)
+            )
 
         cp.nan_to_num(weight_amp, copy=False, nan=0)
 
         # Normalize amp power, as methods may have broken power conservation.
         norm = Hologram.norm(weight_amp)
-        weight_amp *= 1/norm
+        weight_amp *= 1 / norm
 
         return weight_amp
+
     def _update_weights(self):
         """
         Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
         :attr:`amp_ff`, the computed farfield amplitude. This function also updates stats.
         """
-        feedback = self.flags['feedback']
+        feedback = self.flags["feedback"]
 
         if feedback == "computational":
             self._update_weights_generic(self.weights, self.amp_ff, self.target)
 
     # Statistics handling
     @staticmethod
-    def _calculate_stats(   feedback_amp, target_amp, mp=cp,
-                            efficiency_compensation=True, total=None):
+    def _calculate_stats(
+        feedback_amp, target_amp, mp=cp, efficiency_compensation=True, total=None
+    ):
         """
         Helper function to analyze how close the feedback is to the target.
 
@@ -769,20 +803,19 @@ class Hologram:
             efficiency = float(mp.sum(feedback_pwr)) / total
 
         # Normalize.
-        feedback_pwr_sum = (mp.sum(feedback_pwr))
-        feedback_pwr *= 1/feedback_pwr_sum
-        feedback_amp *= 1/mp.sqrt(feedback_pwr_sum)
+        feedback_pwr_sum = mp.sum(feedback_pwr)
+        feedback_pwr *= 1 / feedback_pwr_sum
+        feedback_amp *= 1 / mp.sqrt(feedback_pwr_sum)
 
-        target_pwr_sum = (mp.sum(target_pwr))
-        target_pwr *= 1/target_pwr_sum
-        target_amp *= 1/mp.sqrt(target_pwr_sum)
-
+        target_pwr_sum = mp.sum(target_pwr)
+        target_pwr *= 1 / target_pwr_sum
+        target_amp *= 1 / mp.sqrt(target_pwr_sum)
 
         if total is None:
             # Efficiency overlap integral.
             efficiency = np.square(float(mp.sum(mp.multiply(target_amp, feedback_amp))))
             if efficiency_compensation:
-                feedback_pwr *= 1/efficiency
+                feedback_pwr *= 1 / efficiency
 
         # Make some helper lists; ignoring power where target is zero.
         mask = mp.nonzero(target_pwr)
@@ -801,15 +834,22 @@ class Hologram:
         pkpk_err = float(mp.amax(pwr_err) - mp.amin(pwr_err))
         std_err = float(mp.std(pwr_err))
 
-        return {"efficiency":efficiency, "uniformity":uniformity,
-                "pkpk_err":pkpk_err, "std_err":std_err}
+        return {
+            "efficiency": efficiency,
+            "uniformity": uniformity,
+            "pkpk_err": pkpk_err,
+            "std_err": std_err,
+        }
+
     def _calculate_stats_computational(self, stats, stat_groups=[]):
         """
         Wrapped by :meth:`Hologram.update_stats()`.
         """
-        if 'computational' in stat_groups:
-            stats['computational'] = self._calculate_stats( self.amp_ff, self.target,
-                                                    efficiency_compensation=False)
+        if "computational" in stat_groups:
+            stats["computational"] = self._calculate_stats(
+                self.amp_ff, self.target, efficiency_compensation=False
+            )
+
     def _update_stats_dictionary(self, stats):
         """
         Helper function to manage additions to the :attr:`stats`.
@@ -820,58 +860,63 @@ class Hologram:
             Dictionary of groups, each group containing a dictionary of stats.
         """
         # Update methods
-        M = len(self.stats['method'])
+        M = len(self.stats["method"])
         diff = self.N + 1 - M
-        if diff > 0:                          # Extend methods
-            self.stats['method'].extend(['' for _ in range(diff)])
+        if diff > 0:  # Extend methods
+            self.stats["method"].extend(["" for _ in range(diff)])
             M = self.N + 1
-        self.stats['method'][self.N] = self.method  # Update method
+        self.stats["method"][self.N] = self.method  # Update method
 
         # Update flags
-        flaglist = set(self.flags.keys()).union(set(self.stats['flags'].keys()))
+        flaglist = set(self.flags.keys()).union(set(self.stats["flags"].keys()))
         for flag in flaglist:
             # Extend flag
-            if not flag in self.stats['flags']:
-                self.stats['flags'][flag] = [np.nan for _ in range(M)]
+            if not flag in self.stats["flags"]:
+                self.stats["flags"][flag] = [np.nan for _ in range(M)]
             else:
-                diff = self.N + 1 - len(self.stats['flags'][flag])
+                diff = self.N + 1 - len(self.stats["flags"][flag])
                 if diff > 0:
-                    self.stats['flags'][flag].extend([np.nan for _ in range(diff)])
+                    self.stats["flags"][flag].extend([np.nan for _ in range(diff)])
 
             # Update flag
             if flag in self.flags:
-                self.stats['flags'][flag][self.N] = self.flags[flag]
+                self.stats["flags"][flag][self.N] = self.flags[flag]
 
         # Update stats
-        grouplist = set(stats.keys()).union(set(self.stats['stats'].keys()))
+        grouplist = set(stats.keys()).union(set(self.stats["stats"].keys()))
         if len(grouplist) > 0:
             statlists = [set(stats[group].keys()) for group in stats.keys()]
-            if len(self.stats['stats'].keys()) > 0:
-                key = next(iter(self.stats['stats']))
-                statlists.append(set(self.stats['stats'][key].keys()))
+            if len(self.stats["stats"].keys()) > 0:
+                key = next(iter(self.stats["stats"]))
+                statlists.append(set(self.stats["stats"][key].keys()))
             statlist = set.union(*statlists)
 
             for group in grouplist:
                 # Check this group
-                if not group in self.stats['stats']:
-                    self.stats['stats'][group] = {}
+                if not group in self.stats["stats"]:
+                    self.stats["stats"][group] = {}
 
                 if len(statlist) > 0:
                     for stat in statlist:
                         # Extend stat
-                        if not stat in self.stats['stats'][group]:
-                            self.stats['stats'][group][stat] = [np.nan for _ in range(M)]
+                        if not stat in self.stats["stats"][group]:
+                            self.stats["stats"][group][stat] = [
+                                np.nan for _ in range(M)
+                            ]
                         else:
-                            diff = self.N + 1 - len(self.stats['stats'][group][stat])
+                            diff = self.N + 1 - len(self.stats["stats"][group][stat])
                             if diff > 0:
-                                self.stats['stats'][group][stat].extend(
-                                    [np.nan for _ in range(diff)])
+                                self.stats["stats"][group][stat].extend(
+                                    [np.nan for _ in range(diff)]
+                                )
 
                         # Update stat
                         if group in stats.keys():
                             if stat in stats[group].keys():
-                                self.stats['stats'][group][stat][self.N] = \
-                                    stats[group][stat]
+                                self.stats["stats"][group][stat][self.N] = stats[group][
+                                    stat
+                                ]
+
     def update_stats(self, stat_groups=[]):
         """
         Calculate statistics corresponding to the desired ``stat_groups``.
@@ -888,7 +933,7 @@ class Hologram:
         self._update_stats_dictionary(stats)
 
     # Visualization
-    def plot_nearfield(self, title='', padded=False):
+    def plot_nearfield(self, title="", padded=False):
         """
         Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
         The amplitude is assumed (whether uniform, or experimentally computed) while the
@@ -903,7 +948,7 @@ class Hologram:
             Otherwise, shows the region at the center of the computational space of
             size :attr:`slm_shape`.
         """
-        _, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(12,6))
+        _, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(12, 6))
 
         try:
             if isinstance(self.amp, float):
@@ -916,23 +961,38 @@ class Hologram:
             phase = self.phase
 
         if isinstance(amp, float):
-            axs[0].imshow(toolbox.pad(amp * np.ones(self.slm_shape),
-                self.shape if padded else self.slm_shape), vmin=0, vmax=amp)
+            axs[0].imshow(
+                toolbox.pad(
+                    amp * np.ones(self.slm_shape),
+                    self.shape if padded else self.slm_shape,
+                ),
+                vmin=0,
+                vmax=amp,
+            )
         else:
-            axs[0].imshow(toolbox.pad(amp,
-                self.shape if padded else self.slm_shape), vmin=0, vmax=np.amax(amp))
+            axs[0].imshow(
+                toolbox.pad(amp, self.shape if padded else self.slm_shape),
+                vmin=0,
+                vmax=np.amax(amp),
+            )
 
-        axs[1].imshow(toolbox.pad(phase, self.shape if padded else self.slm_shape),
-            vmin=-np.pi, vmax=np.pi, interpolation='none', cmap='twilight')
+        axs[1].imshow(
+            toolbox.pad(phase, self.shape if padded else self.slm_shape),
+            vmin=-np.pi,
+            vmax=np.pi,
+            interpolation="none",
+            cmap="twilight",
+        )
 
         if len(title) > 0:
-            title += ': '
+            title += ": "
 
-        axs[0].set_title(title + 'Amplitude')
-        axs[1].set_title(title + 'Phase')
+        axs[0].set_title(title + "Amplitude")
+        axs[1].set_title(title + "Phase")
 
         plt.show()
-    def plot_farfield(self, source=None, limits=None, limit_padding=.2, title=''):
+
+    def plot_farfield(self, source=None, limits=None, limit_padding=0.2, title=""):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
 
@@ -965,21 +1025,21 @@ class Hologram:
             source = self.target
 
             if len(title) == 0:
-                title = 'Target'
+                title = "Target"
 
         try:
             npsource = cp.abs(source).get()
         except:
             npsource = np.abs(source)
 
-        _, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(12,6))
+        _, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(12, 6))
 
         if limits == None:
             # Determine the bounds of the zoom region, padded by 20%
             limits = []
             binary = npsource > 0
 
-            for a in [0,1]:
+            for a in [0, 1]:
                 collapsed = np.where(np.any(binary, axis=a))  # Collapse the other axis
                 limit = np.array([np.amin(collapsed), np.amax(collapsed)])
 
@@ -991,36 +1051,45 @@ class Hologram:
                 limits.append(limit)
 
         # Plot the full target, blurred so single pixels are visible in low res
-        b = 2*int(max(self.shape)/500) + 1  # Future: fix arbitrary
+        b = 2 * int(max(self.shape) / 500) + 1  # Future: fix arbitrary
         axs[0].imshow(cv2.GaussianBlur(npsource, (b, b), 0))
 
         # Plot a red rectangle to show the extents of the zoom region
-        rect = plt.Rectangle([limits[0][0], limits[1][0]],
-            np.diff(limits[0])[0], np.diff(limits[1])[0], ec='r', fc='none')
+        rect = plt.Rectangle(
+            [limits[0][0], limits[1][0]],
+            np.diff(limits[0])[0],
+            np.diff(limits[1])[0],
+            ec="r",
+            fc="none",
+        )
         axs[0].add_patch(rect)
 
         # If cam_points is defined (i.e. is a FeedbackSLM),
         # plot a yellow rectangle for the extents of the camera
         try:
-            axs[0].plot(self.shape[1]/2. + self.cam_points[0],
-                        self.shape[0]/2. + self.cam_points[1], c='y')
+            axs[0].plot(
+                self.shape[1] / 2.0 + self.cam_points[0],
+                self.shape[0] / 2.0 + self.cam_points[1],
+                c="y",
+            )
         except:
             pass
 
         if len(title) > 0:
-            title += ': '
+            title += ": "
 
-        axs[0].set_title(title + 'Full')
+        axs[0].set_title(title + "Full")
 
         # Zoom in on our spots
         axs[1].imshow(npsource)
         axs[1].set_xlim(limits[0])
         axs[1].set_ylim(np.flip(limits[1]))
-        axs[1].set_title(title + 'Zoom')
+        axs[1].set_title(title + "Zoom")
 
         plt.show()
 
         return limits
+
     def plot_stats(self, stats_dict=None):
         """
         Plots the statistics contained in the given dictionary.
@@ -1033,31 +1102,31 @@ class Hologram:
         if stats_dict is None:
             stats_dict = self.stats
 
-        _, ax = plt.subplots(1,1)
+        _, ax = plt.subplots(1, 1)
 
         # solid, densely dashed, sparesely dotted, densely dotted
-        linestyles = ['solid', (0, (5, 1)), (0, (1, 2)), (0, (1, 1))]
-        stats = ['efficiency', 'uniformity', 'pkpk_err', 'std_err']
-        legendstats = ['inefficiency', 'nonuniformity', 'pkpk_err', 'std_err']
-        niter = np.arange(0, len(stats_dict['method']))
+        linestyles = ["solid", (0, (5, 1)), (0, (1, 2)), (0, (1, 1))]
+        stats = ["efficiency", "uniformity", "pkpk_err", "std_err"]
+        legendstats = ["inefficiency", "nonuniformity", "pkpk_err", "std_err"]
+        niter = np.arange(0, len(stats_dict["method"]))
 
-        stat_keys = stats_dict['stats'].keys()
+        stat_keys = stats_dict["stats"].keys()
         assert len(stat_keys) <= 10, "Not enough default colors to describe all modes."
 
         lines = []
         color_num = 0
 
         for stat_key in stat_keys:
-            stat_group = stats_dict['stats'][stat_key]
+            stat_group = stats_dict["stats"][stat_key]
 
-            color = 'C'+str(color_num)
+            color = "C" + str(color_num)
             color_num += 1
 
             for i in range(len(stats)):
                 # Invert the stats if it is efficiency or uniformity.
                 y = stat_group[stats[i]]
                 if i < 2:
-                    y = 1-np.array(y)
+                    y = 1 - np.array(y)
 
                 line = ax.semilogy(niter, y, c=color, ls=linestyles[i])[0]
 
@@ -1068,11 +1137,11 @@ class Hologram:
         # Inspired from https://stackoverflow.com/a/46214879
         dummy_lines = []
         for i in range(len(stats)):
-            dummy_lines.append(ax.plot([],[], c="black", ls=linestyles[i])[0])
-        legend1 = plt.legend(dummy_lines, legendstats, loc='center right')
+            dummy_lines.append(ax.plot([], [], c="black", ls=linestyles[i])[0])
+        legend1 = plt.legend(dummy_lines, legendstats, loc="center right")
 
         # Make the color legend.
-        plt.legend(lines, stat_keys, loc='center left')
+        plt.legend(lines, stat_keys, loc="center left")
 
         # Add the linestyle legend back in and show.
         ax.add_artist(legend1)
@@ -1103,8 +1172,12 @@ class Hologram:
         with cp.cuda.Device(device):
             mempool.set_limit(size=size, fraction=fraction)
 
-            print("cupy memory pool limit set to {} GB..."
-                    .format(mempool.get_limit() / (1024. ** 3)))
+            print(
+                "cupy memory pool limit set to {} GB...".format(
+                    mempool.get_limit() / (1024.0 ** 3)
+                )
+            )
+
     @staticmethod
     def norm(matrix):
         r"""
@@ -1123,9 +1196,10 @@ class Hologram:
             The result.
         """
         if cp.iscomplexobj(matrix):
-            return (cp.sqrt(cp.sum(cp.square(cp.abs(matrix)))))
+            return cp.sqrt(cp.sum(cp.square(cp.abs(matrix))))
         else:
-            return (cp.sqrt(cp.sum(cp.square(matrix))))
+            return cp.sqrt(cp.sum(cp.square(matrix)))
+
 
 class FeedbackHologram(Hologram):
     """
@@ -1150,6 +1224,7 @@ class FeedbackHologram(Hologram):
         Cached feedback image in the ``"ij"`` (raw) basis or ``"knm"`` (transformed) basis.
         Measured with :meth:`.measure()`.
     """
+
     def __init__(self, shape, target_ij=None, cameraslm=None, **kwargs):
         """
         Initializes a hologram with camera feedback.
@@ -1176,8 +1251,8 @@ class FeedbackHologram(Hologram):
             amp = None
             slm_shape = None
 
-        if not 'slm_shape' in kwargs:
-            kwargs['slm_shape'] = slm_shape
+        if not "slm_shape" in kwargs:
+            kwargs["slm_shape"] = slm_shape
 
         super().__init__(target=shape, amp=amp, **kwargs)
 
@@ -1188,8 +1263,10 @@ class FeedbackHologram(Hologram):
         else:
             self.target_ij = target_ij.astype(self.dtype)
 
-        if (self.cameraslm is not None and
-            self.cameraslm.fourier_calibration is not None):
+        if (
+            self.cameraslm is not None
+            and self.cameraslm.fourier_calibration is not None
+        ):
             # Transform the target, if it is provided.
             if target_ij is not None:
                 self.update_target(target_ij, reset_weights=True)
@@ -1197,14 +1274,15 @@ class FeedbackHologram(Hologram):
             cam_shape = self.cameraslm.cam.shape
 
             ll = [0, 0]
-            lr = [0, cam_shape[0]-1]
-            ur = [cam_shape[1]-1, cam_shape[0]-1]
-            ul = [cam_shape[1]-1, 0]
+            lr = [0, cam_shape[0] - 1]
+            ur = [cam_shape[1] - 1, cam_shape[0] - 1]
+            ul = [cam_shape[1] - 1, 0]
 
             points_ij = toolbox.clean_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
             points_kxy = self.cameraslm.ijcam_to_kxyslm(points_ij)
-            self.cam_points = toolbox.convert_blaze_vector(points_kxy, "kxy", "knm",
-                                            slm=self.cameraslm.slm, shape=self.shape)
+            self.cam_points = toolbox.convert_blaze_vector(
+                points_kxy, "kxy", "knm", slm=self.cameraslm.slm, shape=self.shape
+            )
             self.cam_shape = cam_shape
         else:
             self.cam_points = None
@@ -1243,15 +1321,17 @@ class FeedbackHologram(Hologram):
         assert self.cameraslm.fourier_calibration is not None
 
         # First transformation.
-        conversion = toolbox.convert_blaze_vector([1, 1], "knm", "kxy",
-            slm=self.cameraslm.slm, shape=self.shape)
+        conversion = toolbox.convert_blaze_vector(
+            [1, 1], "knm", "kxy", slm=self.cameraslm.slm, shape=self.shape
+        )
         M1 = np.diag(np.squeeze(conversion))
-        b1 = -toolbox.clean_2vectors(np.flip(np.squeeze(self.shape))/2)
+        b1 = -toolbox.clean_2vectors(np.flip(np.squeeze(self.shape)) / 2)
 
         # Second transformation.
         M2 = self.cameraslm.fourier_calibration["M"]
-        b2 = (self.cameraslm.fourier_calibration["b"] -
-            np.matmul(M2, self.cameraslm.fourier_calibration["a"]))
+        b2 = self.cameraslm.fourier_calibration["b"] - np.matmul(
+            M2, self.cameraslm.fourier_calibration["a"]
+        )
 
         # Composite transformation (along with xy -> yx).
         M = cp.array(np.matmul(M2, M1).T)
@@ -1272,22 +1352,25 @@ class FeedbackHologram(Hologram):
         cp.abs(cp_img, out=cp_img)
 
         # Perform affine.
-        target = cp_affine_transform(   input=cp_img,
-                                        matrix=M,
-                                        offset=b,
-                                        output_shape=self.shape,
-                                        output=output,
-                                        mode="constant",
-                                        cval=0)
+        target = cp_affine_transform(
+            input=cp_img,
+            matrix=M,
+            offset=b,
+            output_shape=self.shape,
+            output=output,
+            mode="constant",
+            cval=0,
+        )
 
         # Filter the image. Future: fix.
         # target = cp_gaussian_filter1d(target, blur, axis=0, output=target, truncate=2)
         # target = cp_gaussian_filter1d(target, blur, axis=1, output=target, truncate=2)
 
         target = cp.abs(target, out=target)
-        target *= 1/Hologram.norm(target)
+        target *= 1 / Hologram.norm(target)
 
         return target
+
     def update_target(self, new_target, reset_weights=False):
         self.ijcam_to_knmslm(new_target, output=self.target)
 
@@ -1312,10 +1395,12 @@ class FeedbackHologram(Hologram):
             if basis == "knm":  # Compute the knm basis image.
                 self.img_knm = self.ijcam_to_knmslm(self.img_ij, output=self.img_knm)
                 cp.sqrt(self.img_knm, out=self.img_knm)
-            else:               # The old image is outdated, erase it. Future: memory concerns?
+            else:  # The old image is outdated, erase it. Future: memory concerns?
                 self.img_knm = None
 
-            self.img_ij = np.sqrt(self.img_ij)   # Don't load to the GPU if not neccesary.
+            self.img_ij = np.sqrt(
+                self.img_ij
+            )  # Don't load to the GPU if not neccesary.
         elif basis == "knm":
             if self.img_knm is None:
                 self.ijcam_to_knmslm(np.square(self.img_ij), output=self.img_knm)
@@ -1343,15 +1428,14 @@ class FeedbackHologram(Hologram):
             Euclidian pixel error in the ``"ij"`` basis for each spot.
         """
 
-
-
         return
+
     def _update_weights(self):
         """
         Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
         :attr:`amp_ff`, the computed farfield amplitude. This function also updates stats.
         """
-        feedback = self.flags['feedback']
+        feedback = self.flags["feedback"]
 
         if feedback == "computational":
             self._update_weights_generic(self.weights, self.amp_ff, self.target)
@@ -1363,18 +1447,20 @@ class FeedbackHologram(Hologram):
         """
         Wrapped by :meth:`FeedbackHologram.update_stats()`.
         """
-        if 'experimental_knm' in stat_groups:
+        if "experimental_knm" in stat_groups:
             self.measure("knm")  # Make sure data is there.
-            stats['experimental_knm'] = self._calculate_stats(
-                                            self.img_knm,
-                                            self.target,
-                                            efficiency_compensation=True)
-        if 'experimental_ij' in stat_groups or 'experimental' in stat_groups:
+            stats["experimental_knm"] = self._calculate_stats(
+                self.img_knm, self.target, efficiency_compensation=True
+            )
+        if "experimental_ij" in stat_groups or "experimental" in stat_groups:
             self.measure("ij")  # Make sure data is there.
-            stats['experimental_ij'] = self._calculate_stats(
-                                            self.img_ij.astype(self.dtype),
-                                            self.target_ij,
-                                            mp=np, efficiency_compensation=True)
+            stats["experimental_ij"] = self._calculate_stats(
+                self.img_ij.astype(self.dtype),
+                self.target_ij,
+                mp=np,
+                efficiency_compensation=True,
+            )
+
     def update_stats(self, stat_groups=[]):
         """
         Calculate statistics corresponding to the desired ``stat_groups``.
@@ -1390,6 +1476,7 @@ class FeedbackHologram(Hologram):
         self._calculate_stats_experimental(stats, stat_groups)
 
         self._update_stats_dictionary(stats)
+
 
 class SpotHologram(FeedbackHologram):
     """
@@ -1421,8 +1508,9 @@ class SpotHologram(FeedbackHologram):
         For instance, the user can request dimmer or brighter spots.
     """
 
-    def __init__(   self, shape, spot_vectors, basis="knm", spot_amp=None,
-                    cameraslm=None, **kwargs):
+    def __init__(
+        self, shape, spot_vectors, basis="knm", spot_amp=None, cameraslm=None, **kwargs
+    ):
         """
         Initializes a :class:`SpotHologram` targeting given spots at ``spot_vectors``.
 
@@ -1454,16 +1542,20 @@ class SpotHologram(FeedbackHologram):
         vectors = toolbox.clean_2vectors(spot_vectors)
 
         if spot_amp is not None:
-            assert np.shape(vectors)[1] == len(spot_amp.ravel()), \
-                "spot_amp must have the same length as the provided spots."
+            assert np.shape(vectors)[1] == len(
+                spot_amp.ravel()
+            ), "spot_amp must have the same length as the provided spots."
 
         # Handle the basis.
-        if basis is None or basis == "knm": # Computational Fourier space of SLM, zero-centered
+        if (
+            basis is None or basis == "knm"
+        ):  # Computational Fourier space of SLM, zero-centered
             self.spot_knm = vectors
 
             if cameraslm is not None:
                 self.spot_kxy = toolbox.convert_blaze_vector(
-                    self.spot_knm, "knm", "kxy", cameraslm.slm, shape)
+                    self.spot_knm, "knm", "kxy", cameraslm.slm, shape
+                )
 
                 if cameraslm.fourier_calibration is not None:
                     self.spot_ij = cameraslm.kxyslm_to_ijcam(self.spot_kxy)
@@ -1472,35 +1564,40 @@ class SpotHologram(FeedbackHologram):
             else:
                 self.spot_kxy = None
                 self.spot_ij = None
-        elif basis == "kxy":                # Normalized units
+        elif basis == "kxy":  # Normalized units
             assert cameraslm is not None, "We need an cameraslm to interpret ij."
 
             self.spot_kxy = vectors
 
             try:
                 self.spot_ij = cameraslm.kxyslm_to_ijcam(vectors)
-            except:     # This is okay for non-feedback GS, so we don't error.
+            except:  # This is okay for non-feedback GS, so we don't error.
                 self.spot_ij = None
 
             self.spot_knm = toolbox.convert_blaze_vector(
-                self.spot_kxy, "kxy", "knm", cameraslm.slm, shape)
-        elif basis == "ij":                     # Pixel on the camera
+                self.spot_kxy, "kxy", "knm", cameraslm.slm, shape
+            )
+        elif basis == "ij":  # Pixel on the camera
             assert cameraslm is not None, "We need an cameraslm to interpret ij."
-            assert cameraslm.fourier_calibration is not None, "We need an cameraslm with " \
-                    "fourier-calibrated kxyslm_to_ijcam and ijcam_to_kxyslm transforms " \
-                    "to interpret ij."
+            assert cameraslm.fourier_calibration is not None, (
+                "We need an cameraslm with "
+                "fourier-calibrated kxyslm_to_ijcam and ijcam_to_kxyslm transforms "
+                "to interpret ij."
+            )
 
             self.spot_ij = vectors
             self.spot_kxy = cameraslm.ijcam_to_kxyslm(vectors)
             self.spot_knm = toolbox.convert_blaze_vector(
-                self.spot_kxy, "kxy", "knm", cameraslm.slm, shape)
+                self.spot_kxy, "kxy", "knm", cameraslm.slm, shape
+            )
         else:
             raise Exception("Unrecognized basis '{}'.".format(basis))
 
         # Check to make sure spots are within relevant camera and SLM shapes.
-        if  np.any(np.abs(self.spot_knm[0]) > shape[1]/2.) or \
-            np.any(np.abs(self.spot_knm[1]) > shape[0]/2.):
-           raise ValueError("Spots outside SLM computational space bounds!")
+        if np.any(np.abs(self.spot_knm[0]) > shape[1] / 2.0) or np.any(
+            np.abs(self.spot_knm[1]) > shape[0] / 2.0
+        ):
+            raise ValueError("Spots outside SLM computational space bounds!")
 
         if self.spot_ij is not None:
             cam_shape = cameraslm.cam.shape
@@ -1508,16 +1605,18 @@ class SpotHologram(FeedbackHologram):
             # Calculate the width of the integration region for the spot.
             # Currently bounded between a width of 3 and 15, but maybe this
             # should be opened up to the user.
-            psf = 2*int(toolbox.get_smallest_distance(self.spot_ij)/2) + 1
+            psf = 2 * int(toolbox.smallest_distance(self.spot_ij) / 2) + 1
             if psf < 3:
                 psf = 3
             if psf > 15:
                 psf = 15
 
-            if (np.any(self.spot_ij[0] < psf/2) or
-                np.any(self.spot_ij[0] >= cam_shape[1] - psf/2) or
-                np.any(self.spot_ij[1] < psf/2) or
-                np.any(self.spot_ij[1] >= cam_shape[0] - psf/2)):
+            if (
+                np.any(self.spot_ij[0] < psf / 2)
+                or np.any(self.spot_ij[0] >= cam_shape[1] - psf / 2)
+                or np.any(self.spot_ij[1] < psf / 2)
+                or np.any(self.spot_ij[1] >= cam_shape[0] - psf / 2)
+            ):
                 raise ValueError("Spots outside camera bounds!")
 
             self.psf = psf
@@ -1537,8 +1636,15 @@ class SpotHologram(FeedbackHologram):
         self.update_target(reset_weights=True)
 
     @staticmethod
-    def make_rectangular_array( shape, array_shape, array_pitch, array_center=(0,0),
-                                basis="knm", parity_check=False, **kwargs):
+    def make_rectangular_array(
+        shape,
+        array_shape,
+        array_pitch,
+        array_center=(0, 0),
+        basis="knm",
+        parity_check=False,
+        **kwargs
+    ):
         """
         Helper function to initialize a rectangular 2D array of spots, with certain size and pitch.
 
@@ -1575,13 +1681,15 @@ class SpotHologram(FeedbackHologram):
             array_pitch = (array_pitch, array_pitch)
 
         # Make the grid edges.
-        x_edge = ((np.arange(array_shape[0]) - (array_shape[0]-1)/2) * array_pitch[0]
-                    + array_center[0])
-        y_edge = ((np.arange(array_shape[1]) - (array_shape[1]-1)/2) * array_pitch[1]
-                    + array_center[1])
+        x_edge = (np.arange(array_shape[0]) - (array_shape[0] - 1) / 2) * array_pitch[
+            0
+        ] + array_center[0]
+        y_edge = (np.arange(array_shape[1]) - (array_shape[1] - 1) / 2) * array_pitch[
+            1
+        ] + array_center[1]
 
         # Make the grid lists.
-        x_grid, y_grid = np.meshgrid(x_edge, y_edge, sparse=False, indexing='xy')
+        x_grid, y_grid = np.meshgrid(x_edge, y_edge, sparse=False, indexing="xy")
         x_list, y_list = x_grid.ravel(), y_grid.ravel()
 
         # Delete the last two points if desired and valid.
@@ -1603,25 +1711,31 @@ class SpotHologram(FeedbackHologram):
 
         shape = toolbox.clean_2vectors(self.shape).astype(np.float)
 
-        self.spot_knm_rounded = np.ceil(shape/2 + self.spot_knm.astype(np.float))
+        self.spot_knm_rounded = np.ceil(shape / 2 + self.spot_knm.astype(np.float))
         self.spot_knm_rounded = self.spot_knm_rounded.astype(np.int)
 
         if self.cameraslm is not None:
             self.spot_kxy_rounded = toolbox.convert_blaze_vector(
-                self.spot_knm_rounded - shape/2, "knm", "kxy",
-                self.cameraslm.slm, self.shape)
+                self.spot_knm_rounded - shape / 2,
+                "knm",
+                "kxy",
+                self.cameraslm.slm,
+                self.shape,
+            )
 
             if self.cameraslm.fourier_calibration is not None:
                 self.spot_ij_rounded = self.cameraslm.kxyslm_to_ijcam(
-                                                                self.spot_kxy_rounded)
+                    self.spot_kxy_rounded
+                )
             else:
                 self.spot_ij_rounded = None
         else:
             self.spot_kxy_rounded = None
             self.spot_ij_rounded = None
 
-        self.target[self.spot_knm_rounded[1, :],
-                    self.spot_knm_rounded[0, :]] = self.spot_amp
+        self.target[
+            self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]
+        ] = self.spot_amp
         self.target /= Hologram.norm(self.target)
 
         if reset_weights:
@@ -1629,6 +1743,7 @@ class SpotHologram(FeedbackHologram):
 
         if plot:
             self.plot_target()
+
     def update_target(self, reset_weights=False, plot=False):
         """
         From the spot locations stored in :attr:`spot_knm`, update the target pattern.
@@ -1678,74 +1793,92 @@ class SpotHologram(FeedbackHologram):
             Euclidian pixel error in the ``"ij"`` basis for each spot.
         """
         # Take regions around each point from the given image.
-        regions = analysis.take(img, self.spot_ij, self.psf,
-                                centered=True, integrate=False)
+        regions = analysis.take(
+            img, self.spot_ij, self.psf, centered=True, integrate=False
+        )
 
         # Filter the images, but not the stack.
-        blur = 2*int(self.psf/8)+1
+        blur = 2 * int(self.psf / 8) + 1
         sp_gaussian_filter1d(regions, blur, axis=1, output=regions)
         sp_gaussian_filter1d(regions, blur, axis=2, output=regions)
 
         shift_x = np.argmax(np.amax(regions, axis=1, keepdims=True), axis=2)
         shift_y = np.argmax(np.amax(regions, axis=2, keepdims=True), axis=1)
 
-        shift_x -= (self.psf-1)/2
-        shift_y -= (self.psf-1)/2
+        shift_x -= (self.psf - 1) / 2
+        shift_y -= (self.psf - 1) / 2
 
         shift_vector = np.vstack(shift_x, shift_y)
         shift_error = np.sqrt(np.square(shift_x) + np.square(shift_y))
 
-        if basis is None or basis == "kxy" or basis == "knm":   # Don't modify any camera spots.
-            self.spot_kxy = (   self.spot_kxy_rounded -
-                                self.cameraslm.ijcam_to_kxyslm(shift_vector))
+        if (
+            basis is None or basis == "kxy" or basis == "knm"
+        ):  # Don't modify any camera spots.
+            self.spot_kxy = self.spot_kxy_rounded - self.cameraslm.ijcam_to_kxyslm(
+                shift_vector
+            )
             self.spot_knm = toolbox.convert_blaze_vector(
-                self.spot_kxy, "kxy", "knm", self.cameraslm.slm, self.shape)
+                self.spot_kxy, "kxy", "knm", self.cameraslm.slm, self.shape
+            )
             self.update_target()
-        elif basis == "ij":     # Don't modify any k-vectors.
+        elif basis == "ij":  # Don't modify any k-vectors.
             self.spot_ij = self.spot_ij - shift_vector
         else:
             raise Exception("Unrecognized basis '{}'.".format(basis))
 
         return shift_error
+
     def _update_weights(self):
         """
         Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
         :attr:`amp_ff`, the computed farfield amplitude. This function also updates stats.
         """
-        feedback = self.flags['feedback']
+        feedback = self.flags["feedback"]
 
         if feedback == "computational":
             self._update_weights_generic(self.weights, self.amp_ff, self.target)
         elif feedback == "experimental-spot":
             self.measure(basis="ij")
 
-            feedback = analysis.take(   self.img_ij, self.spot_ij, self.psf,
-                                        centered=True, integrate=True)
+            feedback = analysis.take(
+                self.img_ij, self.spot_ij, self.psf, centered=True, integrate=True
+            )
 
-            self._update_weights_generic(self.weights[self.spot_knm_rounded[1,:],
-                                                      self.spot_knm_rounded[0,:]],
-                                            feedback, self.spot_amp)
+            self._update_weights_generic(
+                self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
+                feedback,
+                self.spot_amp,
+            )
 
     def _calculate_stats_spots(self, stats, stat_groups=[]):
         """
         Wrapped by :meth:`SpotHologram.update_stats()`.
         """
-        if 'computational_spot' in stat_groups:
+        if "computational_spot" in stat_groups:
             total = cp.sum(cp.square(self.amp_ff))
-            stats['computational_spot'] = self._calculate_stats(
+            stats["computational_spot"] = self._calculate_stats(
                 self.amp_ff[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
-                self.spot_amp, efficiency_compensation=False, total=total)
-        if 'experimental_spot' in stat_groups:
+                self.spot_amp,
+                efficiency_compensation=False,
+                total=total,
+            )
+        if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
 
-            feedback = analysis.take(  self.img_ij, self.spot_ij, self.psf,
-                                            centered=True, integrate=True)
+            feedback = analysis.take(
+                self.img_ij, self.spot_ij, self.psf, centered=True, integrate=True
+            )
 
             total = cp.sum(self.img_ij)
 
-            stats['experimental_spot'] = self._calculate_stats(
-                np.sqrt(feedback), self.spot_amp, mp=np,
-                efficiency_compensation=False, total=total)
+            stats["experimental_spot"] = self._calculate_stats(
+                np.sqrt(feedback),
+                self.spot_amp,
+                mp=np,
+                efficiency_compensation=False,
+                total=total,
+            )
+
     def update_stats(self, stat_groups=[]):
         """
         Calculate statistics corresponding to the desired ``stat_groups``.

@@ -207,13 +207,13 @@ class Santec(SLM):
 
         return display_list
 
-    def load_flatmap(self, file_path, flatmap_wav_um=0.830, smooth=False):
+    def load_flatmap(self, file_path, wav_flatmap_um=0.830, smooth=False):
         """
         See :meth:`.SLM.load_flatmap`.
 
         Parameters
         ----------
-        flatmap_wav_um : float
+        wav_flatmap_um : float
             The wavelength the flatmap was taken at in um. Default is 830nm.
         smooth : bool
             Whether to apply a Gaussian blur to smooth the data.
@@ -222,7 +222,7 @@ class Santec(SLM):
             # Load from .csv, skipping the first row and column
             # (corresponding to X and Y coordinates).
             map = np.loadtxt(file_path, skiprows=1, dtype=int, delimiter=",")[:, 1:]
-            phase = (-2 * np.pi / self.bitresolution * self.wav_um / flatmap_wav_um) * map.astype(float)
+            phase = (-2 * np.pi / self.bitresolution * self.wav_um / wav_flatmap_um) * map.astype(float)
 
             # Smooth the map
             if smooth:

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 from slmsuite.holography import analysis
-from slmsuite.misc import lorentzian_fitfun, lorentzian_jacobian
+from slmsuite.misc import lorentzian, lorentzian_jacobian
 
 class Camera:
     """
@@ -368,7 +368,7 @@ class Camera:
 
         try:
             popt, _ = curve_fit(
-                lorentzian_fitfun,
+                lorentzian,
                 z_list,
                 counts,
                 jac=lorentzian_jacobian,
@@ -393,10 +393,10 @@ class Camera:
             plt.ylabel("fom: Data, Guess, & Fit")
             plt.title("Focus Sweep")
             plt.scatter(z_opt, c_opt)
-            plt.plot(z_list, lorentzian_fitfun(z_list, *popt0))
+            plt.plot(z_list, lorentzian(z_list, *popt0))
             lfit = None
             try:
-                lfit = lorentzian_fitfun(z_list, *popt)
+                lfit = lorentzian(z_list, *popt)
             except BaseException:
                 lfit = None
             if lfit is not None:

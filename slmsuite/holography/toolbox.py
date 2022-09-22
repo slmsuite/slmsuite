@@ -8,10 +8,19 @@ from scipy.spatial.distance import euclidean
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
+from math import factorial, comb
 
 # Phase pattern collation and manipulation
-def imprint(matrix, window, grid, function, imprint_operation="replace",
-            centered=False, clip=True, **kwargs):
+def imprint(
+    matrix,
+    window,
+    grid,
+    function,
+    imprint_operation="replace",
+    centered=False,
+    clip=True,
+    **kwargs
+):
     """
     Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
 
@@ -62,46 +71,64 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
     """
     (x_grid, y_grid) = _process_grid(grid)
 
-    if len(window) == 4:    # (v.x, w, v.y, h) format
+    if len(window) == 4:  # (v.x, w, v.y, h) format
         # Prepare helper vars
-        xi = int(     window[0] - (window[1]/2 if centered else 0))
+        xi = int(window[0] - (window[1] / 2 if centered else 0))
         xf = int(xi + window[1])
-        yi = int(     window[2] - (window[3]/2 if centered else 0))
+        yi = int(window[2] - (window[3] / 2 if centered else 0))
         yf = int(yi + window[3])
 
         if xi < 0:
-            if clip:    xi = 0
-            else:       raise ValueError()
+            if clip:
+                xi = 0
+            else:
+                raise ValueError()
         if xf >= matrix.shape[1]:
-            if clip:    xf = matrix.shape[1] - 1
-            else:       raise ValueError()
+            if clip:
+                xf = matrix.shape[1] - 1
+            else:
+                raise ValueError()
         if yi < 0:
-            if clip:    yi = 0
-            else:       raise ValueError()
+            if clip:
+                yi = 0
+            else:
+                raise ValueError()
         if yf >= matrix.shape[0]:
-            if clip:    yf = matrix.shape[0] - 1
-            else:       raise ValueError()
+            if clip:
+                yf = matrix.shape[0] - 1
+            else:
+                raise ValueError()
 
         if xf < 0:
-            if clip:    xf = 0
-            else:       raise ValueError()
+            if clip:
+                xf = 0
+            else:
+                raise ValueError()
         if xi >= matrix.shape[1]:
-            if clip:    xi = matrix.shape[1] - 1
-            else:       raise ValueError()
+            if clip:
+                xi = matrix.shape[1] - 1
+            else:
+                raise ValueError()
         if yf < 0:
-            if clip:    yf = 0
-            else:       raise ValueError()
+            if clip:
+                yf = 0
+            else:
+                raise ValueError()
         if yi >= matrix.shape[0]:
-            if clip:    yi = matrix.shape[0] - 1
-            else:       raise ValueError()
+            if clip:
+                yi = matrix.shape[0] - 1
+            else:
+                raise ValueError()
 
         # Modify the matrix
         if imprint_operation == "replace":
-            matrix[yi:yf,xi:xf] =   function(  (x_grid[yi:yf,xi:xf],
-                                                y_grid[yi:yf,xi:xf]), **kwargs)
+            matrix[yi:yf, xi:xf] = function(
+                (x_grid[yi:yf, xi:xf], y_grid[yi:yf, xi:xf]), **kwargs
+            )
         elif imprint_operation == "add":
-            matrix[yi:yf,xi:xf] +=  function(  (x_grid[yi:yf,xi:xf],
-                                                y_grid[yi:yf,xi:xf]), **kwargs)
+            matrix[yi:yf, xi:xf] += function(
+                (x_grid[yi:yf, xi:xf], y_grid[yi:yf, xi:xf]), **kwargs
+            )
         else:
             raise ValueError()
     elif len(window) == 2:  # (y_ind, x_ind) format
@@ -119,22 +146,26 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
             if any(y_ind >= matrix.shape[0]):
                 x_ind[y_ind >= matrix.shape[0]] = matrix.shape[0] - 1
         else:
-            pass    # Allow the indexing to fail, if it clips...
+            pass  # Allow the indexing to fail, if it clips...
 
         # Modify the matrix
         if imprint_operation == "replace":
-            matrix[y_ind, x_ind] =  function(  (x_grid[y_ind, x_ind],
-                                                y_grid[y_ind, x_ind]), **kwargs)
+            matrix[y_ind, x_ind] = function(
+                (x_grid[y_ind, x_ind], y_grid[y_ind, x_ind]), **kwargs
+            )
         elif imprint_operation == "add":
-            matrix[y_ind, x_ind] += function(  (x_grid[y_ind, x_ind],
-                                                y_grid[y_ind, x_ind]), **kwargs)
+            matrix[y_ind, x_ind] += function(
+                (x_grid[y_ind, x_ind], y_grid[y_ind, x_ind]), **kwargs
+            )
         else:
             raise ValueError()
-    elif np.shape(window) == np.shape(matrix):      # Boolean numpy array. Future: extra checks?
+    elif np.shape(window) == np.shape(
+        matrix
+    ):  # Boolean numpy array. Future: extra checks?
 
         # Modify the matrix
         if imprint_operation == "replace":
-            matrix[window] =  function((x_grid[window], y_grid[window]), **kwargs)
+            matrix[window] = function((x_grid[window], y_grid[window]), **kwargs)
         elif imprint_operation == "add":
             matrix[window] += function((x_grid[window], y_grid[window]), **kwargs)
         else:
@@ -144,11 +175,15 @@ def imprint(matrix, window, grid, function, imprint_operation="replace",
 
     return matrix
 
+
 # Unit helper functions
 blaze_units = ["norm", "kxy", "rad", "knm", "freq", "lpmm", "mrad", "deg"]
-def convert_blaze_vector(   vector, from_units="norm", to_units="norm",
-                            slm=None, shape=None):
-        r"""
+
+
+def convert_blaze_vector(
+    vector, from_units="norm", to_units="norm", slm=None, shape=None
+):
+    r"""
         Helper function for unit conversions.
 
         Currently supported units:
@@ -195,52 +230,62 @@ def convert_blaze_vector(   vector, from_units="norm", to_units="norm",
         numpy.ndarray
             Result of the unit conversion, in the cleaned format of :meth:`clean_2vectors()`.
         """
-        assert from_units in blaze_units and to_units in blaze_units
+    assert from_units in blaze_units and to_units in blaze_units
 
-        vector = clean_2vectors(vector).astype(np.float)
+    vector = clean_2vectors(vector).astype(np.float)
 
-        if from_units == "freq" or to_units == "freq":
-            if slm is None:
-                pitch_um = np.nan
-            else:
-                pitch_um = clean_2vectors([slm.dx_um, slm.dy_um])
+    if from_units == "freq" or to_units == "freq":
+        if slm is None:
+            pitch_um = np.nan
+        else:
+            pitch_um = clean_2vectors([slm.dx_um, slm.dy_um])
 
-        if from_units in ["freq", "lpmm"] or to_units in ["freq", "lpmm"]:
-            if slm is None:
-                wav_um = np.nan
-            else:
-                wav_um = slm.wav_um
+    if from_units in ["freq", "lpmm"] or to_units in ["freq", "lpmm"]:
+        if slm is None:
+            wav_um = np.nan
+        else:
+            wav_um = slm.wav_um
 
-        if from_units == "knm" or to_units == "knm":
-            if slm is None:
-                pitch = np.nan
-            else:
-                pitch = clean_2vectors([slm.dx, slm.dy])
+    if from_units == "knm" or to_units == "knm":
+        if slm is None:
+            pitch = np.nan
+        else:
+            pitch = clean_2vectors([slm.dx, slm.dy])
 
-            if shape is None:
-                shape = np.nan
-            else:
-                shape = clean_2vectors(np.flip(np.squeeze(shape)))
+        if shape is None:
+            shape = np.nan
+        else:
+            shape = clean_2vectors(np.flip(np.squeeze(shape)))
 
-            knm_conv = pitch * shape
+        knm_conv = pitch * shape
 
-        if     (from_units == "norm" or
-                from_units == "kxy" or
-                from_units == "rad"): rad = vector
-        elif    from_units == "knm":  rad = vector / knm_conv
-        elif    from_units == "freq": rad = vector * wav_um / pitch_um
-        elif    from_units == "lpmm": rad = vector * wav_um / 1000
-        elif    from_units == "mrad": rad = vector / 1000
-        elif    from_units == "deg":  rad = vector * np.pi / 180
+    if from_units == "norm" or from_units == "kxy" or from_units == "rad":
+        rad = vector
+    elif from_units == "knm":
+        rad = vector / knm_conv
+    elif from_units == "freq":
+        rad = vector * wav_um / pitch_um
+    elif from_units == "lpmm":
+        rad = vector * wav_um / 1000
+    elif from_units == "mrad":
+        rad = vector / 1000
+    elif from_units == "deg":
+        rad = vector * np.pi / 180
 
-        if     (to_units == "norm" or
-                to_units == "kxy" or
-                to_units == "rad"): return rad
-        elif    to_units == "knm":  return rad * knm_conv
-        elif    to_units == "freq": return rad * pitch_um / wav_um
-        elif    to_units == "lpmm": return rad * 1000 / wav_um
-        elif    to_units == "mrad": return rad * 1000
-        elif    to_units == "deg":  return rad * 180 / np.pi
+    if to_units == "norm" or to_units == "kxy" or to_units == "rad":
+        return rad
+    elif to_units == "knm":
+        return rad * knm_conv
+    elif to_units == "freq":
+        return rad * pitch_um / wav_um
+    elif to_units == "lpmm":
+        return rad * 1000 / wav_um
+    elif to_units == "mrad":
+        return rad * 1000
+    elif to_units == "deg":
+        return rad * 180 / np.pi
+
+
 def print_blaze_conversions(vector, from_units="norm", **kwargs):
     """
     Helper function to understand unit conversions.
@@ -257,10 +302,12 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
         Passed to :meth:`convert_blaze_vector()`.
     """
     for unit in blaze_units:
-        result = convert_blaze_vector(vector,
-            from_units=from_units, to_units=unit, **kwargs)
+        result = convert_blaze_vector(
+            vector, from_units=from_units, to_units=unit, **kwargs
+        )
 
         print("'{}' : {}".format(unit, tuple(result.T[0])))
+
 
 # Vector and window helper functions
 def clean_2vectors(vectors):
@@ -297,7 +344,9 @@ def clean_2vectors(vectors):
     assert vectors.shape[0] == 2
 
     return vectors
-def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
+
+
+def affine_vectors(y0, y1, y2, N, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
     r"""
     Fits three points to an affine transformation. This transformation is given by:
 
@@ -329,7 +378,7 @@ def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
     Returns
     -------
     numpy.ndarray OR dict
-        2-vector or array of 2-vectors in slm coordinates.
+        2-vector or array of 2-vectors ``(2, N)`` in slm coordinates.
         If ``N`` is ``None`` or non-positive, then returns a dictionary with keys
         ``"M"`` and ``"b"`` (transformation matrix and shift, respectively).
     """
@@ -340,17 +389,17 @@ def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
 
     # Parse index vectors
     if x0 is None:
-        x0 = (0,0)
+        x0 = (0, 0)
     x0 = clean_2vectors(x0)
 
     if x1 is None:
-        x1 = x0 + clean_2vectors((1,0))
+        x1 = x0 + clean_2vectors((1, 0))
     else:
         x1 = clean_2vectors(x1)
         y1 = y1 - y0
 
     if x2 is None:
-        x2 = x0 + clean_2vectors((0,1))
+        x2 = x0 + clean_2vectors((0, 1))
     else:
         x2 = clean_2vectors(x2)
         y2 = y2 - y0
@@ -359,7 +408,9 @@ def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
     dx2 = x2 - x0
 
     # Invert the index matrix.
-    colinear = np.abs(np.sum(dx1 * dx2)) == np.sqrt(np.sum(dx1 * dx1)*np.sum(dx2 * dx2))
+    colinear = np.abs(np.sum(dx1 * dx2)) == np.sqrt(
+        np.sum(dx1 * dx1) * np.sum(dx2 * dx2)
+    )
     assert not colinear, "Indices must not be colinear."
 
     J = np.linalg.inv(np.squeeze(np.array([[dx1[0], dx2[0]], [dx1[1], dx2[1]]])))
@@ -390,7 +441,7 @@ def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
         raise ValueError("N={} not recognized.".format(N))
 
     if affine_return:
-        return {"M":M, "b":b}
+        return {"M": M, "b": b}
     else:
         if indices is None:
             x_list = np.arange(N[0])
@@ -400,9 +451,13 @@ def get_affine_vectors(y0, y1, y2, N, x0=(0,0), x1=(1,0), x2=(0,1)):
             indices = np.vstack((x_grid.ravel(), y_grid.ravel()))
 
         return np.matmul(M, indices) + b
-def largest_difference(x, y):
+
+
+def largest_difference_metric(x, y):
     return np.max(np.abs(x - y))
-def get_smallest_distance(vectors, metric=euclidean):
+
+
+def smallest_distance(vectors, metric=euclidean):
     """
     Returns the smallest distance between pairs of points under a given ``metric``.
 
@@ -426,14 +481,16 @@ def get_smallest_distance(vectors, metric=euclidean):
 
     minimum = np.inf
 
-    for x in range(N-1):
-        for y in range(x+1, N):
-            distance = metric(vectors[:,x], vectors[:,y])
+    for x in range(N - 1):
+        for y in range(x + 1, N):
+            distance = metric(vectors[:, x], vectors[:, y])
             if distance < minimum:
                 minimum = distance
 
     return minimum
-def get_voronoi_windows(grid, vectors, radius=None, plot=True):
+
+
+def voronoi_windows(grid, vectors, radius=None, plot=True):
     """
     Gets boolean array windows for an array of vectors in the style of
     :meth:`~slmsuite.holography.toolbox.imprint()`,
@@ -463,27 +520,37 @@ def get_voronoi_windows(grid, vectors, radius=None, plot=True):
     """
     vectors = clean_2vectors(vectors)
 
-    if (isinstance(grid, (list, tuple)) and
-        isinstance(grid[0], (int)) and
-        isinstance(grid[1], (int))):
+    if (
+        isinstance(grid, (list, tuple))
+        and isinstance(grid[0], (int))
+        and isinstance(grid[1], (int))
+    ):
         shape = grid
     else:
         (x_grid, y_grid) = _process_grid(grid)
 
         shape = x_grid.shape
 
-        x_list = x_grid[0,:]
-        y_list = y_grid[:,0]
+        x_list = x_grid[0, :]
+        y_list = y_grid[:, 0]
 
-        vectors = np.vstack(np.interp(vectors[0,:], x_list, np.arange(shape[1])),
-                            np.interp(vectors[1,:], y_list, np.arange(shape[0])))
+        vectors = np.vstack(
+            np.interp(vectors[0, :], x_list, np.arange(shape[1])),
+            np.interp(vectors[1, :], y_list, np.arange(shape[0])),
+        )
 
     # Half shape data.
-    hsx = shape[1]/2
-    hsy = shape[0]/2
+    hsx = shape[1] / 2
+    hsy = shape[0] / 2
 
-    vectors_voronoi = np.concatenate((vectors.T,
-        np.array([ [hsx, -3*hsy], [hsx, 5*hsy], [-3*hsx, hsy], [5*hsx, hsy] ])))
+    vectors_voronoi = np.concatenate(
+        (
+            vectors.T,
+            np.array(
+                [[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]
+            ),
+        )
+    )
 
     vor = Voronoi(vectors_voronoi, furthest_site=False)
 
@@ -493,11 +560,10 @@ def get_voronoi_windows(grid, vectors, radius=None, plot=True):
 
         fig = voronoi_plot_2d(vor)
 
-        plt.plot(   np.array([0, sx, sx, 0, 0]),
-                    np.array([0, 0, sy, sy, 0]), 'r')
+        plt.plot(np.array([0, sx, sx, 0, 0]), np.array([0, 0, sy, sy, 0]), "r")
 
-        plt.xlim(-.05*sx, 1.05*sx)
-        plt.ylim(1.05*sy, -.05*sy)
+        plt.xlim(-0.05 * sx, 1.05 * sx)
+        plt.ylim(1.05 * sy, -0.05 * sy)
 
         plt.title("Voronoi Cells")
 
@@ -516,14 +582,16 @@ def get_voronoi_windows(grid, vectors, radius=None, plot=True):
 
         if radius is not None and radius > 0:
             canvas2 = np.zeros(shape, dtype=np.uint8)
-            cv2.circle(canvas2, tuple(point.astype(np.int32)),
-                                int(np.ceil(radius)), 255, -1)
+            cv2.circle(
+                canvas2, tuple(point.astype(np.int32)), int(np.ceil(radius)), 255, -1
+            )
 
             filled_regions.append((canvas1 > 0) & (canvas2 > 0))
         else:
             filled_regions.append(canvas1 > 0)
 
     return filled_regions
+
 
 # Basic functions
 def _process_grid(grid):
@@ -555,7 +623,8 @@ def _process_grid(grid):
 
     return grid
 
-def blaze(grid, vector=(0,0), offset=0):
+
+def blaze(grid, vector=(0, 0), offset=0):
     r"""
     Returns a simple blaze (phase ramp).
 
@@ -575,7 +644,9 @@ def blaze(grid, vector=(0,0), offset=0):
     """
     (x_grid, y_grid) = _process_grid(grid)
 
-    return 2 * np.pi * (vector[0]*x_grid + vector[1]*y_grid) + offset
+    return 2 * np.pi * (vector[0] * x_grid + vector[1] * y_grid) + offset
+
+
 def lens(grid, f=(np.inf, np.inf), center=(0, 0)):
     r"""
     Returns a simple thin lens (parabolic).
@@ -622,7 +693,7 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0)):
         assert not np.any(f == 0), "Cannot interpret a focal length of zero."
 
         # Optical power of lens
-        g = [[1/f[0], 0], [0, 1/f[1]]]
+        g = [[1 / f[0], 0], [0, 1 / f[1]]]
 
         # Rotate if necessary
         if ang != 0:
@@ -632,21 +703,22 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0)):
 
             g = np.matmul(np.linalg.inv(rot), np.matmul(g, rot))
     else:
-        raise ValueError("Expected f to be a scalar, a vector of length 2, or a 2x2 matrix.")
-
+        raise ValueError(
+            "Expected f to be a scalar, a vector of length 2, or a 2x2 matrix."
+        )
 
     # Only add a component if necessary (for speed)
     out = None
 
     if g[0][0] != 0:
         if out is None:
-            out  = np.square(x_grid - center[0]) * (g[0][0] * np.pi)
+            out = np.square(x_grid - center[0]) * (g[0][0] * np.pi)
         else:
             out += np.square(x_grid - center[0]) * (g[0][0] * np.pi)
 
     if g[1][1] != 0:
         if out is None:
-            out  = np.square(y_grid - center[1]) * (g[1][1] * np.pi)
+            out = np.square(y_grid - center[1]) * (g[1][1] * np.pi)
         else:
             out += np.square(y_grid - center[1]) * (g[1][1] * np.pi)
 
@@ -654,11 +726,135 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0)):
 
     if shear != 0:
         if out is None:
-            out  = (x_grid - center[0]) * (y_grid - center[1]) * shear
+            out = (x_grid - center[0]) * (y_grid - center[1]) * shear
         else:
             out += (x_grid - center[0]) * (y_grid - center[1]) * shear
 
     return out
+
+
+def zernike(grid, n, m, aperture=None):
+    """
+    **(Untested)** Returns a single Zernike polynomial.
+    """
+    return zernike_sum(grid, ((n, m), 1), aperture=aperture)
+
+
+def zernike_sum(grid, weights, aperture=None):
+    """
+    **(Untested)** Returns a summation of Zernike polynomials.
+
+    Zernike polynomials are canonically defined on a circular aperture. Cropping 
+    this aperture breaks the orthogonality of the set; thus 
+
+    Parameters
+    ----------
+    grid
+        TODO
+    weights
+        list of ((int, int), float)
+    aperture {"rectangular", "square", "cropped"} OR (float, float) OR None
+
+    """
+    (x_grid, y_grid) = _process_grid(grid)
+
+    if aperture is None:
+        aperture = "cropped"
+
+    if isinstance(aperture, str):
+        if aperture == "rectangular":
+            x_scale = 1 / np.amax(x_grid)
+            y_scale = 1 / np.amax(y_grid)
+        elif aperture == "square":
+            x_scale = y_scale = 1 / np.amin(np.amax(x_grid) + np.amax(y_grid))
+        elif aperture == "cropped":
+            x_scale = y_scale = 1 / np.sqrt(np.amax(np.square(x_grid) + np.square(y_grid)))
+    else:
+        raise ValueError("NotImplemented")
+
+    mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) > 1
+    use_mask = np.any(mask == 0)
+
+    if use_mask:
+        x_grid_scaled = x_grid[mask] * x_scale
+        y_grid_scaled = y_grid[mask] * y_scale
+    else:
+        x_grid_scaled = x_grid * x_scale
+        y_grid_scaled = y_grid * y_scale
+
+    summed_coefficients = {}
+
+    for (key, weight) in weights:
+        coefficients = _zernike_coefficients(key[0], key[1])
+
+        for (power_key, factor) in coefficients:
+            power_factor = factor * weight
+            if power_key in summed_coefficients:
+                summed_coefficients[power_key] += power_factor
+            else:
+                summed_coefficients[power_key] = power_factor
+
+    canvas = np.zeros(x_grid.shape)
+
+    for (power_key, factor) in summed_coefficients:
+        if factor != 0:
+            if use_mask:
+                canvas[mask] = factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+            else:
+                canvas += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+
+    return canvas
+
+_zernike_cache = {}
+
+def _zernike_coefficients(n, m):
+    """
+    **(Untested)**
+
+    .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
+    """
+    n = int(n)
+    m = int(m)
+
+    key = (n, m)
+
+    if not key in _zernike_cache:
+        zernike_this = {}
+
+        l = n - 2 * m
+
+        if l % 2:   # If even
+            q = (abs(l) - 1) / 2
+        else:
+            if l > 0:
+                q = abs(l)/2 - 1
+            else:
+                q = abs(l)/2
+
+        if l <= 0:
+            p = 0
+        else:
+            p = 1
+
+        for i in range(q+1):
+            for j in range(m+1):
+                for k in range(m-j+1):
+                    factor = -1 if (i + j) % 2 else 1
+                    factor *= comb(l, 2 * i + p)
+                    factor *= comb(m - j, k)
+                    factor *= (float(factorial(n - j))
+                        / (factorial(j) * factorial(m - j) * factorial(n - m - j)))
+
+                    power_key = (n - 2*(i + j + k) + p, 2 * (i + k) + p)
+
+                    if power_key in zernike_this:
+                        zernike_this[power_key] += factor
+                    else:
+                        zernike_this[power_key] = factor
+        
+        _zernike_cache[key] = {power_key: factor for power_key, factor in zernike_this.items() if factor != 0}
+
+    return _zernike_cache[key]
 
 # Structured light
 def determine_source_radius(grid, w=None):
@@ -689,9 +885,10 @@ def determine_source_radius(grid, w=None):
     (x_grid, y_grid) = _process_grid(grid)
 
     if w is None:
-        return np.min([np.amax(x_grid), np.amax(y_grid)])/4
+        return np.min([np.amax(x_grid), np.amax(y_grid)]) / 4
     else:
         return w
+
 
 def laguerre_gaussian(grid, l, p, w=None):
     """
@@ -718,12 +915,17 @@ def laguerre_gaussian(grid, l, p, w=None):
     w = determine_source_radius(grid, w)
 
     theta_grid = np.arctan2(x_grid, y_grid)
-    radius_grid = y_grid*y_grid + x_grid*x_grid
+    radius_grid = y_grid * y_grid + x_grid * x_grid
 
-    return np.mod(  l*theta_grid +
-        np.pi * np.heaviside(-special.genlaguerre(p, np.abs(l))(2*radius_grid/w/w), 0)
-                    + np.pi,
-                    2*np.pi)
+    return np.mod(
+        l * theta_grid
+        + np.pi
+        * np.heaviside(-special.genlaguerre(p, np.abs(l))(2 * radius_grid / w / w), 0)
+        + np.pi,
+        2 * np.pi,
+    )
+
+
 def hermite_gaussian(grid, nx, ny, w=None):
     """
     **(NotImplemented)** Returns the phase farfield for a Hermite-Gaussian beam.
@@ -744,6 +946,8 @@ def hermite_gaussian(grid, nx, ny, w=None):
 
     w = determine_source_radius(grid, w)
     raise NotImplementedError()
+
+
 def ince_gaussian(grid, p, m, w=None):
     """
     **(NotImplemented)** Returns the phase farfield for a Ince-Gaussian beam.
@@ -753,6 +957,8 @@ def ince_gaussian(grid, p, m, w=None):
 
     w = determine_source_radius(grid, w)
     raise NotImplementedError()
+
+
 def matheui_gaussian(grid, r, q, w=None):
     """
     **(NotImplemented)** Returns the phase farfield for a Matheui-Gaussian beam.
@@ -762,6 +968,7 @@ def matheui_gaussian(grid, r, q, w=None):
 
     w = determine_source_radius(grid, w)
     raise NotImplementedError()
+
 
 # Padding
 def pad(matrix, shape):
@@ -776,22 +983,29 @@ def pad(matrix, shape):
     shape : (int, int)
         Shape to pad into.
     """
-    deltashape = ((shape[0] - matrix.shape[0])/2., (shape[1] - matrix.shape[1])/2.)
+    deltashape = (
+        (shape[0] - matrix.shape[0]) / 2.0,
+        (shape[1] - matrix.shape[1]) / 2.0,
+    )
 
-    assert deltashape[0] >= 0 and deltashape[1] >= 0, \
-        "Shape {} is too large to pad to shape {}".format(tuple(matrix.shape), shape)
+    assert (
+        deltashape[0] >= 0 and deltashape[1] >= 0
+    ), "Shape {} is too large to pad to shape {}".format(tuple(matrix.shape), shape)
 
     padB = int(np.floor(deltashape[0]))
-    padT = int(np.ceil( deltashape[0]))
+    padT = int(np.ceil(deltashape[0]))
     padL = int(np.floor(deltashape[1]))
-    padR = int(np.ceil( deltashape[1]))
+    padR = int(np.ceil(deltashape[1]))
 
-    toReturn = np.pad(  matrix, [(padB, padT), (padL, padR)],
-                        mode='constant', constant_values=0)
+    toReturn = np.pad(
+        matrix, [(padB, padT), (padL, padR)], mode="constant", constant_values=0
+    )
 
     assert np.all(toReturn.shape == shape)
 
     return toReturn
+
+
 def unpad(matrix, shape):
     """
     Helper function to unpad data. The padding is assumed to be centered.
@@ -817,15 +1031,16 @@ def unpad(matrix, shape):
         mshape = np.squeeze(matrix)
         return_args = True
 
-    deltashape = ((shape[0] - mshape[0])/2., (shape[1] - mshape[1])/2.)
+    deltashape = ((shape[0] - mshape[0]) / 2.0, (shape[1] - mshape[1]) / 2.0)
 
-    assert deltashape[0] <= 0 and deltashape[1] <= 0, \
-        "Shape {} is too small to unpad to shape {}".format(tuple(mshape), shape)
+    assert (
+        deltashape[0] <= 0 and deltashape[1] <= 0
+    ), "Shape {} is too small to unpad to shape {}".format(tuple(mshape), shape)
 
     padB = int(np.floor(-deltashape[0]))
-    padT = int(mshape[0] - np.ceil( -deltashape[0]))
+    padT = int(mshape[0] - np.ceil(-deltashape[0]))
     padL = int(np.floor(-deltashape[1]))
-    padR = int(mshape[1] - np.ceil( -deltashape[1]))
+    padR = int(mshape[1] - np.ceil(-deltashape[1]))
 
     if return_args:
         return (padB, padT, padL, padR)

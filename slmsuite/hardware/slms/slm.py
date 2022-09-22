@@ -37,7 +37,7 @@ class SLM:
         Stores ``2 ** bitdepth``.
     settle_time_s : float
         Delay in seconds to allow the SLM to settle. This is mostly useful for applications
-        requiring high precision. This delay is applied if the user flags ``wait_for_settle``
+        requiring high precision. This delay is applied if the user flags ``settle``
         in :meth:`write()`.
     dx_um : float
         x pixel pitch in um.
@@ -53,8 +53,7 @@ class SLM:
         See :attr:`x_grid`.
     flatmap : numpy.ndarray
         Phase correction to apply to the SLM, provided by, e.g. the slm vendor.
-        Looks for correction upon intialization with :meth:`load_flatmap()`,
-        but defaults to ``None`` if no correction is found.
+        Defaults to ``None``. Use :meth:`load_flatmap()` to interpret a vendor file.
     measured_amplitude : numpy.ndarray or None
         Amplitude measured on the SLM b
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate()`.
@@ -82,7 +81,6 @@ class SLM:
         dx_um=8,
         dy_um=8,
         settle_time_s=0.3,
-        flatmap_path=None,
     ):
         """
         Initialize SLM.
@@ -105,9 +103,6 @@ class SLM:
             See :attr:`dy_um`.
         settle_time_s
             See :attr:`settle_time_s`.
-        flatmap_path : str or None
-            File path to vendor-provided wavefront calibration. If ``None``,
-            no flatmap is loaded. Otherwise, passed to :meth:`load_flatmap`.
         """
         self.name = name
         self.shape = (int(height), int(width))
@@ -145,8 +140,6 @@ class SLM:
         self.phase_correction = None
         self.measured_amplitude = None
         self.flatmap = None
-        if flatmap_path is not None:
-            self.load_flatmap(flatmap_path)
 
         # Decide dtype
         if self.bitdepth <= 8:
@@ -197,7 +190,7 @@ class SLM:
         phase,
         flatmap=True,
         phase_correct=True,
-        wait_for_settle=False,
+        settle=False,
         blaze_vector=None,
     ):
         r"""
@@ -246,7 +239,7 @@ class SLM:
             Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.flatmap` to ``phase``.
         phase_correct : bool
             Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction` to ``phase``.
-        wait_for_settle : bool
+        settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
         blaze_vector : (float, float)
             See :meth:`~slmsuite.holography.toolbox.blaze`.
@@ -286,7 +279,7 @@ class SLM:
         self._write_hw(self.display)
 
         # Optional delay.
-        if wait_for_settle:
+        if settle:
             time.sleep(self.settle_time_s)
 
         return self.display
@@ -346,10 +339,11 @@ class SLM:
                 # Minus 1 is to conform with the in-bound case.
                 phase -= 1
                 np.mod(phase, self.bitresolution * self.wav_norm, out=phase)
+                phase +=  self.bitresolution * (1-self.wav_norm)
 
                 # Set values still out of range to zero.
                 if self.wav_norm > 1:
-                    phase[phase >= self.bitresolution] = 0
+                    phase[phase < 0] = self.bitresolution-1
             else:
                 # Go from negative to positive.
                 phase += self.bitresolution-1

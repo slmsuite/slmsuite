@@ -6,13 +6,51 @@ import numpy as np
 
 
 def linear(x, m, b):
-    """TODO"""
+    r"""
+    For fitting a line.
+
+    .. math:: y(x) = mx + b
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        Some independent variable.
+    m : float
+        Slope of the line.
+    b : float
+        y-intercept of the line.
+
+    Returns
+    -------
+    y : numpy.ndarray
+        Line evaluated at all ``x``.
+    """
     return m * x + b
 
 
-def hyperbola(z, w, z0, zr):
-    """TODO"""
-    return w * np.sqrt(1 + np.square((z - z0) / zr))
+def hyperbola(z, w0, z0, zr):
+    r"""
+    For fitting a hyperbola.
+
+    .. math:: w(z) = w_0 \sqrt{1 + \left(\frac{z - z0}{z_R}\right)^2}.
+
+    Parameters
+    ----------
+    z : numpy.ndarray
+        Distance.
+    w0 : float
+        Beamradius at :math:`z = z_0`.
+    z0 : float
+        Plane of focus, the center of the hyperbola.
+    zr : float
+        Rayleigh length, the depth of focus.
+
+    Returns
+    -------
+    w : numpy.ndarray
+        Hyperbola evaluated at all ``z``.
+    """
+    return w0 * np.sqrt(1 + np.square((z - z0) / zr))
 
 
 def cos(x, b, a, c, k=1):
@@ -140,7 +178,7 @@ def gaussian(x, x0, a, c, w):
 
 
 def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
-    r""""
+    r"""
     For fitting a 2d Gaussian.
 
     When the shear variance ``wxy`` (equivalent to :math:`M_{11}`) is zero,
@@ -149,30 +187,37 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
                                 \frac{(x-x_0)^2}{w_x^2} +
                                 \frac{(y-y_0)^2}{w_y^2}
                                 \right].
-    
+
     When ``wxy`` is nonzero, we want to find the Gaussian which will have second
     order central moments (equivalent to variance) satisfying:
-    
-    .. math::   M = 
+
+    .. math::   M =
                 \begin{bmatrix}
                     M_{20} & M_{11} \\
-                    M_{11} & M_{02} \\
+                    M_{11} & M_{02}
                 \end{bmatrix}
-                = 
+                =
                 \begin{bmatrix}
                     w_x^2 & w_{xy} \\
-                    w_{xy} & w_y^2 \\
+                    w_{xy} & w_y^2
                 \end{bmatrix}.
 
     The equation satifying this turns out to be
 
     .. math:: z(x,y) = c + a \exp \left[
                                 K_{00}(x-x_0)^2 +
-                                2*K_{10}(x-x_0)(y-y_0)
+                                2*K_{10}(x-x_0)(y-y_0) +
                                 K_{11}(y-y_0)^2
                                 \right].
 
-    Where :math:`K = M^{-1}`.
+    Where
+
+    .. math:: K =
+                \begin{bmatrix}
+                    K_{00} & K_{10} \\
+                    K_{10} & K_{11}
+                \end{bmatrix}
+                = M^{-1}.
 
     Caution
     ~~~~~~~
@@ -185,6 +230,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     are not finite. The case ``wxy = wx*wy`` is equivalent to a line.
 
     Parameters
+    ----------
     xy : numpy.ndarray
         Points to fit upon. ``(x, y)`` form.
     x0, y0 : float
@@ -206,7 +252,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     """
     x = xy[0] - x0
     y = xy[1] - y0
-    
+
     wxy = np.sign(wxy) * np.min([np.abs(wxy), wx*wy])
 
     M = np.linalg.inv([[wx*wx, wxy], [wxy, wy*wy]])

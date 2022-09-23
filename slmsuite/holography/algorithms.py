@@ -923,7 +923,7 @@ class Hologram:
         axs[1].set_title(title + 'Phase')
 
         plt.show()
-    def plot_farfield(self, source=None, limits=None, limit_padding=.2, title=''):
+    def plot_farfield(self, source=None, limits=None, limit_padding=.1, title=''):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
 
@@ -1004,7 +1004,8 @@ class Hologram:
         axs[0].set_title(title + 'Full')
 
         # Zoom in on our spots
-        axs[1].imshow(npsource)
+        b = 2*int(np.diff(limits[0])/500) + 1  # Future: fix arbitrary
+        axs[1].imshow(cv2.GaussianBlur(npsource, (b, b), 0))
         axs[1].set_xlim(limits[0])
         axs[1].set_ylim(np.flip(limits[1]))
         axs[1].set_title(title + 'Zoom')
@@ -1294,7 +1295,7 @@ class FeedbackHologram(Hologram):
             The basis to be sure to fill with data. Can be ``"ij"`` or ``"knm"``.
         """
         if self.img_ij is None:
-            self.cameraslm.slm.write(self.extract_phase())
+            self.cameraslm.slm.write(self.extract_phase(), settle=True)
             self.cameraslm.cam.flush()
             self.img_ij = self.cameraslm.cam.get_image()
 

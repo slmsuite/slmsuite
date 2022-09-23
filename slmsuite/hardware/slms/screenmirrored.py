@@ -25,7 +25,7 @@ class ScreenMirrored(SLM):
     Important
     ~~~~~~~~~
     Many SLM manufacturers provide an SDK for interfacing with their devices.
-    Using a python wrapper for these SDKs is recommended, instead of this class, 
+    Using a python wrapper for these SDKs is recommended, instead of or in supplement to this class, 
     as there often is functionality additional to a mirrored screen 
     (e.g. USB for changing settings) along with device-specific optimizations.
 

@@ -1015,7 +1015,7 @@ def hermite_gaussian(grid, nx, ny, w=None):
     factor = np.sqrt(2) / w
 
     # Generate the amplitude of a Hermite-Gaussian mode.
-    phase = special.hermit(nx)(factor * x_grid) + special.hermit(ny)(factor * y_grid)
+    phase = special.hermite(nx)(factor * x_grid) * special.hermite(ny)(factor * y_grid)
 
     # This is real, so the phase is just the sign of the mode. This produces a
     # checkerboard pattern. Probably could make this faster by bitflipping rows and columns.
@@ -1044,7 +1044,7 @@ def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
     m : int
         Ince polynomial degree.
     parity : {1, -1, 0}
-        Whether to produce an even (1), odd (-1), or helical Ince polynomial. A helical
+        Whether to produce an even (1), odd (-1), or helical (0) Ince polynomial. A helical
         polynomial is the linear combination of even and odd polynomials.
 
         .. math:: IG^h_{p,m} = IG^e_{p,m} + iIG^o_{p,m}

@@ -312,7 +312,7 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
 # Vector and window helper functions
 def clean_2vectors(vectors):
     """
-    Makes sure a 2-vector or array of 2-vectors is arranged appropriately.
+    Validates that an array of 2D vectors is a ``numpy.ndarray`` of shape ``(2, N)``.
 
     Parameters
     ----------
@@ -453,8 +453,19 @@ def affine_vectors(y0, y1, y2, N, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
         return np.matmul(M, indices) + b
 
 
-def largest_difference_metric(x, y):
-    return np.max(np.abs(x - y))
+def largest_difference_metric(u, v):
+    r"""
+    Useful metric for :meth:`smallest_distance()` to calculate the largest square
+    that will fit centered around each point without collisions.
+
+    ..math :: d = \max_i \left| u_i - v_i \right|
+
+    Parameters
+    ----------
+    u, v : array_like
+        vectors of identical length.
+    """
+    return np.max(np.abs(u - v))
 
 
 def smallest_distance(vectors, metric=euclidean):
@@ -745,8 +756,8 @@ def zernike(grid, n, m, aperture=None):
         such a class can be passed instead of the grids directly.
     n, m : int
         Cartesian Zernike index defining the polynomial.
-    aperture : {"square", "rectangular", "cropped"} OR (float, float) OR None
-        See :meth:`zernike_sum()`.
+    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
+        See :meth:`.zernike_sum()`.
     """
     return zernike_sum(grid, (((n, m), 1), ), aperture=aperture)
 
@@ -773,13 +784,13 @@ def zernike_sum(grid, weights, aperture=None):
     weights : list of ((int, int), float)
         Which Zernike polynomials to sum. The ``(int, int)`` is the cartesian index
         ``(n, m)``. The float is the weight for the given index.
-    aperture : {"square", "rectangular", "cropped"} OR (float, float) OR None
+    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
         How to scale the polynomials relative to the grid shape. This is relative
         to the :math:`R = 1` edge of a standard Zernike pupil.
 
-        ``"square"``, ``None``
+        ``"circular"``, ``None``
           The circle is scaled isotropically until the pupil edge touches the grid edge.
-        ``"rectangular"``
+        ``"elliptical"``
           The circle is scaled anisotropically until each cartesian pupil edge touches a grid
           edge. Generally produces and ellipse.
         ``"cropped"``
@@ -793,16 +804,16 @@ def zernike_sum(grid, weights, aperture=None):
     (x_grid, y_grid) = _process_grid(grid)
 
     if aperture is None:
-        aperture = "square"
+        aperture = "circular"
 
     if isinstance(aperture, str):
-        if aperture == "rectangular":
-            x_scale = 1 / np.amax(x_grid)
-            y_scale = 1 / np.amax(y_grid)
-        elif aperture == "square":
-            x_scale = y_scale = 1 / np.amin([np.amax(x_grid), np.amax(y_grid)])
+        if aperture == "elliptical":
+            x_scale = 1 / np.nanmax(x_grid)
+            y_scale = 1 / np.nanmax(y_grid)
+        elif aperture == "circular":
+            x_scale = y_scale = 1 / np.amin([np.nanmax(x_grid), np.nanmax(y_grid)])
         elif aperture == "cropped":
-            x_scale = y_scale = 1 / np.sqrt(np.amax(np.square(x_grid) + np.square(y_grid)))
+            x_scale = y_scale = 1 / np.sqrt(np.nanmax(np.square(x_grid) + np.square(y_grid)))
         else:
             raise ValueError("NotImplemented")
     elif isinstance(aperture, (list, tuple)) and len(aperture) == 2:
@@ -855,7 +866,7 @@ _zernike_cache = {}
 def _zernike_coefficients(n, m):
     """
     Returns the coefficients for the :math:`x^ay^b` terms of the cartesian Zernike polynomial
-    of index ``n, m``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
+    of index `(`n, m)``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
     Uses the algorithm given in [0]_.
 
     .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
@@ -983,7 +994,8 @@ def laguerre_gaussian(grid, l, p, w=None):
 
 def hermite_gaussian(grid, nx, ny, w=None):
     """
-    **(NotImplemented)** Returns the phase farfield for a Hermite-Gaussian beam.
+    **(Untested)** Returns the phase farfield for a Hermite-Gaussian beam.
+    Ref: https://doi.org/10.1364/AO.54.008444
 
     Parameters
     ----------
@@ -998,19 +1010,65 @@ def hermite_gaussian(grid, nx, ny, w=None):
         See :meth:`~slmsuite.holography.toolbox.determine_source_radius()`.
     """
     (x_grid, y_grid) = _process_grid(grid)
-
     w = determine_source_radius(grid, w)
-    raise NotImplementedError()
+
+    factor = np.sqrt(2) / w
+
+    # Generate the amplitude of a Hermite-Gaussian mode.
+    phase = special.hermit(nx)(factor * x_grid) + special.hermit(ny)(factor * y_grid)
+
+    # This is real, so the phase is just the sign of the mode. This produces a
+    # checkerboard pattern. Probably could make this faster by bitflipping rows and columns.
+    phase[phase < 0] = 0
+    phase[phase > 0] = np.pi
+
+    return phase
 
 
-def ince_gaussian(grid, p, m, w=None):
-    """
-    **(NotImplemented)** Returns the phase farfield for an Ince-Gaussian beam.
+def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
+    r"""
+    **(Untested)** Returns the phase farfield for an Ince-Gaussian beam.
     Ref: https://doi.org/10.1364/OL.29.000144
+    Ref: https://doi.org/10.1364/AO.54.008444
+    Ref: https://doi.org/10.3390/jimaging8050144
+    Ref: https://en.wikipedia.org/wiki/Elliptic_coordinate_system
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized (x/lambda) coordinates for SLM pixels, in (x_grid, y_grid) form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    p : int
+        Ince polynomial order.
+    m : int
+        Ince polynomial degree.
+    parity : {1, -1, 0}
+        Whether to produce an even (1), odd (-1), or helical Ince polynomial. A helical
+        polynomial is the linear combination of even and odd polynomials.
+
+        .. math:: IG^h_{p,m} = IG^e_{p,m} + iIG^o_{p,m}
+
+    ellipticity : float
+        Ellipticity of the beam. The semifocal distance is equal to ``ellipticity * w``,
+        where the foci are the points which define the elliptical coordinate system.
+    w : float
+        See :meth:`~slmsuite.holography.toolbox.determine_source_radius()`.
     """
     (x_grid, y_grid) = _process_grid(grid)
-
     w = determine_source_radius(grid, w)
+
+    if parity == 1:
+        assert 0 <= m <= p
+    else:
+        assert 1 <= m <= p
+
+    complex_grid = x_grid + 1j * y_grid
+
+    factor = 1 / (w * np.sqrt(ellipticity / 2))
+
+    elliptic_grid = np.arccosh(complex_grid * factor)
+
     raise NotImplementedError()
 
 

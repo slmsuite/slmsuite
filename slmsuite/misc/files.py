@@ -1,5 +1,15 @@
 """
 Utilities for interfacing with files.
+This includes helper functions for naming directories without conflicts, and convenience
+wrappers for file writing. :mod:`slmsuite` uses the HDF5 [1]_ (.h5) filetype by default, 
+as it is fast, compact, and widely supported by programming languages for scientific
+computing [2]_ . This uses the :mod:`h5py` module [3]_ .
+
+References
+----------
+.. [1] https://hdfgroup.org/solutions/hdf5
+.. [2] https://en.wikipedia.org/wiki/Hierarchical_Data_Format#Interfaces
+.. [3] https://h5py.org
 """
 
 import os

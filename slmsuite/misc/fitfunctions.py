@@ -151,7 +151,7 @@ def lorentzian_jacobian(x, x0, a, c, Q):
 
 def gaussian(x, x0, a, c, w):
     r"""
-    For fitting a 1d Gaussian.
+    For fitting a 1D Gaussian.
 
     .. math:: y(x) = c + a \exp \left[\frac{(x-x_0)^2}{w^2}\right].
 
@@ -179,9 +179,10 @@ def gaussian(x, x0, a, c, w):
 
 def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     r"""
-    For fitting a 2d Gaussian.
+    For fitting a 2D Gaussian.
 
-    When the shear variance ``wxy`` (equivalent to :math:`M_{11}`) is zero,
+    When the shear variance ``wxy`` (equivalent to :math:`M_{11}`; 
+    see :meth:`~slmsuite.holography.toolbox.take_moment()`) is zero,
 
     .. math:: z(x,y) = c + a \exp \left[
                                 \frac{(x-x_0)^2}{w_x^2} +
@@ -189,7 +190,8 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
                                 \right].
 
     When ``wxy`` is nonzero, we want to find the Gaussian which will have second
-    order central moments (equivalent to variance) satisfying:
+    order central moments (equivalent to variance; 
+    see :meth:`~slmsuite.holography.toolbox.take_moment2()`) satisfying:
 
     .. math::   M =
                 \begin{bmatrix}
@@ -202,7 +204,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
                     w_{xy} & w_y^2
                 \end{bmatrix}.
 
-    The equation satifying this turns out to be
+    The equation satisfying this condition is:
 
     .. math:: z(x,y) = c + a \exp \left[
                                 K_{00}(x-x_0)^2 +

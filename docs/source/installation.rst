@@ -3,7 +3,7 @@
 Installation
 ============
 
-Install the latest version of |slmsuite|_ from `PyPi <TODO>`_ using:
+Install the latest version of |slmsuite|_ from `PyPi <http://google.com>`_ using:
 
 .. code-block:: console
 

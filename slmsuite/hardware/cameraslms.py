@@ -827,9 +827,6 @@ class FourierSLM(CameraSLM):
             if plot:
                 plot_labeled(interference_image, plot=plot, title="Best Interference")
 
-            if r2_fit < .5:
-                write_h5("nx-{}.ny-{}.h5".format(index[0], index[1]), {"img" : interference_image})
-
             return {
                 "power": pwr,
                 "normalization": norm,
@@ -980,15 +977,16 @@ class FourierSLM(CameraSLM):
         pwr_large[pwr_large < 0] = 0
 
         if smooth:
-            size_blur = 4 * superpixel_size + 1
+            size_blur = 4*int(superpixel_size) + 1
             pwr_large = cv2.GaussianBlur(pwr_large, (size_blur, size_blur), 0)
 
         amp = np.sqrt(pwr_norm)
         amp_large = np.sqrt(pwr_large)
 
         # Process r^2
-        r2s = np.copy(data["r2_fit"])
-        r2s[nyref, nxref] = 1
+        r2 = np.copy(data["r2_fit"])
+        r2[nyref, nxref] = 1
+        r2s = r2
 
         r2s_large = cv2.resize(r2s, (w, h), interpolation=cv2.INTER_NEAREST)
         r2s_large = r2s_large[:self.slm.shape[0], :self.slm.shape[1]]
@@ -1069,16 +1067,22 @@ class FourierSLM(CameraSLM):
                     offset=offset[ny, nx],
                 )
 
-        real = np.cos(phase)
-        imag = np.sin(phase)
-
-        # Blur the phase to smooth it out
         if smooth:
-            real = cv2.GaussianBlur(real, (size_blur, size_blur), 0)
-            imag = cv2.GaussianBlur(imag, (size_blur, size_blur), 0)
+            for nsmooth in range(16):
+                real = np.cos(phase)
+                imag = np.sin(phase)
 
-        phase = np.arctan2(imag, real) + np.pi
+                # Blur the phase to smooth it out
+                size_blur = 2*int(superpixel_size/4) + 1
+                real = cv2.GaussianBlur(real, (size_blur, size_blur), 0)
+                imag = cv2.GaussianBlur(imag, (size_blur, size_blur), 0)
 
+                phase = np.arctan2(imag, real) + np.pi
+            else:
+                real = np.cos(phase)
+                imag = np.sin(phase)
+                phase = np.arctan2(imag, real) + np.pi
+            
         mindiff = np.inf
         phase_fin = []
         for phi in range(8):

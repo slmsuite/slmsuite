@@ -7,7 +7,7 @@ Install the latest version of |slmsuite|_ from `PyPi <http://google.com>`_ using
 
 .. code-block:: console
 
-    $ pip install slmsuite
+    pip install slmsuite
 
 Required Dependencies
 ---------------------

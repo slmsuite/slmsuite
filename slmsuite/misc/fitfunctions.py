@@ -32,7 +32,7 @@ def hyperbola(z, w0, z0, zr):
     r"""
     For fitting a hyperbola.
 
-    .. math:: w(z) = w_0 \sqrt{1 + \left[\frac{z - z0}{z_R}\right]^2}.
+    .. math:: w(z) = w_0 \sqrt{1 + \left[\frac{z - z_0}{z_R}\right]^2}.
 
     Parameters
     ----------

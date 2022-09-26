@@ -444,7 +444,9 @@ class FourierSLM(CameraSLM):
 
         References
         ----------
-        .. [1] In situ wavefront correction and its application to micromanipulation
+        .. [1] Čižmár, T., Mazilu, M. & Dholakia, K.
+        _In situ_ wavefront correction and its application to micromanipulation.
+        `_Nature Photon_ **4**, 388-394 (2010). <https://doi.org/10.1038/nphoton.2010.85>`
 
         Parameters
         ----------
@@ -462,7 +464,9 @@ class FourierSLM(CameraSLM):
         phase_steps : int
             The number of phases measured for the interference pattern.
         exclude_superpixels : (int, int)
-            Optionally exclude superpixels from the margin, in ``(nx, ny)`` form. As power is
+            Optionally exclude superpixels from the margin, in ``(nx, ny)`` form.
+            That is, the ``nx`` superpixels are omitted from the left and right sides
+            of the SLM, with the same for ``ny``. As power is
             typically concentrated in the center of the SLM, this function is useful for
             excluding points that are known to be blocked, or for quickly testing calibration
             at the most relevant points.
@@ -717,7 +721,7 @@ class FourierSLM(CameraSLM):
             if plot_everything or plot:
                 plt.imshow(masked_pic_mode)
                 plt.show()
-            
+
             # found_center = analysis.take_moment1([masked_pic_mode]) + interference_point
 
             # Blur a lot and assume the maximum corresponds to the center.
@@ -875,7 +879,7 @@ class FourierSLM(CameraSLM):
 
         return correction_dict
 
-    def process_wavefront_calibration(self, smooth=True, r2_thresh=0.99, plot=True):
+    def process_wavefront_calibration(self, smooth=True, r2_threshold=0.99, plot=True):
         """
         Processes :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
         into the desired phase correction and amplitude measurement. Sets
@@ -885,7 +889,7 @@ class FourierSLM(CameraSLM):
         ----------
         smooth : bool
             Whether to blur the correction data to avoid aliasing.
-        r2_thresh : float
+        r2_threshold : float
             Threshold for a "good fit". Proxy for whether a datapoint should be used or
             ignored in the final data, depending upon the rsquared value of the fit.
             Should be within [0, 1].
@@ -984,14 +988,14 @@ class FourierSLM(CameraSLM):
 
         offset = np.arctan2(imag, real) + np.pi
 
-        kx[r2s < r2_thresh] = 0
-        ky[r2s < r2_thresh] = 0
-        offset[r2s < r2_thresh] = 0
+        kx[r2s < r2_threshold] = 0
+        ky[r2s < r2_threshold] = 0
+        offset[r2s < r2_threshold] = 0
         pathing = 0 * r2s
 
         for ny in range(NY):
             for nx in list(range(NX)) + list(range(NX-1, -1, -1)):
-                if r2s[ny, nx] >= r2_thresh:
+                if r2s[ny, nx] >= r2_threshold:
                     pass
                 else:
                     kx2 = []
@@ -1006,7 +1010,7 @@ class FourierSLM(CameraSLM):
                             2 * np.pi * (ny - nyref) * superpixel_size * self.slm.dy)
 
                         if (tx >= 0 and tx < NX and ty >= 0 and ty < NY and
-                            (r2s[ty, tx] >= r2_thresh or pathing[ty, tx] == ny)):
+                            (r2s[ty, tx] >= r2_threshold or pathing[ty, tx] == ny)):
 
                             kx3 = kx[ty, tx]
                             ky3 = ky[ty, tx]

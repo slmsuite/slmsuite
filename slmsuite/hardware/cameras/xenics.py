@@ -1,7 +1,7 @@
 """
 Hardware control for Xenics camera via the :mod:`Xeneth` interface.
 
-Python wrapper for Xenith C++ SDK 2.7 from Xenics; see xeneth-sdk.chm 
+Python wrapper for Xenith C++ SDK 2.7 from Xenics; see xeneth-sdk.chm
 there for additional documentation.
 """
 
@@ -356,6 +356,7 @@ class Cheetah640(Camera):
                 if verbose:
                     print("Opening connection to %s" % device.name.decode())
                 self.cam = self.xeneth.XC_OpenCamera(device.url, 0, 0)
+                name = device.name.decode()
             else:
                 raise RuntimeError(
                     "Camera not reachable! Close Xeneth GUI or check connections."
@@ -372,6 +373,7 @@ class Cheetah640(Camera):
                 bitdepth=12,
                 dx_um=20,
                 dy_um=20,
+                name=name,
                 **kwargs
             )
 
@@ -409,11 +411,6 @@ class Cheetah640(Camera):
 
                 # Load visible setup by default
                 self.setup("free")
-
-            self.default_shape = self.shape
-
-            self.window = None
-            self.set_woi()
         else:
             print("Initialization failed")
 
@@ -1198,7 +1195,7 @@ class Cheetah640(Camera):
         if any(errs):
             print("Warning! Error(s) encountered: ", errs)
 
-    def set_woi(self, window=None, verbose=False):
+    def set_woi(self, woi=None, verbose=False):
         """See :meth:`.Camera.set_woi`
 
         Parameters
@@ -1206,8 +1203,10 @@ class Cheetah640(Camera):
         verbose : bool
             Enable debug printout.
         """
-        if window is None:
-            window = [0, self.default_shape[1], 0, self.default_shape[0]]
+        if woi is None:
+            woi = (0, self.default_shape[1], 0, self.default_shape[0])
+
+        woi = (woi[0], woi[1] - woi[0], woi[2], woi[3] - woi[2])
 
         # If collecting, stop
         if self.isCapturing():
@@ -1229,23 +1228,23 @@ class Cheetah640(Camera):
         # Conservatively round inputs (make wider than requested) based on cam. reqts.
         min_w_factor = 16
         min_h_factor = 4
-        if (window[0]) % min_w_factor:
-            window[0] = max([window[0] - window[0] % min_w_factor, 0])
-        if (window[1] - window[0] + 1) % min_w_factor:
-            window[1] = (
-                window[1] + min_w_factor - (window[1] - window[0]) % min_w_factor
+        if (woi[0]) % min_w_factor:
+            woi[0] = max([woi[0] - woi[0] % min_w_factor, 0])
+        if (woi[1] - woi[0] + 1) % min_w_factor:
+            woi[1] = (
+                woi[1] + min_w_factor - (woi[1] - woi[0]) % min_w_factor
             )
-        if (window[2]) % min_h_factor:
-            window[2] = max([window[2] - window[2] % min_h_factor, 0])
-        if (window[3] - window[2] + 1) % min_h_factor:
-            window[3] = (
-                window[3] + min_h_factor - (window[3] - window[2]) % min_h_factor
+        if (woi[2]) % min_h_factor:
+            woi[2] = max([woi[2] - woi[2] % min_h_factor, 0])
+        if (woi[3] - woi[2] + 1) % min_h_factor:
+            woi[3] = (
+                woi[3] + min_h_factor - (woi[3] - woi[2]) % min_h_factor
             )
 
         # Set new WOI
         for i, prop in enumerate(woi_prop):
             errs.append(
-                self.xeneth.XC_SetPropertyValueL(self.cam, prop, c_long(window[i]), "")
+                self.xeneth.XC_SetPropertyValueL(self.cam, prop, c_long(woi[i]), "")
             )
 
         # Report new WOI
@@ -1255,20 +1254,21 @@ class Cheetah640(Camera):
                 self.xeneth.XC_GetPropertyValueL(self.cam, prop, byref(prop_val))
             )
             report_str += "%s: %d | " % (prop.decode(), prop_val.value)
-            window[i] = prop_val.value
+            woi[i] = prop_val.value
         if verbose:
             print(report_str)
 
         # Reconfigure buffer based on new WOI
-        self.shape = (window[3] - window[2] + 1, window[1] - window[0] + 1)
+        self.shape = (woi[3] - woi[2] + 1, woi[1] - woi[0] + 1)
+        self.woi = (woi[0], self.shape[0], woi[2], self.shape[1])
         self.frame_size = self.xeneth.XC_Getframe_size(self.cam)
         self.frame_buffer = (c_ushort * int(self.frame_size / 2))(0)
-        self.last_capture = np.empty((self.height, self.width))
+        self.last_capture = np.empty(self.shape)
 
         if any(errs):
             print("Warning! Error(s) encountered: ", errs)
 
-        return window
+        return self.woi
 
     def set_low_gain(self, enable=True):
         """
@@ -1376,9 +1376,7 @@ class Cheetah640(Camera):
             if err != I_OK:
                 print("Problem while fetching frame, errorCode %lu" % (err))
             else:
-                im = np.frombuffer(self.frame_buffer, c_ushort).reshape(
-                    [self.height, self.width]
-                )
+                im = np.frombuffer(self.frame_buffer, c_ushort).reshape(self.shape)
                 print("Stopping capture...")
                 err = self.xeneth.XC_StopCapture(self.cam)
                 if err != I_OK:

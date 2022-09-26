@@ -181,8 +181,8 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     r"""
     For fitting a 2D Gaussian.
 
-    When the shear variance ``wxy`` (equivalent to :math:`M_{11}`; 
-    see :meth:`~slmsuite.holography.analysis.take_moment()`) is zero,
+    When the shear variance ``wxy`` (equivalent to :math:`M_{11}`;
+    see :meth:`~slmsuite.holography.analysis.image_moment()`) is zero,
 
     .. math:: z(x,y) = c + a \exp \left[
                                 \frac{(x-x_0)^2}{w_x^2} +
@@ -190,8 +190,8 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
                                 \right].
 
     When ``wxy`` is nonzero, we want to find the Gaussian which will have second
-    order central moments (equivalent to variance; 
-    see :meth:`~slmsuite.holography.analysis.take_moment2()`) satisfying:
+    order central moments (equivalent to variance;
+    see :meth:`~slmsuite.holography.analysis.image_variances()`) satisfying:
 
     .. math::   M =
                 \begin{bmatrix}

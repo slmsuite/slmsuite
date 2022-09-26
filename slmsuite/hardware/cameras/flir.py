@@ -78,15 +78,9 @@ class FLIR(Camera):
             bitdepth=int(self.cam.PixelSize.get()),
             dx_um=None,
             dy_um=None,
+            name=serial,
             **kwargs
         )
-
-        self.name = serial
-
-        # Initialize window variable, then set to max WOI
-        self.window = None
-        self.set_woi()
-        self.default_shape = self.shape
 
         raise NotImplementedError()
 

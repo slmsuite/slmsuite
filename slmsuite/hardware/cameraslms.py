@@ -378,33 +378,40 @@ class FourierSLM(CameraSLM):
                             clean_2vectors(ij) - self.fourier_calibration["b"]  )
                     + self.fourier_calibration["a"])
 
-    def calc_spot_size(self, size, basis="kxy"):
+    def get_farfield_spot_size(self, slm_size, basis="kxy"):
         """
-        Calculates the spot size in the given basis for a given SLM patch of ``size``
-        SLM pixels. Uses
+        Calculates the size of a spot produced by blazed patch of size ``slm_size`` on the SLM.
+        If this patch is the size of the SLM, then we will find in the farfield (camera)
+        domain, the size of a diffraction-limited spot for a fully-illuminated surface.
+        As the ``slm_size`` of the patch on the SLM decreases, the diffraction limited
+        spot size in the farfield domain will of course increase. This calculation
+        is accomplished using the calibration produced by
+        :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibrate()`
+        and stored in
         :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`.
 
         Parameters
         ----------
-        size : (float, float) or int or float
-            Size on SLM. An scalar is taken as the width and height of a square.
+        slm_size : (float, float) OR int OR float
+            Size of patch on the SLM in normalized units.
+            A scalar is interpreted as the width and height of a square.
         basis : {"kxy", "ij"}
-            Basis of size; ``"kxy"`` for SLM size, ``"ij"`` for camera size.
+            Basis of the returned size; ``"kxy"`` for SLM size, ``"ij"`` for camera size.
 
         Returns
         -------
         (float, float)
-            Size in x and y of the spot in camera pixels.
+            Size in x and y of the spot in the desired ``basis``.
 
         Raises
         ------
         ValueError
             If the basis argument was malformed.
         """
-        if isinstance(size, (int, float)):
-            size = (size, size)
+        if isinstance(slm_size, (int, float)):
+            slm_size = (slm_size, slm_size)
 
-        size_kxy = (1 / self.slm.dx / size[0], 1 / self.slm.dy / size[1])
+        size_kxy = (1 / slm_size[0], 1 / slm_size[1])
 
         ret = None
         if basis == "kxy":
@@ -444,9 +451,9 @@ class FourierSLM(CameraSLM):
 
         References
         ----------
-        .. [1] Čižmár, T., Mazilu, M. & Dholakia, K.
-        _In situ_ wavefront correction and its application to micromanipulation.
-        `_Nature Photon_ **4**, 388-394 (2010). <https://doi.org/10.1038/nphoton.2010.85>`
+        .. [1]  Čižmár, T., Mazilu, M. & Dholakia, K.
+                In situ_ wavefront correction and its application to micromanipulation.
+               _Nature Photon 4, 388-394 (2010). https://doi.org/10.1038/nphoton.2010.8
 
         Parameters
         ----------
@@ -522,8 +529,12 @@ class FourierSLM(CameraSLM):
         else:
             (nxref, nyref) = reference_superpixel
 
-        interference_size = np.array(self.calc_spot_size(   superpixel_size,
-                                                            basis="ij")).astype(np.int)
+        interference_size = np.array(
+            self.get_farfield_spot_size(
+                (superpixel_size * self.slm.dx, superpixel_size * self.slm.dy),
+                basis="ij"
+            )
+        ).astype(np.int)
 
         correction_dict = {
             "NX": NX,
@@ -688,8 +699,8 @@ class FourierSLM(CameraSLM):
             if plot_everything or plot:
                 fig, axs = plt.subplots(1, 3, figsize=(20,6))
                 axs[0].imshow(
-                    np.mod(self.slm.phase, 2*np.pi), 
-                    cmap=plt.get_cmap("twilight"), 
+                    np.mod(self.slm.phase, 2*np.pi),
+                    cmap=plt.get_cmap("twilight"),
                     interpolation='none'
                 )
 
@@ -702,11 +713,11 @@ class FourierSLM(CameraSLM):
                 points = [(base_point + N * dpoint) for N in range(-2, 3)]
                 points.append(interference_point)
                 labels = [
-                    "Field -2nd", 
-                    "Field -1st", 
-                    "Field 0th", 
-                    "Field 1st", 
-                    "Field 2nd", 
+                    "Field -2nd",
+                    "Field -1st",
+                    "Field 0th",
+                    "Field 1st",
+                    "Field 2nd",
                     "Interference Point"
                 ]
 
@@ -746,11 +757,11 @@ class FourierSLM(CameraSLM):
                 plt.imshow(masked_pic_mode)
                 plt.show()
 
-            # found_center = analysis.take_moment1([masked_pic_mode]) + interference_point
+            # found_center = analysis.image_positions([masked_pic_mode]) + interference_point
 
             # Blur a lot and assume the maximum corresponds to the center.
             blur = 4 * int(np.min(interference_size)) + 1
-            masked_pic_mode = analysis.make8bit(masked_pic_mode)
+            masked_pic_mode = analysis._make_8bit(masked_pic_mode)
             masked_pic_mode = cv2.GaussianBlur(masked_pic_mode, (blur, blur), 0)
             _, _, _, max_loc = cv2.minMaxLoc(masked_pic_mode)
             found_center = (clean_2vectors(max_loc)
@@ -1086,7 +1097,7 @@ class FourierSLM(CameraSLM):
                 real = np.cos(phase)
                 imag = np.sin(phase)
                 phase = np.arctan2(imag, real) + np.pi
-            
+
         mindiff = np.inf
         phase_fin = []
         for phi in range(8):

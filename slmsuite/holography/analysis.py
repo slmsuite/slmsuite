@@ -11,9 +11,9 @@ from slmsuite.holography.toolbox import clean_2vectors
 from slmsuite.misc.fitfunctions import gaussian2d
 
 
-def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=False):
+def take(imgs, vectors, size, centered=True, integrate=False, clip=False, plot=False):
     """
-    Crop integration regions around an array of ``points``, yielding an array of images.
+    Crop integration regions around an array of ``vectors``, yielding an array of images.
 
     Each integration region is a rectangle of the same ``size``. Similar to but more
     general than :meth:`numpy.take`; useful for gathering data from spots in spot arrays.
@@ -22,29 +22,32 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
     ----------
     imgs : array_like
         2D image or array of 2D images.
-    points : array_like of floats
+    vectors : array_like of floats
         2-vector (or 2-vector array) listing location(s) of integration region(s).
         See :meth:`~slmsuite.holography.toolbox.clean_2vectors`.
     size : int or (int, int)
         Size of the rectangular integration region in ``(w, h)`` format. If a scalar is given,
         assume square ``(w, w)``.
     centered : bool
-        Whether to center the integration region on the ``points``.
-        If False, the lower left corner is used.
+        Whether to center the integration region on the ``vectors``.
+        If ``False``, the lower left corner is used.
+        Defaults to ``True``.
     integrate : bool
-        If true, the spatial dimension are integrated (summed), yielding a result of the
-        same length as the number of points.
+        If ``True``, the spatial dimension are integrated (summed), yielding a result of the
+        same length as the number of vectors. Defaults to ``False``.
     clip : bool
         Whether to allow out-of-range integration regions. ``True`` allows regions outside
         the valid area, setting the invalid region to ``np.nan``
         (or zero if the array datatype does not support ``np.nan``).
-        ``False`` throws an error upon out of range.
+        ``False`` throws an error upon out of range. Defaults to ``False``.
+    plot : bool
+        Calls :meth:`take_plot()` to visualize the imgs regions.
 
     Returns
     -------
     numpy.ndarray
         If ``integrate`` is ``False``, returns an array containing the images cropped
-        from the regions of size `(N, h, w)`. 
+        from the regions of size `(N, h, w)`.
         If ``integrate`` is ``True``, instead returns an array of floats of size `(N,)`
         where each float corresponds to the :meth:`numpy.sum` of a cropped image.
     """
@@ -52,7 +55,7 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
     if isinstance(size, int):
         size = (size, size)
 
-    points = clean_2vectors(points)
+    vectors = clean_2vectors(vectors)
 
     # Prepare helper variables. Future: consider caching for speed, if not negligible.
     edge_x = np.arange(size[0]) - (int(size[0] / 2) if centered else 0)
@@ -61,10 +64,10 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
     region_x, region_y = np.meshgrid(edge_x, edge_y)
 
     integration_x = np.add(
-        region_x.ravel()[:, np.newaxis].T, points[:][0][:, np.newaxis]
+        region_x.ravel()[:, np.newaxis].T, vectors[:][0][:, np.newaxis]
     ).astype(np.int)
     integration_y = np.add(
-        region_y.ravel()[:, np.newaxis].T, points[:][1][:, np.newaxis]
+        region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
     ).astype(np.int)
 
     shape = np.shape(imgs)
@@ -100,24 +103,24 @@ def take(imgs, points, size, centered=False, integrate=False, clip=False, plot=F
         pass
 
     if plot:
-        take_plot(np.reshape(result, (points.shape[1], size[1], size[0])))
+        take_plot(np.reshape(result, (vectors.shape[1], size[1], size[0])))
 
     if integrate:  # Sum over the integration axis
         return np.sum(result, axis=-1)
     else:  # Reshape the integration axis
-        return np.reshape(result, (points.shape[1], size[1], size[0]))
+        return np.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
-def take_plot(taken):
+def take_plot(imgs):
     """
     Plots non-integrated results of :meth:`.take()` in a square array of subplots.
-    
+
     Parameters
     ----------
-    taken : numpy.ndarray
-        Array of 2D images, usually a :meth:`take()` output.
+    imgs : numpy.ndarray
+        Stack of 2D images, usually a :meth:`take()` output.
     """
-    (N, sy, sx) = np.shape(taken)
+    (N, sy, sx) = np.shape(imgs)
     M = int(np.ceil(np.sqrt(N)))
 
     plt.figure(figsize=(12, 12))
@@ -129,16 +132,16 @@ def take_plot(taken):
     for x in range(N):
         ax = plt.subplot(M, M, x + 1)
 
-        ax.imshow(taken[x, :, :], extent=extent)
+        ax.imshow(imgs[x, :, :], extent=extent)
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
 
     plt.show()
 
 
-def take_moment(taken, moment=(1, 0), centers=(0, 0), normalize=True, nansum=False):
+def image_moment(imgs, moment=(1, 0), centers=(0, 0), normalize=True, nansum=False):
     r"""
-    Array-wise computes the given moment :math:`M_{m_xm_y}`.
+    Computes the given moment :math:`M_{m_xm_y}` for a stack of images.
     This involves integrating each image against polynomial trial functions:
 
     .. math:: M_{m_xm_y} = \frac{   \int_{-w_x/2}^{+w_x/2} dx \, (x-c_x)^{m_x}
@@ -154,7 +157,7 @@ def take_moment(taken, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
 
     Warning
     ~~~~~~~
-    This function does not check if the images in ``taken`` are non-negative, or correct
+    This function does not check if the images in ``imgs`` are non-negative, or correct
     for this. Negative values may produce unusual results.
 
     Warning
@@ -166,10 +169,11 @@ def take_moment(taken, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
 
     Parameters
     ----------
-    taken : numpy.ndarray
-        A matrix in the style of the output of :meth:`take()`, with shape `(N, wy, wx)`, where
-        `(wx, wy)` is the width and height of the 2D images and :math:`N` is the number of
-        images.
+    imgs : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+        images. A single image is interpreted correctly as ``(1, h, w)`` even if
+        ``(h, w)`` is passed.
     moment : (int, int)
         The moments in the :math:`x` and :math:`y` directions: :math:`(m_x, m_y)`. For instance,
 
@@ -183,7 +187,7 @@ def take_moment(taken, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
     centers : tuple or numpy.ndarray
         Perturbations to the center of the trial function, :math:`(c_x, c_y)`.
     normalize : bool
-        Whether to normalize ``taken``.
+        Whether to normalize ``imgs``.
         If ``False``, normalization is assumed to have been precomputed.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
@@ -194,10 +198,12 @@ def take_moment(taken, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
     Returns
     -------
     numpy.ndarray
-        The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size `(N,)`
-        for provided `taken` data of shape `(N, h, w)`.
+        The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size ``(N,)``
+        for provided ``imgs`` data of shape ``(N, h, w)``.
     """
-    (N, w_y, w_x) = taken.shape
+    if len(imgs.shape) == 2:
+        imgs = np.reshape(imgs, (1, imgs.shape[0], imgs.shape[1]))
+    (N, w_y, w_x) = imgs.shape
 
     if len(np.shape(centers)) == 2:
         c_x = np.reshape(centers[0], (N, 1, 1))
@@ -221,7 +227,7 @@ def take_moment(taken, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
         np_sum = np.sum
 
     if normalize:
-        normalization = np_sum(taken, axis=(1, 2), keepdims=False)
+        normalization = np_sum(imgs, axis=(1, 2), keepdims=False)
         reciprical = np.reciprocal(
             normalization, where=normalization != 0, out=np.zeros(N,)
         )
@@ -229,49 +235,55 @@ def take_moment(taken, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
         reciprical = 1
 
     if moment[1] == 0:  # x case
-        return np_sum(taken * edge_x, axis=(1, 2), keepdims=False) * reciprical
+        return np_sum(imgs * edge_x, axis=(1, 2), keepdims=False) * reciprical
     elif moment[0] == 0:  # y case
-        return np_sum(taken * edge_y, axis=(1, 2), keepdims=False) * reciprical
+        return np_sum(imgs * edge_y, axis=(1, 2), keepdims=False) * reciprical
     elif moment[1] != 0 and moment[1] != 0:  # Shear case
-        return np_sum(taken * edge_x * edge_y, axis=(1, 2), keepdims=False) * reciprical
+        return np_sum(imgs * edge_x * edge_y, axis=(1, 2), keepdims=False) * reciprical
     else:  # 0,0 (norm) case
         if normalize:
             return np.ones((N,))
         else:
-            return np_sum(taken, axis=(1, 2), keepdims=False)
+            return np_sum(imgs, axis=(1, 2), keepdims=False)
 
 
-def take_moment0(taken, nansum=False):
+def image_normalization(imgs, nansum=False):
     """
-    Array-wise 
-    computes the zeroth order moments, equivalent to mass or normalization.
+    Computes the zeroth order moments, equivalent to spot mass or normalization,
+    for a stack of images.
 
     Parameters
     ----------
-    taken : numpy.ndarray
-        Array of 2D images, usually a :meth:`take()` output.
+    imgs : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+        images. A single image is interpreted correctly as ``(1, h, w)`` even if
+        ``(h, w)`` is passed.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
 
     Returns
     -------
     numpy.ndarray
-        The normalization factor :math:`M_{11}`.
+        The normalization factor :math:`M_{11}` in an array of shape ``(N,)``.
     """
-    return take_moment(taken, (0, 0), normalize=False, nansum=nansum)
+    return image_moment(imgs, (0, 0), normalize=False, nansum=nansum)
 
 
-def take_moment1(taken, normalize=True, nansum=False):
+def image_positions(imgs, normalize=True, nansum=False):
     """
-    Array-wise 
-    computes the two first order moments, equivalent to position.
+    Computes the two first order moments, equivalent to spot position, for a stack of images.
+    Specifically, returns :math:`M_{10}` and :math:`M_{01}`.
 
     Parameters
     ----------
-    taken : numpy.ndarray
-        Array of 2D images, usually a :meth:`take()` output.
+    imgs : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+        images. A single image is interpreted correctly as ``(1, h, w)`` even if
+        ``(h, w)`` is passed.
     normalize : bool
-        Whether to normalize ``taken``.
+        Whether to normalize ``imgs``.
         If ``False``, normalization is assumed to have been precomputed.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
@@ -282,42 +294,45 @@ def take_moment1(taken, normalize=True, nansum=False):
         Stack of :math:`M_{10}`, :math:`M_{01}`.
     """
     if normalize:
-        taken = take_normalize(taken)
+        imgs = image_normalize(imgs)
 
     return np.vstack(
         (
-            take_moment(taken, (1, 0), normalize=False, nansum=nansum),
-            take_moment(taken, (0, 1), normalize=False, nansum=nansum),
+            image_moment(imgs, (1, 0), normalize=False, nansum=nansum),
+            image_moment(imgs, (0, 1), normalize=False, nansum=nansum),
         )
     )
 
 
-def take_moment2(taken, centers=None, normalize=True, nansum=False):
+def image_variances(imgs, centers=None, normalize=True, nansum=False):
     r"""
-    Array-wise 
-    computes the three second order central moments, equivalent to variance.
+    Computes the three second order central moments, equivalent to variance, for a stack
+    of images.
     Specifically, this function returns a stack of the moments :math:`M_{20}` and
     :math:`M_{02}`, along with :math:`M_{11}`, which are the variance in the :math:`x`
     and :math:`y` directions, along with the so-called shear variance.
     Recall that variance defined as
-    
+
     .. math:: (\Delta x)^2 = \left<(x - \left<x\right>)^2\right>.
 
     This equation is made central by subtraction of :math:`\left<x\right>`.
-    The user can of course use :meth:`take_moment` directly to access the 
+    The user can of course use :meth:`take_moment` directly to access the
     non-central moments; this function is a helper to access useful quantities
     for analysis of spot size and skewness.
 
     Parameters
     ----------
-    taken : numpy.ndarray
-        Array of 2D images, usually a :meth:`take()` output.
+    imgs : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+        images. A single image is interpreted correctly as ``(1, h, w)`` even if
+        ``(h, w)`` is passed.
     centers : numpy.ndarray OR None
         If the user has already computed :math:`\left<x\right>`, for example via
-        :meth:`take_moment1()`, then this can be passed though ``centers``. The default
-        None computes ``centers`` interally.
+        :meth:`image_positions()`, then this can be passed though ``centers``. The default
+        None computes ``centers`` internally.
     normalize : bool
-        Whether to normalize ``taken``.
+        Whether to normalize ``imgs``.
         If ``False``, normalization is assumed to have been precomputed.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
@@ -325,35 +340,35 @@ def take_moment2(taken, centers=None, normalize=True, nansum=False):
     Returns
     -------
     numpy.ndarray
-        Stack of :math:`M_{20}`, :math:`M_{02}`, and :math:`M_{11}`.
+        Stack of :math:`M_{20}`, :math:`M_{02}`, and :math:`M_{11}`. Shape ``(3, N)``.
     """
     if normalize:
-        taken = take_normalize(taken)
+        imgs = image_normalize(imgs)
 
     if centers is None:
-        centers = take_moment1(taken, normalize=False, nansum=nansum)
+        centers = image_positions(imgs, normalize=False, nansum=nansum)
 
-    m20 = take_moment(taken, (2, 0), centers=centers, normalize=False, nansum=nansum)
-    m11 = take_moment(taken, (1, 1), centers=centers, normalize=False, nansum=nansum)
-    m02 = take_moment(taken, (0, 2), centers=centers, normalize=False, nansum=nansum)
+    m20 = image_moment(imgs, (2, 0), centers=centers, normalize=False, nansum=nansum)
+    m11 = image_moment(imgs, (1, 1), centers=centers, normalize=False, nansum=nansum)
+    m02 = image_moment(imgs, (0, 2), centers=centers, normalize=False, nansum=nansum)
 
     return np.vstack((m20, m02, m11))
 
 
-def take_moment2_ellipticity(moment2):
+def image_ellipticity(variances):
     r"""
-    Given the output of :meth:`take_moment2()`, 
+    Given the output of :meth:`image_variances()`,
     return a measure of spot ellipticity for each moment triplet.
-    The output of :meth:`take_moment2()` contains the moments :math:`M_{20}`,
+    The output of :meth:`image_variances()` contains the moments :math:`M_{20}`,
     :math:`M_{02}`, and :math:`M_{11}`. These terms make up a :math:`2 \times 2` matrix,
-    which is equivalent to a rotated elliptical scaling according to the eigenvalues 
+    which is equivalent to a rotated elliptical scaling according to the eigenvalues
     :math:`\lambda_+` and :math:`\lambda_-` and some rotation matrix :math:`R(\phi)`.
 
     .. math::   \begin{bmatrix}
                     M_{20} & M_{11} \\
                     M_{11} & M_{02} \\
                 \end{bmatrix}
-                = 
+                =
                 R(-\phi)
                 \begin{bmatrix}
                     \lambda_+ & 0 \\
@@ -361,29 +376,29 @@ def take_moment2_ellipticity(moment2):
                 \end{bmatrix}
                 R(\phi).
 
-    We use this knowledge, along with tricks for eigenvalue calculations on 
+    We use this knowledge, along with tricks for eigenvalue calculations on
     :math:`2 \times 2` matrices, to build up a metric for ellipticity:
 
     .. math:: \mathcal{E} = 1 - \frac{\lambda_-}{\lambda_+}.
 
-    Notice that 
+    Notice that
 
     - when :math:`\lambda_+ = \lambda_-` (isotropic scaling), the metric is zero and
     - when :math:`\lambda_- = 0` (flattened to a line), the metric is unity.
-    
+
     Parameters
     ----------
-    moment2 : numpy.ndarray
-        The output of :meth:`take_moment2()`.
+    variances : numpy.ndarray
+        The output of :meth:`image_variances()`. Shape ``(3, N)``.
 
     Returns
     -------
     numpy.ndarray
-        Array of ellipticities for the given moments.
+        Array of ellipticities for the given moments. Shape ``(N,)``.
     """
-    m20 = moment2[0, :]
-    m02 = moment2[1, :]
-    m11 = moment2[2, :]
+    m20 = variances[0, :]
+    m02 = variances[1, :]
+    m11 = variances[2, :]
 
     # We can use a trick for eigenvalue calculations of 2x2 matrices to avoid
     # more complicated calculations.
@@ -398,18 +413,18 @@ def take_moment2_ellipticity(moment2):
     return 1 - (eig_minus / eig_plus)
 
 
-def take_moment2_ellipcicity_angle(moment2):
+def image_ellipticity_angle(variances):
     r"""
-    Given the output of :meth:`take_moment2()`, 
-    return the rotation angle of the scaled basis for each moment triplet. 
-    This is the angle between the :math:`x` axis and the 
+    Given the output of :meth:`image_variances()`,
+    return the rotation angle of the scaled basis for each moment triplet.
+    This is the angle between the :math:`x` axis and the
     major axis (large eigenvalue axis).
 
     Parameters
     ----------
     moment2 : numpy.ndarray
-        The output of :meth:`take_moment2()`.
-    
+        The output of :meth:`image_variances()`. Shape ``(3, N)``.
+
     Returns
     -------
     numpy.ndarray
@@ -417,12 +432,13 @@ def take_moment2_ellipcicity_angle(moment2):
         For highly circular spots, this angle is not meaningful, and dominated by
         experimental noise.
         For perfectly circular spots, zero is returned.
+        Shape ``(N,)``.
     """
-    m20 = moment2[0, :]
-    m02 = moment2[1, :]
-    m11 = moment2[2, :]
+    m20 = variances[0, :]
+    m02 = variances[1, :]
+    m11 = variances[2, :]
 
-    # Some quick math (see take_moment2_circularity).
+    # Some quick math (see image_variances_circularity).
     half_trace = (m20 + m02) / 2
     determinant = m20 * m20 - m11 * m11
 
@@ -436,40 +452,45 @@ def take_moment2_ellipcicity_angle(moment2):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
-def take_normalize(taken, nansum=False):
+def image_normalize(imgs, nansum=False):
     """
-    Array-wise 
+    Array-wise
     calculates the zeroth order moments and uses them to normalize the images.
 
     Parameters
     ----------
-    taken : numpy.ndarray
-        Array of 2D images, usually a :meth:`take()` output.
+    imgs : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+        images. A single image is interpreted correctly as ``(1, h, w)`` even if
+        ``(h, w)`` is passed.
 
     Returns
     -------
-    taken_normalized : numpy.ndarray
-        A copy of ``taken``, with each image normalized.
+    imgs_normalized : numpy.ndarray
+        A copy of ``imgs``, with each image normalized.
     """
-    N = taken.shape[0]
-    normalization = take_moment0(taken, nansum=nansum)
+    N = imgs.shape[0]
+    normalization = image_normalization(imgs, nansum=nansum)
     reciprical = np.reciprocal(
         normalization, where=normalization != 0, out=np.zeros(N,)
     )
-    return taken * np.reshape(reciprical, (N, 1, 1))
+    return imgs * np.reshape(reciprical, (N, 1, 1))
 
 
-def take_fit(taken, function=gaussian2d, guess=False):
+def image_fit(imgs, function=gaussian2d, guess=False):
     """
-    **(Untested)** Array-wise 
-    fit to a given function.
+    Fits images in a stack of images to a given 2D function.
 
     Parameters
     ----------
-    taken : numpy.ndarray
-        Array of 2D images, usually a :meth:`take()` output.
-    function : lambda
-        Some fitfunction. Defaults to 
+    imgs : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+        images. A single image is interpreted correctly as ``(1, h, w)`` even if
+        ``(h, w)`` is passed.
+    function : lambda ((float, float), ... ) -> float
+        Some fitfunction. Defaults to
         :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`.
     guess : bool
         Whether to use a guess for the peak locations. Only works for the
@@ -480,10 +501,10 @@ def take_fit(taken, function=gaussian2d, guess=False):
     numpy.ndarray
         A matrix with the fit results. This is of shape ``(M, N)``, where ``M``
         is the number of arguments that ``function`` accepts. The slot for the
-        ``xy`` points is replaced with measurements of the rsquared quality of
+        ``xy`` vectors is replaced with measurements of the rsquared quality of
         the fit. Failed fits have a column filled with ``np.nan``.
     """
-    (N, w_y, w_x) = taken.shape
+    (N, w_y, w_x) = imgs.shape
 
     edge_x = np.reshape(np.arange(w_x) - (w_x - 1) / 2.0, (1, 1, w_x))
     edge_y = np.reshape(np.arange(w_y) - (w_y - 1) / 2.0, (1, w_y, 1))
@@ -494,16 +515,16 @@ def take_fit(taken, function=gaussian2d, guess=False):
 
     if guess:
         if function is gaussian2d:
-            centers = take_moment1(taken, normalize=False)
-            widths = take_moment2(taken, centers=centers, normalize=False)
+            centers = image_positions(imgs, normalize=False)
+            variances = image_variances(imgs, centers=centers, normalize=False)
         else:
             raise RuntimeError("Do not know how to parse guess for unknown function.")
 
     result = np.full((function.__code__.co_argcount, N), np.nan)
 
     for n in range(N):
-        # try:
-            img = taken[n, :, :].ravel()
+        try:
+            img = imgs[n, :, :].ravel()
 
             if guess:
                 if function is gaussian2d:
@@ -513,9 +534,9 @@ def take_fit(taken, function=gaussian2d, guess=False):
                         centers[n, 1],
                         np.amax(img) - np.amin(img),
                         np.amin(img),
-                        np.sqrt(widths[0, n]),
-                        np.sqrt(widths[1, n]),
-                        widths[2, n],
+                        np.sqrt(variances[0, n]),
+                        np.sqrt(variances[1, n]),
+                        variances[2, n],
                     ]
             else:
                 popt0 = None
@@ -528,8 +549,8 @@ def take_fit(taken, function=gaussian2d, guess=False):
 
             result[0, n] = r2
             result[1:, n] = popt
-        # except BaseException:
-        #     pass
+        except BaseException:
+            pass
 
     return result
 
@@ -567,7 +588,7 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
     .. [1] https://docs.opencv.org/3.4/d8/da7/structcv_1_1SimpleBlobDetector_1_1Params.html
     .. [2] https://learnopencv.com/blob-detection-using-opencv-python-c/
     """
-    cv2img = make8bit(np.copy(img))
+    cv2img = _make_8bit(np.copy(img))
     params = cv2.SimpleBlobDetector_Params()
 
     # Configure default parameters
@@ -682,13 +703,12 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
          - ``"M"`` : 2x2 ``numpy.ndarray``
          - ``"b"`` : 2x1 ``numpy.ndarray``.
     """
-    cv2img = make8bit(img)
+    cv2img = _make_8bit(img)
     start_orientation = orientation
 
     if orientation is None:
         # 1) Threshold to eliminate noise
-        thresh = 10
-        im_thresh = threshold(cv2img, thresh=thresh, thresh_type=cv2.THRESH_BINARY)
+        _, im_thresh = cv2.threshold(cv2img, .1 * np.amax(img), np.amax(img), cv2.THRESH_BINARY)
 
         # 2) FFT to find array pitch and orientation
         # Take the largest dimension rounded up to nearest power of 2.
@@ -725,7 +745,7 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
                 plt.imshow(im_thresh)
                 plt.show()
 
-                plt_img = make8bit(dft_amp.copy())
+                plt_img = _make_8bit(dft_amp.copy())
 
                 plt.imshow(plt_img)
                 plt.title("DFT peaks for scale/rotation")
@@ -843,7 +863,7 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
         mask[y_larger, x_larger] = -area
         mask[y_array, x_array] = perimeter
 
-        mask = make8bit(mask)
+        mask = _make_8bit(mask)
 
         # 4) Do the autocorrelation
         try:
@@ -949,7 +969,7 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
         if start_orientation is None:
             _, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(12, 6))
 
-            plt_img = make8bit(dft_amp.copy())
+            plt_img = _make_8bit(dft_amp.copy())
 
             # Determine the bounds of the zoom region, padded by zoom_pad
             zoom_pad = 50
@@ -1006,6 +1026,8 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
         regions = take(
             img, guess_positions, psf, centered=True, integrate=False, clip=True
         )
+
+        # TODO: Update with take and take moments.
 
         # Filter the images, but not the stack.
         sp_gaussian_filter1d(regions, blur, axis=1, output=regions)
@@ -1097,7 +1119,7 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
     return orientation
 
 
-def make8bit(img):
+def _make_8bit(img):
     """
     Convert an image to ``numpy.uint8``, scaling to the limits.
 
@@ -1122,30 +1144,7 @@ def make8bit(img):
     return img.astype(np.uint8)
 
 
-def threshold(img, thresh=50, thresh_type=cv2.THRESH_TOZERO):
-    """
-    Threshold an image to a certain percentage of the maximum value.
-
-    Parameters
-    ----------
-    img : numpy.ndarray
-        The image in question.
-    thresh : float
-        Threshold in percent.
-    thresh_type : int
-        :mod:`cv2` threshold type.
-
-    Returns
-    -------
-    numpy.ndarray
-        Thresholded image.
-    """
-    thresh = int(thresh / 100.0 * np.amax(img))
-    _, thresh = cv2.threshold(img, thresh, np.amax(img), thresh_type)
-    return thresh
-
-
-def get_transform(rot="0", fliplr=False, flipud=False):
+def get_orientation_transformation(rot="0", fliplr=False, flipud=False):
     """
     Compile a transformation lambda from simple rotates and flips.
 
@@ -1164,7 +1163,7 @@ def get_transform(rot="0", fliplr=False, flipud=False):
 
     Returns
     -------
-    function
+    function (array_like) -> numpy.ndarray
         Compiled image transformation.
     """
     transforms = list()

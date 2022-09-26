@@ -43,13 +43,12 @@ the user can install selectively.
 Jupyter
 -------
 
-We highly recommended using `Jupyter <https://jupyter.org>`_ 
+We highly recommended using `Jupyter <https://jupyter.org>`_
 notebooks for interactive computing,
 and also list useful packages for code profiling which can be included via
-`IPython <https://ipython.org/>`_ 
-`magic <https://ipython.readthedocs.io/en/stable/interactive/tutorial.html#magics-explained>`_ 
-along with other features like |autoreload|_ or |matplotlib|_ 
-which are included with IPython.
+`IPython <https://ipython.org/>`_
+`magic <https://ipython.readthedocs.io/en/stable/interactive/tutorial.html#magics-explained>`_,
+along with other features like |autoreload|_ or |matplotlib|_ which are packaged with IPython.
 
 - `jupyter <https://jupyter.org>`_
     - `line-profiler <https://github.com/pyutils/line_profiler>`_

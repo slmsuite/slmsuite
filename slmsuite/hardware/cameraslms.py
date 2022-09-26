@@ -551,6 +551,11 @@ class FourierSLM(CameraSLM):
             if key not in correction_dict.keys():
                 correction_dict.update({key: np.zeros((NY, NX), dtype=np.float32)})
 
+        # Remove the current calibration
+        self.slm.amplitude_measured = None
+        self.slm.phase_correction = None
+        self.wavefront_calibration = None
+
         def superpixels(index,
                         reference=None,
                         reference_blaze=interference_blaze,
@@ -681,23 +686,35 @@ class FourierSLM(CameraSLM):
 
         def plot_labeled(img, plot=False, title=""):
             if plot_everything or plot:
-                _, axs = plt.subplots(1, 3, figsize=(20,6))
-                axs[0].imshow(np.mod(self.slm.phase, 2*np.pi), cmap=plt.get_cmap("twilight"))
+                fig, axs = plt.subplots(1, 3, figsize=(20,6))
+                axs[0].imshow(
+                    np.mod(self.slm.phase, 2*np.pi), 
+                    cmap=plt.get_cmap("twilight"), 
+                    interpolation='none'
+                )
 
 
-                axs[1].imshow(np.log10(img + 1))
+                im = axs[1].imshow(np.log10(img + .1))
+                im.set_clim(0, np.log10(self.cam.bitresolution))
 
                 dpoint = field_point - base_point
 
                 points = [(base_point + N * dpoint) for N in range(-2, 3)]
                 points.append(interference_point)
-                labels = ["-2nd", "-1st", "0th", "1st", "2nd", "Target"]
+                labels = [
+                    "Field -2nd", 
+                    "Field -1st", 
+                    "Field 0th", 
+                    "Field 1st", 
+                    "Field 2nd", 
+                    "Interference Point"
+                ]
 
                 wh = int(interference_size[0])
                 hh = int(interference_size[1])
 
                 for point, label in zip(points, labels):
-                    if label == "Target":
+                    if label == "Interference Point":
                         wh *= 2
                         hh *= 2
                     rect = plt.Rectangle(   [point[0] - wh, point[1] - hh],
@@ -707,11 +724,18 @@ class FourierSLM(CameraSLM):
                         (point[0], point[1] + 2 * interference_size[1] + hh),
                         c="r", size="x-small", ha="center")
 
-                axs[2].imshow(np.log10(img + 1))
+                im = axs[2].imshow(np.log10(img + .1))
                 axs[2].set_xlim(point[0] - wh, point[0] + wh)
-                axs[2].set_ylim(point[1] - hh, point[1] + hh)
+                axs[2].set_ylim(point[1] + hh, point[1] - hh)
+                im.set_clim(0, np.log10(self.cam.bitresolution))
 
-                plt.title(title)
+                cbar = fig.colorbar(im, ax=axs[2])
+                cbar.ax.set_yticks([0, np.log10(self.cam.bitresolution)])
+                cbar.ax.set_yticklabels([1, self.bitresolution])
+
+                axs[0].set_title("SLM Phase")
+                axs[1].set_title("Camera Result")
+                axs[2].set_title(title)
 
                 plt.show()
 
@@ -779,7 +803,7 @@ class FourierSLM(CameraSLM):
 
             # Determine whether to use a progress bar.
             if verbose:
-                description = "nx={}, ny={}".format(index[0], index[1])
+                description = "superpixel=({},{})".format(index[0], index[1])
                 prange = tqdm(phases, position=0, leave=False, desc=description)
             else:
                 prange = phases
@@ -850,7 +874,7 @@ class FourierSLM(CameraSLM):
             return measure(test_superpixel, plot=plot_fits)
 
         # Otherwise, proceed with all of the superpixels.
-        for n in tqdm(range(NX * NY), position=0, leave=False):
+        for n in tqdm(range(NX * NY), position=0, leave=False, desc="calibration"):
             nx = int(n % NX)
             ny = int(n / NX)
 
@@ -957,7 +981,7 @@ class FourierSLM(CameraSLM):
         pwr_large[pwr_large < 0] = 0
 
         if smooth:
-            size_blur = 4 * superpixel_size + 1
+            size_blur = 4*int(superpixel_size) + 1
             pwr_large = cv2.GaussianBlur(pwr_large, (size_blur, size_blur), 0)
 
         amp = np.sqrt(pwr_norm)
@@ -966,7 +990,7 @@ class FourierSLM(CameraSLM):
         # Process r^2
         r2 = np.copy(data["r2_fit"])
         r2[nyref, nxref] = 1
-        r2s = cv2.GaussianBlur(r2, (3, 3), 0)
+        r2s = r2
 
         r2s_large = cv2.resize(r2s, (w, h), interpolation=cv2.INTER_NEAREST)
         r2s_large = r2s_large[:self.slm.shape[0], :self.slm.shape[1]]
@@ -1047,16 +1071,22 @@ class FourierSLM(CameraSLM):
                     offset=offset[ny, nx],
                 )
 
-        real = np.cos(phase)
-        imag = np.sin(phase)
-
-        # Blur the phase to smooth it out
         if smooth:
-            real = cv2.GaussianBlur(real, (size_blur, size_blur), 0)
-            imag = cv2.GaussianBlur(imag, (size_blur, size_blur), 0)
+            for nsmooth in range(16):
+                real = np.cos(phase)
+                imag = np.sin(phase)
 
-        phase = np.arctan2(imag, real) + np.pi
+                # Blur the phase to smooth it out
+                size_blur = 2*int(superpixel_size/4) + 1
+                real = cv2.GaussianBlur(real, (size_blur, size_blur), 0)
+                imag = cv2.GaussianBlur(imag, (size_blur, size_blur), 0)
 
+                phase = np.arctan2(imag, real) + np.pi
+            else:
+                real = np.cos(phase)
+                imag = np.sin(phase)
+                phase = np.arctan2(imag, real) + np.pi
+            
         mindiff = np.inf
         phase_fin = []
         for phi in range(8):

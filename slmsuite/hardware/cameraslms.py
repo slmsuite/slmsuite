@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from slmsuite.holography import analysis
 from slmsuite.holography.algorithms import SpotHologram
-from slmsuite.holography.toolbox import blaze, imprint, clean_2vectors
+from slmsuite.holography.toolbox import blaze, imprint, format_2vectors
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
 from slmsuite.misc.fitfunctions import cos
 
@@ -185,9 +185,9 @@ class FourierSLM(CameraSLM):
         # 2) Get orientation of projected array
         orientation = analysis.blob_array_detect(img, array_shape, plot=plot)
 
-        a = clean_2vectors(array_center)
+        a = format_2vectors(array_center)
         M = np.array(orientation["M"])
-        b = clean_2vectors(orientation["b"])
+        b = format_2vectors(orientation["b"])
 
         knm_conv = (np.array((self.slm.dx, self.slm.dy))
                     * np.flip(np.squeeze(hologram.shape))
@@ -299,7 +299,7 @@ class FourierSLM(CameraSLM):
             array_pitch=array_pitch,
             array_center=array_center,
             basis="knm",
-            parity_check=True,
+            orientation_check=True,
             cameraslm=self,
         )
 
@@ -330,7 +330,7 @@ class FourierSLM(CameraSLM):
         ----------
         kxy : array_like
             2-vector or array of 2-vectors to convert.
-            Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
+            Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
 
         Returns
         -------
@@ -344,7 +344,7 @@ class FourierSLM(CameraSLM):
         """
         assert self.fourier_calibration is not None
         return (np.matmul(   self.fourier_calibration["M"],
-                            clean_2vectors(kxy) - self.fourier_calibration["a"] )
+                            format_2vectors(kxy) - self.fourier_calibration["a"] )
                     + self.fourier_calibration["b"])
 
     def ijcam_to_kxyslm(self, ij):
@@ -361,7 +361,7 @@ class FourierSLM(CameraSLM):
         ----------
         ij : array_like
             2-vector or array of 2-vectors to convert.
-            Cleaned with :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
+            Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
 
         Returns
         -------
@@ -375,7 +375,7 @@ class FourierSLM(CameraSLM):
         """
         assert self.fourier_calibration is not None
         return (np.matmul(   np.linalg.inv(self.fourier_calibration["M"]),
-                            clean_2vectors(ij) - self.fourier_calibration["b"]  )
+                            format_2vectors(ij) - self.fourier_calibration["b"]  )
                     + self.fourier_calibration["a"])
 
     def get_farfield_spot_size(self, slm_size, basis="kxy"):
@@ -510,8 +510,8 @@ class FourierSLM(CameraSLM):
 
         # Clean the points
         base_point = self.kxyslm_to_ijcam([0, 0]).astype(np.int)
-        interference_point = clean_2vectors(interference_point).astype(np.int)
-        field_point = clean_2vectors(field_point).astype(np.int)
+        interference_point = format_2vectors(interference_point).astype(np.int)
+        field_point = format_2vectors(field_point).astype(np.int)
 
         # Use the Fourier calibration to help find points/sizes in the imaging plane.
         assert self.fourier_calibration is not None, \
@@ -586,20 +586,24 @@ class FourierSLM(CameraSLM):
             matrix = blaze(self.slm, field_blaze)
 
             if reference is not None:
-                imprint(matrix,
-                        np.array([nxref, 1, nyref, 1]) * superpixel_size,
-                        self.slm,
-                        blaze,
-                        vector=reference_blaze,
-                        offset=0)
+                imprint(
+                    matrix,
+                    np.array([nxref, 1, nyref, 1]) * superpixel_size,
+                    blaze,
+                    self.slm,
+                    vector=reference_blaze,
+                    offset=0
+                )
 
             if target is not None:
-                imprint(matrix,
-                        np.array([index[0], 1, index[1], 1]) * superpixel_size,
-                        self.slm,
-                        blaze,
-                        vector=target_blaze,
-                        offset=target)
+                imprint(
+                    matrix,
+                    np.array([index[0], 1, index[1], 1]) * superpixel_size,
+                    blaze,
+                    self.slm,
+                    vector=target_blaze,
+                    offset=target
+                )
 
             if plot_everything or plot:
                 plt.figure(figsize=(20, 25))
@@ -764,8 +768,8 @@ class FourierSLM(CameraSLM):
             masked_pic_mode = analysis._make_8bit(masked_pic_mode)
             masked_pic_mode = cv2.GaussianBlur(masked_pic_mode, (blur, blur), 0)
             _, _, _, max_loc = cv2.minMaxLoc(masked_pic_mode)
-            found_center = (clean_2vectors(max_loc)
-                            - clean_2vectors(np.flip(masked_pic_mode.shape)) / 2
+            found_center = (format_2vectors(max_loc)
+                            - format_2vectors(np.flip(masked_pic_mode.shape)) / 2
                             + interference_point)
 
             return found_center
@@ -1076,8 +1080,8 @@ class FourierSLM(CameraSLM):
                 imprint(
                     phase,
                     np.array([nx, 1, ny, 1]) * superpixel_size,
-                    self.slm,
                     blaze,
+                    self.slm,
                     vector=(kx[ny, nx], ky[ny, nx]),
                     offset=offset[ny, nx],
                 )

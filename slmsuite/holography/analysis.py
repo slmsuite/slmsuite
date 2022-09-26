@@ -7,7 +7,7 @@ from functools import reduce
 from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
 from scipy.optimize import curve_fit
 
-from slmsuite.holography.toolbox import clean_2vectors
+from slmsuite.holography.toolbox import format_2vectors
 from slmsuite.misc.fitfunctions import gaussian2d
 
 
@@ -24,7 +24,7 @@ def take(imgs, vectors, size, centered=True, integrate=False, clip=False, plot=F
         2D image or array of 2D images.
     vectors : array_like of floats
         2-vector (or 2-vector array) listing location(s) of integration region(s).
-        See :meth:`~slmsuite.holography.toolbox.clean_2vectors`.
+        See :meth:`~slmsuite.holography.toolbox.format_2vectors`.
     size : int or (int, int)
         Size of the rectangular integration region in ``(w, h)`` format. If a scalar is given,
         assume square ``(w, w)``.
@@ -55,7 +55,7 @@ def take(imgs, vectors, size, centered=True, integrate=False, clip=False, plot=F
     if isinstance(size, int):
         size = (size, size)
 
-    vectors = clean_2vectors(vectors)
+    vectors = format_2vectors(vectors)
 
     # Prepare helper variables. Future: consider caching for speed, if not negligible.
     edge_x = np.arange(size[0]) - (int(size[0] / 2) if centered else 0)
@@ -567,7 +567,7 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
     ----------
     img : numpy.ndarray
         The image to perform blob detection on.
-    filter : str or None
+    filter : {"dist_to_center", "max_amp"} OR None
         One of ``dist_to_center`` or ``max_amp``.
     title : str
         Plot title.
@@ -665,7 +665,7 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
     return blobs, detector
 
 
-def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False):
+def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=False):
     r"""
     Detect an array of spots and return the orientation as an affine transformation.
     Primarily used for calibration.
@@ -688,9 +688,10 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
         Guess array orientation (same format as the returned) from previous known results.
         If None (the default), orientation is estimated from looking for peaks in the
         Fourier transform of the image.
-    parity_check : bool
-        If enabled, looks for missing spots at corners to check rotation. Used by
-        :meth:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibrate`.
+    orientation_check : bool
+        If enabled, looks for two missing spots at one corner as a parity check on rotation.
+        Used by :meth:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibrate()`.
+        See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.make_rectangular_array()`.
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
 
@@ -878,7 +879,7 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
         )
 
         # Parity check
-        if orientation is None and parity_check:
+        if orientation is None and orientation_check:
             try:
                 cam_array_ind = np.ix_(
                     max_loc[1] + np.arange(mask.shape[0]),
@@ -1059,7 +1060,7 @@ def blob_array_detect(img, size, orientation=None, parity_check=True, plot=False
 
             plt.show()
 
-        orientation["b"] += clean_2vectors([np.nanmean(shift_x), np.nanmean(shift_y)])
+        orientation["b"] += format_2vectors([np.nanmean(shift_x), np.nanmean(shift_y)])
 
     hone()
     hone()

@@ -1278,7 +1278,7 @@ class FeedbackHologram(Hologram):
             ur = [cam_shape[1] - 1, cam_shape[0] - 1]
             ul = [cam_shape[1] - 1, 0]
 
-            points_ij = toolbox.clean_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
+            points_ij = toolbox.format_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
             points_kxy = self.cameraslm.ijcam_to_kxyslm(points_ij)
             self.cam_points = toolbox.convert_blaze_vector(
                 points_kxy, "kxy", "knm", slm=self.cameraslm.slm, shape=self.shape
@@ -1325,7 +1325,7 @@ class FeedbackHologram(Hologram):
             [1, 1], "knm", "kxy", slm=self.cameraslm.slm, shape=self.shape
         )
         M1 = np.diag(np.squeeze(conversion))
-        b1 = -toolbox.clean_2vectors(np.flip(np.squeeze(self.shape)) / 2)
+        b1 = -toolbox.format_2vectors(np.flip(np.squeeze(self.shape)) / 2)
 
         # Second transformation.
         M2 = self.cameraslm.fourier_calibration["M"]
@@ -1489,7 +1489,7 @@ class SpotHologram(FeedbackHologram):
     ----------
     spot_knm, spot_kxy, spot_ij : array_like OR None
         Stored vectors with shape ``(2, N)`` in the style of
-        :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
+        :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
         The subscript refers to the basis of the vectors, the transformations between
         which are autocomputed.
         If necessary transformations do not exist, :attr:`spot_ij` is set to ``None``.
@@ -1520,7 +1520,7 @@ class SpotHologram(FeedbackHologram):
             Computational shape of the SLM. See :meth:`.Hologram.__init__()`.
         spot_vectors : array_like
             Spot position vectors with shape ``(2, N)`` in the style of
-            :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
+            :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
         basis : str
             The spots can be in any of the following bases:
 
@@ -1539,7 +1539,7 @@ class SpotHologram(FeedbackHologram):
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
-        vectors = toolbox.clean_2vectors(spot_vectors)
+        vectors = toolbox.format_2vectors(spot_vectors)
 
         if spot_amp is not None:
             assert np.shape(vectors)[1] == len(
@@ -1642,7 +1642,7 @@ class SpotHologram(FeedbackHologram):
         array_pitch,
         array_center=(0, 0),
         basis="knm",
-        parity_check=False,
+        orientation_check=False,
         **kwargs
     ):
         """
@@ -1669,7 +1669,7 @@ class SpotHologram(FeedbackHologram):
             kxy coordinates. (kx, ky) form.
         basis : str
             See :meth:`__init__()`.
-        parity_check : bool
+        orientation_check : bool
             Whether to delete the last two points to check for parity.
         **kwargs
             Any other arguments are passed to :meth:`__init__()`.
@@ -1693,7 +1693,7 @@ class SpotHologram(FeedbackHologram):
         x_list, y_list = x_grid.ravel(), y_grid.ravel()
 
         # Delete the last two points if desired and valid.
-        if parity_check and len(x_list) > 2:
+        if orientation_check and len(x_list) > 2:
             x_list = x_list[:-2]
             y_list = y_list[:-2]
 
@@ -1709,7 +1709,7 @@ class SpotHologram(FeedbackHologram):
         # Erase previous target in-place. Future: Optimize speed if positions haven't shifted?
         self.target.fill(0)
 
-        shape = toolbox.clean_2vectors(self.shape).astype(np.float)
+        shape = toolbox.format_2vectors(self.shape).astype(np.float)
 
         self.spot_knm_rounded = np.ceil(shape / 2 + self.spot_knm.astype(np.float))
         self.spot_knm_rounded = self.spot_knm_rounded.astype(np.int)

@@ -290,7 +290,7 @@ class FourierSLM(CameraSLM):
         """
 
         # Make the spot array
-        shape = SpotHologram.calculate_padding(
+        shape = SpotHologram.calculate_padded_shape(
             self, padding_order=1, square_padding=True
         )
         hologram = SpotHologram.make_rectangular_array(
@@ -827,7 +827,7 @@ class FourierSLM(CameraSLM):
             for phase in prange:
                 self.slm.write( superpixels(index, reference=0,target=phase,
                                             target_blaze=target_blaze_fixed),
-                                flatmap=True, settle=True)
+                                settle=True)
                 interference_image = self.cam.get_image()
                 results.append(
                     interference_image[

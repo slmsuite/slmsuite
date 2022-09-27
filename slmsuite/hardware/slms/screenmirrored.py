@@ -21,12 +21,12 @@ class ScreenMirrored(SLM):
     ~~~~~~~
     This class currently supports SLMs with 8-bit precision or less.
     In the future, this class will support 16-bit SLMs using RG color.
-    
+
     Important
     ~~~~~~~~~
     Many SLM manufacturers provide an SDK for interfacing with their devices.
-    Using a python wrapper for these SDKs is recommended, instead of or in supplement to this class, 
-    as there often is functionality additional to a mirrored screen 
+    Using a python wrapper for these SDKs is recommended, instead of or in supplement to this class,
+    as there often is functionality additional to a mirrored screen
     (e.g. USB for changing settings) along with device-specific optimizations.
 
     Note
@@ -53,12 +53,12 @@ class ScreenMirrored(SLM):
           :mod:`slmpy` [12]_ uses :mod:`wx`.
 
     :mod:`slmsuite` uses :mod:`pyglet` as the default display package.
-    :mod:`pyglet` is generally more capable than the mentioned SDL wrappers while immediately supporting 
+    :mod:`pyglet` is generally more capable than the mentioned SDL wrappers while immediately supporting
     features such as detecting connected displays which low-level packages like :mod:`OpenGL` and
-    :mod:`moderngl` do not have. :mod:`pyglet` allows us to interact more directly with the display 
+    :mod:`moderngl` do not have. :mod:`pyglet` allows us to interact more directly with the display
     hardware without the additional overhead that is found in GUI libraries.
     Most importantly, :mod:`pyglet` is well documented.
-    
+
     However, it might be worthwhile in the future to look back into SDL options, as SDL surfaces
     are closer to the pixels than OpenGL textures, so greater speed might be achievable (even without
     loading data to the GPU as a texture). Another potential improvement could come from writing
@@ -89,7 +89,7 @@ class ScreenMirrored(SLM):
         Used to load data to the texture.
     texture : pyglet.gl.GLuint
         Identifier for the texture loaded into ``OpenGL`` memory.
-    
+
 
     References
     ----------
@@ -120,9 +120,9 @@ class ScreenMirrored(SLM):
 
         Caution
         ~~~~~~~
-        An SLM designed at 1064 nm can be used for an application at 780 nm by passing 
-        ``wav_um=.780`` and ``wav_design_um=1.064``, 
-        thus causing the SLM to use only a fraction (780/1064) 
+        An SLM designed at 1064 nm can be used for an application at 780 nm by passing
+        ``wav_um=.780`` and ``wav_design_um=1.064``,
+        thus causing the SLM to use only a fraction (780/1064)
         of the full dynamic range. Be sure these values are correct.
         Note that there are some performance losses from using this modality (see :meth:`.write()`).
 
@@ -166,19 +166,19 @@ class ScreenMirrored(SLM):
 
         if verbose and screen_info[display_number][2]:
             print("warning: this is the main display... ")
-        
+
         if verbose:
             print("success")
             print("Creating window... ", end="")
 
         screen = screens[display_number]
-        
+
         super().__init__(screen.width, screen.height, bitdepth=bitdepth, **kwargs)
 
         # Setup the window. If failure, closes elegantly upon except().
         try:
             # Make the window and do basic setup.
-            self.window = pyglet.window.Window( screen=screen, 
+            self.window = pyglet.window.Window( screen=screen,
                                                 fullscreen=True, vsync=True)
             self.window.set_caption(self.name)
             self.window.set_mouse_visible(False)
@@ -193,7 +193,7 @@ class ScreenMirrored(SLM):
                 self.window.set_icon(img16x16, img32x32)
             except Exception as e:
                 print(e)
-            
+
             # Set the viewpoint.
             proj = pyglet.window.Projection2D()
             proj.set(self.shape[1], self.shape[0], self.shape[1], self.shape[0])
@@ -225,14 +225,14 @@ class ScreenMirrored(SLM):
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST)
 
             # Malloc the OpenGL memory
-            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGBA8, 
-                            texture_shape[1], texture_shape[0], 
+            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGBA8,
+                            texture_shape[1], texture_shape[0],
                             0, gl.GL_BGRA, gl.GL_UNSIGNED_BYTE,
                             texcbuffer)
-            
+
             # Make sure we can write to a subset of the memory (as we will do in the future)
-            gl.glTexSubImage2D(gl.GL_TEXTURE_2D, 0, 0, 0, 
-                            self.shape[1], self.shape[0], 
+            gl.glTexSubImage2D(gl.GL_TEXTURE_2D, 0, 0, 0,
+                            self.shape[1], self.shape[0],
                             gl.GL_BGRA, gl.GL_UNSIGNED_BYTE,
                             self.cbuffer)
 
@@ -251,9 +251,9 @@ class ScreenMirrored(SLM):
 
         if verbose:
             print("success")
-        
+
         # Warn the user if wav_um > wav_design_um
-        if self.wav_norm > 1:
+        if self.phase_scaling > 1:
             print(
                 "Warning: Wavelength {} um is inaccessible to this SLM with "
                 "design wavelength {} um".format(self.wav_um, self.wav_design_um)
@@ -277,7 +277,7 @@ class ScreenMirrored(SLM):
         ya = 0
         xb = self.tex_shape_ratio[1]
         yb = self.tex_shape_ratio[0]
-        
+
         array = (gl.GLfloat * 32)(
             xa, ya, 0., 1.,         # tex coord,
             x1, y1, 0., 1.,         # real coord, ...
@@ -291,11 +291,11 @@ class ScreenMirrored(SLM):
         # Update the texture.
         gl.glEnable(gl.GL_TEXTURE_2D)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture.value)
-        gl.glTexSubImage2D(gl.GL_TEXTURE_2D, 0, 0, 0, 
-                        self.shape[1], self.shape[0], 
+        gl.glTexSubImage2D(gl.GL_TEXTURE_2D, 0, 0, 0,
+                        self.shape[1], self.shape[0],
                         gl.GL_RGBA, gl.GL_UNSIGNED_BYTE,
                         self.cbuffer)
-        
+
         # Blit the texture.
         gl.glPushClientAttrib(gl.GL_CLIENT_VERTEX_ARRAY_BIT)
         gl.glInterleavedArrays(gl.GL_T4F_V4F, 0, array)
@@ -342,13 +342,13 @@ class ScreenMirrored(SLM):
             x, y = window.get_location()
             return ("x={}, y={}, width={}, height={}"
                 .format(x, y, window.width, window.height))
-            
+
         default_str = parse_screen(default)
 
         window_strs = []
         for window in windows:
             window_strs.append(parse_window(window))
-        
+
         if verbose:
             print('Display Positions:')
             print('#,  Position')
@@ -367,11 +367,11 @@ class ScreenMirrored(SLM):
             if screen_str in window_strs:
                 window_bool = True
                 screen_str += ' (has ScreenMirrored)'
-            
+
             if verbose:
                 print('{},  {}'.format(x, screen_str))
 
-            screen_list.append((x, parse_screen_int(screen), 
+            screen_list.append((x, parse_screen_int(screen),
                                 main_bool, window_bool))
 
         return screen_list

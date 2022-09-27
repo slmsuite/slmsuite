@@ -25,14 +25,17 @@ def imprint(
     Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
     This ``function`` must be in the style of :mod:`~slmsuite.holography.toolbox`
     phase helper functions, which attempts a ``grid`` parameter
-    (see :mod:`~slmsuite.holography.toolbox.blaze` or
-    :mod:`~slmsuite.holography.toolbox.lens`).
+    (see :mod:`~slmsuite.holography.toolbox.blaze()` or
+    :mod:`~slmsuite.holography.toolbox.lens()`).
     For instance, we can imprint a blaze on a 200 by 200 pixel region
     of the SLM with:
 
-    .. code-block::
-        canvas = np.zeros(shape=slm.shape)
-        toolbox.imprint(canvas, window=[200, 200, 200, 200], function=toolbox.blaze, grid=slm, vector=(.001, .001))
+    .. highlight:: python
+    .. code-block:: python
+
+        canvas = np.zeros(shape=slm.shape)  # Matrix to imprint onto.
+        window = [200, 200, 200, 200]       # Region of the matrix to imprint.
+        toolbox.imprint(canvas, window=window, function=toolbox.blaze, grid=slm, vector=(.001, .001))
 
     See also :ref:`examples`.
 
@@ -43,15 +46,15 @@ def imprint(
     window : (int, int, int, int) OR (array_like, array_like) OR array_like
         A number of formats are accepted:
 
-        - List in ``(v.x, w, v.y, h)`` format, where ``w`` and ``h`` are the width and height of
-          the region and  ``v`` is the lower left coordinate. If ``centered``, then ``v`` is
+        - List in ``(x, w, y, h)`` format, where ``w`` and ``h`` are the width and height of
+          the region and  ``(x,y)`` is the lower left coordinate. If ``centered``, then ``(x,y)`` is
           instead the center of the region to imprint.
         - Tuple containing arrays of identical length corresponding to y and x indices.
           ``centered`` is ignored.
         - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
           ``centered`` is ignored.
 
-    function : lambda
+    function : function
         A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
         which accept ``grid`` as the first argument.
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
@@ -66,10 +69,12 @@ def imprint(
         - If ``"add"``, then these are instead added together (useful, for instance, for global blazes).
 
     centered : bool
-        See ``window``.
+        See ``window``. Defaults to ``True``.
     clip : bool
         Whether to clip the imprint region if it exceeds the size of ``matrix``.
         If ``False``, then an error is raised when the size is exceeded.
+        If ``True``, then the out-of-range pixels are instead filled with ``numpy.nan``.
+        Defaults to ``True``.
     **kwargs :
         For passing additional arguments accepted by ``function``.
 
@@ -370,33 +375,44 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
 
     At base, this function finds and optionally uses affine transformations:
 
-    .. code-block::
+    .. highlight:: python
+    .. code-block:: python
 
         y0 = (1.,1.)    # Origin
         y1 = (2.,2.)    # First point in x direction
         y2 = (1.,2.)    # first point in y direction
 
+        # Dict with keys "M", and "b":
         affine_dict =   fit_affine(y0, y1, y2, N=None)
+
+        # Array with shape (2,25) corresponding to a 5x5 evaluation of the above:
         vector_array =  fit_affine(y0, y1, y2, N=(5,5))
 
     However, ``fit_affine`` is more powerful that this, and can fit an affine
-    transformation to semi-arbitrary sets of points with indices in the coordinate
-    system of the dependent variable :math:`\vec{x}`,
+    transformation to semi-arbitrary sets of points with known indices
+    in the coordinate  system of the dependent variable :math:`\vec{x}`,
     as long as the passed indices ``x0``, ``x1``, ``x2`` are not colinear.
 
-    .. code-block::
+    .. highlight:: python
+    .. code-block:: python
 
+        # y11 is at x index (1,1), etc
         fit_affine(y11, y34, y78, (5,5), (1,1), (3,4), (7,8))
 
+        # These indices don't have to be integers
+        fit_affine(a, b, c, (5,5), (np.pi,1.5), (20.5,np.sqrt(2)), (7.7,42.0))
+
     Optionally, basis vectors can be passed directly instead of adding these
-    vectors to the origin:
+    vectors to the origin, by making use of passing ``None`` for ``x1`` or ``x2``:
 
-    .. code-block::
+    .. highlight:: python
+    .. code-block:: python
 
-        origin = (1.,1.)    # Origin
-        dv1 = (1.,1.)       # Basis vector in x direction
-        dv2 = (1.,0.)       # Basis vector in y direction
+        origin =    (1.,1.)     # Origin
+        dv1 =       (1.,1.)     # Basis vector in x direction
+        dv2 =       (1.,0.)     # Basis vector in y direction
 
+        # The following are equivalent:
         option1 = fit_affine(origin, origin+dv1, origin+dv2, (5,5))
         option2 = fit_affine(origin, dv1, dv2, (5,5), x1=None, x2=None)
 

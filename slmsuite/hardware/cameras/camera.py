@@ -419,11 +419,16 @@ class Camera:
 
         return z_opt, imlist
 
-def view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
+def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
     """
     Continuously get camera frames and plot them. Intended for use in jupyter notebooks.
     Activate ``%matplotlib notebook`` before calling this function. This method
     does not halt, exit with a keyboard interrupt.
+
+    Important
+    ~~~~~~~~~
+    This is probably going to get replaced with a :mod:`pyglet` interface for viewing
+    realtime camera outputs while cameras loaded into python.
 
     Parameters
     ----------

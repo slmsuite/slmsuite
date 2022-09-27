@@ -23,11 +23,14 @@ def imprint(
 ):
     r"""
     Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
-    This function is in the style of :mod:`~slmsuite.holography.toolbox` helper
-    functions. For instance, we can imprint a blaze on a 200 by 200 pixel region
+    This ``function`` must be in the style of :mod:`~slmsuite.holography.toolbox`
+    phase helper functions, which attempts a ``grid`` parameter
+    (see :mod:`~slmsuite.holography.toolbox.blaze` or
+    :mod:`~slmsuite.holography.toolbox.lens`).
+    For instance, we can imprint a blaze on a 200 by 200 pixel region
     of the SLM with:
 
-    .. code-block:: python
+    .. code-block::
         canvas = np.zeros(shape=slm.shape)
         toolbox.imprint(canvas, window=[200, 200, 200, 200], function=toolbox.blaze, grid=slm, vector=(.001, .001))
 
@@ -56,10 +59,12 @@ def imprint(
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    imprint_operation : str {"replace" OR "add"}
+    imprint_operation : {"replace" OR "add"}
         Decides how the ``function`` is imparted to the ``matrix``.
+
         - If ``"replace"``, then the values of ``matrix`` inside ``window`` are replaced with ``function``.
         - If ``"add"``, then these are instead added together (useful, for instance, for global blazes).
+
     centered : bool
         See ``window``.
     clip : bool
@@ -365,7 +370,7 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
 
     At base, this function finds and optionally uses affine transformations:
 
-    .. code-block:: python
+    .. code-block::
 
         y0 = (1.,1.)    # Origin
         y1 = (2.,2.)    # First point in x direction
@@ -379,14 +384,14 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
     system of the dependent variable :math:`\vec{x}`,
     as long as the passed indices ``x0``, ``x1``, ``x2`` are not colinear.
 
-    .. code-block:: python
+    .. code-block::
 
         fit_affine(y11, y34, y78, (5,5), (1,1), (3,4), (7,8))
 
     Optionally, basis vectors can be passed directly instead of adding these
     vectors to the origin:
 
-    .. code-block:: python
+    .. code-block::
 
         origin = (1.,1.)    # Origin
         dv1 = (1.,1.)       # Basis vector in x direction

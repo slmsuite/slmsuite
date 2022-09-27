@@ -141,7 +141,8 @@ def take_plot(imgs):
 
 def image_moment(imgs, moment=(1, 0), centers=(0, 0), normalize=True, nansum=False):
     r"""
-    Computes the given moment :math:`M_{m_xm_y}` for a stack of images.
+    Computes the given `moment <https://en.wikipedia.org/wiki/Moment_(mathematics)>`_
+    :math:`M_{m_xm_y}` for a stack of images.
     This involves integrating each image against polynomial trial functions:
 
     .. math:: M_{m_xm_y} = \frac{   \int_{-w_x/2}^{+w_x/2} dx \, (x-c_x)^{m_x}
@@ -454,8 +455,7 @@ def image_ellipticity_angle(variances):
 
 def image_normalize(imgs, nansum=False):
     """
-    Array-wise
-    calculates the zeroth order moments and uses them to normalize the images.
+    Normalizes of a stack of images via the the zeroth order moments.
 
     Parameters
     ----------

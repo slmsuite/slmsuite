@@ -738,7 +738,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
             if plot:
                 blobs, _ = blob_detect(
                     dft_amp.copy(),
-                    plot=True,
+                    plot=plot,
                     minThreshold=minThreshold,
                     thresholdStep=thresholdStep,
                 )
@@ -756,8 +756,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
                 plt.show()
 
             raise RuntimeError(
-                "Not enough spots found in FT, check illumination "
-                "or try again with higher threshold"
+                "Not enough spots found in FT; expected five. Check exposure time!"
             )
 
         # Future: improve this part of the algorithm. It sometimes makes mistakes.

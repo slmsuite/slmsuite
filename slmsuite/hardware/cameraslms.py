@@ -102,7 +102,7 @@ class FourierSLM(CameraSLM):
         array_shape=10,
         array_pitch=10,
         array_center=(0, 0),
-        plot=True,
+        plot=False,
         autofocus=False,
         autoexposure=False,
         **kwargs
@@ -918,7 +918,7 @@ class FourierSLM(CameraSLM):
 
         return correction_dict
 
-    def process_wavefront_calibration(self, smooth=True, r2_threshold=0.99, plot=True):
+    def process_wavefront_calibration(self, smooth=True, r2_threshold=0.99, plot=False):
         """
         Processes :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
         into the desired phase correction and amplitude measurement. Sets

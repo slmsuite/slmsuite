@@ -420,7 +420,9 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
 
     Parameters
     ----------
-    y0, y1, y2 : array_like
+    y0, y1 : array_like
+        See ``y2``.
+    y2 : array_like
         2-vectors defining the affine transformation. These vectors correspond to
         positions which we will fit our transformation to. These vectors have
         corresponding indices ``x0``, ``x1``, ``x2``; see these variables for more
@@ -434,7 +436,9 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
         If ``None`` or any non-positive integer is passed, then a dictionary
         with the affine transformation is instead returned.
         Defaults to ``None``.
-    x0, x1, x2 : array_like OR None
+    x0, x1 : array_like OR None
+        See ``x2``.
+    x2 : array_like OR None
         Should not be colinear.
         If ``x0`` is ``None``, defaults to the origin ``(0,0)``.
         If ``x1`` or ``x2`` are ``None``, ``y1`` or ``y2`` are interpreted as
@@ -554,7 +558,7 @@ def smallest_distance(vectors, metric=chebyshev):
     return minimum
 
 
-def voronoi_windows(grid, vectors, radius=None, plot=True):
+def voronoi_windows(grid, vectors, radius=None, plot=False):
     r"""
     Gets boolean array windows for an array of vectors in the style of
     :meth:`~slmsuite.holography.toolbox.imprint()`,
@@ -721,9 +725,33 @@ def blaze(grid, vector=(0, 0), offset=0):
 
 def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
     r"""
-    Returns a simple thin lens (parabolic).
+    Returns a simple thin lens (parabolic). When ``f`` is isotropic and ``angle`` :math:`\theta` is zero,
 
-    .. math:: \phi(\vec{x}) = \frac{\pi}{f}(|\vec{x}|^2)
+    .. math:: \phi(\vec{x}) = \frac{\pi}{f}(|\vec{x} - \vec{c}|^2)
+
+    Otherwise,
+
+    .. math:: \phi(x, y) = \pi \left[ G_{00}(x - c_x)^2 + 2G_{10}(x - c_x)(y - c_y) + G_{11}(y - c_y)^2 \right]
+
+    Using the rotation of the lens power:
+
+    .. math::   \begin{bmatrix}
+                    G_{00} & G_{10} \\
+                    G_{10} & G_{11} \\
+                \end{bmatrix}
+                =
+                R(-\theta)
+                \begin{bmatrix}
+                    1/f_x & 0 \\
+                    0 & 1/f_y \\
+                \end{bmatrix}
+                R(\theta).
+
+    Note
+    ~~~~
+    In the future, we should add shear variance in the style of
+    :meth:`~slmsuite.hardware.analysis.image_variance()`.
+    Perhaps if the user passes in a 3-tuple for ``f``?
 
     Parameters
     ----------
@@ -763,24 +791,15 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
         f = np.squeeze(f)
 
         assert f.shape == (2,)
-
-        if isinstance(f[0], (list, tuple, np.ndarray)):
-            ang = f[1]
-
-            f = np.squeeze(f[0]).astype(np.float)
-            assert f.shape == (2,)
-        else:
-            ang = 0
-
         assert not np.any(f == 0), "Cannot interpret a focal length of zero."
 
         # Optical power of lens
         g = [[1 / f[0], 0], [0, 1 / f[1]]]
 
         # Rotate if necessary
-        if ang != 0:
-            s = np.sin(ang)
-            c = np.cos(ang)
+        if angle != 0:
+            s = np.sin(angle)
+            c = np.cos(angle)
             rot = np.array([[c, -s], [s, c]])
 
             g = np.matmul(np.linalg.inv(rot), np.matmul(g, rot))

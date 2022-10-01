@@ -94,6 +94,8 @@ add_module_names = False # Remove namespaces from class/method signatures
 nbsphinx_execute = "never"
 nbsphinx_allow_errors = True #continue through jupyter errors
 
+# copybutton_prompt_text = "$ "
+
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for

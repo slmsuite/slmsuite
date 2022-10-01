@@ -106,15 +106,15 @@ class AlliedVision(Camera):
             bitdepth=int(self.cam.PixelSize.get()),
             dx_um=None,
             dy_um=None,
+            name=serial,
             **kwargs
         )
-        self.name = serial
 
         self.cam.BinningHorizontal.set(1)
         self.cam.BinningVertical.set(1)
 
         self.cam.GainAuto.set("Off")
-        
+
         self.cam.ExposureAuto.set("Off")
         self.cam.ExposureMode.set("Timed")
 
@@ -125,11 +125,6 @@ class AlliedVision(Camera):
         self.cam.TriggerMode.set("Off")
         self.cam.TriggerActivation.set("RisingEdge")
         self.cam.TriggerSource.set("Software")
-
-        # Initialize window variable, then set to max WOI
-        self.window = None
-        self.set_woi()
-        self.default_shape = self.shape
 
     def close(self, close_sdk=True):
         """
@@ -182,7 +177,7 @@ class AlliedVision(Camera):
                 print(prop.get(), end="\t")
             except:
                 pass
-            
+
             try:
                 print(prop.get_unit(), end="\t")
             except:
@@ -232,16 +227,27 @@ class AlliedVision(Camera):
         """See :meth:`.Camera.set_exposure`."""
         self.cam.ExposureTime.set(float(exposure_s * 1e6))
 
-    def set_woi(self, window=None):
+    def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
         return
 
     def get_image(self, timeout_s=1):
         """See :meth:`.Camera.get_image`."""
+        t = time.time()
+
         # Convert timeout_s to ms
         frame = self.cam.get_frame(timeout_ms=int(1e3 * timeout_s))
+        frame = frame.as_numpy_ndarray()
 
-        return self.transform(np.squeeze(frame.as_numpy_ndarray()))
+        # We have noticed that sometimes the camera gets into a state where
+        # it returns a frame of all zeros apart from one pixel with value of 31.
+        # This method is admittedly a hack to try getting a frame a few more times.
+        # We welcome contributions to fix this.
+        while np.sum(frame) == np.amax(frame) == 31 and time.time() - t < timeout_s:
+            frame = self.cam.get_frame(timeout_ms=int(1e3 * timeout_s))
+            frame = frame.as_numpy_ndarray()
+
+        return self.transform(np.squeeze(frame))
 
     def flush(self, timeout_s=1e-3):
         """See :meth:`.Camera.flush`."""

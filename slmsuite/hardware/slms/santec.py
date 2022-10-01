@@ -15,7 +15,7 @@ These files should be copied in before use.
 Note
 ~~~~
 Santec provides base wavefront correction accounting for the curvature of the SLM surface.
-Consider loading these files via :meth:`.SLM..load_flatmap()`
+Consider loading these files via :meth:`.SLM..load_vendor_phase_correction()`
 """
 import os
 import ctypes
@@ -71,7 +71,7 @@ class Santec(SLM):
         Note
         ----
         Santec sets the voltage lookup table to correspond to the wavelength
-        supplied to :attr:`.SLM.wav_um`. This allows :attr:`.SLM.wav_norm` to
+        supplied to :attr:`.SLM.wav_um`. This allows :attr:`.SLM.phase_scaling` to
         always be one, and make use of optimized routines (see :meth`.write()`)
 
         Caution
@@ -207,22 +207,31 @@ class Santec(SLM):
 
         return display_list
 
-    def load_flatmap(self, file_path, wav_flatmap_um=0.830, smooth=False):
+    def load_vendor_phase_correction(self, file_path, wav_correction_um=0.830, smooth=False):
         """
-        See :meth:`.SLM.load_flatmap`.
+        Load phase correction provided by Santec from file,
+        setting :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`.
 
         Parameters
         ----------
-        wav_flatmap_um : float
-            The wavelength the flatmap was taken at in um. Default is 830nm.
+        file_path : str
+            File path for the vendor-provided phase correction.
+        wav_correction_um : float
+            The wavelength the phase correction was taken at in um. Default is 830nm.
         smooth : bool
             Whether to apply a Gaussian blur to smooth the data.
+
+        Returns
+        ----------
+        numpy.ndarray
+            :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`,
+            the Santec-provided phase correction.
         """
         try:
             # Load from .csv, skipping the first row and column
             # (corresponding to X and Y coordinates).
             map = np.loadtxt(file_path, skiprows=1, dtype=int, delimiter=",")[:, 1:]
-            phase = (-2 * np.pi / self.bitresolution * self.wav_um / wav_flatmap_um) * map.astype(float)
+            phase = (-2 * np.pi / self.bitresolution * self.wav_um / wav_correction_um) * map.astype(float)
 
             # Smooth the map
             if smooth:
@@ -236,11 +245,11 @@ class Santec(SLM):
                 # Recombine the components
                 phase = np.arctan2(imag, real) + np.pi
 
-            self.flatmap = phase
+            self.phase_correction = phase
         except BaseException as e:
-            print("Error while loading flatmap.\n{}".format(e))
+            print("Error while loading phase correction.\n{}".format(e))
 
-        return self.flatmap
+        return self.phase_correction
 
     def close(self):
         """See :meth:`.SLM.close`."""

@@ -69,7 +69,7 @@ class Hologram:
     though the extents remain the same --- and thus increase the resolution of the farfield.
     In practice, padding is accomplished by passing a :attr:`shape` or
     :attr:`target` of appropriate shape (see constructor :meth:`.__init__()` and subclasses),
-    potentially with the aid of the static helper function :meth:`.calculate_padding()`.
+    potentially with the aid of the static helper function :meth:`.calculate_padded_shape()`.
 
     Note
     ~~~~
@@ -96,40 +96,49 @@ class Hologram:
     phase : numpy.ndarray OR cupy.ndarray OR None
         Near-field phase pattern to optimize.
         Initialized to with :meth:`random.default_rng().uniform()` by default (``None``).
+        This is of shape :attr:`slm_shape`.
     amp : numpy.ndarray OR cupy.ndarray OR None
         Near-field source amplitude pattern (i.e. image-space constraints).
         Uniform illumination is assumed by default (``None``).
+        This is of shape :attr:`slm_shape`.
     shape : (int, int)
         The shape of the computational space.
         This often differs from :attr:`slm_shape` due to padding.
     target : numpy.ndarray OR cupy.ndarray
         Desired far-field amplitude. The goal of optimization.
+        This is of shape :attr:`shape`.
     weights : numpy.ndarray OR cupy.ndarray
         The mutable far-field amplitude used in GS.
         Starts as :attr:`target` but may be modified by weighted feedback in WGS.
+        This is of shape :attr:`shape`.
     phase_ff : numpy.ndarray OR cupy.ndarray
         Algorithm-constrained far-field phase. Stored for certain computational algorithms.
         (see :meth:`~slmsuite.holography.algorithms.Hologram.GS`).
+        This is of shape :attr:`shape`.
     amp_ff : numpy.ndarray OR cupy.ndarray
         Far-field (Fourier-space) amplitude. Used for comparing this, the computational
         result, with the :attr:`target`.
+        This is of shape :attr:`shape`.
     dtype : type
-        Datatype for stored near- and far-field arrays, which are all real.
-        Follows :mod`numpy` type promotion [5]_. Complex datatypes are derived from ``dtype``:
+        Datatype for stored near- and far-field arrays, which are **all real**.
+        Some internal variables are complex. The complex numbers
+        follow :mod:`numpy` type promotion [5]_. Complex datatypes are derived from ``dtype``:
 
          - ``float32`` -> ``complex64`` (assumed by default)
          - ``float64`` -> ``complex128``
 
         ``float16`` is *not* recommended for ``dtype`` because ``complex32`` is not
-        implemented by :mod`numpy`.
-    N : int
+        implemented by :mod:`numpy`.
+    iter : int
         Tracks the current iteration number.
     method : str
         Remembers the name of the last-used optimization method. The method used for each
         iteration is stored in ``stats``.
     flags : dict
-        Helper flags to store custom persistent variables for optimization. Contains the
-        following keys:
+        Helper flags to store custom persistent variables for optimization.
+        These flags are generally changed by passing as a ``kwarg`` to
+        :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
+        Contains the following keys:
 
          - ``"method"`` : ``str``
             Stores the method used for optimization.
@@ -179,11 +188,13 @@ class Hologram:
         target : numpy.ndarray OR cupy.ndarray OR (int, int)
             Target to optimize to. The user can also pass a shape, and this constructor
             will create an empty target of all zeros.
-            :meth:`.calculate_padding()` can be of particular help for calculating the
+            :meth:`.calculate_padded_shape()` can be of particular help for calculating the
             shape that will produce desired results (in terms of precision, etc).
-        amp, phase : array_like OR None
-            See :attr:`amp` and :attr:`phase`. :attr:`phase` should only be passed
-            if the user wants to precondition the optimization. Of shape :attr:`slm_shape`.
+        amp : array_like OR None
+            See :attr:`amp`. Of shape :attr:`slm_shape`.
+        phase : array_like OR None
+            See :attr:`phase`. :attr:`phase` should only be passed if the user wants to
+            precondition the optimization. Of shape :attr:`slm_shape`.
         slm_shape : (int, int) OR slmsuite.hardware.FourierSLM OR None
             The original shape of the SLM. The user can pass a
             :class:`slmsuite.hardware.FourierSLM` instead.
@@ -202,13 +213,13 @@ class Hologram:
         if any(np.log2(self.shape) != np.round(np.log2(self.shape))):
             print(
                 "Warning: Hologram target shape {} is not a power of 2; consider using "
-                ".calculate_padding() to pad to powers of 2 and speed up "
+                ".calculate_padded_shape() to pad to powers of 2 and speed up "
                 "FFT computation.".format(self.shape)
             )
 
         # Initialize storage vars
         self.dtype = dtype
-        self.N = 0
+        self.iter = 0
         self.method = ""
         self.flags = {"fixed_phase": False, "stat_groups": []}
 
@@ -255,7 +266,7 @@ class Hologram:
             self.amp = 1 / np.sqrt(np.prod(self.slm_shape))
         else:  # Otherwise, initialize and normalize
             self.amp = cp.array(amp, dtype=dtype)
-            self.amp *= 1 / Hologram.norm(self.amp)
+            self.amp *= 1 / Hologram._norm(self.amp)
 
         # Initialize near-field phase
         if phase is None:  # Random near-field phase by default
@@ -278,7 +289,7 @@ class Hologram:
 
     # Initialization helper
     @staticmethod
-    def calculate_padding(
+    def calculate_padded_shape(
         slm_shape,
         padding_order=1,
         square_padding=True,
@@ -287,8 +298,10 @@ class Hologram:
     ):
         """
         Helper function to calculate the shape of the computational space.
-        For a given shape, pads to the user's requirements. If the user chooses
-        multiple requirements, the largest is selected.
+        For a given base ``slm_shape``, pads to the user's requirements.
+        If the user chooses multiple requirements, the largest
+        dimensions for the shape are selected.
+        By default, pads to the smallest square power of two.
 
         Future: Add a setting to make pad based on available memory.
 
@@ -302,10 +315,12 @@ class Hologram:
             Scales to the ``padding_order`` th closest greater power of 2.
             A ``padding_order`` of zero does nothing.
         square_padding : bool
-            Returns a square shape using the largest dimension.
+            If ``True``, sets both shape dimensions to the largest of the two
+            dimensions that would otherwise be returned.
         precision : float
             Returns the shape that produces a computational k-space with resolution smaller
-            than ``precision``.
+            than ``precision``. The default, infinity, requests a padded shape larger
+            than zero, so ``padding_order`` will dominate.
         precision_basis : str
             Basis for the precision. Can be ``"ij"`` (camera) or ``"kxy"`` (normalized blaze).
 
@@ -470,7 +485,7 @@ class Hologram:
         # Iterations to process.
         iterations = range(maxiter)
 
-        # Decide whether to use a tqdm progress bar. Don't use a bar for N=1.
+        # Decide whether to use a tqdm progress bar. Don't use a bar for maxiter == 1.
         if verbose and maxiter > 1:
             iterations = tqdm(iterations)
 
@@ -559,13 +574,13 @@ class Hologram:
                 if "fixed_phase_efficiency" in self.flags:
                     stats = self.stats["stats"]
                     groups = tuple(stats.keys())
-                    eff = stats[groups[-1]]["efficiency"][self.N]
+                    eff = stats[groups[-1]]["efficiency"][self.iter]
                     if eff > self.flags["fixed_phase_efficiency"]:
                         self.flags["fixed_phase"] = True
 
                 if not "fixed_phase_iterations" in self.flags:
                     self.flags["fixed_phase_iterations"] = 20
-                if self.N > self.flags["fixed_phase_iterations"]:
+                if self.iter > self.flags["fixed_phase_iterations"]:
                     self.flags["fixed_phase"] = True
 
             # Run step function and check termination conditions.
@@ -608,8 +623,8 @@ class Hologram:
                 out=self.phase,
             )
 
-            # Increment iterations.
-            self.N += 1
+            # Increment iteration.
+            self.iter += 1
 
         # Update the final far-field
         nearfield.fill(0)
@@ -639,7 +654,7 @@ class Hologram:
             )
 
             self.target = cp.abs(cp.array(new_target, dtype=self.dtype))
-            self.target *= 1 / Hologram.norm(self.target)
+            self.target *= 1 / Hologram._norm(self.target)
 
         if reset_weights:
             self.weights = cp.copy(self.target)
@@ -711,7 +726,7 @@ class Hologram:
             feedback_corrected = feedback_amp
         else:  # Non-uniform
             feedback_corrected = feedback_amp
-            norm = Hologram.norm(feedback_amp)
+            norm = Hologram._norm(feedback_amp)
             feedback_corrected *= 1 / norm
 
             cp.divide(feedback_corrected, target_amp, out=feedback_corrected)
@@ -747,7 +762,7 @@ class Hologram:
         cp.nan_to_num(weight_amp, copy=False, nan=0)
 
         # Normalize amp power, as methods may have broken power conservation.
-        norm = Hologram.norm(weight_amp)
+        norm = Hologram._norm(weight_amp)
         weight_amp *= 1 / norm
 
         return weight_amp
@@ -861,11 +876,11 @@ class Hologram:
         """
         # Update methods
         M = len(self.stats["method"])
-        diff = self.N + 1 - M
+        diff = self.iter + 1 - M
         if diff > 0:  # Extend methods
             self.stats["method"].extend(["" for _ in range(diff)])
-            M = self.N + 1
-        self.stats["method"][self.N] = self.method  # Update method
+            M = self.iter + 1
+        self.stats["method"][self.iter] = self.method  # Update method
 
         # Update flags
         flaglist = set(self.flags.keys()).union(set(self.stats["flags"].keys()))
@@ -874,13 +889,13 @@ class Hologram:
             if not flag in self.stats["flags"]:
                 self.stats["flags"][flag] = [np.nan for _ in range(M)]
             else:
-                diff = self.N + 1 - len(self.stats["flags"][flag])
+                diff = self.iter + 1 - len(self.stats["flags"][flag])
                 if diff > 0:
                     self.stats["flags"][flag].extend([np.nan for _ in range(diff)])
 
             # Update flag
             if flag in self.flags:
-                self.stats["flags"][flag][self.N] = self.flags[flag]
+                self.stats["flags"][flag][self.iter] = self.flags[flag]
 
         # Update stats
         grouplist = set(stats.keys()).union(set(self.stats["stats"].keys()))
@@ -904,7 +919,7 @@ class Hologram:
                                 np.nan for _ in range(M)
                             ]
                         else:
-                            diff = self.N + 1 - len(self.stats["stats"][group][stat])
+                            diff = self.iter + 1 - len(self.stats["stats"][group][stat])
                             if diff > 0:
                                 self.stats["stats"][group][stat].extend(
                                     [np.nan for _ in range(diff)]
@@ -913,7 +928,7 @@ class Hologram:
                         # Update stat
                         if group in stats.keys():
                             if stat in stats[group].keys():
-                                self.stats["stats"][group][stat][self.N] = stats[group][
+                                self.stats["stats"][group][stat][self.iter] = stats[group][
                                     stat
                                 ]
 
@@ -1179,7 +1194,7 @@ class Hologram:
             )
 
     @staticmethod
-    def norm(matrix):
+    def _norm(matrix):
         r"""
         Computes the root of the sum of squares of the given ``matrix``. Implements:
 
@@ -1278,7 +1293,7 @@ class FeedbackHologram(Hologram):
             ur = [cam_shape[1] - 1, cam_shape[0] - 1]
             ul = [cam_shape[1] - 1, 0]
 
-            points_ij = toolbox.clean_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
+            points_ij = toolbox.format_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
             points_kxy = self.cameraslm.ijcam_to_kxyslm(points_ij)
             self.cam_points = toolbox.convert_blaze_vector(
                 points_kxy, "kxy", "knm", slm=self.cameraslm.slm, shape=self.shape
@@ -1288,7 +1303,7 @@ class FeedbackHologram(Hologram):
             self.cam_points = None
             self.cam_shape = None
 
-    def ijcam_to_knmslm(self, img, output=None, blur_ij=None):
+    def ijcam_to_knmslm(self, img, out=None, blur_ij=None):
         """
         Convert an image in the camera domain to computational SLM k-space using, in part, the
         affine transformation stored in a cameraslm's Fourier calibration.
@@ -1325,7 +1340,7 @@ class FeedbackHologram(Hologram):
             [1, 1], "knm", "kxy", slm=self.cameraslm.slm, shape=self.shape
         )
         M1 = np.diag(np.squeeze(conversion))
-        b1 = -toolbox.clean_2vectors(np.flip(np.squeeze(self.shape)) / 2)
+        b1 = -toolbox.format_2vectors(np.flip(np.squeeze(self.shape)) / 2)
 
         # Second transformation.
         M2 = self.cameraslm.fourier_calibration["M"]
@@ -1357,7 +1372,7 @@ class FeedbackHologram(Hologram):
             matrix=M,
             offset=b,
             output_shape=self.shape,
-            output=output,
+            output=out,
             mode="constant",
             cval=0,
         )
@@ -1367,12 +1382,12 @@ class FeedbackHologram(Hologram):
         # target = cp_gaussian_filter1d(target, blur, axis=1, output=target, truncate=2)
 
         target = cp.abs(target, out=target)
-        target *= 1 / Hologram.norm(target)
+        target *= 1 / Hologram._norm(target)
 
         return target
 
     def update_target(self, new_target, reset_weights=False):
-        self.ijcam_to_knmslm(new_target, output=self.target)
+        self.ijcam_to_knmslm(new_target, out=self.target)
 
         if reset_weights:
             cp.copyto(self.weights, self.target)
@@ -1393,7 +1408,7 @@ class FeedbackHologram(Hologram):
             self.img_ij = self.cameraslm.cam.get_image()
 
             if basis == "knm":  # Compute the knm basis image.
-                self.img_knm = self.ijcam_to_knmslm(self.img_ij, output=self.img_knm)
+                self.img_knm = self.ijcam_to_knmslm(self.img_ij, out=self.img_knm)
                 cp.sqrt(self.img_knm, out=self.img_knm)
             else:  # The old image is outdated, erase it. Future: memory concerns?
                 self.img_knm = None
@@ -1403,12 +1418,13 @@ class FeedbackHologram(Hologram):
             )  # Don't load to the GPU if not neccesary.
         elif basis == "knm":
             if self.img_knm is None:
-                self.ijcam_to_knmslm(np.square(self.img_ij), output=self.img_knm)
+                self.ijcam_to_knmslm(np.square(self.img_ij), out=self.img_knm)
                 cp.sqrt(self.img_knm, out=self.img_knm)
 
     # TODO: add this.
-    def correct_image(self, img, basis="kxy"):
+    def refine_offset(self, img, basis="kxy"):
         """
+        **(NotImplemented)**
         Hones the position of the image to the desired target to compensate for
         Fourier calibration imperfections.
 
@@ -1428,7 +1444,7 @@ class FeedbackHologram(Hologram):
             Euclidian pixel error in the ``"ij"`` basis for each spot.
         """
 
-        return
+        raise NotImplementedError()
 
     def _update_weights(self):
         """
@@ -1489,7 +1505,7 @@ class SpotHologram(FeedbackHologram):
     ----------
     spot_knm, spot_kxy, spot_ij : array_like OR None
         Stored vectors with shape ``(2, N)`` in the style of
-        :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
+        :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
         The subscript refers to the basis of the vectors, the transformations between
         which are autocomputed.
         If necessary transformations do not exist, :attr:`spot_ij` is set to ``None``.
@@ -1520,7 +1536,7 @@ class SpotHologram(FeedbackHologram):
             Computational shape of the SLM. See :meth:`.Hologram.__init__()`.
         spot_vectors : array_like
             Spot position vectors with shape ``(2, N)`` in the style of
-            :meth:`~slmsuite.holography.toolbox.clean_2vectors()`.
+            :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
         basis : str
             The spots can be in any of the following bases:
 
@@ -1539,7 +1555,7 @@ class SpotHologram(FeedbackHologram):
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
-        vectors = toolbox.clean_2vectors(spot_vectors)
+        vectors = toolbox.format_2vectors(spot_vectors)
 
         if spot_amp is not None:
             assert np.shape(vectors)[1] == len(
@@ -1642,7 +1658,7 @@ class SpotHologram(FeedbackHologram):
         array_pitch,
         array_center=(0, 0),
         basis="knm",
-        parity_check=False,
+        orientation_check=False,
         **kwargs
     ):
         """
@@ -1669,7 +1685,7 @@ class SpotHologram(FeedbackHologram):
             kxy coordinates. (kx, ky) form.
         basis : str
             See :meth:`__init__()`.
-        parity_check : bool
+        orientation_check : bool
             Whether to delete the last two points to check for parity.
         **kwargs
             Any other arguments are passed to :meth:`__init__()`.
@@ -1693,7 +1709,7 @@ class SpotHologram(FeedbackHologram):
         x_list, y_list = x_grid.ravel(), y_grid.ravel()
 
         # Delete the last two points if desired and valid.
-        if parity_check and len(x_list) > 2:
+        if orientation_check and len(x_list) > 2:
             x_list = x_list[:-2]
             y_list = y_list[:-2]
 
@@ -1709,7 +1725,7 @@ class SpotHologram(FeedbackHologram):
         # Erase previous target in-place. Future: Optimize speed if positions haven't shifted?
         self.target.fill(0)
 
-        shape = toolbox.clean_2vectors(self.shape).astype(np.float)
+        shape = toolbox.format_2vectors(self.shape).astype(np.float)
 
         self.spot_knm_rounded = np.ceil(shape / 2 + self.spot_knm.astype(np.float))
         self.spot_knm_rounded = self.spot_knm_rounded.astype(np.int)
@@ -1736,7 +1752,7 @@ class SpotHologram(FeedbackHologram):
         self.target[
             self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]
         ] = self.spot_amp
-        self.target /= Hologram.norm(self.target)
+        self.target /= Hologram._norm(self.target)
 
         if reset_weights:
             cp.copyto(self.weights, self.target)
@@ -1772,8 +1788,9 @@ class SpotHologram(FeedbackHologram):
         self._update_target_spots(reset_weights=reset_weights, plot=plot)
 
     # TODO: add this.
-    def correct_spots(self, img, basis="kxy"):
+    def refine_offset(self, img, basis="kxy"):
         """
+        **(Untested)**
         Hones the positions of the spots to the desired targets to compensate for
         Fourier calibration imperfections.
 

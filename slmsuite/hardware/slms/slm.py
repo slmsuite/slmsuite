@@ -26,10 +26,9 @@ class SLM:
         at 1064 nm for an application at 780 nm by using only a fraction (780/1064)
         of the full dynamic range. Useful for SLMs which do not have builtin
         capability to change their voltage lookup tables (e.g. Thorlabs).
-    wav_norm : float
-        Wavelength normalized to the phase range of the SLM. Subclasses which pass
-        ``wav_design_um`` should set ``wav_norm = wav_um / wav_design_um``
-        or otherwise upon construction.
+    phase_scaling : float
+        Wavelength normalized to the phase range of the SLM. See :attr:`wav_design_um`.
+        Determined by ``phase_scaling = wav_um / wav_design_um``.
     bitdepth : int
         Depth of SLM pixel well in bits. This is useful for converting the floats which
         the user provides to the ``bitdepth``-bit ints that the SLM reads (see :meth:`_phase2gray`).
@@ -51,14 +50,11 @@ class SLM:
         Point grid of the SLM's :attr:`shape` derived from :meth:`numpy.meshgrid` ing.
     y_grid : numpy.ndarray of floats
         See :attr:`x_grid`.
-    flatmap : numpy.ndarray
-        Phase correction to apply to the SLM, provided by, e.g. the slm vendor.
-        Defaults to ``None``. Use :meth:`load_flatmap()` to interpret a vendor file.
     measured_amplitude : numpy.ndarray or None
-        Amplitude measured on the SLM b
+        Amplitude measured on the SLM via
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate()`.
         Of size :attr:`shape`.
-        Also see :meth:`set_analytic_amplitude()` to set :attr:`measured_amplitude`
+        Also see :meth:`set_measured_amplitude_analytic()` to set :attr:`measured_amplitude`
         without wavefront calibration. Defaults to ``None`` when no correction is provided.
     phase_correction : numpy.ndarray or None
         Phase correction devised for the SLM by
@@ -115,7 +111,7 @@ class SLM:
             self.wav_design_um = wav_design_um
 
         # Multiplier for when the target wavelengths differ from the design wavelength.
-        self.wav_norm = self.wav_um / self.wav_design_um
+        self.phase_scaling = self.wav_um / self.wav_design_um
 
         # Resolution of the SLM.
         self.bitdepth = bitdepth
@@ -139,7 +135,6 @@ class SLM:
         # Phase and amplitude corrections.
         self.phase_correction = None
         self.measured_amplitude = None
-        self.flatmap = None
 
         # Decide dtype
         if self.bitdepth <= 8:
@@ -155,23 +150,25 @@ class SLM:
         """Close the SLM and delete related objects."""
         raise NotImplementedError()
 
-    def load_flatmap(self, file_path):
+    def load_vendor_phase_correction(self, file_path):
         """
-        Load vendor-provided phase correction from file.
-        Subclasses should implement vendor-specific flatmap loading.
-        Otherwise, this function passes without error.
+        Load vendor-provided phase correction from file,
+        setting :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`.
+        Subclasses should implement vendor-specific routines for loading and
+        interpreting the file.
 
         Parameters
         ----------
         file_path : str
-            File path for the vendor-provided flatmap.
+            File path for the vendor-provided phase correction.
 
         Returns
         ----------
-        numpy.ndarray or None
-            :attr:`~slmsuite.hardware.slms.slm.SLM.flatmap`, the vendor-provided phase correction, or None if none is loaded.
+        numpy.ndarray
+            :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`,
+            the vendor-provided phase correction.
         """
-        return self.flatmap
+        raise NotImplementedError()
 
     def _write_hw(self, phase):
         """
@@ -188,7 +185,6 @@ class SLM:
     def write(
         self,
         phase,
-        flatmap=True,
         phase_correct=True,
         settle=False,
         blaze_vector=None,
@@ -212,20 +208,20 @@ class SLM:
         The user does not need to wrap (e.g. :meth:`numpy.mod(data, 2*np.pi)`) the passed phase data,
         unless they are pre-caching data for speed (see below).
         :meth:`.write()` uses optimized routines to wrap the phase (see :meth:`._phase2gray()`).
-        Which routine is used depends on :attr:`wav_norm`:
+        Which routine is used depends on :attr:`phase_scaling`:
 
-        :attr:`wav_norm` is one.
+        :attr:`phase_scaling` is one.
           Fast bitwise integer modulo is used. Much faster than the other routines which
           depend on :meth:`numpy.mod()`.
-        :attr:`wav_norm` is less than one.
+        :attr:`phase_scaling` is less than one.
           In this case, the SLM has **more phase tuning range** than necessary.
-          If the data is within the SLM range ``[0, 2*pi/wav_norm]``, then the data is passed directly.
+          If the data is within the SLM range ``[0, 2*pi/phase_scaling]``, then the data is passed directly.
           Otherwise, the data is wrapped by :math:`2\pi` using the very slow :meth:`numpy.mod()`.
           Try to avoid this in applications where speed is important.
-        :attr:`wav_norm` is more than one.
+        :attr:`phase_scaling` is more than one.
           In this case, the SLM has **less phase tuning range** than necessary.
-          Processed the same way as the :attr:`wav_norm` is less than one case, with the
-          important exception that phases (after wrapping) between ``2*pi/wav_norm`` and
+          Processed the same way as the :attr:`phase_scaling` is less than one case, with the
+          important exception that phases (after wrapping) between ``2*pi/phase_scaling`` and
           ``2*pi`` are set to zero. For instance, a sawtooth blaze would be truncated at the tips.
 
         Parameters
@@ -234,9 +230,7 @@ class SLM:
             Data to display in units of phase delay. Data must be larger than the SLM. If larger,
             the data is cropped to size in a centered manner. If ``None``, data is zeroed.
             Usually, this is an exact stored copy of the data passed by the user. However, in cases
-            where :attr:`wav_norm` not one, this copy is modified to include how the data was wrapped.
-        flatmap : bool
-            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.flatmap` to ``phase``.
+            where :attr:`phase_scaling` not one, this copy is modified to include how the data was wrapped.
         phase_correct : bool
             Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction` to ``phase``.
         settle : bool
@@ -262,9 +256,7 @@ class SLM:
             else:
                 np.copyto(self.phase, phase)
 
-        # Add corrections if requested.
-        if flatmap and self.flatmap is not None:
-            self.phase += self.flatmap
+        # Add phase correction if requested.
         if phase_correct and self.phase_correction is not None:
             self.phase += self.phase_correction
 
@@ -305,7 +297,7 @@ class SLM:
         if out is None:
             out = np.zeros(self.shape, dtype=self.display.dtype)
 
-        if self.wav_norm == 1:
+        if self.phase_scaling == 1:
             # Prepare the 2pi -> integer conversion factor and convert.
             factor = -(self.bitresolution / 2 / np.pi)
             phase *= factor
@@ -330,19 +322,19 @@ class SLM:
             bw = int(self.bitresolution - 1)
             np.bitwise_and(out, bw, out=out)
         else:
-            # wav_norm is not included in the scaling.
-            factor = -(self.bitresolution * self.wav_norm / 2 / np.pi)
+            # phase_scaling is not included in the scaling.
+            factor = -(self.bitresolution * self.phase_scaling / 2 / np.pi)
             phase *= factor
 
             # Only if necessary, modulo the phase to remain within SLM bounds.
             if np.amin(phase) <= -self.bitresolution or np.amax(phase) > 0:
                 # Minus 1 is to conform with the in-bound case.
                 phase -= 1
-                np.mod(phase, self.bitresolution * self.wav_norm, out=phase)
-                phase +=  self.bitresolution * (1-self.wav_norm)
+                np.mod(phase, self.bitresolution * self.phase_scaling, out=phase)
+                phase +=  self.bitresolution * (1-self.phase_scaling)
 
                 # Set values still out of range to zero.
-                if self.wav_norm > 1:
+                if self.phase_scaling > 1:
                     phase[phase < 0] = self.bitresolution-1
             else:
                 # Go from negative to positive.
@@ -359,16 +351,16 @@ class SLM:
     def phase_wrapped(self):
         r"""
         Return the phase last written to the SLM (
-        :attr:`~slmsuite.hardware.slms.slm.SLM.phase`), mod :math:`2\pi`.
+        :attr:`~slmsuite.hardware.slms.slm.SLM.phase`) mod :math:`2\pi`.
 
         Returns
         -------
         numpy.ndarray
-            :attr:`~slmsuite.hardware.slms.slm.SLM.phase`, mod 2pi.
+            :attr:`~slmsuite.hardware.slms.slm.SLM.phase` mod 2pi.
         """
         return np.mod(self.phase, 2 * np.pi)
 
-    def set_analytic_amplitude(self, radius_mm):
+    def set_measured_amplitude_analytic(self, radius):
         """
         Sets :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude` used
         for hologram generation in the absence of a proper wavefront calibration.
@@ -386,8 +378,8 @@ class SLM:
 
         Parameters
         ----------
-        radius_mm : float
-            Radius in millimeters to assume for a source Gaussian beam.
+        radius : float
+            Radius in normalized units to assume for the source Gaussian beam.
 
         Returns
         --------
@@ -395,10 +387,8 @@ class SLM:
             :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude`.
         """
 
-        norm2mm = self.wav_um / 1e3
+        r2_grid = np.square(self.x_grid) + np.square(self.y_grid)
 
-        r2_grid = norm2mm * (np.square(self.x_grid) + np.square(self.y_grid))
-
-        self.measured_amplitude = np.exp(-r2_grid / radius_mm / radius_mm)
+        self.measured_amplitude = np.exp(-r2_grid * (1 / radius ** 2))
 
         return self.measured_amplitude

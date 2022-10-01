@@ -72,17 +72,11 @@ class MMCore(Camera):
             self.cam.getImageWidth(),
             self.cam.getImageHeight(),
             bitdepth=self.cam.getImageBitDepth(),
+            name=config
             **kwargs
         )
 
-        self.name = config
-
         # ... Other setup.
-
-        # Initialize window variable, then set to max WOI
-        self.window = None
-        self.set_woi()
-        self.default_shape = self.shape
 
     def close(self):
         """See :meth:`.Camera.close`."""
@@ -98,7 +92,7 @@ class MMCore(Camera):
         """See :meth:`.Camera.set_exposure`."""
         self.cam.setExposure(1e3 * exposure_s)
 
-    def set_woi(self, window=None):
+    def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
         return
 

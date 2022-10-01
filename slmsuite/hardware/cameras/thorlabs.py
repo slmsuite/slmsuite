@@ -128,23 +128,18 @@ class ThorCam(Camera):
             bitdepth=self.cam.bit_depth,
             dx_um=self.cam.sensor_pixel_width_um,
             dy_um=self.cam.sensor_pixel_height_um,
+            name=serial,
             **kwargs
         )
 
         self.cam.is_led_on = False
 
         # Initialize profile variable, then set to the proper value.
-        self.name = serial
         self.profile = None
         self.setup("single")
 
         # Initialize binning to 1.
         self.set_binning()
-
-        # Initialize window variable, then set to max WOI.
-        self.window = None
-        self.set_woi()
-        self.default_shape = self.shape
 
         if verbose:
             print("success")
@@ -249,29 +244,29 @@ class ThorCam(Camera):
         # Restore profile
         self.setup(profile)
 
-    def set_woi(self, window=None):
+    def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
         # Save old profile and disarm
         profile = self.profile
         self.setup(None)
 
-        if window is None:  # Default to maximum WOI
-            window = [
+        if woi is None:  # Default to maximum WOI
+            woi = (
                 self.cam.roi_range.upper_left_x_pixels_min,
                 self.cam.roi_range.lower_right_x_pixels_max
                 - self.cam.roi_range.upper_left_x_pixels_min,
                 self.cam.roi_range.upper_left_y_pixels_min,
                 self.cam.roi_range.lower_right_y_pixels_max
                 - self.cam.roi_range.upper_left_y_pixels_min,
-            ]
+            )
 
-        self.window = window
+        self.woi = woi
 
         newroi = ROI(
-            self.cam.roi_range.lower_right_x_pixels_max - window[0] - window[1],
-            window[2],
-            self.cam.roi_range.lower_right_x_pixels_max - window[0],
-            window[2] + window[3],
+            self.cam.roi_range.lower_right_x_pixels_max - woi[0] - woi[1],
+            woi[2],
+            self.cam.roi_range.lower_right_x_pixels_max - woi[0],
+            woi[2] + woi[3],
         )
 
         assert (
@@ -297,13 +292,13 @@ class ThorCam(Camera):
 
         self.cam.roi = newroi
 
-        self.window = window
-        self.shape = (window[3], window[1])
+        self.woi = woi
+        self.shape = (woi[3], woi[1])
 
         # Restore profile
         self.setup(profile)
 
-        return window
+        return woi
 
     def setup(self, profile):
         """

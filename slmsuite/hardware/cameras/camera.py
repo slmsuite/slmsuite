@@ -31,15 +31,15 @@ class Camera:
         :math:`y` pixel pitch in microns. See :attr:`dx_um`.
     exposure_bounds_s : (float, float) OR None
         Shortest and longest allowable integration in seconds.
-    window : array_like
-        Window information in ``(x, width, y, height)`` form.
+    woi : tuple
+        WOI (window of interest) in ``(x, width, y, height)`` form.
     default_shape : tuple
         Default ``shape`` of the camera before any WOI changes are made.
     transform : lambda
         Flip and/or rotation operator specified by the user in :meth:`__init__`.
         The user is expected to apply this transform to the matrix returned in
-        :meth:`get_image()`. Note that ROI is applied on the camera hardware
-        before this transformation.
+        :meth:`get_image()`. Note that WOI changes are applied on the camera hardware
+        **before** this transformation.
     """
 
     def __init__(
@@ -52,12 +52,13 @@ class Camera:
         rot="0",
         fliplr=False,
         flipud=False,
+        name="camera"
     ):
         """
         Initializes a camera.
 
         In addition to the other class attributes, accepts the following parameters
-        to set :attr:`transform`. See :meth:`~slmsuite.holography.analysis.get_transform()`.
+        to set :attr:`transform`. See :meth:`~slmsuite.holography.analysis.get_orientation_transformation()`.
 
         Parameters
         ----------
@@ -81,7 +82,10 @@ class Camera:
         flipud : bool
             Flips returned image up down.
             Used to determine :attr:`transform`.
+        name : str
+            Defaults to ``"camera"``.
         """
+        # Set shape, depending upon transform.
         if rot in ("90", 1, "270", 3):
             self.shape = (width, height)
             self.default_shape = (width, height)
@@ -89,16 +93,21 @@ class Camera:
             self.shape = (height, width)
             self.default_shape = (height, width)
 
-        self.window = (0, width, 0, height)
+        # Create image transformation.
+        self.transform = analysis.get_orientation_transformation(rot, fliplr, flipud)
 
+        # Update WOI information.
+        self.woi = (0, width, 0, height)
+        self.set_woi()
+
+        # Set other useful parameters
         self.bitdepth = bitdepth
         self.bitresolution = 2 ** bitdepth
 
         self.dx_um = dx_um
         self.dy_um = dy_um
 
-        # Create image transformation.
-        self.transform = analysis.get_transform(rot, fliplr, flipud)
+        self.name = name
 
         # Default to None, allow subclass constructors to fill.
         self.exposure_bounds_s = None
@@ -137,20 +146,20 @@ class Camera:
         """
         raise NotImplementedError()
 
-    def set_woi(self, window=None):
+    def set_woi(self, woi=None):
         """
-        Narrows imaging region to window of interest for faster framerates.
+        Narrows the imaging region to a 'window of interest' for faster framerates.
 
         Parameters
         ----------
-        window : list, None
-            See :attr:`~slmsuite.hardware.cameras.camera.Camera.window`.
+        woi : list, None
+            See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
             If ``None``, defaults to largest possible.
 
         Returns
         ----------
-        window : list
-            :attr:`~slmsuite.hardware.cameras.camera.Camera.window`.
+        woi : list
+            :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
         raise NotImplementedError()
 
@@ -218,7 +227,7 @@ class Camera:
         tol=0.05,
         exposure_bounds_s=None,
         window=None,
-        averages=5,
+        average_count=5,
         timeout_s=5,
         verbose=True
     ):
@@ -239,7 +248,7 @@ class Camera:
         window : array_like or None
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.window`.
             If ``None``, the full camera frame will be used.
-        averages : int
+        average_count : int
             Number of frames to average intensity over for noise reduction.
         timeout_s : float
             Stop attempting to autoexpose after ``timeout_s`` seconds.
@@ -273,7 +282,7 @@ class Camera:
         # Initialize loop
         set_val = 0.5 * self.bitresolution
         exp = self.get_exposure()
-        im_mean = np.mean(self.get_images(averages, flush=True), 0)
+        im_mean = np.mean(self.get_images(average_count, flush=True), 0)
         im_max = np.amax(im_mean[wyi:wyf, wxi:wxf])
 
         # Calculate the error as a percent of the camera's bitresolution
@@ -286,7 +295,7 @@ class Camera:
             exp = exp / np.amax([0.5, np.amin([(im_max / set_val), 2])])
             exp = np.amax([exposure_bounds_s[0], np.amin([exp, exposure_bounds_s[1]])])
             self.set_exposure(exp)
-            im_mean = np.mean(self.get_images(averages, flush=True), 0)
+            im_mean = np.mean(self.get_images(average_count, flush=True), 0)
             im_max = np.amax(im_mean[wyi:wyf, wxi:wxf])
             err = np.abs(im_max - set_val) / self.bitresolution
 
@@ -410,11 +419,16 @@ class Camera:
 
         return z_opt, imlist
 
-def view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
+def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
     """
     Continuously get camera frames and plot them. Intended for use in jupyter notebooks.
     Activate ``%matplotlib notebook`` before calling this function. This method
     does not halt, exit with a keyboard interrupt.
+
+    Important
+    ~~~~~~~~~
+    This is probably going to get replaced with a :mod:`pyglet` interface for viewing
+    realtime camera outputs while cameras loaded into python.
 
     Parameters
     ----------

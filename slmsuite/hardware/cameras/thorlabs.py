@@ -122,6 +122,15 @@ class ThorCam(Camera):
             print("ThorCam sn \"{}\" initializing... ".format(serial), end="")
         self.cam = ThorCam.sdk.open_camera(serial)
 
+        self.cam.is_led_on = False
+
+        # Initialize profile variable, then set to the proper value.
+        self.profile = None
+        self.setup("single")
+
+        # Initialize binning to 1.
+        self.set_binning()
+
         super().__init__(
             self.cam.image_width_pixels,
             self.cam.image_height_pixels,
@@ -131,15 +140,6 @@ class ThorCam(Camera):
             name=serial,
             **kwargs
         )
-
-        self.cam.is_led_on = False
-
-        # Initialize profile variable, then set to the proper value.
-        self.profile = None
-        self.setup("single")
-
-        # Initialize binning to 1.
-        self.set_binning()
 
         if verbose:
             print("success")

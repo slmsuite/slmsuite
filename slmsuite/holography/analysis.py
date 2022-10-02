@@ -271,6 +271,31 @@ def image_normalization(imgs, nansum=False):
     return image_moment(imgs, (0, 0), normalize=False, nansum=nansum)
 
 
+def image_normalize(imgs, nansum=False):
+    """
+    Normalizes of a stack of images via the the zeroth order moments.
+
+    Parameters
+    ----------
+    imgs : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+        images. A single image is interpreted correctly as ``(1, h, w)`` even if
+        ``(h, w)`` is passed.
+
+    Returns
+    -------
+    imgs_normalized : numpy.ndarray
+        A copy of ``imgs``, with each image normalized.
+    """
+    N = imgs.shape[0]
+    normalization = image_normalization(imgs, nansum=nansum)
+    reciprical = np.reciprocal(
+        normalization, where=normalization != 0, out=np.zeros(N,)
+    )
+    return imgs * np.reshape(reciprical, (N, 1, 1))
+
+
 def image_positions(imgs, normalize=True, nansum=False):
     """
     Computes the two first order moments, equivalent to spot position, for a stack of images.
@@ -453,32 +478,7 @@ def image_ellipticity_angle(variances):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
-def image_normalize(imgs, nansum=False):
-    """
-    Normalizes of a stack of images via the the zeroth order moments.
-
-    Parameters
-    ----------
-    imgs : numpy.ndarray
-        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
-        images. A single image is interpreted correctly as ``(1, h, w)`` even if
-        ``(h, w)`` is passed.
-
-    Returns
-    -------
-    imgs_normalized : numpy.ndarray
-        A copy of ``imgs``, with each image normalized.
-    """
-    N = imgs.shape[0]
-    normalization = image_normalization(imgs, nansum=nansum)
-    reciprical = np.reciprocal(
-        normalization, where=normalization != 0, out=np.zeros(N,)
-    )
-    return imgs * np.reshape(reciprical, (N, 1, 1))
-
-
-def image_fit(imgs, function=gaussian2d, guess=False):
+def image_fit(imgs, function=gaussian2d, guess=False, plot=False, show=False):
     """
     Fits images in a stack of images to a given 2D function.
 
@@ -495,62 +495,99 @@ def image_fit(imgs, function=gaussian2d, guess=False):
     guess : bool
         Whether to use a guess for the peak locations. Only works for the
         default ``function`` at the moment.
+    plot : bool
+        Whether to create a plot for each fit.
+    show : bool
+        Whether or not to call :meth:`matplotlib.pyplot.show` after generating
+        the plot.
 
     Returns
     -------
-    numpy.ndarray
-        A matrix with the fit results. This is of shape ``(M, N)``, where ``M``
-        is the number of arguments that ``function`` accepts. The slot for the
-        ``xy`` vectors is replaced with measurements of the rsquared quality of
-        the fit. Failed fits have a column filled with ``np.nan``.
-    """
-    (N, w_y, w_x) = imgs.shape
+    numpy.ndarray (``result_count``, ``image_count``)
+        A matrix with the fit results. The first row
+        contains the rsquared quality of each fit.
+        The values in the remaining rows correspond to the parameters
+        for the supplied fit function.
+        Failed fits have an rsquared of ``numpy.nan`` and parameters
+        are set to the constructed guess if one was created else ``numpy.nan``.
 
+    Raises
+    ------
+        NotImplementedError if the provided ``function`` does not have a guess implemented.
+    """
+    # Setup.
+    (image_count, w_y, w_x) = imgs.shape
+    img_shape = (w_y, w_x)
     edge_x = np.reshape(np.arange(w_x) - (w_x - 1) / 2.0, (1, 1, w_x))
     edge_y = np.reshape(np.arange(w_y) - (w_y - 1) / 2.0, (1, w_y, 1))
-
     grid_x, grid_y = np.meshgrid(edge_x, edge_y)
-
     grid_xy = (grid_x.ravel(), grid_y.ravel())
+    # Number of fit parameters the function accepts.
+    param_count =  function.__code__.co_argcount - 1
+    # Number of parameters to return.
+    result_count = param_count + 1
+    result = np.full((result_count, image_count), np.nan)
 
+    # Construct guesses.
     if guess:
         if function is gaussian2d:
-            centers = image_positions(imgs, normalize=False)
-            variances = image_variances(imgs, centers=centers, normalize=False)
-        else:
-            raise RuntimeError("Do not know how to parse guess for unknown function.")
+            imgs_normalized = image_normalize(imgs)
+            centers = image_positions(imgs_normalized, normalize=False)
+            variances = image_variances(imgs_normalized, centers=centers, normalize=False)
+            maxs = np.amax(imgs, axis=(1, 2))
+            mins = np.amin(imgs, axis=(1, 2))
+            p0s = np.vstack((
+                centers,
+                maxs - mins,
+                mins,
+                np.sqrt(variances[0:2, :]),
+                variances[2, :]
+            ))
+            
 
-    result = np.full((function.__code__.co_argcount, N), np.nan)
+    for img_idx in range(image_count):
+        img = imgs[img_idx, :, :].ravel()
+    
+        # Get guess.
+        p0 = p0s[:, img_idx] if guess else None
 
-    for n in range(N):
+        # Attempt fit.
+        fit_succeeded = True
+        popt = None
         try:
-            img = imgs[n, :, :].ravel()
+            popt, _ = curve_fit(function, grid_xy, img, ftol=1e-5, p0=p0,)
+        except RuntimeError:
+            fit_succeeded = False
+        
+        if np.any(np.logical_not(np.isfinite(popt))):
+            fit_succeeded = False
 
-            if guess:
-                if function is gaussian2d:
-                    # x0, y0, a, c, wx, wy, wxy
-                    popt0 = [
-                        centers[n, 0],
-                        centers[n, 1],
-                        np.amax(img) - np.amin(img),
-                        np.amin(img),
-                        np.sqrt(variances[0, n]),
-                        np.sqrt(variances[1, n]),
-                        variances[2, n],
-                    ]
-            else:
-                popt0 = None
-
-            popt, _ = curve_fit(function, grid_xy, img, ftol=1e-5, p0=popt0,)
-
+        # Calculate r2.
+        if fit_succeeded:
             ss_res = np.sum(np.square(img - function(grid_xy, *popt)))
             ss_tot = np.sum(np.square(img - np.mean(img)))
             r2 = 1 - (ss_res / ss_tot)
+        else:
+            popt = p0 if p0 is not None else np.full(np.nan, param_count)
+            r2 = np.nan
 
-            result[0, n] = r2
-            result[1:, n] = popt
-        except BaseException:
-            pass
+        result[0, img_idx] = r2
+        result[1:, img_idx] = popt
+
+        # Plot.
+        if plot:
+            fig, axs = plt.subplots(1, 3, figsize=(3 * 6.4, 4.8))
+            fig.suptitle("image {}".format(img_idx))
+            ax0, ax1, ax2 = axs
+            ax0.imshow(np.reshape(img, img_shape))
+            ax0.set_title("original")
+            if p0 is not None:
+                ax1.imshow(np.reshape(function(grid_xy, *p0), img_shape))
+                ax1.set_title("guess")
+            ax2.imshow(np.reshape(function(grid_xy, *popt), img_shape))
+            ax2.set_title("result")
+            if show:
+                plt.show()
 
     return result
 

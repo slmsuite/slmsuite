@@ -11,7 +11,7 @@ from slmsuite.holography.toolbox import format_2vectors
 from slmsuite.misc.fitfunctions import gaussian2d
 
 
-def take(imgs, vectors, size, centered=True, integrate=False, clip=False, plot=False):
+def take(images, vectors, size, centered=True, integrate=False, clip=False, plot=False):
     """
     Crop integration regions around an array of ``vectors``, yielding an array of images.
 
@@ -20,7 +20,7 @@ def take(imgs, vectors, size, centered=True, integrate=False, clip=False, plot=F
 
     Parameters
     ----------
-    imgs : array_like
+    images : array_like
         2D image or array of 2D images.
     vectors : array_like of floats
         2-vector (or 2-vector array) listing location(s) of integration region(s).
@@ -41,14 +41,14 @@ def take(imgs, vectors, size, centered=True, integrate=False, clip=False, plot=F
         (or zero if the array datatype does not support ``np.nan``).
         ``False`` throws an error upon out of range. Defaults to ``False``.
     plot : bool
-        Calls :meth:`take_plot()` to visualize the imgs regions.
+        Calls :meth:`take_plot()` to visualize the images regions.
 
     Returns
     -------
     numpy.ndarray
         If ``integrate`` is ``False``, returns an array containing the images cropped
-        from the regions of size `(N, h, w)`.
-        If ``integrate`` is ``True``, instead returns an array of floats of size `(N,)`
+        from the regions of size `(image_count, h, w)`.
+        If ``integrate`` is ``True``, instead returns an array of floats of size `(image_count,)`
         where each float corresponds to the :meth:`numpy.sum` of a cropped image.
     """
     # Clean variables.
@@ -70,7 +70,7 @@ def take(imgs, vectors, size, centered=True, integrate=False, clip=False, plot=F
         region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
     ).astype(np.int)
 
-    shape = np.shape(imgs)
+    shape = np.shape(images)
 
     if clip:  # Prevent out-of-range errors by clipping.
         mask = (
@@ -88,11 +88,11 @@ def take(imgs, vectors, size, centered=True, integrate=False, clip=False, plot=F
 
     # Take the data, depending on the
     if len(shape) == 2:
-        result = imgs[np.newaxis, integration_y, integration_x]
+        result = images[np.newaxis, integration_y, integration_x]
     elif len(shape) == 3:
-        result = imgs[:, integration_y, integration_x]
+        result = images[:, integration_y, integration_x]
     else:
-        raise RuntimeError("Unexpected shape for imgs: {}".format(shape))
+        raise RuntimeError("Unexpected shape for images: {}".format(shape))
 
     if clip:  # Set values that were out of range to nan instead of erroring.
         try:  # If the datatype of result is incompatible with nan, set to zero instead.
@@ -111,17 +111,17 @@ def take(imgs, vectors, size, centered=True, integrate=False, clip=False, plot=F
         return np.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
-def take_plot(imgs):
+def take_plot(images):
     """
     Plots non-integrated results of :meth:`.take()` in a square array of subplots.
 
     Parameters
     ----------
-    imgs : numpy.ndarray
+    images : numpy.ndarray
         Stack of 2D images, usually a :meth:`take()` output.
     """
-    (N, sy, sx) = np.shape(imgs)
-    M = int(np.ceil(np.sqrt(N)))
+    (img_count, sy, sx) = np.shape(images)
+    M = int(np.ceil(np.sqrt(img_count)))
 
     plt.figure(figsize=(12, 12))
 
@@ -129,17 +129,17 @@ def take_plot(imgs):
     sy = sy / 2.0 - 0.5
     extent = (-sx, sx, -sy, sy)
 
-    for x in range(N):
+    for x in range(img_count):
         ax = plt.subplot(M, M, x + 1)
 
-        ax.imshow(imgs[x, :, :], extent=extent)
+        ax.imshow(images[x, :, :], extent=extent)
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
 
     plt.show()
 
 
-def image_moment(imgs, moment=(1, 0), centers=(0, 0), normalize=True, nansum=False):
+def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=False):
     r"""
     Computes the given `moment <https://en.wikipedia.org/wiki/Moment_(mathematics)>`_
     :math:`M_{m_xm_y}` for a stack of images.
@@ -158,7 +158,7 @@ def image_moment(imgs, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
 
     Warning
     ~~~~~~~
-    This function does not check if the images in ``imgs`` are non-negative, or correct
+    This function does not check if the images in ``images`` are non-negative, or correct
     for this. Negative values may produce unusual results.
 
     Warning
@@ -170,9 +170,9 @@ def image_moment(imgs, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
 
     Parameters
     ----------
-    imgs : numpy.ndarray
-        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+    images : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     moment : (int, int)
@@ -188,7 +188,7 @@ def image_moment(imgs, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
     centers : tuple or numpy.ndarray
         Perturbations to the center of the trial function, :math:`(c_x, c_y)`.
     normalize : bool
-        Whether to normalize ``imgs``.
+        Whether to normalize ``images``.
         If ``False``, normalization is assumed to have been precomputed.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
@@ -199,16 +199,16 @@ def image_moment(imgs, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
     Returns
     -------
     numpy.ndarray
-        The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size ``(N,)``
-        for provided ``imgs`` data of shape ``(N, h, w)``.
+        The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size ``(image_count,)``
+        for provided ``images`` data of shape ``(image_count, h, w)``.
     """
-    if len(imgs.shape) == 2:
-        imgs = np.reshape(imgs, (1, imgs.shape[0], imgs.shape[1]))
-    (N, w_y, w_x) = imgs.shape
+    if len(images.shape) == 2:
+        images = np.reshape(images, (1, images.shape[0], images.shape[1]))
+    (img_count, w_y, w_x) = images.shape
 
     if len(np.shape(centers)) == 2:
-        c_x = np.reshape(centers[0], (N, 1, 1))
-        c_y = np.reshape(centers[1], (N, 1, 1))
+        c_x = np.reshape(centers[0], (img_count, 1, 1))
+        c_y = np.reshape(centers[1], (img_count, 1, 1))
     elif len(np.shape(centers)) == 1:
         c_x = centers[0]
         c_y = centers[1]
@@ -228,36 +228,36 @@ def image_moment(imgs, moment=(1, 0), centers=(0, 0), normalize=True, nansum=Fal
         np_sum = np.sum
 
     if normalize:
-        normalization = np_sum(imgs, axis=(1, 2), keepdims=False)
+        normalization = np_sum(images, axis=(1, 2), keepdims=False)
         reciprical = np.reciprocal(
-            normalization, where=normalization != 0, out=np.zeros(N,)
+            normalization, where=normalization != 0, out=np.zeros(img_count,)
         )
     else:
         reciprical = 1
 
     if moment[1] == 0:  # x case
-        return np_sum(imgs * edge_x, axis=(1, 2), keepdims=False) * reciprical
+        return np_sum(images * edge_x, axis=(1, 2), keepdims=False) * reciprical
     elif moment[0] == 0:  # y case
-        return np_sum(imgs * edge_y, axis=(1, 2), keepdims=False) * reciprical
+        return np_sum(images * edge_y, axis=(1, 2), keepdims=False) * reciprical
     elif moment[1] != 0 and moment[1] != 0:  # Shear case
-        return np_sum(imgs * edge_x * edge_y, axis=(1, 2), keepdims=False) * reciprical
+        return np_sum(images * edge_x * edge_y, axis=(1, 2), keepdims=False) * reciprical
     else:  # 0,0 (norm) case
         if normalize:
-            return np.ones((N,))
+            return np.ones((img_count,))
         else:
-            return np_sum(imgs, axis=(1, 2), keepdims=False)
+            return np_sum(images, axis=(1, 2), keepdims=False)
 
 
-def image_normalization(imgs, nansum=False):
+def image_normalization(images, nansum=False):
     """
     Computes the zeroth order moments, equivalent to spot mass or normalization,
     for a stack of images.
 
     Parameters
     ----------
-    imgs : numpy.ndarray
-        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+    images : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     nansum : bool
@@ -266,25 +266,50 @@ def image_normalization(imgs, nansum=False):
     Returns
     -------
     numpy.ndarray
-        The normalization factor :math:`M_{11}` in an array of shape ``(N,)``.
+        The normalization factor :math:`M_{11}` in an array of shape ``(image_count,)``.
     """
-    return image_moment(imgs, (0, 0), normalize=False, nansum=nansum)
+    return image_moment(images, (0, 0), normalize=False, nansum=nansum)
 
 
-def image_positions(imgs, normalize=True, nansum=False):
+def image_normalize(images, nansum=False):
+    """
+    Normalizes of a stack of images via the the zeroth order moments.
+
+    Parameters
+    ----------
+    images : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        images. A single image is interpreted correctly as ``(1, h, w)`` even if
+        ``(h, w)`` is passed.
+
+    Returns
+    -------
+    images_normalized : numpy.ndarray
+        A copy of ``images``, with each image normalized.
+    """
+    img_count = images.shape[0]
+    normalization = image_normalization(images, nansum=nansum)
+    reciprical = np.reciprocal(
+        normalization, where=normalization != 0, out=np.zeros(img_count,)
+    )
+    return images * np.reshape(reciprical, (img_count, 1, 1))
+
+
+def image_positions(images, normalize=True, nansum=False):
     """
     Computes the two first order moments, equivalent to spot position, for a stack of images.
     Specifically, returns :math:`M_{10}` and :math:`M_{01}`.
 
     Parameters
     ----------
-    imgs : numpy.ndarray
-        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+    images : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     normalize : bool
-        Whether to normalize ``imgs``.
+        Whether to normalize ``images``.
         If ``False``, normalization is assumed to have been precomputed.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
@@ -295,17 +320,17 @@ def image_positions(imgs, normalize=True, nansum=False):
         Stack of :math:`M_{10}`, :math:`M_{01}`.
     """
     if normalize:
-        imgs = image_normalize(imgs)
+        images = image_normalize(images)
 
     return np.vstack(
         (
-            image_moment(imgs, (1, 0), normalize=False, nansum=nansum),
-            image_moment(imgs, (0, 1), normalize=False, nansum=nansum),
+            image_moment(images, (1, 0), normalize=False, nansum=nansum),
+            image_moment(images, (0, 1), normalize=False, nansum=nansum),
         )
     )
 
 
-def image_variances(imgs, centers=None, normalize=True, nansum=False):
+def image_variances(images, centers=None, normalize=True, nansum=False):
     r"""
     Computes the three second order central moments, equivalent to variance, for a stack
     of images.
@@ -323,9 +348,9 @@ def image_variances(imgs, centers=None, normalize=True, nansum=False):
 
     Parameters
     ----------
-    imgs : numpy.ndarray
-        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
+    images : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     centers : numpy.ndarray OR None
@@ -333,7 +358,7 @@ def image_variances(imgs, centers=None, normalize=True, nansum=False):
         :meth:`image_positions()`, then this can be passed though ``centers``. The default
         None computes ``centers`` internally.
     normalize : bool
-        Whether to normalize ``imgs``.
+        Whether to normalize ``images``.
         If ``False``, normalization is assumed to have been precomputed.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
@@ -341,17 +366,17 @@ def image_variances(imgs, centers=None, normalize=True, nansum=False):
     Returns
     -------
     numpy.ndarray
-        Stack of :math:`M_{20}`, :math:`M_{02}`, and :math:`M_{11}`. Shape ``(3, N)``.
+        Stack of :math:`M_{20}`, :math:`M_{02}`, and :math:`M_{11}`. Shape ``(3, image_count)``.
     """
     if normalize:
-        imgs = image_normalize(imgs)
+        images = image_normalize(images)
 
     if centers is None:
-        centers = image_positions(imgs, normalize=False, nansum=nansum)
+        centers = image_positions(images, normalize=False, nansum=nansum)
 
-    m20 = image_moment(imgs, (2, 0), centers=centers, normalize=False, nansum=nansum)
-    m11 = image_moment(imgs, (1, 1), centers=centers, normalize=False, nansum=nansum)
-    m02 = image_moment(imgs, (0, 2), centers=centers, normalize=False, nansum=nansum)
+    m20 = image_moment(images, (2, 0), centers=centers, normalize=False, nansum=nansum)
+    m11 = image_moment(images, (1, 1), centers=centers, normalize=False, nansum=nansum)
+    m02 = image_moment(images, (0, 2), centers=centers, normalize=False, nansum=nansum)
 
     return np.vstack((m20, m02, m11))
 
@@ -390,12 +415,12 @@ def image_ellipticity(variances):
     Parameters
     ----------
     variances : numpy.ndarray
-        The output of :meth:`image_variances()`. Shape ``(3, N)``.
+        The output of :meth:`image_variances()`. Shape ``(3, image_count)``.
 
     Returns
     -------
     numpy.ndarray
-        Array of ellipticities for the given moments. Shape ``(N,)``.
+        Array of ellipticities for the given moments. Shape ``(image_count,)``.
     """
     m20 = variances[0, :]
     m02 = variances[1, :]
@@ -424,7 +449,7 @@ def image_ellipticity_angle(variances):
     Parameters
     ----------
     moment2 : numpy.ndarray
-        The output of :meth:`image_variances()`. Shape ``(3, N)``.
+        The output of :meth:`image_variances()`. Shape ``(3, image_count)``.
 
     Returns
     -------
@@ -433,7 +458,7 @@ def image_ellipticity_angle(variances):
         For highly circular spots, this angle is not meaningful, and dominated by
         experimental noise.
         For perfectly circular spots, zero is returned.
-        Shape ``(N,)``.
+        Shape ``(image_count,)``.
     """
     m20 = variances[0, :]
     m02 = variances[1, :]
@@ -453,104 +478,126 @@ def image_ellipticity_angle(variances):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
-def image_normalize(imgs, nansum=False):
+def image_fit(
+    images, function=gaussian2d, guess=None, 
+    plot=False, show=False):
     """
-    Normalizes of a stack of images via the the zeroth order moments.
+    Fit a stack of images to a 2D distribution.
 
     Parameters
     ----------
-    imgs : numpy.ndarray
-        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
-        images. A single image is interpreted correctly as ``(1, h, w)`` even if
-        ``(h, w)`` is passed.
-
-    Returns
-    -------
-    imgs_normalized : numpy.ndarray
-        A copy of ``imgs``, with each image normalized.
-    """
-    N = imgs.shape[0]
-    normalization = image_normalization(imgs, nansum=nansum)
-    reciprical = np.reciprocal(
-        normalization, where=normalization != 0, out=np.zeros(N,)
-    )
-    return imgs * np.reshape(reciprical, (N, 1, 1))
-
-
-def image_fit(imgs, function=gaussian2d, guess=False):
-    """
-    Fits images in a stack of images to a given 2D function.
-
-    Parameters
-    ----------
-    imgs : numpy.ndarray
-        A matrix in the style of the output of :meth:`take()`, with shape ``(N, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`N` is the number of
-        images. A single image is interpreted correctly as ``(1, h, w)`` even if
-        ``(h, w)`` is passed.
+    images : numpy.ndarray (image_count, height, width)
+        An image or array of images to fit. A single image is interpreted correctly as
+        ``(1, h, w)`` even if ``(h, w)`` is passed.
     function : lambda ((float, float), ... ) -> float
         Some fitfunction. Defaults to
         :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`.
-    guess : bool
-        Whether to use a guess for the peak locations. Only works for the
-        default ``function`` at the moment.
+    guess : None OR numpy.ndarray (parameter_count, image_count)
+        If ``guess`` is ``None``, will construct a guess based on the ``function`` passed.
+        Functions for which guesses are implemented include:
+        :meth:`~~slmsuite.misc.fitfunctions.gaussian2d()`
+        If ``guess`` is ``None`` and ``function`` does not have a guess
+        implemented, no guess will be provided to the optimizer.
+        If ``guess`` is a ``numpy.ndarray``, a slice of the array will be provided
+        to the optimizer as a guess for the fit parameters for each image.
+    plot : bool
+        Whether to create a plot for each fit.
+    show : bool
+        Whether or not to call :meth:`matplotlib.pyplot.show` after generating
+        the plot.
 
     Returns
     -------
-    numpy.ndarray
-        A matrix with the fit results. This is of shape ``(M, N)``, where ``M``
-        is the number of arguments that ``function`` accepts. The slot for the
-        ``xy`` vectors is replaced with measurements of the rsquared quality of
-        the fit. Failed fits have a column filled with ``np.nan``.
-    """
-    (N, w_y, w_x) = imgs.shape
+    numpy.ndarray (``result_count``, ``image_count``)
+        A matrix with the fit results. The first row
+        contains the rsquared quality of each fit.
+        The values in the remaining rows correspond to the parameters
+        for the supplied fit function.
+        Failed fits have an rsquared of ``numpy.nan`` and parameters
+        are set to the provided or constructed guess or ``numpy.nan``
+        if no guess was provided or constructed.
 
+    Raises
+    ------
+        NotImplementedError if the provided ``function`` does not have a guess implemented.
+    """
+    # Setup.
+    (image_count, w_y, w_x) = images.shape
+    img_shape = (w_y, w_x)
     edge_x = np.reshape(np.arange(w_x) - (w_x - 1) / 2.0, (1, 1, w_x))
     edge_y = np.reshape(np.arange(w_y) - (w_y - 1) / 2.0, (1, w_y, 1))
-
     grid_x, grid_y = np.meshgrid(edge_x, edge_y)
-
     grid_xy = (grid_x.ravel(), grid_y.ravel())
+    # Number of fit parameters the function accepts.
+    param_count =  function.__code__.co_argcount - 1
+    # Number of parameters to return.
+    result_count = param_count + 1
+    result = np.full((result_count, image_count), np.nan)
 
-    if guess:
+    # Construct guesses.
+    if guess is None:
         if function is gaussian2d:
-            centers = image_positions(imgs, normalize=False)
-            variances = image_variances(imgs, centers=centers, normalize=False)
-        else:
-            raise RuntimeError("Do not know how to parse guess for unknown function.")
+            images_normalized = image_normalize(images)
+            centers = image_positions(images_normalized, normalize=False)
+            variances = image_variances(images_normalized, centers=centers, normalize=False)
+            maxs = np.amax(images, axis=(1, 2))
+            mins = np.amin(images, axis=(1, 2))
+            guess = np.vstack((
+                centers,
+                maxs - mins,
+                mins,
+                np.sqrt(variances[0:2, :]),
+                variances[2, :]
+            ))
+            
 
-    result = np.full((function.__code__.co_argcount, N), np.nan)
+    for img_idx in range(image_count):
+        img = images[img_idx, :, :].ravel()
+    
+        # Get guess.
+        p0 = guess[:, img_idx] if guess is not None else None
 
-    for n in range(N):
+        # Attempt fit.
+        fit_succeeded = True
+        popt = None
         try:
-            img = imgs[n, :, :].ravel()
+            popt, _ = curve_fit(function, grid_xy, img, ftol=1e-5, p0=p0,)
+        except RuntimeError:
+            # The fit failed if scipy says so.
+            fit_succeeded = False
+        
+        # The fit failed if any of the parameters aren't finite.
+        if np.any(np.logical_not(np.isfinite(popt))):
+            fit_succeeded = False
 
-            if guess:
-                if function is gaussian2d:
-                    # x0, y0, a, c, wx, wy, wxy
-                    popt0 = [
-                        centers[n, 0],
-                        centers[n, 1],
-                        np.amax(img) - np.amin(img),
-                        np.amin(img),
-                        np.sqrt(variances[0, n]),
-                        np.sqrt(variances[1, n]),
-                        variances[2, n],
-                    ]
-            else:
-                popt0 = None
-
-            popt, _ = curve_fit(function, grid_xy, img, ftol=1e-5, p0=popt0,)
-
+        # Calculate r2.
+        if fit_succeeded:
             ss_res = np.sum(np.square(img - function(grid_xy, *popt)))
             ss_tot = np.sum(np.square(img - np.mean(img)))
             r2 = 1 - (ss_res / ss_tot)
 
-            result[0, n] = r2
-            result[1:, n] = popt
-        except BaseException:
-            pass
+        # If the fit failed, r2 is nan and the fit parameters are the guess or nan.
+        if not fit_succeeded:
+            popt = p0 if p0 is not None else np.full(param_count, np.nan)
+            r2 = np.nan
+
+        result[0, img_idx] = r2
+        result[1:, img_idx] = popt
+
+        # Plot.
+        if plot:
+            fig, axs = plt.subplots(1, 3, figsize=(3 * 6.4, 4.8))
+            fig.suptitle("image {}".format(img_idx))
+            ax0, ax1, ax2 = axs
+            ax0.imshow(np.reshape(img, img_shape))
+            ax0.set_title("original")
+            if p0 is not None:
+                ax1.imshow(np.reshape(function(grid_xy, *p0), img_shape))
+                ax1.set_title("guess")
+            ax2.imshow(np.reshape(function(grid_xy, *popt), img_shape))
+            ax2.set_title("result")
+            if show:
+                plt.show()
 
     return result
 

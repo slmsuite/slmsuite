@@ -177,6 +177,9 @@ def gaussian(x, x0, a, c, w):
     return c + a * np.exp(-.5 * np.square((x - x0) * (1/w)))
 
 
+_gaussian2d_M_DEFAULT = np.eye(2)
+
+
 def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     r"""
     For fitting a 2D Gaussian.
@@ -258,8 +261,11 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     y = xy[1] - y0
 
     wxy = np.sign(wxy) * np.min([np.abs(wxy), wx*wy])
-
-    M = np.linalg.inv([[wx*wx, wxy], [wxy, wy*wy]])
+    
+    try:
+        M = np.linalg.inv([[wx*wx, wxy], [wxy, wy*wy]])
+    except np.linalg.LinAlgError:
+        M = _gaussian2d_M_DEFAULT
 
     argument = np.square(x) * M[0,0] + np.square(y) * M[1,1] + 2 * x * y * M[1,0]
 

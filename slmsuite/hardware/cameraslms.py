@@ -121,12 +121,12 @@ class FourierSLM(CameraSLM):
             See :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`.
         plot : bool
             Enables debug plots.
-        autofocus : bool or dict
+        autofocus : bool OR dict
             Whether or not to autofocus the camera.
             If a dictionary is passed, autofocus is performed,
             and the dictionary is passed to
             :meth:`~slmsuite.hardware.cameras.camera.Camera.autofocus()`.
-        autoexpose : bool or dict
+        autoexpose : bool OR dict
             Whether or not to automatically set the camera exposure.
             If a dictionary is passed, autoexposure is performed,
             and the dictionary is passed to
@@ -309,7 +309,7 @@ class FourierSLM(CameraSLM):
         # Optimize and project the hologram
         hologram.optimize(**kwargs)
 
-        self.slm.write(hologram.extract_phase())
+        self.slm.write(hologram.extract_phase(), settle=True)
 
         return hologram
 

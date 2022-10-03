@@ -187,10 +187,6 @@ class Santec(SLM):
             The number and name of each SLM.
         """
         # Check for the SLM parameters and save them
-        width = ctypes.c_ushort(0)
-        height = ctypes.c_ushort(0)
-        display_name = ctypes.create_string_buffer(64)
-
         display_list = []
 
         if verbose:
@@ -198,6 +194,10 @@ class Santec(SLM):
             print("#,  Name")
 
         for display_number in range(1, 8):
+            width = ctypes.c_ushort(0)
+            height = ctypes.c_ushort(0)
+            display_name = ctypes.create_string_buffer(64)
+
             slm_funcs.SLM_Disp_Info2(display_number, width, height, display_name)
             name = display_name.value.decode("mbcs")
             if verbose:

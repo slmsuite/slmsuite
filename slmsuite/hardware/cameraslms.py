@@ -451,9 +451,7 @@ class FourierSLM(CameraSLM):
 
         References
         ----------
-        .. [1]  Čižmár, T., Mazilu, M. & Dholakia, K.
-                In situ_ wavefront correction and its application to micromanipulation.
-               _Nature Photon 4, 388-394 (2010). https://doi.org/10.1038/nphoton.2010.8
+        .. [1]  Čižmár, T., Mazilu, M. & Dholakia, K. "In situ wavefront correction and its application to micromanipulation." Nature Photon 4, 388-394 (2010). https://doi.org/10.1038/nphoton.2010.8
 
         Parameters
         ----------
@@ -680,17 +678,17 @@ class FourierSLM(CameraSLM):
             r2 = 1 - (ss_res / ss_tot)
 
             if plot_fits:
-                plt.scatter(phases / np.pi, intensities, label="Data")
+                plt.scatter(phases / np.pi, intensities, color="k", label="Data")
 
                 phases_fine = np.linspace(0, 2 * np.pi, 100)
 
-                plt.plot(phases_fine / np.pi, cos(phases_fine, *popt), label="Fit")
-                plt.plot(phases_fine / np.pi, cos(phases_fine, *guess),
+                plt.plot(phases_fine / np.pi, cos(phases_fine, *popt), "k-", label="Fit")
+                plt.plot(phases_fine / np.pi, cos(phases_fine, *guess), "k--", 
                     label="Guess")
-                plt.plot(best_phase / np.pi, popt[0] + popt[2], "xr", label="Phase")
+                plt.plot(best_phase / np.pi, popt[1] + popt[2], "xr", label="Phase")
 
                 plt.legend(loc="best")
-                plt.title("Interference (r^2={:.3f})".format(r2))
+                plt.title("Interference ($r^2$={:.3f})".format(r2))
                 plt.grid()
                 plt.xlabel(r"$\phi$ $[\pi]$")
                 plt.ylabel("Signal")
@@ -701,13 +699,14 @@ class FourierSLM(CameraSLM):
 
         def plot_labeled(img, plot=False, title=""):
             if plot_everything or plot:
-                fig, axs = plt.subplots(1, 3, figsize=(20,6))
+                fig, axs = plt.subplots(1, 3, figsize=(16,4))
                 axs[0].imshow(
                     np.mod(self.slm.phase, 2*np.pi),
                     cmap=plt.get_cmap("twilight"),
                     interpolation='none'
                 )
 
+                color = "r"
 
                 im = axs[1].imshow(np.log10(img + .1))
                 im.set_clim(0, np.log10(self.cam.bitresolution))
@@ -733,20 +732,30 @@ class FourierSLM(CameraSLM):
                         wh *= 2
                         hh *= 2
                     rect = plt.Rectangle(   [point[0] - wh, point[1] - hh],
-                                            2 * wh, 2 * hh, ec="r", fc="none")
+                                            2 * wh, 2 * hh, ec=color, fc="none")
                     axs[1].add_patch(rect)
                     axs[1].annotate(label,
                         (point[0], point[1] + 2 * interference_size[1] + hh),
-                        c="r", size="x-small", ha="center")
+                        c=color, size="x-small", ha="center")
 
                 im = axs[2].imshow(np.log10(img + .1))
                 axs[2].set_xlim(point[0] - wh, point[0] + wh)
                 axs[2].set_ylim(point[1] + hh, point[1] - hh)
                 im.set_clim(0, np.log10(self.cam.bitresolution))
 
+                for spine in ["top", "bottom", "right", "left"]:
+                    axs[2].spines[spine].set_color(color)
+
+                if self.cam.bitdepth > 10:
+                    step = 2
+                else:
+                    step = 1
+
+                bitresolution_list = np.power(2, np.arange(0, self.cam.bitdepth+1, step))
+
                 cbar = fig.colorbar(im, ax=axs[2])
-                cbar.ax.set_yticks([0, np.log10(self.cam.bitresolution)])
-                cbar.ax.set_yticklabels([1, self.bitresolution])
+                cbar.ax.set_yticks(np.log10(bitresolution_list))
+                cbar.ax.set_yticklabels(bitresolution_list)
 
                 axs[0].set_title("SLM Phase")
                 axs[1].set_title("Camera Result")

@@ -11,7 +11,7 @@ The flourishing applications of SLMs -- ranging from deep-brain imaging to quant
 Harnessing the *practical* advantages of these SLMs in demanding applications, however, is
 often limited by the outdated, proprietary, or otherwise incomplete control software 
 available to users. Our `Quantum Photonics <https://www.rle.mit.edu/qp/>`_ research group at
-MIT developed :mod:`slmsuite` to address these goals. 
+MIT developed :mod:`slmsuite` to address these issues. 
 
 .. So we made slmsuite
 Simply put, the goal of :mod:`slmsuite` is to enable any SLM user to efficiently project

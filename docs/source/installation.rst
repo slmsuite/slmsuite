@@ -48,7 +48,7 @@ notebooks for interactive computing,
 and also list useful packages for code profiling which can be included via
 `IPython <https://ipython.org/>`_
 `magic <https://ipython.readthedocs.io/en/stable/interactive/tutorial.html#magics-explained>`_,
-along with other features like |autoreload|_ or |matplotlib|_ which are packaged with IPython.
+along with other features like |autoreload|_ or |matplotlibs|_ which are packaged with IPython.
 
 - `jupyter <https://jupyter.org>`_
     - `line-profiler <https://github.com/pyutils/line_profiler>`_
@@ -64,5 +64,5 @@ or develop a workaround.
 .. |autoreload| replace:: ``%autoreload 2``
 .. _autoreload: https://ipython.readthedocs.io/en/stable/config/extensions/autoreload.html
 
-.. |matplotlib| replace:: ``%matplotlib inline``
-.. _matplotlib: https://ipython.readthedocs.io/en/stable/interactive/plotting.html
+.. |matplotlibs| replace:: ``%matplotlib inline``
+.. _matplotlibs: https://ipython.readthedocs.io/en/stable/interactive/plotting.html

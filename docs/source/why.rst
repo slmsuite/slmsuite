@@ -19,11 +19,9 @@ high-precision, computer-generated holograms (compensated for non-ideal experime
 conditions!) using the latest algorithms from research. It features:
 
 * Simple interface for controlling various SLMs and cameras
-* Automated Fourier- to image-space coordinate transformations: 
-simply set the desired intensity at each camera pixel!
+* Automated Fourier- to image-space coordinate transformations: simply set the desired intensity at each camera pixel!
 * Automated wavefront calibration to compensate for aberrations along the SLM imaging train
-* A growing suite of GPU-accelerated iterative Fourier transforms (e.g. weighted Gerchberg-Saxton)
-*with experimental feedback*
+* A growing suite of GPU-accelerated iterative Fourier transforms (e.g. weighted Gerchberg-Saxton) *with experimental feedback*
 * Automated evaluation metrics to monitor diffraction efficiency and image tolerances
 * ... and more to come!
 

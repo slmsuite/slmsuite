@@ -651,7 +651,7 @@ class FourierSLM(CameraSLM):
             amp :
                 a
             r2 :
-                r^2 of fit
+                R^2 of fit
             contrast :
                 a / (a + c)
             """
@@ -671,7 +671,7 @@ class FourierSLM(CameraSLM):
             amp = popt[1]
             contrast = popt[1] / (popt[1] + popt[2])
 
-            # residual and total sum of squares, producing the r^2 metric.
+            # residual and total sum of squares, producing the R^2 metric.
             ss_res = np.sum((intensities - cos(phases, *popt)) ** 2)
             ss_tot = np.sum((intensities - np.mean(intensities)) ** 2)
             r2 = 1 - (ss_res / ss_tot)
@@ -687,7 +687,7 @@ class FourierSLM(CameraSLM):
                 plt.plot(best_phase / np.pi, popt[1] + popt[2], "xr", label="Phase")
 
                 plt.legend(loc="best")
-                plt.title("Interference ($r^2$={:.3f})".format(r2))
+                plt.title("Interference ($R^2$={:.3f})".format(r2))
                 plt.grid()
                 plt.xlabel(r"$\phi$ $[\pi]$")
                 plt.ylabel("Signal")
@@ -1010,7 +1010,7 @@ class FourierSLM(CameraSLM):
         amp = np.sqrt(pwr_norm)
         amp_large = np.sqrt(pwr_large)
 
-        # Process r^2
+        # Process R^2
         r2 = np.copy(data["r2_fit"])
         r2[nyref, nxref] = 1
         r2s = r2
@@ -1163,7 +1163,7 @@ class FourierSLM(CameraSLM):
 
             plt.subplot(1, 3, 3)
             plt.imshow(r2)
-            plt.title("r^2")
+            plt.title("$R^2$")
             plt.xlabel("SLM $x$ [superpix]")
             plt.ylabel("SLM $y$ [superpix]")
 

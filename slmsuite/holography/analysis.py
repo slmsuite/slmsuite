@@ -755,13 +755,10 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
     start_orientation = orientation
 
     if orientation is None:
-        # 1) Threshold to eliminate noise
-        _, im_thresh = cv2.threshold(cv2img, .1 * np.amax(img), np.amax(img), cv2.THRESH_BINARY)
-
-        # 2) FFT to find array pitch and orientation
+        # FFT to find array pitch and orientation
         # Take the largest dimension rounded up to nearest power of 2.
         fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img)))))
-        dft = np.fft.fftshift(np.fft.fft2(im_thresh, s=[fftsize, fftsize]))
+        dft = np.fft.fftshift(np.fft.fft2(cv2img, s=[fftsize, fftsize]))
         fft_blur_size = (
             int(2 * np.ceil(fftsize / 1000)) + 1
         )  # Future: Make not arbitrary.
@@ -790,7 +787,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
                     thresholdStep=thresholdStep,
                 )
 
-                plt.imshow(im_thresh)
+                plt.imshow(cv2img)
                 plt.show()
 
                 plt_img = _make_8bit(dft_amp.copy())
@@ -1147,7 +1144,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         axs[1].set_xlim(xl)
         axs[1].set_ylim(np.flip(yl))
 
-        axs[0].imshow(im_thresh)
+        axs[0].imshow(cv2img)
         axs[0].scatter(array_center[0], array_center[1], c="r", marker="x", s=10)
 
         # Plot a red rectangle to show the extents of the zoom region

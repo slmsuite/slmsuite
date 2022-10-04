@@ -3,7 +3,58 @@
 Why :mod:`slmsuite`?
 ====================
 
-TODO @cpanuski
+Because *using* a spatial light modulator (SLM) should be as easy as buying an SLM.
+
+.. SLM hardware enables research, but software is lacking.
+The flourishing applications of SLMs -- ranging from deep-brain imaging to quantum control 
+-- have motivated commensurate growth in affordable, high-performance commercial hardware.
+Harnessing the *practical* advantages of these SLMs in demanding applications, however, is
+often limited by the outdated, proprietary, or otherwise incomplete control software 
+available to users. Our `Quantum Photonics <https://www.rle.mit.edu/qp/>`_ research group at
+MIT developed :mod:`slmsuite` to address these issues. 
+
+.. So we made slmsuite
+Simply put, the goal of :mod:`slmsuite` is to enable any SLM user to efficiently project
+high-precision, computer-generated holograms (compensated for non-ideal experimental 
+conditions!) using the latest algorithms from research. It features:
+
+* Simple interface for controlling various SLMs and cameras
+* Automated Fourier- to image-space coordinate transformations: simply set the desired intensity at each camera pixel!
+* Automated wavefront calibration to compensate for aberrations along the SLM imaging train
+* A growing suite of GPU-accelerated iterative Fourier transforms (e.g. weighted Gerchberg-Saxton) *with experimental feedback*
+* Automated evaluation metrics to monitor diffraction efficiency and image tolerances
+* ... and more to come!
+
+.. We've now used slmsuite for state-of-the-art science.
+During the initial development alone, :mod:`slmsuite` enabled us to tune arrays of 
+micro-scale optical cavities into resonance with picometer-precision, dynamcially address artificial 
+atomic arrays in diamond, and efficiently fan-out input activations in optical neural networks. 
+We're excited to see what you come up with next!
+
+.. |trim| image:: static/ex-trimming.png
+    :width: 225
+    :alt: Cavity Array Trimming
+    :target: https://arxiv.org/abs/2204.10302
+
+.. |atoms| image:: static/ex-atoms.png
+    :width: 225
+    :alt: Dynamic Artificial Atom Addressing
+    :target: https://arxiv.org/abs/2208.06732
+
+.. |onn| image:: static/ex-onn.png
+    :width: 225
+    :alt: Optical Neural Networks
+    :target: https://arxiv.org/abs/2205.09103
+
+.. table::
+   :widths: auto
+   :align: center
+   
+   ============================ =========================== ===========================
+   **Tuned Microcavity Arrays** **Dynamic Quantum Control** **Optical Neural Networks**
+   ---------------------------- --------------------------- ---------------------------
+   |trim|                       |atoms|                     |onn|
+   ============================ =========================== ===========================
 
 Why Python?
 -----------

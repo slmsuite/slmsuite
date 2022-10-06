@@ -160,7 +160,7 @@ def setup(app):
                 file_response = requests.get(file_url).json()
                 file_content = file_response["content"]
                 file_str = base64.b64decode(file_content.encode("utf8")).decode("utf8")
-                with open(file_path, "w") as file_:
+                with open(file_path, "w", encoding='utf8') as file_:
                     file_.write(file_str)
     except BaseException as e:
         print("WARNING: Unable to download example notebooks. "

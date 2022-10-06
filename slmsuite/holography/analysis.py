@@ -478,11 +478,9 @@ def image_ellipticity_angle(variances):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
-def image_fit(
-    images, function=gaussian2d, guess=None, 
-    plot=False, show=False):
+def image_fit(images, function=gaussian2d, guess=None, plot=False):
     """
-    Fit a stack of images to a 2D distribution.
+    Fit each image in a stack of images to a 2D ``function``.
 
     Parameters
     ----------
@@ -490,16 +488,16 @@ def image_fit(
         An image or array of images to fit. A single image is interpreted correctly as
         ``(1, h, w)`` even if ``(h, w)`` is passed.
     function : lambda ((float, float), ... ) -> float
-        Some fitfunction. Defaults to
-        :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`.
+        Some fitfunction which accepts ``(x,y)`` coordinates as first argument.
+        Defaults to :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`.
     guess : None OR numpy.ndarray (parameter_count, image_count)
-        If ``guess`` is ``None``, will construct a guess based on the ``function`` passed.
-        Functions for which guesses are implemented include:
-        :meth:`~~slmsuite.misc.fitfunctions.gaussian2d()`
-        If ``guess`` is ``None`` and ``function`` does not have a guess
-        implemented, no guess will be provided to the optimizer.
-        If ``guess`` is a ``numpy.ndarray``, a slice of the array will be provided
-        to the optimizer as a guess for the fit parameters for each image.
+        - If ``guess`` is ``None``, will construct a guess based on the ``function`` passed.
+          Functions for which guesses are implemented include:
+          - :meth:`~~slmsuite.misc.fitfunctions.gaussian2d()`
+        - If ``guess`` is ``None`` and ``function`` does not have a guess
+          implemented, no guess will be provided to the optimizer.
+        - If ``guess`` is a ``numpy.ndarray``, a slice of the array will be provided
+          to the optimizer as a guess for the fit parameters for each image.
     plot : bool
         Whether to create a plot for each fit.
     show : bool
@@ -524,12 +522,15 @@ def image_fit(
     # Setup.
     (image_count, w_y, w_x) = images.shape
     img_shape = (w_y, w_x)
+
     edge_x = np.reshape(np.arange(w_x) - (w_x - 1) / 2.0, (1, 1, w_x))
     edge_y = np.reshape(np.arange(w_y) - (w_y - 1) / 2.0, (1, w_y, 1))
     grid_x, grid_y = np.meshgrid(edge_x, edge_y)
     grid_xy = (grid_x.ravel(), grid_y.ravel())
+
     # Number of fit parameters the function accepts.
     param_count =  function.__code__.co_argcount - 1
+
     # Number of parameters to return.
     result_count = param_count + 1
     result = np.full((result_count, image_count), np.nan)
@@ -542,6 +543,7 @@ def image_fit(
             variances = image_variances(images_normalized, centers=centers, normalize=False)
             maxs = np.amax(images, axis=(1, 2))
             mins = np.amin(images, axis=(1, 2))
+
             guess = np.vstack((
                 centers,
                 maxs - mins,
@@ -560,24 +562,20 @@ def image_fit(
         # Attempt fit.
         fit_succeeded = True
         popt = None
+
         try:
             popt, _ = curve_fit(function, grid_xy, img, ftol=1e-5, p0=p0,)
-        except RuntimeError:
-            # The fit failed if scipy says so.
+        except RuntimeError:    # The fit failed if scipy says so.
             fit_succeeded = False
-        
-        # The fit failed if any of the parameters aren't finite.
-        if np.any(np.logical_not(np.isfinite(popt))):
-            fit_succeeded = False
+        else:                   # The fit failed if any of the parameters aren't finite.
+            if np.any(np.logical_not(np.isfinite(popt))):
+                fit_succeeded = False
 
-        # Calculate r2.
-        if fit_succeeded:
+        if fit_succeeded:   # Calculate r2.
             ss_res = np.sum(np.square(img - function(grid_xy, *popt)))
             ss_tot = np.sum(np.square(img - np.mean(img)))
             r2 = 1 - (ss_res / ss_tot)
-
-        # If the fit failed, r2 is nan and the fit parameters are the guess or nan.
-        if not fit_succeeded:
+        else:               # r2 is nan and the fit parameters are the guess or nan.
             popt = p0 if p0 is not None else np.full(param_count, np.nan)
             r2 = np.nan
 
@@ -587,17 +585,21 @@ def image_fit(
         # Plot.
         if plot:
             fig, axs = plt.subplots(1, 3, figsize=(3 * 6.4, 4.8))
-            fig.suptitle("image {}".format(img_idx))
+            fig.suptitle("Image {}".format(img_idx))
+            
             ax0, ax1, ax2 = axs
+
             ax0.imshow(np.reshape(img, img_shape))
-            ax0.set_title("original")
+            ax0.set_title("Data")
+
             if p0 is not None:
                 ax1.imshow(np.reshape(function(grid_xy, *p0), img_shape))
-                ax1.set_title("guess")
+                ax1.set_title("Guess")
+
             ax2.imshow(np.reshape(function(grid_xy, *popt), img_shape))
-            ax2.set_title("result")
-            if show:
-                plt.show()
+            ax2.set_title("Result")
+
+            plt.show()
 
     return result
 

@@ -30,12 +30,9 @@ class CameraSLM:
     slm : object
         Instance of :class:`~slmsuite.hardware.slms.slm.SLM`
         which interfaces with a phase display.
-    mag : number OR None
-        Magnification between the plane where the SLM image is created
-        and the camera sensor plane.
     """
 
-    def __init__(self, cam, slm, mag=None):
+    def __init__(self, cam, slm):
         """
         Parameters
         ----------
@@ -48,18 +45,23 @@ class CameraSLM:
         """
         self.cam = cam
         self.slm = slm
-        self.mag = None
 
 
 class NearfieldSLM(CameraSLM):
     """
     **(NotImplemented)** Class for an SLM which is not nearly in the Fourier domain of a camera.
+    
+    Parameters
+    ----------
+    mag : number OR None
+        Magnification between the plane where the SLM image is created
+        and the camera sensor plane.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, cam, slm, mag=None):
         """See :meth:`CameraSLM.__init__`."""
-        super().__init__(*args, **kwargs)
-        raise NotImplementedError()
+        super().__init__(cam, slm)
+        self.mag = mag
 
 
 class FourierSLM(CameraSLM):

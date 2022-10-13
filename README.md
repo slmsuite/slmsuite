@@ -16,11 +16,17 @@
 
 ## Installation
 
-Install the latest version of `slmsuite` from [PyPi](http://google.com) using:
+Install the latest version of `slmsuite` from GitHub using:
+
+```console
+$ pip install git+https://github.com/QPG-MIT/slmsuite
+```
+
+<!--Install the latest version of `slmsuite` from [PyPi](http://google.com) using:
 
 ```console
 $ pip install slmsuite
-```
+```-->
 
 ## Documentation and Examples
 

@@ -153,7 +153,7 @@ def gaussian(x, x0, a, c, w):
     r"""
     For fitting a 1D Gaussian.
 
-    .. math:: y(x) = c + a \exp \left[\frac{(x-x_0)^2}{w^2}\right].
+    .. math:: y(x) = c + a \exp \left[\frac{(x-x_0)^2}{2w^2}\right].
 
     Parameters
     ----------
@@ -166,8 +166,10 @@ def gaussian(x, x0, a, c, w):
     c : float
         constant offset.
     w : float
-        The standard deviation of the normal distribution. This is related to the
-        full width at half maximum (FWHM) by a factor of :math:`2\sqrt{2\ln{2}}`.
+        The standard deviation of the normal distribution.
+        Equivalent to the :math:`1/e^2` radius.
+        This is related to the full width at half maximum (FWHM) 
+        by a factor of :math:`2\sqrt{2\ln{2}}`.
 
     Returns
     -------
@@ -175,9 +177,6 @@ def gaussian(x, x0, a, c, w):
         Gaussian fit evaluated at all ``x``.
     """
     return c + a * np.exp(-.5 * np.square((x - x0) * (1/w)))
-
-
-_gaussian2d_M_DEFAULT = np.eye(2)
 
 
 def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
@@ -188,8 +187,8 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     see :meth:`~slmsuite.holography.analysis.image_moment()`) is zero,
 
     .. math:: z(x,y) = c + a \exp \left[
-                                \frac{(x-x_0)^2}{w_x^2} +
-                                \frac{(y-y_0)^2}{w_y^2}
+                                \frac{(x-x_0)^2}{2w_x^2} +
+                                \frac{(y-y_0)^2}{2w_y^2}
                                 \right].
 
     When ``wxy`` is nonzero, we want to find the Gaussian which will have second
@@ -210,9 +209,11 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     The equation satisfying this condition is:
 
     .. math:: z(x,y) = c + a \exp \left[
+                                -\frac{1}{2}\left(
                                 K_{00}(x-x_0)^2 +
                                 2*K_{10}(x-x_0)(y-y_0) +
                                 K_{11}(y-y_0)^2
+                                \right)
                                 \right].
 
     Where
@@ -247,8 +248,10 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     c : float
         constant offset.
     wx, wy : float
-        The standard deviation of the normal distribution. This is related to the
-        full width at half maximum (FWHM) by a factor of :math:`2\sqrt{2\ln{2}}`.
+        The standard deviation of the normal distribution.
+        Equivalent to the :math:`1/e^2` radius.
+        This is related to the full width at half maximum (FWHM) 
+        by a factor of :math:`2\sqrt{2\ln{2}}`.
     wxy : float
         Shear variance. See above.
 
@@ -265,7 +268,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     try:
         M = np.linalg.inv([[wx*wx, wxy], [wxy, wy*wy]])
     except np.linalg.LinAlgError:
-        M = _gaussian2d_M_DEFAULT
+        M = np.array([[1/wx/wx, 0], [0, 1/wy/wy]])
 
     argument = np.square(x) * M[0,0] + np.square(y) * M[1,1] + 2 * x * y * M[1,0]
 

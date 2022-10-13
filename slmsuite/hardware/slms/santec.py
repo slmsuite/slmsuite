@@ -193,7 +193,7 @@ class Santec(SLM):
             print("display_number, display_name:")
             print("#,  Name")
 
-        for display_number in range(1, 8):
+        for display_number in range(1, 9):
             width = ctypes.c_ushort(0)
             height = ctypes.c_ushort(0)
             display_name = ctypes.create_string_buffer(64)

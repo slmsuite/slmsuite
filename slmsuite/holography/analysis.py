@@ -704,7 +704,6 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
                 (255, 0, 0),
                 5,
             )
-        plt.figure(dpi=300)
         plt.imshow(cv2img)
         plt.title(title)
         plt.show()
@@ -1011,7 +1010,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         true_centers = np.matmul(orientation["M"], centers) + orientation["b"]
 
         if start_orientation is None:
-            _, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(12, 6))
+            _, axs = plt.subplots(1, 2, figsize=(12, 6))
 
             plt_img = _make_8bit(dft_amp.copy())
 

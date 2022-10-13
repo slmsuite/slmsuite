@@ -3,7 +3,7 @@ Datastructures, methods, and calibrations for an SLM monitored by a camera.
 """
 
 import os
-
+import time
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,6 +11,7 @@ from scipy import optimize
 from tqdm import tqdm
 
 from slmsuite.holography import analysis
+from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import SpotHologram
 from slmsuite.holography.toolbox import blaze, imprint, format_2vectors
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
@@ -93,6 +94,78 @@ class FourierSLM(CameraSLM):
         self.fourier_calibration = None
         self.wavefront_calibration = None
         self.wavefront_calibration_raw = None
+
+    ### Settle Time Measurement ###
+
+    def measure_settle(
+        self, 
+        vector=(.1,.1),
+        basis="kxy", 
+        size=None,
+        times=None, 
+        settle_time_s=1, 
+        plot=True
+    ):
+        """
+        Approximates the :math`1/e` settle time of the SLM.
+        This is done by successively removing and applying a blaze to the SLM,
+        measuring the intensity at the first order spot versus time.
+
+        Parameters
+        ----------
+        vector : array_like
+            Point to 
+        basis : {"ij", "kxy"}
+            Basis of vector. This is the vector 
+        size : int
+            Size in pixels of the integration region. If ``None``, sets to sixteen 
+            times the approximate size of a diffraction limited spot.
+        times : array_like
+            List of times to sweep over in search of the :math:`1/e` settle time.
+        settle_time_s : float
+            Time inbetween measurements to allow the SLM to re-settle without 
+        plot : bool
+            Whether to print debug plots.
+        """
+        if basis == "ij":
+            vector = self.ijcam_to_kxyslm(vector)
+
+        point = self.kxyslm_to_ijcam(vector)
+
+        blaze = toolbox.blaze(grid=self.slm, vector=vector)
+
+        results = []
+        
+        for t in times:
+            self.slm.write(None, settle=False)
+            time.sleep(settle_time_s)
+            
+            self.slm.write(blaze, settle=False)
+            time.sleep(t)
+
+            image = self.cam.get_image()
+
+            print(np.sum(image))
+            print(np.max(image))
+            # nonzero = image.ravel()
+            # nonzero = nonzero[nonzero != 0]
+            # print(nonzero)
+
+            _, axs = plt.subplots(1, 2, figsize=(10,4))
+            axs[0].imshow(image)
+            axs[1].imshow(np.squeeze(analysis.take(image, point, size, centered=True, integrate=False)))
+            plt.show()
+
+            results.append(analysis.take(image, point, size, centered=True, integrate=True))
+
+        if plot:
+            plt.plot(times, np.squeeze(results), 'k*')
+            plt.ylabel("Signal [a.u.]")
+            plt.xlabel("Time [sec]")
+            plt.show()
+
+        return results
+
 
     ### Fourier Calibration ###
 
@@ -377,7 +450,7 @@ class FourierSLM(CameraSLM):
                             format_2vectors(ij) - self.fourier_calibration["b"]  )
                     + self.fourier_calibration["a"])
 
-    def get_farfield_spot_size(self, slm_size, basis="kxy"):
+    def get_farfield_spot_size(self, slm_size=None, basis="kxy"):
         """
         Calculates the size of a spot produced by blazed patch of size ``slm_size`` on the SLM.
         If this patch is the size of the SLM, then we will find in the farfield (camera)
@@ -391,9 +464,10 @@ class FourierSLM(CameraSLM):
 
         Parameters
         ----------
-        slm_size : (float, float) OR int OR float
+        slm_size : (float, float) OR int OR float OR None
             Size of patch on the SLM in normalized units.
             A scalar is interpreted as the width and height of a square.
+            If ``None``, defaults to the ``shape`` of the SLM.
         basis : {"kxy", "ij"}
             Basis of the returned size; ``"kxy"`` for SLM size, ``"ij"`` for camera size.
 
@@ -407,6 +481,8 @@ class FourierSLM(CameraSLM):
         ValueError
             If the basis argument was malformed.
         """
+        if slm_size is None:
+            slm_size = self.slm.shape
         if isinstance(slm_size, (int, float)):
             slm_size = (slm_size, slm_size)
 
@@ -744,6 +820,7 @@ class FourierSLM(CameraSLM):
 
                 for spine in ["top", "bottom", "right", "left"]:
                     axs[2].spines[spine].set_color(color)
+                    axs[2].spines[spine].set_linewidth(1.5)
 
                 if self.cam.bitdepth > 10:
                     step = 2
@@ -827,6 +904,8 @@ class FourierSLM(CameraSLM):
             # Determine whether to use a progress bar.
             if verbose:
                 description = "superpixel=({},{})".format(index[0], index[1])
+                np.savez(description + "_back.npz", background_image)
+                np.savez(description + "_norm.npz", normalization_image)
                 prange = tqdm(phases, position=0, leave=False, desc=description)
             else:
                 prange = phases

@@ -166,7 +166,7 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
         (out of range is set to ``nan``).
     out : numpy.ndarray or None
         The array to place the output data into.
-        Should be the same shape as ``images``, 
+        Should be the same shape as ``images``,
         according to the format of :meth:`image_moment()`.
         In-place if ``out`` equals ``images``.
 
@@ -188,12 +188,12 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     else:   # Mean + deviations * std case
         if ignore_nan:
             threshold = (
-                np.nanmean(images, axis=(1, 2)) 
+                np.nanmean(images, axis=(1, 2))
                 + deviations*np.nanstd(images, axis=(1, 2))
             )
         else:
             threshold = (
-                np.mean(images, axis=(1, 2)) 
+                np.mean(images, axis=(1, 2))
                 + deviations*np.std(images, axis=(1, 2))
             )
 
@@ -364,7 +364,7 @@ def image_normalize(images, nansum=False, remove_field=False):
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
     remove_field : bool
-        Whether to apply :meth:`.image_zero_median()` to avoid dominating the moments by 
+        Whether to apply :meth:`.image_remove_field()` to avoid dominating the moments by
         the field. ``nansum`` is passed as ``ignore_nan``.
 
 
@@ -379,7 +379,7 @@ def image_normalize(images, nansum=False, remove_field=False):
         images = np.array(images, dtype=np.float)
         if len(images.shape) == 2:
             images = np.reshape(images, (1, images.shape[0], images.shape[1]))
-    
+
     img_count = images.shape[0]
 
     normalization = image_normalization(images, nansum=nansum)
@@ -657,7 +657,7 @@ def image_fit(images, function=gaussian2d, guess=None, plot=False):
 
     for img_idx in range(image_count):
         img = images[img_idx, :, :].ravel()
-    
+
         # Get guess.
         p0 = None if guess is None else guess[:, img_idx]
 
@@ -683,12 +683,12 @@ def image_fit(images, function=gaussian2d, guess=None, plot=False):
 
         result[0, img_idx] = r2
         result[1:, img_idx] = popt
-        
+
         # Plot.
         if plot:
             fig, axs = plt.subplots(1, 3, figsize=(3 * 6.4, 4.8))
             fig.suptitle("Image {}".format(img_idx))
-            
+
             ax0, ax1, ax2 = axs
 
             ax0.imshow(np.reshape(img, img_shape))

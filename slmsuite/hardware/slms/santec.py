@@ -1,6 +1,6 @@
 """
 Hardware control for Santec SLMs.
-Santec LCoS SLM-200, SLM-210, SLM-300, ...
+Tested with Santec LCoS SLM-200, SLM-210, and SLM-300.
 
 Note
 ~~~~
@@ -15,7 +15,7 @@ These files should be copied in before use.
 Note
 ~~~~
 Santec provides base wavefront correction accounting for the curvature of the SLM surface.
-Consider loading these files via :meth:`.SLM..load_vendor_phase_correction()`
+Consider loading these files via :meth:`.SLM.load_vendor_phase_correction()`
 """
 import os
 import ctypes
@@ -24,21 +24,14 @@ import cv2
 
 from .slm import SLM
 
-if hasattr(os, "add_dll_directory"):
-    try:
-        # Python >= 3.8 requires the search path for .dll loading.
-        os.add_dll_directory(os.path.dirname(os.path.abspath(__file__)))
-        # Load Santec's header file.
-        from . import _slm_win as slm_funcs
-    except BaseException as e:
-        # Provide an informative error should something go wrong.
-        print("Santec DLLs not installed. Install these to use Santec SLMs.")
-        print(  "  Files from Santec must be present in the slms directory:\n"
-                "  - A header file (_slm_win.py) and\n"
-                "  - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).\n"
-                "Check that theses files are present and are error-free.\n{}".format(e))
-else:
-    print("santec.py: os has no attribute add_dll_directory.")
+try:                        # Load Santec's header file.
+    from . import _slm_win as slm_funcs
+except BaseException as e:  # Provide an informative error should something go wrong.
+    print("santec.py: Santec DLLs not installed. Install these to use Santec SLMs.")
+    print(  "  Files from Santec must be present in the slms directory:\n"
+            "  - A header file (_slm_win.py) and\n"
+            "  - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).\n"
+            "Check that theses files are present and are error-free.\n{}".format(e))
 
 
 class Santec(SLM):

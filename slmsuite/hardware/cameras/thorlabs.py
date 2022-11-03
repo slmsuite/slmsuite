@@ -15,6 +15,7 @@ References
 import os
 import sys
 import time
+import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -371,7 +372,7 @@ class ThorCam(Camera):
             while time.time() - t < timeout_s and frame is None:
                 frame = self.cam.get_pending_frame_or_null()
 
-            ret = self.transform(frame.image_buffer) if frame is not None else None
+            ret = self.transform(np.copy(frame.image_buffer)) if frame is not None else None
 
         return ret
 

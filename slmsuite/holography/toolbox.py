@@ -10,6 +10,8 @@ import cv2
 import matplotlib.pyplot as plt
 from math import factorial
 
+from slmsuite.misc.constants import INTEGER_TYPES, REAL_TYPES
+
 # Phase pattern collation and manipulation
 def imprint(
     matrix,
@@ -496,12 +498,12 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
 
     if N is None:
         affine_return = True
-    elif isinstance(N, int):
+    elif isinstance(N, INTEGER_TYPES):
         if N <= 0:
             affine_return = True
         else:
             N = (N, N)
-    elif len(N) == 2 and isinstance(N[0], int) and isinstance(N[1], int):
+    elif len(N) == 2 and isinstance(N[0], INTEGER_TYPES) and isinstance(N[1], INTEGER_TYPES):
         if N[0] <= 0 or N[1] <= 0:
             affine_return = True
         else:
@@ -591,8 +593,8 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     if (
         isinstance(grid, (list, tuple))
-        and isinstance(grid[0], (int))
-        and isinstance(grid[1], (int))
+        and isinstance(grid[0], INTEGER_TYPES)
+        and isinstance(grid[1], INTEGER_TYPES)
     ):
         shape = grid
     else:
@@ -785,7 +787,7 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
     assert center.shape == (2,)
 
     # Parse focal length.
-    if isinstance(f, (int, float)):
+    if isinstance(f, REAL_TYPES):
         f = [f, f]
     if isinstance(f, (list, tuple, np.ndarray)):
         f = np.squeeze(f)

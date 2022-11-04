@@ -14,6 +14,7 @@ from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import SpotHologram
 from slmsuite.holography.toolbox import blaze, imprint, format_2vectors
+from slmsuite.misc.constants import REAL_TYPES
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
 from slmsuite.misc.fitfunctions import cos
 
@@ -215,9 +216,9 @@ class FourierSLM(CameraSLM):
             :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`
         """
         # Parse variables
-        if isinstance(array_shape, (int, float)):
+        if isinstance(array_shape, REAL_TYPES):
             array_shape = [int(array_shape), int(array_shape)]
-        if isinstance(array_pitch, (int, float)):
+        if isinstance(array_pitch, REAL_TYPES):
             array_pitch = [array_pitch, array_pitch]
 
         self.fourier_calibration = None
@@ -485,7 +486,7 @@ class FourierSLM(CameraSLM):
         """
         if slm_size is None:
             slm_size = self.slm.shape
-        if isinstance(slm_size, (int, float)):
+        if isinstance(slm_size, REAL_TYPES):
             slm_size = (slm_size, slm_size)
 
         size_kxy = (1 / slm_size[0], 1 / slm_size[1])

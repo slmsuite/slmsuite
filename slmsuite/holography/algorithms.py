@@ -51,6 +51,7 @@ except ImportError:
 
 # Import helper functions
 from slmsuite.holography import analysis, toolbox
+from slmsuite.misc.constants import REAL_TYPES
 
 
 class Hologram:
@@ -1621,11 +1622,12 @@ class SpotHologram(FeedbackHologram):
             # Calculate the width of the integration region for the spot.
             # Currently bounded between a width of 3 and 15, but maybe this
             # should be opened up to the user.
-            psf = 2 * int(toolbox.smallest_distance(self.spot_ij) / 2) + 1
-            if psf < 3:
-                psf = 3
-            if psf > 15:
-                psf = 15
+            # TODO: @tpr0p doesn't understand what `psf` stands for from context. Consider
+            # changing name.
+            psf = toolbox.smallest_distance(self.spot_ij) / 2
+            psf = 7 if not np.isfinite(psf) else int(psf)
+            psf = 2 * psf + 1
+            psf = np.clip(psf, 3, 15)
 
             if (
                 np.any(self.spot_ij[0] < psf / 2)
@@ -1691,9 +1693,9 @@ class SpotHologram(FeedbackHologram):
             Any other arguments are passed to :meth:`__init__()`.
         """
         # Parse size and pitch.
-        if isinstance(array_shape, (int, float)):
+        if isinstance(array_shape, REAL_TYPES):
             array_shape = (int(array_shape), int(array_shape))
-        if isinstance(array_pitch, (int, float)):
+        if isinstance(array_pitch, REAL_TYPES):
             array_pitch = (array_pitch, array_pitch)
 
         # Make the grid edges.

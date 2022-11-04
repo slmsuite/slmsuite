@@ -8,6 +8,7 @@ from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
 from scipy.optimize import curve_fit
 
 from slmsuite.holography.toolbox import format_2vectors
+from slmsuite.misc.constants import INTEGER_TYPES
 from slmsuite.misc.fitfunctions import gaussian2d
 
 
@@ -52,7 +53,7 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
         where each float corresponds to the :meth:`numpy.sum` of a cropped image.
     """
     # Clean variables.
-    if isinstance(size, int):
+    if isinstance(size, INTEGER_TYPES):
         size = (size, size)
 
     vectors = format_2vectors(vectors)

@@ -14,7 +14,9 @@ References
 
 import os
 import re
+
 import h5py
+import numpy as np
 
 
 def _max_numeric_id(path, name, extension=None, kind="file", digit_count=5):
@@ -164,7 +166,7 @@ def latest_path(path, name, extension=None, kind="file", digit_count=5):
     return ret
 
 
-def read_h5(file_path):
+def read_h5(file_path, decode_bytes=True):
     """
     Read data from an h5 file into a dictionary.
 
@@ -177,11 +179,21 @@ def read_h5(file_path):
     -------
     data : dict
         Dictionary of data stored in the file.
+    decode_bytes : bool
+        Whether or not objects with type `bytes` should be decoded.
+        By default HDF5 writes strings as bytes objects; this functionality
+        will make strings read back from the file `str` type.
     """
     data = {}
     with h5py.File(file_path, "r") as file_:
         for key in file_.keys():
-            data[key] = file_[key][()]
+            data_ = file_[key][()]
+            if decode_bytes:
+                if isinstance(data_, bytes):
+                    data_ = bytes.decode(data_)
+                elif isinstance(data_, np.ndarray) and isinstance(data_[0], bytes):
+                    data_ = np.vectorize(bytes.decode)(data_)
+            data[key] = data_
 
     return data
 

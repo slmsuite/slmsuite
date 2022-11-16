@@ -1,5 +1,25 @@
 """
 Helper functions for manipulating phase patterns.
+
+Note
+~~~~
+slmsuite uses zero-order from the left on coordinate arrays.
+
+Consider the following coordinate array centered on the number line,
+x denotes position coordinate, i denotes index in the array.
+x = -3  -2  -1   0   1   2   3
+     |   |   |-->|-->|-->|   |
+i =          0   1   2   
+Here, index 1 is the center of the array.
+
+Consider the following coordinate array with an even
+number of elements.
+x = -3  -2  -1   0   1   2   3
+     |   |-->|-->|-->|-->|   |
+i =      0   1   2   3   
+Here, index 2 is the center of the array.
+
+
 """
 
 import numpy as np
@@ -10,7 +30,9 @@ import cv2
 import matplotlib.pyplot as plt
 from math import factorial
 
-from slmsuite.misc.constants import INTEGER_TYPES, REAL_TYPES
+from slmsuite.misc.math import (
+    INTEGER_TYPES, REAL_TYPES, iseven
+)
 
 # Phase pattern collation and manipulation
 def imprint(
@@ -332,6 +354,104 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
 
 
 # Vector and window helper functions
+def high_coordinate(N):
+    """
+    The high coordinate in a coordinate array, normalized to dx = 1.
+
+    Parameters
+    ----------
+    N : int
+        The number of elements in the coordinate array.
+
+    Returns
+    -------
+    int
+        The highest coordinate in the coordinate array.
+    """
+    return N / 2 - 1 if iseven(N) else (N - 1) / 2
+
+
+def low_coordinate(N):
+    """
+    The low coordinate in a coordinate array, normalized to dx = 1.
+
+    Parameters
+    ----------
+    N : int
+        The number of elements in the coordinate array.
+
+    Returns
+    -------
+    int
+        The lowest coordinate in the coordinate array.
+    """
+    return -N / 2 if iseven(N) else -(N - 1) / 2
+
+
+def center_index(N):
+    """
+    Determine the middle index of a coordinate array.
+    See module note for convetion on indexing coordinate array values.
+
+    Parameters
+    ----------
+    N : int
+        The number of elements in the coordinate array.
+
+    Returns
+    -------
+    int
+        The index of the center of the array.
+    """
+    return N / 2 if iseven(N) else (N - 1) / 2
+
+
+def generate_coordinate_array(N):
+    """
+    Generate coordinate values for a coordinate array.
+
+    Parameters
+    ----------
+    N : int
+        The number of values in the coordinate array.
+    
+    Returns
+    -------
+    numpy.ndarray<int> (N,)
+        coordinates of the coordinate array.
+    """
+    return np.arange(low_coordinate(N), high_coordinate(N))
+
+
+def _process_grid(grid):
+    r"""
+    Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
+    coordinate of each corresponding pixel. This helper function interprets what the user passes.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+
+    Returns
+    --------
+    (array_like, array_like)
+        The grids in ``(x_grid, y_grid)`` form.
+    """
+
+    # See if grid has x_grid or y_grid (==> SLM class)
+    if hasattr(grid, "x_grid") and hasattr(grid, "y_grid"):
+        return (grid.x_grid, grid.y_grid)
+
+    # Otherwise, assume it's a tuple
+    assert len(grid) == 2, "Expected a 2-tuple with x and y meshgrids."
+
+    return grid
+
+
 def format_2vectors(vectors):
     """
     Validates that an array of 2D vectors is a ``numpy.ndarray`` of shape ``(2, N)``.
@@ -663,39 +783,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     return filled_regions
 
-
-# Basic functions
-def _process_grid(grid):
-    r"""
-    Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
-    coordinate of each corresponding pixel. This helper function interprets what the user passes.
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-
-    Returns
-    --------
-    (array_like, array_like)
-        The grids in ``(x_grid, y_grid)`` form.
-    """
-
-    # See if grid has x_grid or y_grid (==> SLM class)
-    try:
-        return (grid.x_grid, grid.y_grid)
-    except:
-        pass
-
-    # Otherwise, assume it's a tuple
-    assert len(grid) == 2, "Expected a 2-tuple with x and y meshgrids."
-
-    return grid
-
-
+# Basic patterns.
 def blaze(grid, vector=(0, 0), offset=0):
     r"""
     Returns a simple blaze (phase ramp).
@@ -1217,9 +1305,32 @@ def matheui_gaussian(grid, r, q, w=None):
         The phase for this function.
     """
     (x_grid, y_grid) = _process_grid(grid)
-
-    w = _determine_source_radius(grid, w)
     raise NotImplementedError()
+
+
+def tophat(grid, radius=None):
+    """
+    Tophat amplitude distribution.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    radius : real
+        Active radius of the tophat.
+    
+    """
+    (x_grid, y_grid) = _process_grid(grid)
+    if radius is None:
+        radius = _determine_source_radius(grid, w) / 2
+    
+    if abs(x_grid ** 2 + y_grid ** 2 <= radius ** 2):
+        return 1.
+    else:
+        return 0.
 
 
 # Padding

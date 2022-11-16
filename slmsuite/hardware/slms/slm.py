@@ -130,7 +130,10 @@ class SLM:
         # Make normalized coordinate grids.
         xpix = np.linspace(-(width - 1) / 2.0, (width - 1) / 2.0, width)
         ypix = np.linspace(-(height - 1) / 2.0, (height - 1) / 2.0, height)
-        self.x_grid, self.y_grid = np.meshgrid(self.dx * xpix, self.dy * ypix)
+        self.x_grid, self.y_grid = np.meshgrid(
+            self.dx * toolbox.generate_coordinate_array(width),
+            self.dy * toolbox.generate_coordinate_array(height)
+        )
 
         # Phase and amplitude corrections.
         self.phase_correction = None

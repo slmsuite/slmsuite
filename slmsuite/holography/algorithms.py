@@ -211,6 +211,8 @@ class Hologram:
             self.shape = target.shape
 
         # Warn the user about powers of two.
+        # TODO: @tpr0p thinks that in most modern FFTs they are fast if
+        # products of the first few primes, not necessarily powers of 2.
         if any(np.log2(self.shape) != np.round(np.log2(self.shape))):
             print(
                 "Warning: Hologram target shape {} is not a power of 2; consider using "

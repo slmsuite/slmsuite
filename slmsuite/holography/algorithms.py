@@ -1670,6 +1670,12 @@ class SpotHologram(FeedbackHologram):
         the choice of ``basis``. For the ``"ij"`` basis, ``cameraslm`` must be included as one
         of the ``kwargs``. See :meth:`__init__()` for more ``basis`` information.
 
+        Important
+        ~~~~~~~~~
+        Spots will be rounded to the grid of computational k-space ``"knm"``, which is
+        the target that algorithms optimize towards. Choose ``array_pitch`` and
+        ``array_center`` carefully to avoid undesired pitch non-uniformity caused by this rounding.
+
         Parameters
         ----------
         shape : (int, int)

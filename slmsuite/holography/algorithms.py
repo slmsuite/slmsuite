@@ -1732,7 +1732,7 @@ class SpotHologram(FeedbackHologram):
 
         shape = toolbox.format_2vectors(self.shape).astype(np.float)
 
-        self.spot_knm_rounded = np.ceil(shape / 2 + self.spot_knm.astype(np.float))
+        self.spot_knm_rounded = np.around(shape / 2 + self.spot_knm.astype(np.float))
         self.spot_knm_rounded = self.spot_knm_rounded.astype(np.int)
 
         if self.cameraslm is not None:

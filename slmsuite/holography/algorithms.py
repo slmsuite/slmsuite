@@ -1672,9 +1672,10 @@ class SpotHologram(FeedbackHologram):
 
         Important
         ~~~~~~~~~
-        Spots will be rounded to the grid of computational k-space ``"knm"``, which is
-        the target that algorithms optimize towards. Choose ``array_pitch`` and
-        ``array_center`` carefully to avoid undesired pitch non-uniformity caused by this rounding.
+        Spot positions will be rounded to the grid of computational k-space ``"knm"``,
+        to create the target image (of finite size) that algorithms optimize towards.
+        Choose ``array_pitch`` and ``array_center`` carefully to avoid undesired pitch
+        non-uniformity caused by this rounding.
 
         Parameters
         ----------

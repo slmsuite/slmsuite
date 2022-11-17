@@ -1697,12 +1697,10 @@ class SpotHologram(FeedbackHologram):
             array_pitch = (array_pitch, array_pitch)
 
         # Make the grid edges.
-        x_edge = (np.arange(array_shape[0]) - (array_shape[0] - 1) / 2) * array_pitch[
-            0
-        ] + array_center[0]
-        y_edge = (np.arange(array_shape[1]) - (array_shape[1] - 1) / 2) * array_pitch[
-            1
-        ] + array_center[1]
+        x_edge = (np.arange(array_shape[0]) - (array_shape[0] - 1) / 2)
+        x_edge = x_edge * array_pitch[0] + array_center[0]
+        y_edge = (np.arange(array_shape[1]) - (array_shape[1] - 1) / 2)
+        y_edge = y_edge * array_pitch[1] + array_center[1]
 
         # Make the grid lists.
         x_grid, y_grid = np.meshgrid(x_edge, y_edge, sparse=False, indexing="xy")

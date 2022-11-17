@@ -412,6 +412,24 @@ def center_index(N):
     return N / 2 - 1 if iseven(N) else (N - 1) / 2
 
 
+def get_coordinate_index(x, N):
+    """
+    Get the index in a coordinate array given a coordinate.
+
+    Parameters
+    ----------
+    x : real
+        The coordinate.
+    N : int
+        The length of the coordinate array to which `x` belongs.
+
+    Returns
+    -------
+    i : int
+        The index of `x`.
+    """
+    if iseven(N)
+
 def generate_coordinate_array(N):
     """
     Generate coordinate values for a coordinate array.

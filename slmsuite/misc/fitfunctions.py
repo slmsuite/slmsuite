@@ -107,6 +107,7 @@ def lorentzian(x, x0, a, c, Q):
     """
     return a / (1 + ((x - x0) / (x0 / Q / 2)) ** 2) + c
 
+
 def lorentzian_jacobian(x, x0, a, c, Q):
     """
     Jacobian of :meth:`lorentzian`.
@@ -273,3 +274,27 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     argument = np.square(x) * M[0,0] + np.square(y) * M[1,1] + 2 * x * y * M[1,0]
 
     return c + a * np.exp(-.5 * argument)
+
+
+def tophat2d(xy, x0, y0, a, r):
+    r"""
+    For fitting a tophat.
+
+    Parameters
+    ----------
+    xy : numpy.ndarray
+        Points to fit upon (x, y).
+    x0, y0 : real
+        Vector offset.
+    a : real
+        Amplitude.
+    r : real
+        Active radius of the tophat.
+    
+    Returns
+    -------
+    z : numpy.ndarray
+    """
+    x = xy[0] - x0
+    y = xy[1] - y0
+    return np.where(x ** 2 + y ** 2 <= r ** 2, a, 0)

@@ -1,25 +1,28 @@
-"""
+r"""
 Helper functions for manipulating phase patterns.
 
 Note
 ~~~~
-slmsuite uses zero-order from the left on coordinate arrays.
+slmsuite uses zero-order-hold from the right on coordinate arrays.
 
 Consider the following coordinate array centered on the number line,
-x denotes position coordinate, i denotes index in the array.
-x = -3  -2  -1   0   1   2   3
-     |   |   |-->|-->|-->|   |
-i =          0   1   2   
-Here, index 1 is the center of the array.
+`x` denotes position coordinate, `i` denotes index in the array: ::
+
+   x = -3.0 -2.0 -1.0  0.0  1.0  2.0  3.0 
+         |    |(---|(---|(---|    |    |
+   i =             0    1    2
+
+The center of the array is at `i = 1`.
 
 Consider the following coordinate array with an even
-number of elements.
-x = -3  -2  -1   0   1   2   3
-     |   |-->|-->|-->|-->|   |
-i =      0   1   2   3   
-Here, index 2 is the center of the array.
+number of elements: ::
 
+   x = -3.5 -2.5 -1.5 -0.5  0.5  1.5  2.5  3.5
+         |    |(---|(---|(---|(---|    |    |
 
+   i =             0    1    2    3
+
+The center of the array is at `i = 1`.
 """
 
 import numpy as np
@@ -220,7 +223,8 @@ def imprint(
     return matrix
 
 
-# Unit helper functions
+# Unit helper functions.
+# TODO: @tpr0p thinks knm should be kij and ij should be xij
 blaze_units = ["norm", "kxy", "rad", "knm", "freq", "lpmm", "mrad", "deg"]
 
 
@@ -357,6 +361,7 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
 def high_coordinate(N):
     """
     The high coordinate in a coordinate array, normalized to dx = 1.
+    See the module note on slmsuite's coordinate array convention.
 
     Parameters
     ----------
@@ -365,15 +370,16 @@ def high_coordinate(N):
 
     Returns
     -------
-    int
+    real
         The highest coordinate in the coordinate array.
     """
-    return N / 2 - 1 if iseven(N) else (N - 1) / 2
+    return (N - 1) / 2
 
 
 def low_coordinate(N):
     """
     The low coordinate in a coordinate array, normalized to dx = 1.
+    See the module note on slmsuite's coordinate array convention.
 
     Parameters
     ----------
@@ -382,16 +388,16 @@ def low_coordinate(N):
 
     Returns
     -------
-    int
+    real
         The lowest coordinate in the coordinate array.
     """
-    return -N / 2 if iseven(N) else -(N - 1) / 2
+    return -(N - 1) / 2
 
 
 def center_index(N):
     """
     Determine the middle index of a coordinate array.
-    See module note for convetion on indexing coordinate array values.
+    See the module note for slmsuite's coordinate array convention.
 
     Parameters
     ----------
@@ -403,7 +409,7 @@ def center_index(N):
     int
         The index of the center of the array.
     """
-    return N / 2 if iseven(N) else (N - 1) / 2
+    return N / 2 - 1 if iseven(N) else (N - 1) / 2
 
 
 def generate_coordinate_array(N):
@@ -420,7 +426,7 @@ def generate_coordinate_array(N):
     numpy.ndarray<int> (N,)
         coordinates of the coordinate array.
     """
-    return np.arange(low_coordinate(N), high_coordinate(N))
+    return np.linspace(low_coordinate(N), high_coordinate(N), N)
 
 
 def _process_grid(grid):
@@ -783,7 +789,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     return filled_regions
 
-# Basic patterns.
+# Standard phase patterns.
 def blaze(grid, vector=(0, 0), offset=0):
     r"""
     Returns a simple blaze (phase ramp).
@@ -1114,7 +1120,7 @@ def _zernike_coefficients(n, m):
 
     return _zernike_cache[key]
 
-# Structured light
+# Structured light phase patterns.
 def _determine_source_radius(grid, w=None):
     r"""
     Helper function to determine the assumed Gaussian source radius for various
@@ -1306,31 +1312,6 @@ def matheui_gaussian(grid, r, q, w=None):
     """
     (x_grid, y_grid) = _process_grid(grid)
     raise NotImplementedError()
-
-
-def tophat(grid, radius=None):
-    """
-    Tophat amplitude distribution.
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-    radius : real
-        Active radius of the tophat.
-    
-    """
-    (x_grid, y_grid) = _process_grid(grid)
-    if radius is None:
-        radius = _determine_source_radius(grid, w) / 2
-    
-    if abs(x_grid ** 2 + y_grid ** 2 <= radius ** 2):
-        return 1.
-    else:
-        return 0.
 
 
 # Padding

@@ -14,7 +14,7 @@ from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import SpotHologram
 from slmsuite.holography.toolbox import blaze, imprint, format_2vectors
-from slmsuite.misc.constants import REAL_TYPES
+from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
 from slmsuite.misc.fitfunctions import cos
 

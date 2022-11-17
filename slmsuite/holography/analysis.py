@@ -8,7 +8,7 @@ from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
 from scipy.optimize import curve_fit
 
 from slmsuite.holography.toolbox import format_2vectors
-from slmsuite.misc.constants import INTEGER_TYPES
+from slmsuite.misc.math import INTEGER_TYPES
 from slmsuite.misc.fitfunctions import gaussian2d
 
 

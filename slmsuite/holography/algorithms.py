@@ -51,7 +51,7 @@ except ImportError:
 
 # Import helper functions
 from slmsuite.holography import analysis, toolbox
-from slmsuite.misc.constants import REAL_TYPES
+from slmsuite.misc.math import REAL_TYPES
 
 
 class Hologram:
@@ -306,8 +306,6 @@ class Hologram:
         dimensions for the shape are selected.
         By default, pads to the smallest square power of two.
 
-        Future: Add a setting to make pad based on available memory.
-
         Parameters
         ----------
         slm_shape : (int, int) OR slmsuite.hardware.FourierSLM
@@ -332,6 +330,7 @@ class Hologram:
         (int, int)
             Shape of the computational space which satisfies the above requirements.
         """
+        # TODO: Add a setting to make pad based on available memory.
         try:
             cameraslm = slm_shape
             slm_shape = cameraslm.slm.shape
@@ -530,8 +529,9 @@ class Hologram:
         callback : callable OR None
             See :meth:`.optimize()`.
         """
-        # Future: in-place FFT
-        # Future: rename nearfield and farfield to both be "complex" to avoid hogging memory.
+        # TODO: in-place FFT
+        # TODO: rename nearfield and farfield to both be "complex" to avoid hogging memory.
+        # TODO: Sparse GPU matrices.
 
         # Proxy to initialize nearfield with the correct shape and (complex) type.
         nearfield = cp.exp(1j * self.target)
@@ -544,7 +544,13 @@ class Hologram:
             # Everything else is zero because power outside the SLM is assumed unreflected.
             # This is optimized for when shape is much larger than slm_shape.
             nearfield.fill(0)
+            # TODO: @tpr0p suspects that indexing GPU arrays like this is slow.
+            # It will probably be faster to keep the phase padded throughout
+            # computation and elt-wise multiply the phase with a bitmask
+            # to zero the padded region here.
             nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
+            # TODO: @tpr0p suggests fftshifting the weights rather than the 
+            # farfield profile since the weights are never modified in optimization.
             farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm="ortho"))
 
             # Calculate amp_ff, if needed.
@@ -600,7 +606,7 @@ class Hologram:
                 cp.exp(1j * self.phase_ff, out=farfield)
                 cp.multiply(farfield, self.weights, out=farfield)
 
-                # Future: check this potentially-optimized method
+                # FUTURE: check this potentially-optimized method
                 # farfield.fill(0)
                 # mask = self.weights != 0
                 # cp.exp(1j * self.phase_ff[mask], out=farfield[mask])
@@ -611,7 +617,7 @@ class Hologram:
                 cp.multiply(farfield, self.weights, out=farfield)
                 cp.nan_to_num(farfield, copy=False, nan=0)
 
-                # Future: check this potentially-optimized method
+                # FUTURE: check this potentially-optimized method
                 # farfield.fill(0)
                 # mask = self.weights != 0
                 # cp.divide(farfield[mask], cp.abs(farfield[mask]), \
@@ -637,6 +643,8 @@ class Hologram:
         self.phase_ff = cp.angle(farfield)
 
     # User interactions: Changing the target and recovering the phase.
+    # TODO: Why are these two separate functions when they accept the same
+    # arguments and do the same thing?
     def _update_target(self, new_target, reset_weights=False):
         """
         Change the target to something new. This method handles cleaning and normalization.
@@ -1009,6 +1017,7 @@ class Hologram:
         axs[1].set_title(title + "Phase")
 
         plt.show()
+    
     def plot_farfield(self, source=None, limits=None, limit_padding=0.1, title=''):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
@@ -1068,7 +1077,7 @@ class Hologram:
                 limits.append(limit)
 
         # Plot the full target, blurred so single pixels are visible in low res
-        b = 2 * int(max(self.shape) / 500) + 1  # Future: fix arbitrary
+        b = 2 * int(max(self.shape) / 500) + 1  # FUTURE: fix arbitrary
         axs[0].imshow(cv2.GaussianBlur(npsource, (b, b), 0))
 
         # Plot a red rectangle to show the extents of the zoom region
@@ -1098,7 +1107,7 @@ class Hologram:
         axs[0].set_title(title + "Full")
 
         # Zoom in on our spots
-        b = 2*int(np.diff(limits[0])/500) + 1  # Future: fix arbitrary
+        b = 2*int(np.diff(limits[0])/500) + 1  # FUTURE: fix arbitrary
         axs[1].imshow(cv2.GaussianBlur(npsource, (b, b), 0))
         axs[1].set_xlim(limits[0])
         axs[1].set_ylim(np.flip(limits[1]))
@@ -1257,6 +1266,8 @@ class FeedbackHologram(Hologram):
             user should generally provide an array.
         cameraslm : slmsuite.hardware.cameraslms.FourierSLM OR None
             See :attr:`cameraslm`.
+        kwargs
+            See :meth:`Hologram.__init__`.
         """
         # Use the Hologram construtor to initialize self.target with proper shape,
         # pass other arguments (esp. slm_shape).
@@ -1266,7 +1277,7 @@ class FeedbackHologram(Hologram):
             amp = self.cameraslm.slm.measured_amplitude
             slm_shape = self.cameraslm.slm.shape
         else:
-            amp = None
+            amp = kwargs.pop("amp", None)
             slm_shape = None
 
         if not "slm_shape" in kwargs:
@@ -1362,7 +1373,7 @@ class FeedbackHologram(Hologram):
             else:
                 blur_ij = 0
 
-        # Future: use cp_gaussian_filter; was having trouble with this.
+        # FUTURE: use cp_gaussian_filter; was having trouble with this.
         if blur_ij > 0:
             img = sp_gaussian_filter(img, (blur_ij, blur_ij), output=img, truncate=2)
 
@@ -1380,7 +1391,7 @@ class FeedbackHologram(Hologram):
             cval=0,
         )
 
-        # Filter the image. Future: fix.
+        # Filter the image. FUTURE: fix.
         # target = cp_gaussian_filter1d(target, blur, axis=0, output=target, truncate=2)
         # target = cp_gaussian_filter1d(target, blur, axis=1, output=target, truncate=2)
 
@@ -1413,7 +1424,7 @@ class FeedbackHologram(Hologram):
             if basis == "knm":  # Compute the knm basis image.
                 self.img_knm = self.ijcam_to_knmslm(self.img_ij, out=self.img_knm)
                 cp.sqrt(self.img_knm, out=self.img_knm)
-            else:  # The old image is outdated, erase it. Future: memory concerns?
+            else:  # The old image is outdated, erase it. FUTURE: memory concerns?
                 self.img_knm = None
 
             self.img_ij = np.sqrt(
@@ -1527,6 +1538,9 @@ class SpotHologram(FeedbackHologram):
         For instance, the user can request dimmer or brighter spots.
     """
 
+    # TODO: @tpr0p thinks that "coordinates" is the best name
+    # for location data, rather than "points" or "vectors".
+    # See, e.g. how numpy talks about coordinate arrays in np.meshgrid.
     def __init__(
         self, shape, spot_vectors, basis="knm", spot_amp=None, cameraslm=None, **kwargs
     ):
@@ -1588,9 +1602,13 @@ class SpotHologram(FeedbackHologram):
 
             self.spot_kxy = vectors
 
-            try:
+            if (
+                hasattr(cameraslm, "fourier_calibration")
+                and cameraslm.fourier_calibration is not None
+                ):
                 self.spot_ij = cameraslm.kxyslm_to_ijcam(vectors)
-            except:  # This is okay for non-feedback GS, so we don't error.
+            # This is okay for non-feedback GS, so we don't error.
+            else:  
                 self.spot_ij = None
 
             self.spot_knm = toolbox.convert_blaze_vector(
@@ -1721,16 +1739,17 @@ class SpotHologram(FeedbackHologram):
 
         # Return a new SpotHologram.
         return SpotHologram(shape, vectors, basis=basis, spot_amp=None, **kwargs)
-
+    
+    # TODO: @ichr can we combine these funcs? - @tpr0p
     def _update_target_spots(self, reset_weights=False, plot=False):
         """
         Wrapped by :meth:`SpotHologram.update_target()`.
         """
-        # Erase previous target in-place. Future: Optimize speed if positions haven't shifted?
+        # Erase previous target in-place. FUTURE: Optimize speed if positions haven't shifted?
         self.target.fill(0)
 
         shape = toolbox.format_2vectors(self.shape).astype(np.float)
-
+        print(shape / 2 + self.spot_knm)
         self.spot_knm_rounded = np.ceil(shape / 2 + self.spot_knm.astype(np.float))
         self.spot_knm_rounded = self.spot_knm_rounded.astype(np.int)
 

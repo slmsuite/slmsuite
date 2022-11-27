@@ -2,6 +2,7 @@
 
 import cv2
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 from functools import reduce
 from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
@@ -24,23 +25,23 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
     images : array_like
         2D image or array of 2D images.
     vectors : array_like of floats
-        2-vector (or 2-vector array) listing location(s) of integration region(s).
+        2-vector (or 2-vector array). Location(s) of integration region anchor(s) in pixels,
+        see ``centered``.
         See :meth:`~slmsuite.holography.toolbox.format_2vectors`.
     size : int or (int, int)
-        Size of the rectangular integration region in ``(w, h)`` format. If a scalar is given,
-        assume square ``(w, w)``.
+        Size of the rectangular integration region in ``(w, h)`` format in pixels.
+        If a scalar is given, assume square ``(w, w)``.
     centered : bool
         Whether to center the integration region on the ``vectors``.
-        If ``False``, the lower left corner is used.
-        Defaults to ``True``.
+        If ``False``, ``vectors`` indicates the upper-left corner of the integration region.
     integrate : bool
         If ``True``, the spatial dimension are integrated (summed), yielding a result of the
-        same length as the number of vectors. Defaults to ``False``.
+        same length as the number of vectors.
     clip : bool
         Whether to allow out-of-range integration regions. ``True`` allows regions outside
         the valid area, setting the invalid region to ``np.nan``
         (or zero if the array datatype does not support ``np.nan``).
-        ``False`` throws an error upon out of range. Defaults to ``False``.
+        ``False`` throws an error upon out of range.
     plot : bool
         Calls :meth:`take_plot()` to visualize the images regions.
 
@@ -64,6 +65,7 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
 
     region_x, region_y = np.meshgrid(edge_x, edge_y)
 
+    # TODO: maybe want np.around here rather than integer truncation
     integration_x = np.add(
         region_x.ravel()[:, np.newaxis].T, vectors[:][0][:, np.newaxis]
     ).astype(np.int)
@@ -574,7 +576,7 @@ def image_ellipticity_angle(variances):
     return .5 * np.arctan2(m11, m20 - m02, where=m20 != m02, out=np.zeros_like(m11))
 
 
-def image_fit(images, function=gaussian2d, guess=None, plot=False):
+def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=False):
     """
     Fit each image in a stack of images to a 2D ``function``.
 
@@ -583,6 +585,8 @@ def image_fit(images, function=gaussian2d, guess=None, plot=False):
     images : numpy.ndarray (image_count, height, width)
         An image or array of images to fit. A single image is interpreted correctly as
         ``(1, h, w)`` even if ``(h, w)`` is passed.
+    grid_ravel : 2-tuple of array_like of reals (height * width)
+        Raveled components of the meshgrid describing coordinates over the images.
     function : lambda ((float, float), ... ) -> float
         Some fitfunction which accepts ``(x,y)`` coordinates as first argument.
         Defaults to :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`.
@@ -619,10 +623,11 @@ def image_fit(images, function=gaussian2d, guess=None, plot=False):
     (image_count, w_y, w_x) = images.shape
     img_shape = (w_y, w_x)
 
-    edge_x = np.reshape(np.arange(w_x) - (w_x - 1) / 2.0, (1, 1, w_x))
-    edge_y = np.reshape(np.arange(w_y) - (w_y - 1) / 2.0, (1, w_y, 1))
-    grid_x, grid_y = np.meshgrid(edge_x, edge_y)
-    grid_xy = (grid_x.ravel(), grid_y.ravel())
+    if grid_ravel is None:
+        edge_x = np.reshape(np.arange(w_x) - (w_x - 1) / 2.0, (1, 1, w_x))
+        edge_y = np.reshape(np.arange(w_y) - (w_y - 1) / 2.0, (1, w_y, 1))
+        grid = np.meshgrid(edge_x, edge_y)
+        grid_ravel = (grid[0].ravel(), grid[1].ravel())
 
     # Number of fit parameters the function accepts.
     param_count =  function.__code__.co_argcount - 1
@@ -655,7 +660,8 @@ def image_fit(images, function=gaussian2d, guess=None, plot=False):
                 variances[0:2, :],
                 variances[2, :]
             ))
-
+    
+    # Fit and plot each image.
     for img_idx in range(image_count):
         img = images[img_idx, :, :].ravel()
 
@@ -667,7 +673,7 @@ def image_fit(images, function=gaussian2d, guess=None, plot=False):
         popt = None
 
         try:
-            popt, _ = curve_fit(function, grid_xy, img, ftol=1e-5, p0=p0,)
+            popt, _ = curve_fit(function, grid_ravel, img, ftol=1e-5, p0=p0,)
         except RuntimeError:    # The fit failed if scipy says so.
             fit_succeeded = False
         else:                   # The fit failed if any of the parameters aren't finite.
@@ -675,7 +681,7 @@ def image_fit(images, function=gaussian2d, guess=None, plot=False):
                 fit_succeeded = False
 
         if fit_succeeded:   # Calculate r2.
-            ss_res = np.sum(np.square(img - function(grid_xy, *popt)))
+            ss_res = np.sum(np.square(img - function(grid_ravel, *popt)))
             ss_tot = np.sum(np.square(img - np.mean(img)))
             r2 = 1 - (ss_res / ss_tot)
         else:               # r2 is nan and the fit parameters are the guess or nan.
@@ -687,19 +693,33 @@ def image_fit(images, function=gaussian2d, guess=None, plot=False):
 
         # Plot.
         if plot:
+            # Data.
+            data = np.reshape(img, img_shape)
+            if p0 is not None:
+                guess_ = np.reshape(function(grid_ravel, *p0), img_shape)
+            else:
+                guess_ = np.zeros(img_shape)
+            result_ = np.reshape(function(grid_ravel, *popt), img_shape)
+            vmin = np.min((
+                np.min(data),
+                np.min(guess_) if p0 is not None else np.inf,
+                np.min(result_)
+            ))
+            vmax = np.max((
+                np.max(data),
+                np.max(guess_) if p0 is not None else -np.inf,
+                np.max(result_)
+            ))
+
+            # Plot.
             fig, axs = plt.subplots(1, 3, figsize=(3 * 6.4, 4.8))
             fig.suptitle("Image {}".format(img_idx))
-
             ax0, ax1, ax2 = axs
-
-            ax0.imshow(np.reshape(img, img_shape))
+            ax0.imshow(data, vmin=vmin, vmax=vmax)
             ax0.set_title("Data")
-
-            if p0 is not None:
-                ax1.imshow(np.reshape(function(grid_xy, *p0), img_shape))
-                ax1.set_title("Guess")
-
-            ax2.imshow(np.reshape(function(grid_xy, *popt), img_shape))
+            ax1.imshow(guess_, vmin=vmin, vmax=vmax)
+            ax1.set_title("Guess")
+            ax2.imshow(result_, vmin=vmin, vmax=vmax)
             ax2.set_title("Result")
 
             plt.show()
@@ -740,7 +760,7 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
     .. [1] https://docs.opencv.org/3.4/d8/da7/structcv_1_1SimpleBlobDetector_1_1Params.html
     .. [2] https://learnopencv.com/blob-detection-using-opencv-python-c/
     """
-    cv2img = _make_8bit(np.copy(img))
+    img_8it = _make_8bit(np.copy(img))
     params = cv2.SimpleBlobDetector_Params()
 
     # Configure default parameters
@@ -760,23 +780,12 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
 
     # Create the detector and detect blobs
     detector = cv2.SimpleBlobDetector_create(params)
-    blobs = detector.detect(cv2img)
+    blobs = detector.detect(img_8it)
 
     if len(blobs) == 0:
-        blurred = cv2.GaussianBlur(cv2img, (3, 3), 0)
+        raise Exception("No blobs found! Try blurring image.")
 
-        plt.imshow(blurred)
-        plt.colorbar()
-        plt.title("gaussian blurred")
-        plt.show()
-
-        blobs = detector.detect(blurred)
-        if len(blobs) == 0:
-            raise Exception("No blobs found!")
-
-        print([blob.size for blob in blobs])
-
-    # Downselect blobs if desired by kwargs:
+    # Sort blobs according to `filter`.
     if filter == "dist_to_center":
         dist_to_center = [
             np.linalg.norm(np.array(blob.pt) - np.array(img.shape[::-1]) / 2)
@@ -789,7 +798,7 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
             # Try fails when blob is on edge of camera.
             try:
                 blobs[i].response = float(
-                    cv2img[
+                    img_8it[
                         np.ix_(
                             int(blob.pt[1]) + np.arange(-bin_size, bin_size),
                             int(blob.pt[0]) + np.arange(-bin_size, bin_size),
@@ -801,22 +810,67 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
         blobs = [blobs[np.argmax([blob.response for blob in blobs])]]
 
     if plot:
-        for blob in blobs:
-            cv2.circle(
-                cv2img,
-                (int(blob.pt[0]), int(blob.pt[1])),
-                int(blob.size * 4),
-                (255, 0, 0),
-                5,
+        # Get blob statistics.
+        blob_count = len(blobs)
+        blob_centers = np.zeros((2, blob_count))
+        blob_diameters = np.zeros(blob_count)
+        for (blob_idx, blob) in enumerate(blobs):
+            blob_centers[:, blob_idx] = blob.pt
+            blob_diameters[blob_idx] = blob.size
+        blob_xs = blob_centers[0, :]
+        blob_ys = blob_centers[1, :]
+        blob_xmin = np.min(blob_xs)
+        blob_xmax = np.max(blob_xs)
+        blob_ymin = np.min(blob_ys)
+        blob_ymax = np.max(blob_ys)
+        zoom_padx = 2 * (blob_xmax - blob_xmin) / blob_count
+        zoom_pady = 2 * (blob_ymax - blob_ymin) / blob_count
+        # Plot setup.
+        fig, axs = plt.subplots(1, 2)
+        fig.suptitle(title)
+        ax0, ax1 = axs
+        # Full image.
+        vmin = np.min(img_8it)
+        vmax = np.max(img_8it)
+        im = ax0.imshow(img_8it, vmin=vmin, vmax=vmax)
+        ax0.set_title("Full")
+        # Zoomed Image.
+        ax1.imshow(img_8it, vmin=vmin, vmax=vmax)
+        for blob_idx in range(blob_count):
+            patch = matplotlib.patches.Circle(
+                (blob_centers[0, blob_idx], blob_centers[1, blob_idx]),
+                radius=blob_diameters[blob_idx] / 2,
+                color="red",
+                linewidth=1,
+                fill=None
             )
-        plt.imshow(cv2img)
-        plt.title(title)
+            ax1.add_patch(patch)
+        xmax = img.shape[1] + 0.5
+        xmin = 0.5
+        xlims = (
+            np.clip((blob_xmin - zoom_padx), xmin, xmax),
+            np.clip((blob_xmax + zoom_padx), xmin, xmax)
+        )
+        ymax = img.shape[0] + 0.5
+        ymin = 0.5
+        ylims = (
+            np.clip((blob_ymin - zoom_pady), ymin, ymax),
+            np.clip((blob_ymax + zoom_pady), ymin, ymax)
+        )
+        ax1.set_xlim(xlims)
+        ax1.set_ylim(np.flip(ylims))
+        ax1.set_title("Zoom")
+        fig.colorbar(im, ax=ax1)
+
         plt.show()
 
     return blobs, detector
 
 
-def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=False):
+def blob_array_detect(
+    img, size, orientation=None, orientation_check=True, dft_threshold=50,
+    dft_pad_exponent=0, plot=False,
+    ):
     r"""
     Detect an array of spots and return the orientation as an affine transformation.
     Primarily used for calibration.
@@ -843,6 +897,13 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         If enabled, looks for two missing spots at one corner as a parity check on rotation.
         Used by :meth:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibrate()`.
         See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.make_rectangular_array()`.
+    dft_threshold : float in [0, 255]
+        Minimum value of peak in blob detect of the DFT of `img` when `orientation` is `None`.
+        Passed as kwarg to :meth:`blob_detect` with name `minThreshold`.
+    dft_pad_exponent : int
+        Increases the dimensions of the padded `img` before the DFT is taken when `orientation`
+        is `None`. Dimensions are increased like `2 ** dft_pad_exponent`. Increasing
+        this value increases the k-space resolution of the DFT, and can improve orientation detection.
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
 
@@ -852,78 +913,117 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         Orientation dictionary with the following keys, corresponding to
         the affine transformation:
 
-         - ``"M"`` : 2x2 ``numpy.ndarray``
-         - ``"b"`` : 2x1 ``numpy.ndarray``.
+         - ``"M"`` : ``numpy.ndarray`` (2, 2).
+         - ``"b"`` : ``numpy.ndarray`` (2, 1).
     """
-    cv2img = _make_8bit(img)
-    start_orientation = orientation
+    img_8it = _make_8bit(img)
 
     if orientation is None:
         # FFT to find array pitch and orientation
         # Take the largest dimension rounded up to nearest power of 2.
-        fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img)))))
-        dft = np.fft.fftshift(np.fft.fft2(cv2img, s=[fftsize, fftsize]))
+        fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img))))) * 2 ** dft_pad_exponent
+        dft = np.fft.fftshift(np.fft.fft2(img_8it, s=[fftsize, fftsize]))
         fft_blur_size = (
             int(2 * np.ceil(fftsize / 1000)) + 1
         )  # Future: Make not arbitrary.
-        # dft_amp = np.abs(dft) # cv2.GaussianBlur(np.abs(dft), (fft_blur_size, fft_blur_size), 0)
         dft_amp = cv2.GaussianBlur(np.abs(dft), (fft_blur_size, fft_blur_size), 0)
 
         # Need copy for some reason:
         # https://github.com/opencv/opencv/issues/18120
-        minThreshold = 50
         thresholdStep = 10
         blobs, _ = blob_detect(
             dft_amp.copy(),
             plot=False,
-            minThreshold=minThreshold,
+            minThreshold=dft_threshold,
             thresholdStep=thresholdStep,
         )
         blobs = np.array(blobs)
+        dft_fit_failed = len(blobs) < 5
 
-        # Debugging plots
-        if len(blobs) < 5:
-            if plot:
-                blobs, _ = blob_detect(
-                    dft_amp.copy(),
-                    plot=plot,
-                    minThreshold=minThreshold,
-                    thresholdStep=thresholdStep,
-                )
+        if plot:
+            _, axs = plt.subplots(1, 2, figsize=(12, 6))
 
-                plt.imshow(cv2img)
-                plt.show()
+            plt_img = _make_8bit(dft_amp.copy())
 
-                plt_img = _make_8bit(dft_amp.copy())
+            # Determine the bounds of the zoom region, padded by zoom_pad
+            zoom_pad = 50
 
-                plt.imshow(plt_img)
-                plt.title("DFT peaks for scale/rotation")
-                plt.colorbar()
-                plt.xticks([])
-                plt.yticks([])
-                plt.show()
+            x = np.array([blob.pt[0] for blob in blobs])
+            xl = [
+                np.clip(np.amin(x) - zoom_pad, 0, dft_amp.shape[1]),
+                np.clip(np.amax(x) + zoom_pad, 0, dft_amp.shape[1]),
+            ]
 
+            y = np.array([blob.pt[1] for blob in blobs])
+            yl = [
+                np.clip(np.amin(y) - zoom_pad, 0, dft_amp.shape[0]),
+                np.clip(np.amax(y) + zoom_pad, 0, dft_amp.shape[0]),
+            ]
+
+            # Plot the unzoomed DFT.
+            axs[0].imshow(plt_img)
+            # Plot a red rectangle to show the extents of the zoom region
+            rect = plt.Rectangle(
+                [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
+            )
+            axs[0].add_patch(rect)
+            axs[0].set_title("shifted DFT - Full")
+
+            # Plot the zoomed DFT.
+            axs[1].imshow(plt_img)
+            axs[1].set_title("shifted DFT - Zoom")
+            axs[1].set_xlim(xl)
+            axs[1].set_ylim(np.flip(yl))
+            axs[1].scatter(
+                x,
+                y,
+                facecolors="none",
+                edgecolors="r",
+                marker="o",
+                s=1000,
+                linewidths=1,
+            )
+            plt.show()
+
+        if dft_fit_failed:
             raise RuntimeError(
-                "Not enough spots found in FT; expected five. Check exposure time!"
+                "Not enough spots found in DFT, expected 5. Try:\n"
+                "- increase exposure time\n"
+                "- increase `dft_pad_exponent`\n"
+                "- decrease `dft_threshold`"
             )
 
         # Future: improve this part of the algorithm. It sometimes makes mistakes.
+        # TODO: @tpr0p thinks we should just blob detect `img` and then
+        # fit a Bravais lattice to it with least squares. this will also
+        # make it more obvious to the user how to set the threshold value.
+        # it's not clear on first inspection which blobs in the DFT you're
+        # supposed to detect.
 
         # 2.1) Get the max point (DTF center) and its next four neighbors.
+        # TODO: using np.fft.fftfreq and np.fft.fftshift
+        # might be more straightforward and rely less on custom equations
         blob_dist = np.zeros(len(blobs))
         k = np.zeros((len(blobs), 2))
         for i, blob in enumerate(blobs):
             k[i, 0] = -1 / 2 + blob.pt[0] / dft_amp.shape[1]
             k[i, 1] = -1 / 2 + blob.pt[1] / dft_amp.shape[0]
+            # Assumes max at center
             blob_dist[i] = np.linalg.norm(
                 np.array([k[i, 0], k[i, 1]])
-            )  # Assumes max at center
+            )
 
+        # TODO: this sorting isn't used. also blobs are already
+        # sorted by dist to center, see :meth:`blob_detect` with
+        # default `filter` argument.
         sort_ind = np.argsort(blob_dist)[:5]
         blobs = blobs[sort_ind]
         blob_dist = blob_dist[sort_ind]
         k = k[sort_ind]
 
+        # TODO: doesn't this assume that we don't get more
+        # blobs outside of the first 5? w.r.t. center distance.
+        # this depends on the user picking a high `dft_threshold`.
         # 2.2) Calculate array metrics
         left = np.argmin([k[:, 0]])  # Smallest x
         right = np.argmax([k[:, 0]])  # Largest x
@@ -931,6 +1031,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         top = np.argmax([k[:, 1]])  # Largest y
 
         # 2.3) Calculate the vectors in the imaging domain
+        # TODO: @tpr0p is wondering where this formula comes from.
         x = 2 * (k[right, :] - k[left, :]) / (blob_dist[right] + blob_dist[left]) ** 2
         y = 2 * (k[top, :] - k[bottom, :]) / (blob_dist[top] + blob_dist[bottom]) ** 2
 
@@ -1015,7 +1116,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
 
         # 4) Do the autocorrelation
         try:
-            res = cv2.matchTemplate(cv2img, mask, cv2.TM_CCOEFF)
+            res = cv2.matchTemplate(img_8it, mask, cv2.TM_CCOEFF)
             _, max_val, _, max_loc = cv2.minMaxLoc(res)
         except:
             max_val = 0
@@ -1032,7 +1133,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
                     max_loc[1] + np.arange(mask.shape[0]),
                     max_loc[0] + np.arange(mask.shape[1]),
                 )
-                match = cv2img[cam_array_ind]
+                match = img_8it[cam_array_ind]
 
                 wmask = 0.1
                 w = np.max([1, int(wmask * max_pitch)])
@@ -1110,61 +1211,8 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
 
     orientation = {"M": results[index][2], "b": results[index][1]}
 
-    if plot:
-        array_center = orientation["b"]
-        true_centers = np.matmul(orientation["M"], centers) + orientation["b"]
-
-        if start_orientation is None:
-            _, axs = plt.subplots(1, 2, figsize=(12, 6))
-
-            plt_img = _make_8bit(dft_amp.copy())
-
-            # Determine the bounds of the zoom region, padded by zoom_pad
-            zoom_pad = 50
-
-            x = np.array([blob.pt[0] for blob in blobs])
-            xl = [
-                np.clip(np.amin(x) - zoom_pad, 0, dft_amp.shape[1]),
-                np.clip(np.amax(x) + zoom_pad, 0, dft_amp.shape[1]),
-            ]
-
-            y = np.array([blob.pt[1] for blob in blobs])
-            yl = [
-                np.clip(np.amin(y) - zoom_pad, 0, dft_amp.shape[0]),
-                np.clip(np.amax(y) + zoom_pad, 0, dft_amp.shape[0]),
-            ]
-
-            axs[1].imshow(plt_img)
-            axs[1].set_title("DFT Result - Zoom")
-            axs[1].set_xticks([])
-            axs[1].set_yticks([])
-            axs[1].set_xlim(xl)
-            axs[1].set_ylim(np.flip(yl))
-            axs[1].scatter(
-                x,
-                y,
-                facecolors="none",
-                edgecolors="r",
-                marker="o",
-                s=1000,
-                linewidths=1,
-            )
-
-            # Plot the unzoomed figure
-            axs[0].imshow(plt_img)
-
-            # Plot a red rectangle to show the extents of the zoom region
-            rect = plt.Rectangle(
-                [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
-            )
-            axs[0].add_patch(rect)
-            axs[0].set_title("DFT Result - Full")
-            axs[0].set_xticks([])
-            axs[0].set_yticks([])
-
-            plt.show()
-
-    def hone():
+    hone_count = 2
+    for _ in range(hone_count):
         guess_positions = np.matmul(orientation["M"], centers) + orientation["b"]
 
         # Odd helper parameters.
@@ -1209,9 +1257,6 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
 
         orientation["b"] += format_2vectors([np.nanmean(shift_x), np.nanmean(shift_y)])
 
-    hone()
-    hone()
-
     if plot:
         array_center = orientation["b"]
         true_centers = np.matmul(orientation["M"], centers) + orientation["b"]
@@ -1248,7 +1293,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         axs[1].set_xlim(xl)
         axs[1].set_ylim(np.flip(yl))
 
-        axs[0].imshow(cv2img)
+        axs[0].imshow(img_8it)
         axs[0].scatter(array_center[0], array_center[1], c="r", marker="x", s=10)
 
         # Plot a red rectangle to show the extents of the zoom region

@@ -106,8 +106,8 @@ class Hologram:
         The shape of the computational space.
         This often differs from :attr:`slm_shape` due to padding.
     target : numpy.ndarray OR cupy.ndarray
-        Desired far-field amplitude. The goal of optimization.
-        This is of shape :attr:`shape`.
+        Desired far-field amplitude in the slm's "knm" basis.
+        The goal of optimization. This is of shape :attr:`shape`.
     weights : numpy.ndarray OR cupy.ndarray
         The mutable far-field amplitude used in GS.
         Starts as :attr:`target` but may be modified by weighted feedback in WGS.
@@ -331,11 +331,10 @@ class Hologram:
             Shape of the computational space which satisfies the above requirements.
         """
         # TODO: Add a setting to make pad based on available memory.
-        try:
+        cameraslm = None
+        if hasattr(slm_shape, "slm"):
             cameraslm = slm_shape
             slm_shape = cameraslm.slm.shape
-        except:
-            cameraslm = None
 
         if np.isfinite(precision) and cameraslm is not None:
             dpixel = np.amin([cameraslm.slm.dx, cameraslm.slm.dy])
@@ -586,7 +585,10 @@ class Hologram:
                     eff = stats[groups[-1]]["efficiency"][self.iter]
                     if eff > self.flags["fixed_phase_efficiency"]:
                         self.flags["fixed_phase"] = True
-
+                # TODO: tpr0p thinks that all of this flag checking doesn't
+                # need to be executed every loop, and should be moved
+                # outside the core optimization loop. this will also improve
+                # readability.
                 if not "fixed_phase_iterations" in self.flags:
                     self.flags["fixed_phase_iterations"] = 20
                 if self.iter > self.flags["fixed_phase_iterations"]:
@@ -1598,7 +1600,7 @@ class SpotHologram(FeedbackHologram):
                 self.spot_kxy = None
                 self.spot_ij = None
         elif basis == "kxy":  # Normalized units
-            assert cameraslm is not None, "We need an cameraslm to interpret ij."
+            assert cameraslm is not None, "We need a cameraslm to interpret ij."
 
             self.spot_kxy = vectors
 
@@ -1692,6 +1694,13 @@ class SpotHologram(FeedbackHologram):
         the choice of ``basis``. For the ``"ij"`` basis, ``cameraslm`` must be included as one
         of the ``kwargs``. See :meth:`__init__()` for more ``basis`` information.
 
+        Important
+        ~~~~~~~~~
+        Spot positions will be rounded to the grid of computational k-space ``"knm"``,
+        to create the target image (of finite size) that algorithms optimize towards.
+        Choose ``array_pitch`` and ``array_center`` carefully to avoid undesired pitch
+        non-uniformity caused by this rounding.
+
         Parameters
         ----------
         shape : (int, int)
@@ -1719,12 +1728,10 @@ class SpotHologram(FeedbackHologram):
             array_pitch = (array_pitch, array_pitch)
 
         # Make the grid edges.
-        x_edge = (np.arange(array_shape[0]) - (array_shape[0] - 1) / 2) * array_pitch[
-            0
-        ] + array_center[0]
-        y_edge = (np.arange(array_shape[1]) - (array_shape[1] - 1) / 2) * array_pitch[
-            1
-        ] + array_center[1]
+        x_edge = (np.arange(array_shape[0]) - (array_shape[0] - 1) / 2)
+        x_edge = x_edge * array_pitch[0] + array_center[0]
+        y_edge = (np.arange(array_shape[1]) - (array_shape[1] - 1) / 2)
+        y_edge = y_edge * array_pitch[1] + array_center[1]
 
         # Make the grid lists.
         x_grid, y_grid = np.meshgrid(x_edge, y_edge, sparse=False, indexing="xy")
@@ -1740,7 +1747,7 @@ class SpotHologram(FeedbackHologram):
         # Return a new SpotHologram.
         return SpotHologram(shape, vectors, basis=basis, spot_amp=None, **kwargs)
     
-    # TODO: @ichr can we combine these funcs? - @tpr0p
+    # TODO: @ichr can we combine this with :meth:`update_target`? - @tpr0p
     def _update_target_spots(self, reset_weights=False, plot=False):
         """
         Wrapped by :meth:`SpotHologram.update_target()`.
@@ -1749,8 +1756,8 @@ class SpotHologram(FeedbackHologram):
         self.target.fill(0)
 
         shape = toolbox.format_2vectors(self.shape).astype(np.float)
-        print(shape / 2 + self.spot_knm)
-        self.spot_knm_rounded = np.ceil(shape / 2 + self.spot_knm.astype(np.float))
+
+        self.spot_knm_rounded = np.around(shape / 2 + self.spot_knm.astype(np.float))
         self.spot_knm_rounded = self.spot_knm_rounded.astype(np.int)
 
         if self.cameraslm is not None:

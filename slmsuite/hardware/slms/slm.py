@@ -263,6 +263,7 @@ class SLM:
         if phase_correct and self.phase_correction is not None:
             self.phase += self.phase_correction
 
+        # TODO: tpr0p thinks this should be removed
         # Blaze if requested.
         if blaze_vector is not None and (blaze_vector[0] != 0 or blaze_vector[1] != 0):
             self.phase += blaze(self, blaze_vector)

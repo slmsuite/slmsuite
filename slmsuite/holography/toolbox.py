@@ -1,28 +1,5 @@
 r"""
 Helper functions for manipulating phase patterns.
-
-Note
-~~~~
-slmsuite uses zero-order-hold from the right on coordinate arrays.
-
-Consider the following coordinate array centered on the number line,
-`x` denotes position coordinate, `i` denotes index in the array: ::
-
-   x = -3.0 -2.0 -1.0  0.0  1.0  2.0  3.0 
-         |    |(---|(---|(---|    |    |
-   i =             0    1    2
-
-The center of the array is at `i = 1`.
-
-Consider the following coordinate array with an even
-number of elements: ::
-
-   x = -3.5 -2.5 -1.5 -0.5  0.5  1.5  2.5  3.5
-         |    |(---|(---|(---|(---|    |    |
-
-   i =             0    1    2    3
-
-The center of the array is at `i = 1`.
 """
 
 import numpy as np
@@ -74,7 +51,7 @@ def imprint(
         A number of formats are accepted:
 
         - List in ``(x, w, y, h)`` format, where ``w`` and ``h`` are the width and height of
-          the region and  ``(x,y)`` is the lower left coordinate. If ``centered``, then ``(x,y)`` is
+          the region and  ``(x,y)`` is the upper-left coordinate. If ``centered``, then ``(x,y)`` is
           instead the center of the region to imprint.
         - Tuple containing arrays of identical length corresponding to y and x indices.
           ``centered`` is ignored.
@@ -96,12 +73,11 @@ def imprint(
         - If ``"add"``, then these are instead added together (useful, for instance, for global blazes).
 
     centered : bool
-        See ``window``. Defaults to ``True``.
+        See ``window``.
     clip : bool
         Whether to clip the imprint region if it exceeds the size of ``matrix``.
         If ``False``, then an error is raised when the size is exceeded.
         If ``True``, then the out-of-range pixels are instead filled with ``numpy.nan``.
-        Defaults to ``True``.
     **kwargs :
         For passing additional arguments accepted by ``function``.
 
@@ -412,24 +388,6 @@ def center_index(N):
     return N / 2 - 1 if iseven(N) else (N - 1) / 2
 
 
-def get_coordinate_index(x, N):
-    """
-    Get the index in a coordinate array given a coordinate.
-
-    Parameters
-    ----------
-    x : real
-        The coordinate.
-    N : int
-        The length of the coordinate array to which `x` belongs.
-
-    Returns
-    -------
-    i : int
-        The index of `x`.
-    """
-    if iseven(N)
-
 def generate_coordinate_array(N):
     """
     Generate coordinate values for a coordinate array.
@@ -512,8 +470,7 @@ def format_2vectors(vectors):
 
     return vectors
 
-
-def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
+def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_check=False):
     r"""
     Fits three points to an affine transformation. This transformation is given by:
 
@@ -525,7 +482,7 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
     .. code-block:: python
 
         y0 = (1.,1.)    # Origin
-        y1 = (2.,2.)    # First point in x direction
+        y1 = (2.,1.)    # First point in x direction
         y2 = (1.,2.)    # first point in y direction
 
         # Dict with keys "M", and "b":
@@ -591,6 +548,9 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
         **differences** between ``(0,0)`` and ``(1,0)`` or ``(0,0)`` and ``(0,1)``,
         respectively, instead of as positions.
         Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
+    orientation_check : bool
+        If ``True``, removes the last two points in the affine grid.
+        If ``False``, does nothing.
 
     Returns
     -------
@@ -667,8 +627,50 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1)):
             x_grid, y_grid = np.meshgrid(x_list, y_list)
             indices = np.vstack((x_grid.ravel(), y_grid.ravel()))
 
-        return np.matmul(M, indices) + b
+        ret = np.matmul(M, indices) + b
+        if orientation_check:
+            ret = ret[:, 0:-2]
+        
+        return ret
 
+def fit_lattice2d(p0, a1, a2, N, orientation_check=False):
+    """
+    Parameters
+    ----------
+    p0 : array_like of reals (2, 1)
+        The center coordinate of the lattice.
+    a1 : array_like of reals (2, 1)
+        The first lattice vector.
+    a2 : array_like of reals (2, 1)
+        The second lattice vector.
+    N : (int, int)
+        The number of points in the ``a1`` and ``a2`` directions of the lattice.
+    orientaiton_check : bool
+        See :meth:`fit_affine`.
+    
+    Returns
+    -------
+    lattice_coordinates : (2, point_count)
+        The lattice coordinates.
+    """
+    p1 = p0 + a1
+    p2 = p0 + a2
+    i0 = center_index(N[0])
+    j0 = center_index(N[1])
+    i1 = i0 + 1
+    j1 = j0
+    i2 = i0
+    j2 = j0 + 1
+    return fit_affine(
+        p0,
+        p1,
+        p2,
+        N=N,
+        x0=(i0, j0),
+        x1=(i1, j1),
+        x2=(i2, j2),
+        orientation_check=orientation_check
+    )
 
 def smallest_distance(vectors, metric=chebyshev):
     """
@@ -702,7 +704,6 @@ def smallest_distance(vectors, metric=chebyshev):
                 minimum = distance
 
     return minimum
-
 
 def voronoi_windows(grid, vectors, radius=None, plot=False):
     r"""

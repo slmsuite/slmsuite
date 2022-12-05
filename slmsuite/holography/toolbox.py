@@ -14,7 +14,207 @@ from slmsuite.misc.math import (
     INTEGER_TYPES, REAL_TYPES, iseven
 )
 
-# Phase pattern collation and manipulation
+# Windows are views into 2D array.s
+
+def window_slice(window, shape=None, centered=False):
+    """
+    Get the slices that describe the window's view into the larger array.
+
+    Parameters
+    ----------
+    window : (int, int, int, int) OR (array_like, array_like) OR array_like
+        A number of formats are accepted:
+        - List in ``(x, w, y, h)`` format, where ``w`` and ``h`` are the width and height of
+          the region and  ``(x,y)`` is the upper-left coordinate. If ``centered``, then ``(x,y)`` is
+          instead the center of the region to imprint.
+        - Tuple containing arrays of identical length corresponding to y and x indices.
+          ``centered`` is ignored.
+        - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
+          ``centered`` is ignored.
+    shape : (int, int)
+        The (height, width) of the array that the window is a view into.
+        If passed, indices beyond those allowed by ``shape`` will be clipped.
+    centered : bool
+        See ``window``.
+    
+    Returns
+    -------
+    slice_ : (slice, slice) OR (array_like, array_like) OR (array_like)
+        The slice for the window.
+    """
+    # (v.x, w, v.y, h) format
+    if len(window) == 4:
+        # Prepare helper vars
+        xi = int(window[0] - (window[1] / 2 if centered else 0))
+        xf = int(xi + window[1])
+        yi = int(window[2] - (window[3] / 2 if centered else 0))
+        yf = int(yi + window[3])
+        if shape is not None:
+            xi = np.clip(xi, 0, shape[1] - 1)
+            xf = np.clip(xf, 0, shape[1] - 1)
+            yi = np.clip(yi, 0, shape[0] - 1) 
+            yf = np.clip(yf, 0, shape[0] - 1)
+        slice_ = (slice(yi, yf), slice(xi, xf))
+    # (y_ind, x_ind) format
+    elif len(window) == 2:
+        # Prepare the lists
+        y_ind = np.ravel(window[0])
+        x_ind = np.ravel(window[1])
+        if shape is not None:
+            x_ind = np.clip(x_ind, 0, shape[1] - 1)
+            y_ind = np.clip(y_ind, 0, shape[0] - 1)
+        slice_ = (y_ind, x_ind)
+    # Boolean numpy array. TODO: extra checks?
+    elif np.ndim(window) == 2:
+        slice_ = window
+    else:
+        raise ValueError("Unrecognized format for ``window``.")
+    
+    return slice_
+
+def window_square(window):
+    """
+    Find a square that covers the active region of ``window``.
+
+    Parameters
+    ----------
+    window : numpy.ndarray<bool> (height, width)
+        Boolean mask.
+    
+    Returns
+    -------
+    window_square : (int, int, int, int)
+        A square that covers the active region of ``window``
+        in the format (x, width2, y, height2) where
+        (x, y) is the upper left coordinate, and (width2, height2) define
+        the extent.
+    """
+    # TODO: could extend input to handle second type of window
+    # described in :meth:`~slmsuite.holography.toolbox.window_slice`.
+    imins = np.zeros(window.shape[0])
+    imaxs = np.zeros(window.shape[0])
+    jmins = np.zeros(window.shape[1])
+    jmaxs = np.zeros(window.shape[1])
+    for j in range(window.shape[0]):
+        active_inds = np.argwhere(window[j, :])
+        imins[j] = np.inf if len(active_inds) == 0 else np.min(active_inds) 
+        imaxs[j] = -np.inf if len(active_inds) == 0 else np.max(active_inds)
+    for i in range(window.shape[1]):
+        active_inds = np.argwhere(window[:, i])
+        jmins[i] = np.inf if len(active_inds) == 0 else np.min(active_inds)
+        jmaxs[i] = -np.inf if len(active_inds) == 0 else np.max(active_inds)
+    imin = np.min(imins)
+    imax = np.max(imaxs)
+    jmin = np.min(jmins)
+    jmax = np.max(jmaxs)
+
+    return (imin, imax - imin, jmin, jmax - jmin)
+
+def voronoi_windows(grid, vectors, radius=None, plot=False):
+    r"""
+    Gets boolean array windows for an array of vectors in the style of
+    :meth:`~slmsuite.holography.toolbox.imprint()`,
+    such that the ith window corresponds to the Voronoi cell centered around the ith vector.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+        If an ``(int, int)`` is passed, this is assumed to be the shape of the device, and
+        ``vectors`` are **assumed to be in pixel units instead of normalized units**.
+    vectors : array_like
+        Centers of the Vornoi cells.
+        Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
+    radius : float
+        Cells on the edge of the set of cells might be very large. This parameter bounds
+        the cells with a boolean and to the aperture of the given ``radius``.
+    plot : bool
+        Whether to plot the resulting Voronoi diagram with :meth:`scipy.spatial.voronoi_plot_2d()`.
+
+    Returns
+    -------
+    list of numpy.ndarray
+        The resulting windows.
+    """
+    vectors = format_2vectors(vectors)
+
+    if (
+        isinstance(grid, (list, tuple))
+        and isinstance(grid[0], INTEGER_TYPES)
+        and isinstance(grid[1], INTEGER_TYPES)
+    ):
+        shape = grid
+    else:
+        (x_grid, y_grid) = _process_grid(grid)
+
+        shape = x_grid.shape
+
+        x_list = x_grid[0, :]
+        y_list = y_grid[:, 0]
+        # Get indices into the grid from the coordinates `vectors`.
+        vectors = np.vstack((
+            np.interp(vectors[0, :], x_list, np.arange(shape[1])),
+            np.interp(vectors[1, :], y_list, np.arange(shape[0])),
+        ))
+
+    # Half shape data.
+    hsx = shape[1] / 2
+    hsy = shape[0] / 2
+
+    vectors_voronoi = np.concatenate(
+        (
+            vectors.T,
+            np.array(
+                [[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]
+            ),
+        )
+    )
+
+    vor = Voronoi(vectors_voronoi, furthest_site=False)
+
+    if plot:
+        sx = shape[1]
+        sy = shape[0]
+
+        fig = voronoi_plot_2d(vor)
+
+        plt.plot(np.array([0, sx, sx, 0, 0]), np.array([0, 0, sy, sy, 0]), "r")
+
+        plt.xlim(-0.05 * sx, 1.05 * sx)
+        plt.ylim(1.05 * sy, -0.05 * sy)
+
+        plt.title("Voronoi Cells")
+
+        plt.show()
+
+    N = np.shape(vectors)[1]
+    filled_regions = []
+
+    for x in range(N):
+        point = vor.points[x]
+        region = vor.regions[vor.point_region[x]]
+        pts = vor.vertices[region].astype(np.int32)
+
+        canvas1 = np.zeros(shape, dtype=np.uint8)
+        cv2.fillConvexPoly(canvas1, pts, 255, cv2.LINE_4)
+
+        if radius is not None and radius > 0:
+            canvas2 = np.zeros(shape, dtype=np.uint8)
+            cv2.circle(
+                canvas2, tuple(point.astype(np.int32)), int(np.ceil(radius)), 255, -1
+            )
+
+            filled_regions.append((canvas1 > 0) & (canvas2 > 0))
+        else:
+            filled_regions.append(canvas1 > 0)
+
+    return filled_regions
+
+# Phase pattern collation and manipulation.
+
 def imprint(
     matrix,
     window,
@@ -47,17 +247,8 @@ def imprint(
     ----------
     matrix : numpy.ndarray
         The data to imprint a ``function`` onto.
-    window : (int, int, int, int) OR (array_like, array_like) OR array_like
-        A number of formats are accepted:
-
-        - List in ``(x, w, y, h)`` format, where ``w`` and ``h`` are the width and height of
-          the region and  ``(x,y)`` is the upper-left coordinate. If ``centered``, then ``(x,y)`` is
-          instead the center of the region to imprint.
-        - Tuple containing arrays of identical length corresponding to y and x indices.
-          ``centered`` is ignored.
-        - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
-          ``centered`` is ignored.
-
+    window
+        See :meth:`~slmsuite.holography.toolbox.window_slice`.
     function : function
         A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
         which accept ``grid`` as the first argument.
@@ -71,9 +262,8 @@ def imprint(
 
         - If ``"replace"``, then the values of ``matrix`` inside ``window`` are replaced with ``function``.
         - If ``"add"``, then these are instead added together (useful, for instance, for global blazes).
-
-    centered : bool
-        See ``window``.
+    centered
+        See :meth:`~slmsuite.holography.toolbox.window_slice`.
     clip : bool
         Whether to clip the imprint region if it exceeds the size of ``matrix``.
         If ``False``, then an error is raised when the size is exceeded.
@@ -92,109 +282,22 @@ def imprint(
     ValueError
         If invalid ``window`` or ``imprint_operation`` are provided.
     """
+    # Format the grid.
     (x_grid, y_grid) = _process_grid(grid)
-
-    if len(window) == 4:  # (v.x, w, v.y, h) format
-        # Prepare helper vars
-        xi = int(window[0] - (window[1] / 2 if centered else 0))
-        xf = int(xi + window[1])
-        yi = int(window[2] - (window[3] / 2 if centered else 0))
-        yf = int(yi + window[3])
-
-        if xi < 0:
-            if clip:
-                xi = 0
-            else:
-                raise ValueError()
-        if xf >= matrix.shape[1]:
-            if clip:
-                xf = matrix.shape[1] - 1
-            else:
-                raise ValueError()
-        if yi < 0:
-            if clip:
-                yi = 0
-            else:
-                raise ValueError()
-        if yf >= matrix.shape[0]:
-            if clip:
-                yf = matrix.shape[0] - 1
-            else:
-                raise ValueError()
-
-        if xf < 0:
-            if clip:
-                xf = 0
-            else:
-                raise ValueError()
-        if xi >= matrix.shape[1]:
-            if clip:
-                xi = matrix.shape[1] - 1
-            else:
-                raise ValueError()
-        if yf < 0:
-            if clip:
-                yf = 0
-            else:
-                raise ValueError()
-        if yi >= matrix.shape[0]:
-            if clip:
-                yi = matrix.shape[0] - 1
-            else:
-                raise ValueError()
-
-        # Modify the matrix
-        if imprint_operation == "replace":
-            matrix[yi:yf, xi:xf] = function(
-                (x_grid[yi:yf, xi:xf], y_grid[yi:yf, xi:xf]), **kwargs
-            )
-        elif imprint_operation == "add":
-            matrix[yi:yf, xi:xf] += function(
-                (x_grid[yi:yf, xi:xf], y_grid[yi:yf, xi:xf]), **kwargs
-            )
-        else:
-            raise ValueError()
-    elif len(window) == 2:  # (y_ind, x_ind) format
-        # Prepare the lists
-        y_ind = np.ravel(window[0])
-        x_ind = np.ravel(window[1])
-
-        if clip:
-            if any(x_ind < 0):
-                x_ind[x_ind < 0] = 0
-            if any(x_ind >= matrix.shape[1]):
-                x_ind[x_ind >= matrix.shape[1]] = matrix.shape[1] - 1
-            if any(y_ind < 0):
-                y_ind[y_ind < 0] = 0
-            if any(y_ind >= matrix.shape[0]):
-                x_ind[y_ind >= matrix.shape[0]] = matrix.shape[0] - 1
-        else:
-            pass  # Allow the indexing to fail, if it clips...
-
-        # Modify the matrix
-        if imprint_operation == "replace":
-            matrix[y_ind, x_ind] = function(
-                (x_grid[y_ind, x_ind], y_grid[y_ind, x_ind]), **kwargs
-            )
-        elif imprint_operation == "add":
-            matrix[y_ind, x_ind] += function(
-                (x_grid[y_ind, x_ind], y_grid[y_ind, x_ind]), **kwargs
-            )
-        else:
-            raise ValueError()
-    elif np.shape(window) == np.shape(
-        matrix
-    ):  # Boolean numpy array. Future: extra checks?
-
-        # Modify the matrix
-        if imprint_operation == "replace":
-            matrix[window] = function((x_grid[window], y_grid[window]), **kwargs)
-        elif imprint_operation == "add":
-            matrix[window] += function((x_grid[window], y_grid[window]), **kwargs)
-        else:
-            raise ValueError()
+    # Get slices for the window in the matrix.
+    shape = matrix.shape if clip else None
+    slice_ = window_slice(window, shape=shape, centered=centered)
+    # Modify the matrix.
+    if imprint_operation == "replace":
+        matrix[slice_] = function(
+            (x_grid[slice_], y_grid[slice_]), **kwargs
+        )
+    elif imprint_operation == "add":
+        matrix[slice_] += function(
+            (x_grid[slice_], y_grid[slice_]), **kwargs
+        )
     else:
-        raise ValueError()
+        raise ValueError("Unrecognized imprint operation {}.".format(imprint_operation))
 
     return matrix
 
@@ -470,6 +573,7 @@ def format_2vectors(vectors):
 
     return vectors
 
+
 def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_check=False):
     r"""
     Fits three points to an affine transformation. This transformation is given by:
@@ -610,8 +714,6 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_
     elif len(N) == 2 and isinstance(N[0], INTEGER_TYPES) and isinstance(N[1], INTEGER_TYPES):
         if N[0] <= 0 or N[1] <= 0:
             affine_return = True
-        else:
-            pass
     elif isinstance(N, np.ndarray):
         indices = format_2vectors(N)
     else:
@@ -626,12 +728,11 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_
 
             x_grid, y_grid = np.meshgrid(x_list, y_list)
             indices = np.vstack((x_grid.ravel(), y_grid.ravel()))
-
-        ret = np.matmul(M, indices) + b
         if orientation_check:
-            ret = ret[:, 0:-2]
-        
-        return ret
+            indices = indices[:, 0:-2]
+
+        return np.matmul(M, indices) + b
+
 
 def fit_lattice2d(p0, a1, a2, N, orientation_check=False):
     """
@@ -672,6 +773,7 @@ def fit_lattice2d(p0, a1, a2, N, orientation_check=False):
         orientation_check=orientation_check
     )
 
+
 def smallest_distance(vectors, metric=chebyshev):
     """
     Returns the smallest distance between pairs of points under a given ``metric``.
@@ -705,108 +807,6 @@ def smallest_distance(vectors, metric=chebyshev):
 
     return minimum
 
-def voronoi_windows(grid, vectors, radius=None, plot=False):
-    r"""
-    Gets boolean array windows for an array of vectors in the style of
-    :meth:`~slmsuite.holography.toolbox.imprint()`,
-    such that the ith window corresponds to the Voronoi cell centered around the ith vector.
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-        If an ``(int, int)`` is passed, this is assumed to be the shape of the device, and
-        ``vectors`` are **assumed to be in pixel units instead of normalized units**.
-    vectors : array_like
-        Points to Voronoi-ify.
-        Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
-    radius : float
-        Cells on the edge of the set of cells might be very large. This parameter bounds
-        the cells with a boolean and to the aperture of the given ``radius``.
-    plot : bool
-        Whether to plot the resulting Voronoi diagram with :meth:`scipy.spatial.voronoi_plot_2d()`.
-
-    Returns
-    -------
-    list of numpy.ndarray
-        The resulting windows.
-    """
-    vectors = format_2vectors(vectors)
-
-    if (
-        isinstance(grid, (list, tuple))
-        and isinstance(grid[0], INTEGER_TYPES)
-        and isinstance(grid[1], INTEGER_TYPES)
-    ):
-        shape = grid
-    else:
-        (x_grid, y_grid) = _process_grid(grid)
-
-        shape = x_grid.shape
-
-        x_list = x_grid[0, :]
-        y_list = y_grid[:, 0]
-
-        vectors = np.vstack(
-            np.interp(vectors[0, :], x_list, np.arange(shape[1])),
-            np.interp(vectors[1, :], y_list, np.arange(shape[0])),
-        )
-
-    # Half shape data.
-    hsx = shape[1] / 2
-    hsy = shape[0] / 2
-
-    vectors_voronoi = np.concatenate(
-        (
-            vectors.T,
-            np.array(
-                [[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]
-            ),
-        )
-    )
-
-    vor = Voronoi(vectors_voronoi, furthest_site=False)
-
-    if plot:
-        sx = shape[1]
-        sy = shape[0]
-
-        fig = voronoi_plot_2d(vor)
-
-        plt.plot(np.array([0, sx, sx, 0, 0]), np.array([0, 0, sy, sy, 0]), "r")
-
-        plt.xlim(-0.05 * sx, 1.05 * sx)
-        plt.ylim(1.05 * sy, -0.05 * sy)
-
-        plt.title("Voronoi Cells")
-
-        plt.show()
-
-    N = np.shape(vectors)[1]
-    filled_regions = []
-
-    for x in range(N):
-        point = vor.points[x]
-        region = vor.regions[vor.point_region[x]]
-        pts = vor.vertices[region].astype(np.int32)
-
-        canvas1 = np.zeros(shape, dtype=np.uint8)
-        cv2.fillConvexPoly(canvas1, pts, 255, cv2.LINE_4)
-
-        if radius is not None and radius > 0:
-            canvas2 = np.zeros(shape, dtype=np.uint8)
-            cv2.circle(
-                canvas2, tuple(point.astype(np.int32)), int(np.ceil(radius)), 255, -1
-            )
-
-            filled_regions.append((canvas1 > 0) & (canvas2 > 0))
-        else:
-            filled_regions.append(canvas1 > 0)
-
-    return filled_regions
 
 # Standard phase patterns.
 def blaze(grid, vector=(0, 0), offset=0):

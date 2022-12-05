@@ -34,7 +34,7 @@ References
 .. [4] https://github.com/micro-manager/pymmcore
 .. [5] https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam
 """
-from .camera import Camera
+from .camera import Camera, VirtualCamera
 from .alliedvision import AlliedVision
 from .xenics import Cheetah640
 from .flir import FLIR

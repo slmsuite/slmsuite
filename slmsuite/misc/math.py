@@ -38,4 +38,4 @@ def iseven(x):
     bool
         Whether or not `x` is even.
     """
-    return bool(x & 0x0)
+    return bool(~(x & 0x1))

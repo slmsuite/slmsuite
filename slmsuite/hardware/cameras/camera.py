@@ -475,8 +475,71 @@ def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
         fig.canvas.flush_events()
 
 
+class VirtualCamera(Camera):
+    """
+    A camera that views a subset of another camera's pixels.
 
+    Attributes
+    ----------
+    parent : Camera
+        The camera on which this camera views pixels.
+    window_mask : numpy.ndarray<bool> (height, width)
+        Boolean mask that describes the pixels on the parent this camera views.
+        If ``None``, the active pixels are determined by :attr:`window_square`.
+        See :meth:`~slmsuite.holography.toolbox.window_slice`.
+    window_square : (int, int, int, int)
+        If :attr:`window_mask` is ``None``, this window desribes
+        the pixels on the parent this camera views. Otherwise, this
+        window covers :attr:`window_mask`. The square
+        is specified in the format (x, width, y, height).
+        See :meth:`~slmsuite.holography.toolbox.window_slice`.
 
+    """
 
+    def __init__(self, parent, window_mask=None, window_square=None):
+        """
+        Parameters
+        ----------
+        parent
+            See :attr:`parent`.
+        window_mask
+            See :meth:`set_window`.
+        window_square
+            See :meth:`set_window`.
+        """
+        self.parent = parent
+        self.set_window(window_mask, window_square=window_square)
+    
+    def set_window(self, window_mask, window_square=None):
+        """
+        Sets :attr:`window_mask`, :attr:`window_square`, and :attr:`shape`.
 
+        Parameters
+        ----------
+        window_mask
+            See :attr:`window_mask`.
+        window_square
+            See :attr:`window_square`. If ``None``, one will
+            be created for ``window_mask`` if ``window_mask``
+            is not also ``None``.
+        """
+        self.window_mask = window_mask
+        if window_square is None and window_mask is not None:
+            self.window_square = toolbox.window_square(window_mask)
+        else:
+            self.window_square = window_square
+        if self.window_square is None:
+            self.shape = None
+        else:
+            self.shape = (self.window_square[3], self.window_square[1])
 
+    def __getattr__(self, name):
+        """
+        VirtualCamera inherits parent's attributes.
+        """
+        if name in self.__dict__.keys():
+            value = self.__dict__[name]
+        else:
+            value = parent.__getattr__(name)
+        
+        return value

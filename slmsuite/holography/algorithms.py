@@ -249,7 +249,8 @@ class Hologram:
                 pass
 
         stack = np.vstack((amp_shape, phase_shape, slm_shape))
-
+        # TODO: This error checking is jank. These assertions fail
+        # without error messages.
         if np.all(np.isnan(stack)):
             self.slm_shape = self.shape
         else:
@@ -1405,6 +1406,7 @@ class FeedbackHologram(Hologram):
     def update_target(self, new_target, reset_weights=False):
         self.ijcam_to_knmslm(new_target, out=self.target)
 
+        # TODO: need a better way to determine if 
         if reset_weights:
             cp.copyto(self.weights, self.target)
 

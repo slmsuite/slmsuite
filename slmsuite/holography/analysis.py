@@ -727,7 +727,17 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
     return result
 
 
-def blob_detect(img, plot=False, title="", filter=None, **kwargs):
+def blob_detect(
+    img,
+    filter=None,
+    plot=False,
+    title="",
+    fig=None,
+    axs=None,
+    zoom=False,
+    show=False,
+    **kwargs
+):
     """
     Detect blobs in an image.
 
@@ -741,10 +751,16 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
         The image to perform blob detection on.
     filter : {"dist_to_center", "max_amp"} OR None
         One of ``dist_to_center`` or ``max_amp``.
-    title : str
-        Plot title.
     plot : bool
         Whether to show a debug plot.
+    title : str
+        Plot title.
+    fig : matplotlib.figure.Figure
+        Figure for plotting.
+    axs : list of matplotlib.axes.Axis or matplotlib.axes.Axis
+        Axes for plotting.
+    show : bool
+        Whether or not to show the plot.
     kwargs
        Extra arguments for :class:`cv2.SimpleBlobDetector`.
 
@@ -826,43 +842,57 @@ def blob_detect(img, plot=False, title="", filter=None, **kwargs):
         zoom_padx = 2 * (blob_xmax - blob_xmin) / blob_count
         zoom_pady = 2 * (blob_ymax - blob_ymin) / blob_count
         # Plot setup.
-        fig, axs = plt.subplots(1, 2)
+        if fig is None and axs is None:
+            if zoom:
+                fig, axs = plt.subplots(1, 2)
+            else:
+                fig, axs = plt.subplots(1, 1)
+                axs = (axs,)
+        if zoom:
+            ax0, ax1 = axs
+        else:
+            ax0, = axs
         fig.suptitle(title)
-        ax0, ax1 = axs
         # Full image.
         vmin = np.min(img_8it)
         vmax = np.max(img_8it)
         im = ax0.imshow(img_8it, vmin=vmin, vmax=vmax)
-        ax0.set_title("Full")
         # Zoomed Image.
-        ax1.imshow(img_8it, vmin=vmin, vmax=vmax)
-        for blob_idx in range(blob_count):
-            patch = matplotlib.patches.Circle(
-                (blob_centers[0, blob_idx], blob_centers[1, blob_idx]),
-                radius=blob_diameters[blob_idx] / 2,
-                color="red",
-                linewidth=1,
-                fill=None
+        if zoom:
+            ax1.imshow(img_8it, vmin=vmin, vmax=vmax)
+            xmax = img.shape[1] + 0.5
+            xmin = 0.5
+            xlims = (
+                np.clip((blob_xmin - zoom_padx), xmin, xmax),
+                np.clip((blob_xmax + zoom_padx), xmin, xmax)
             )
-            ax1.add_patch(patch)
-        xmax = img.shape[1] + 0.5
-        xmin = 0.5
-        xlims = (
-            np.clip((blob_xmin - zoom_padx), xmin, xmax),
-            np.clip((blob_xmax + zoom_padx), xmin, xmax)
-        )
-        ymax = img.shape[0] + 0.5
-        ymin = 0.5
-        ylims = (
-            np.clip((blob_ymin - zoom_pady), ymin, ymax),
-            np.clip((blob_ymax + zoom_pady), ymin, ymax)
-        )
-        ax1.set_xlim(xlims)
-        ax1.set_ylim(np.flip(ylims))
-        ax1.set_title("Zoom")
-        fig.colorbar(im, ax=ax1)
-
-        plt.show()
+            ymax = img.shape[0] + 0.5
+            ymin = 0.5
+            ylims = (
+                np.clip((blob_ymin - zoom_pady), ymin, ymax),
+                np.clip((blob_ymax + zoom_pady), ymin, ymax)
+            )
+            ax1.set_xlim(xlims)
+            ax1.set_ylim(np.flip(ylims))
+            ax1.set_title("Zoom")
+            fig.colorbar(im, ax=ax1)
+            ax0.set_title("Full")
+        else:
+            fig.colorbar(im, ax=ax0)
+        # Blob patches
+        for blob_idx in range(blob_count):
+                patch = matplotlib.patches.Circle(
+                    (blob_centers[0, blob_idx], blob_centers[1, blob_idx]),
+                    radius=blob_diameters[blob_idx] / 2,
+                    color="red",
+                    linewidth=1,
+                    fill=None
+                )
+                ax0.add_patch(patch)
+                if zoom:
+                    ax1.add_patch(patch)
+        if show:
+            plt.show()
 
     return blobs, detector
 

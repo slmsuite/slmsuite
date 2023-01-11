@@ -31,7 +31,8 @@ class SLM:
         Determined by ``phase_scaling = wav_um / wav_design_um``.
     bitdepth : int
         Depth of SLM pixel well in bits. This is useful for converting the floats which
-        the user provides to the ``bitdepth``-bit ints that the SLM reads (see :meth:`_phase2gray`).
+        the user provides to the ``bitdepth``-bit ints that the SLM reads (see the
+        private method :meth:`_phase2gray`).
     bitresolution : int
         Stores ``2 ** bitdepth``.
     settle_time_s : float
@@ -48,6 +49,7 @@ class SLM:
         See :attr:`dx`.
     x_grid : numpy.ndarray of floats
         Point grid of the SLM's :attr:`shape` derived from :meth:`numpy.meshgrid` ing.
+        This uses normalized units (:attr:`dx`, :attr:`dy`).
     y_grid : numpy.ndarray of floats
         See :attr:`x_grid`.
     measured_amplitude : numpy.ndarray or None
@@ -61,7 +63,9 @@ class SLM:
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
         Of size :attr:`shape`. Defaults to ``None`` when no correction is provided.
     phase : numpy.ndarray
-        Displayed data in units of phase delay (normalized).
+        Displayed data in units of phase delay (normalized). If integer data was passed
+        to :meth:`write()`, then the data stored in :attr:`phase` is **not** updated for
+        performance reasons.
     display : numpy.ndarray
         Displayed data in SLM units (integers).
     """
@@ -172,7 +176,7 @@ class SLM:
 
     def _write_hw(self, phase):
         """
-        Abstract function to communicate with the SLM. Subclasses should overwrite this.
+        Abstract method to communicate with the SLM. Subclasses **should** overwrite this.
         :meth:`write()` contains error checks and overhead, then calls :meth:`_write_hw()`.
 
         Parameters
@@ -191,8 +195,13 @@ class SLM:
     ):
         r"""
         Checks, cleans, and adds to data, then sends the data to the SLM and
-        potentially waits for settle. This function calls the SLM-specific private method
+        potentially waits for settle. This method calls the SLM-specific private method
         :meth:`_write_hw()` which transfers the data to the SLM.
+
+        Warning
+        ~~~~~~~
+        Subclasses implementing vendor-specific software *should not* overwrite this
+        method. Subclasses *should* overwrite :meth:`_write_hw()` instead.
 
         Caution
         ~~~~~~~
@@ -202,12 +211,14 @@ class SLM:
         :mod:`slmsuite`'s 'increasing value ==> increasing phase delay' convention.
         As a result, zero phase will appear entirely white (255 for an 8-bit SLM), and increasing phase
         will darken the displayed pattern.
+        If integer data is passed, the sign is *not* flipped.
 
         Important
         ~~~~~~~~~
         The user does not need to wrap (e.g. :meth:`numpy.mod(data, 2*np.pi)`) the passed phase data,
         unless they are pre-caching data for speed (see below).
-        :meth:`.write()` uses optimized routines to wrap the phase (see :meth:`._phase2gray()`).
+        :meth:`.write()` uses optimized routines to wrap the phase (see the
+        private method :meth:`_phase2gray`).
         Which routine is used depends on :attr:`phase_scaling`:
 
         :attr:`phase_scaling` is one.
@@ -227,10 +238,29 @@ class SLM:
         Parameters
         ----------
         phase : numpy.ndarray or None
-            Data to display in units of phase delay. Data must be larger than the SLM. If larger,
-            the data is cropped to size in a centered manner. If ``None``, data is zeroed.
-            Usually, this is an exact stored copy of the data passed by the user. However, in cases
-            where :attr:`phase_scaling` not one, this copy is modified to include how the data was wrapped.
+            Data to display in units of phase delay (unless the passed data is of integer type).
+
+             - If ``None`` is passed to :meth:`.write()`, data is zeroed.
+             - If the array has a larger shape than the SLM shape, then the data is
+               cropped to size in a centered manner
+               (:attr:`~slmsuite.holography.toolbox.unpad`).
+             - If integer data is passed with the same type as :attr:`display`
+               (``np.uint8`` for <=8-bit SLMs, ``np.uint16`` otherwise),
+               then this data is **directly** passed to the
+               SLM, without going through the "phase delay to grayscale" conversion
+               defined in the private method :meth:`_phase2gray`. In this situation,
+               ``phase_correct`` and non-zero ``blaze_vector`` are **ignored**.
+               Note that error checking such as making sure that bits greater than the
+               bitdepth of the SLM (e.g. the final 6 bits of 16 bit data on a 10-bit
+               SLM) is not implemented. The user should take care that invalid data is
+               not passed.
+
+            Usually, an **exact** stored copy of the data passed by the user under
+            ``phase`` is stored in the attribute :attr:`phase`.
+            However, in cases where :attr:`phase_scaling` not one, this
+            copy is modified to include how the data was wrapped. If the data was
+            cropped, then the cropped data is stored, etc. If integer data was passed,
+            then the attribute :attr:`phase` is unchanged.
         phase_correct : bool
             Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction` to ``phase``.
         settle : bool
@@ -240,32 +270,56 @@ class SLM:
             If ``None``, no blaze is applied.
 
         Returns
-        ----------
+        -------
         numpy.ndarray
            :attr:`~slmsuite.hardware.slms.slm.SLM.display`, the integer data sent to the SLM.
         """
+        # Helper variable to speed the case where phase is None.
+        zero_phase = False
+
         # Parse phase.
         if phase is None:
             # Zero the phase pattern.
             self.phase.fill(0)
+            zero_phase = True
         else:
-            # Copy the pattern.
-            # Unpad if necessary.
+            # Make sure the array is an ndarray.
+            phase = np.array(phase)
+
+        if phase is not None and phase.dtype == self.display.dtype:
+            # If integer data was passed.
+            # Copy the pattern and unpad if necessary.
             if self.phase.shape != self.shape:
-                np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
+                np.copyto(self.display, toolbox.unpad(self.phase, self.shape))
             else:
-                np.copyto(self.phase, phase)
+                np.copyto(self.display, phase)
+        else:
+            # If float data was passed.
+            # Copy the pattern and unpad if necessary.
+            if phase is not None:
+                if self.phase.shape != self.shape:
+                    np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
+                else:
+                    np.copyto(self.phase, phase)
 
-        # Add phase correction if requested.
-        if phase_correct and self.phase_correction is not None:
-            self.phase += self.phase_correction
+            # Add phase correction if requested.
+            if phase_correct and self.phase_correction is not None:
+                self.phase += self.phase_correction
+                zero_phase = False
 
-        # Blaze if requested.
-        if blaze_vector is not None and (blaze_vector[0] != 0 or blaze_vector[1] != 0):
-            self.phase += blaze(self, blaze_vector)
+            # Blaze if requested.
+            if blaze_vector is not None and (blaze_vector[0] != 0 or blaze_vector[1] != 0):
+                self.phase += blaze(self, blaze_vector)
+                zero_phase = False
 
-        # Turn the floats in phase space to integer data for the SLM.
-        self.display = self._phase2gray(self.phase, out=self.display)
+            # Pass the data to self.display.
+            if zero_phase:
+                # If None was passed and neither phase_correct nor blaze_vector were
+                # passed, then use a faster method.
+                self.display.fill(0)
+            else:
+                # Turn the floats in phase space to integer data for the SLM.
+                self.display = self._phase2gray(self.phase, out=self.display)
 
         # Write!
         self._write_hw(self.display)
@@ -287,7 +341,8 @@ class SLM:
         phase : numpy.ndarray
             Array of phases in radians.
         out : numpy.ndarray
-            Array to store integer values scaled to SLM voltage.
+            Array to store integer values scaled to SLM voltage, i.e. for in-place
+            operations.
             If ``None``, an appropriate array will be allocated.
 
         Returns
@@ -360,7 +415,7 @@ class SLM:
         """
         return np.mod(self.phase, 2 * np.pi)
 
-    def set_measured_amplitude_analytic(self, radius):
+    def set_measured_amplitude_analytic(self, radius, units="norm"):
         """
         Sets :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude` used
         for hologram generation in the absence of a proper wavefront calibration.
@@ -373,21 +428,40 @@ class SLM:
         is used for better refinement of holograms during numerical
         optimization. If one does not have a camera to use for
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`,
-        this function allows the user to set an approximation of the source amplitude
+        this method allows the user to set an approximation of the source amplitude
         based on an assumed 1/e amplitude (1/e^2 power) Gaussian beam radius.
 
         Parameters
         ----------
         radius : float
             Radius in normalized units to assume for the source Gaussian beam.
+        units : str in {"norm", "nm", "um", "mm", "m"}
+            Units for the given radius.
 
         Returns
         --------
         numpy.ndarray
             :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude`.
         """
+        # Convert the radius to normalized units.
+        if "norm" in units:
+            dx = 1
+            dy = 1
+        else:
+            if units == "m":
+                factor = 1e6
+            elif units == "mm":
+                factor = 1e3
+            elif units == "um":
+                factor = 1
+            elif units == "nm":
+                factor = 1e-3
+            else:
+                raise RuntimeError("Did not recognize units '{}'".format(units))
+            dx = factor * self.dx / self.dx_um
+            dy = factor * self.dy / self.dy_um
 
-        r2_grid = np.square(self.x_grid) + np.square(self.y_grid)
+        r2_grid = np.square(self.x_grid / dx) + np.square(self.y_grid / dy)
 
         self.measured_amplitude = np.exp(-r2_grid * (1 / radius ** 2))
 

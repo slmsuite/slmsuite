@@ -215,25 +215,30 @@ class SLM:
 
         Important
         ~~~~~~~~~
-        The user does not need to wrap (e.g. :meth:`numpy.mod(data, 2*np.pi)`) the passed phase data,
+        The user does not need to wrap (e.g. :mod:`numpy.mod(data, 2*numpy.pi)`) the passed phase data,
         unless they are pre-caching data for speed (see below).
         :meth:`.write()` uses optimized routines to wrap the phase (see the
         private method :meth:`_phase2gray`).
         Which routine is used depends on :attr:`phase_scaling`:
 
-        :attr:`phase_scaling` is one.
-          Fast bitwise integer modulo is used. Much faster than the other routines which
-          depend on :meth:`numpy.mod()`.
-        :attr:`phase_scaling` is less than one.
-          In this case, the SLM has **more phase tuning range** than necessary.
-          If the data is within the SLM range ``[0, 2*pi/phase_scaling]``, then the data is passed directly.
-          Otherwise, the data is wrapped by :math:`2\pi` using the very slow :meth:`numpy.mod()`.
-          Try to avoid this in applications where speed is important.
-        :attr:`phase_scaling` is more than one.
-          In this case, the SLM has **less phase tuning range** than necessary.
-          Processed the same way as the :attr:`phase_scaling` is less than one case, with the
-          important exception that phases (after wrapping) between ``2*pi/phase_scaling`` and
-          ``2*pi`` are set to zero. For instance, a sawtooth blaze would be truncated at the tips.
+         - :attr:`phase_scaling` is one.
+
+            Fast bitwise integer modulo is used. Much faster than the other routines which
+            depend on :meth:`numpy.mod()`.
+
+         - :attr:`phase_scaling` is less than one.
+
+            In this case, the SLM has **more phase tuning range** than necessary.
+            If the data is within the SLM range ``[0, 2*pi/phase_scaling]``, then the data is passed directly.
+            Otherwise, the data is wrapped by :math:`2\pi` using the very slow :meth:`numpy.mod()`.
+            Try to avoid this in applications where speed is important.
+
+         - :attr:`phase_scaling` is more than one.
+
+            In this case, the SLM has **less phase tuning range** than necessary.
+            Processed the same way as the :attr:`phase_scaling` is less than one case, with the
+            important exception that phases (after wrapping) between ``2*pi/phase_scaling`` and
+            ``2*pi`` are set to zero. For instance, a sawtooth blaze would be truncated at the tips.
 
         Parameters
         ----------
@@ -250,10 +255,10 @@ class SLM:
                SLM, without going through the "phase delay to grayscale" conversion
                defined in the private method :meth:`_phase2gray`. In this situation,
                ``phase_correct`` and non-zero ``blaze_vector`` are **ignored**.
-               Note that error checking such as making sure that bits greater than the
-               bitdepth of the SLM (e.g. the final 6 bits of 16 bit data on a 10-bit
-               SLM) is not implemented. The user should take care that invalid data is
-               not passed.
+               This is error-checked such that bits with greater significance than the
+               bitdepth of the SLM are zero (e.g. the final 6 bits of 16 bit data for a
+               10-bit SLM). Integer data with type different from :attr:`display` leads
+               to an AssertionError.
 
             Usually, an **exact** stored copy of the data passed by the user under
             ``phase`` is stored in the attribute :attr:`phase`.
@@ -273,6 +278,12 @@ class SLM:
         -------
         numpy.ndarray
            :attr:`~slmsuite.hardware.slms.slm.SLM.display`, the integer data sent to the SLM.
+
+        Raises
+        ------
+        AssertionError
+            If integer data is incompatible with the bitdepth or if the passed phase is
+            otherwise incompatible (not a 2D array or smaller than the SLM shape, etc).
         """
         # Helper variable to speed the case where phase is None.
         zero_phase = False
@@ -288,15 +299,23 @@ class SLM:
 
         if phase is not None and phase.dtype == self.display.dtype:
             # If integer data was passed.
+            # Check that we are not out of range.
+            assert not np.any(phase >= self.bitresolution), \
+                "Integer data must be within the bitdepth ({}-bit) of the SLM.".format(self.bitdepth)
+
             # Copy the pattern and unpad if necessary.
-            if self.phase.shape != self.shape:
-                np.copyto(self.display, toolbox.unpad(self.phase, self.shape))
+            if phase.shape != self.shape:
+                np.copyto(self.display, toolbox.unpad(phase, self.shape))
             else:
                 np.copyto(self.display, phase)
         else:
-            # If float data was passed.
+            # If float data was passed (or the None case).
             # Copy the pattern and unpad if necessary.
             if phase is not None:
+                assert not isinstance(phase.flat[0], (int, np.uint)), \
+                    "Integer data must have the same type as slm.display ({})." \
+                    "Instead received {}".format(type(self.display.dtype), type(phase.flat[0]))
+
                 if self.phase.shape != self.shape:
                     np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
                 else:
@@ -403,18 +422,6 @@ class SLM:
 
         return out
 
-    def phase_wrapped(self):
-        r"""
-        Return the phase last written to the SLM (
-        :attr:`~slmsuite.hardware.slms.slm.SLM.phase`) mod :math:`2\pi`.
-
-        Returns
-        -------
-        numpy.ndarray
-            :attr:`~slmsuite.hardware.slms.slm.SLM.phase` mod 2pi.
-        """
-        return np.mod(self.phase, 2 * np.pi)
-
     def set_measured_amplitude_analytic(self, radius, units="norm"):
         """
         Sets :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude` used
@@ -429,7 +436,7 @@ class SLM:
         optimization. If one does not have a camera to use for
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`,
         this method allows the user to set an approximation of the source amplitude
-        based on an assumed 1/e amplitude (1/e^2 power) Gaussian beam radius.
+        based on an assumed :math:`1/e` amplitude (:math:`1/e^2` power) Gaussian beam radius.
 
         Parameters
         ----------
@@ -443,7 +450,7 @@ class SLM:
         numpy.ndarray
             :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude`.
         """
-        # Convert the radius to normalized units.
+        # Convert the x and y grid to normalized units.
         if "norm" in units:
             dx = 1
             dy = 1

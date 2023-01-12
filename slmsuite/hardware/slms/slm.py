@@ -19,13 +19,22 @@ class SLM:
     shape : (int, int)
         Stores ``(height, width)`` of the SLM in pixels, same form as :attr:`numpy.ndarray.shape`.
     wav_um : float
-        Operating wavelength targeted by the SLM in microns.
+        Operating wavelength targeted by the SLM in microns. Defaults to 780 nm.
     wav_design_um : float
         Design wavelength for which the maximum settable value corresponds to a
-        2 pi phase shift. This is useful for using, for instance, an SLM designed
+        :math:`2\pi` phase shift.
+        Defaults to :attr:`wav_um` if passed ``None``.
+
+        Tip
+        ~~~
+        :attr:`wav_design_um` is useful for using, for instance, an SLM designed
         at 1064 nm for an application at 780 nm by using only a fraction (780/1064)
-        of the full dynamic range. Useful for SLMs which do not have builtin
+        of the full dynamic range. It is especially useful for SLMs which do not have builtin
         capability to change their voltage lookup tables (e.g. Thorlabs).
+        Even so, the max lookup wavelength (:attr:`wav_design_um`) could be set larger
+        than :attr:`wav_um` should the user want to have a phase range larger than
+        :math:`2\pi`, for SLMs with lookup table capability.
+
     phase_scaling : float
         Wavelength normalized to the phase range of the SLM. See :attr:`wav_design_um`.
         Determined by ``phase_scaling = wav_um / wav_design_um``.
@@ -76,7 +85,7 @@ class SLM:
         height,
         bitdepth,
         name="SLM",
-        wav_um=0.532,
+        wav_um=0.780,
         wav_design_um=None,
         dx_um=8,
         dy_um=8,

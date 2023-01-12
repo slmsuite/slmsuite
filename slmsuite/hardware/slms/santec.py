@@ -82,6 +82,8 @@ class Santec(SLM):
         This is valid for SLM-200, SLM-210, and SLM-300, but may not be valid for future
         Santec models.
         """
+        # Default max phase. Maybe this should be opened to the user in the future.
+        # Otherwise, wav_um and wav_design_um have the same functionality.
         max_phase = 2 * np.pi
 
         self.slm_number = int(slm_number)
@@ -89,6 +91,11 @@ class Santec(SLM):
 
         # Default wavelength is 0.780um.
         wav_um = kwargs.pop("wav_um", 0.780)
+
+        # By default, target wavelength is the design wavelength
+        wav_design_um = kwargs.pop("wav_design_um", None)
+        if wav_design_um is None:
+            wav_design_um = wav_um
 
         if verbose:
             print("Santec initializing... ", end="")
@@ -100,31 +107,31 @@ class Santec(SLM):
             print("success")
 
         # Update wavelength if needed
-        wav_current = ctypes.c_uint32(0)
+        wav_current_nm = ctypes.c_uint32(0)
         phase_current = ctypes.c_ulong(0)
-        slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current, phase_current)
+        slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
 
-        wav_desired = int(1e3 * wav_um)
+        wav_desired_nm = int(1e3 * wav_design_um)
         phase_desired = int(np.floor(max_phase * 100 / np.pi))
 
-        if wav_current.value != 1e3 * wav_um:
+        if wav_current_nm.value != wav_desired_nm:
             if verbose:
                 print("Current wavelength table: wav = {0} nm, maxphase = {1:.2f}pi"
-                    .format(wav_current.value, phase_current.value / 100.0))
+                    .format(wav_current_nm.value, phase_current.value / 100.0))
                 print("Desired wavelength table: wav = {0} nm, maxphase = {1:.2f}pi"
-                        .format(wav_desired, phase_desired / 100.0))
+                        .format(wav_desired_nm, phase_desired / 100.0))
                 print("     ...Updating wavelength table (this may take 30 seconds)...")
 
-            # Set wavelength (nm) and maximum phase (100 * number pi)
-            slm_funcs.SLM_Ctrl_WriteWL(self.slm_number, wav_desired, phase_desired)
+            # Set wavelength (nm) and maximum phase (100 * [float pi])
+            slm_funcs.SLM_Ctrl_WriteWL(self.slm_number, wav_desired_nm, phase_desired)
             # Save wavelength
             slm_funcs.SLM_Ctrl_WriteAW(self.slm_number)
 
             # Verify wavelength
-            slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current, phase_current)
+            slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
             if verbose:
                 print("Updated wavelength table: wav = {0} nm, maxphase = {1:.2f}pi"
-                        .format(wav_current.value, phase_current.value / 100.0))
+                        .format(wav_current_nm.value, phase_current.value / 100.0))
 
         # Check for the SLM parameters and save them
         width = ctypes.c_ushort(0)
@@ -163,6 +170,7 @@ class Santec(SLM):
             bitdepth=10,
             name="Santec_" + names[-1],
             wav_um=wav_um,
+            wav_design_um=wav_design_um,
             dx_um=8,
             dy_um=8,
             **kwargs

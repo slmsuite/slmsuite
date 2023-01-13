@@ -7,7 +7,6 @@ Note
 :class:`.Santec` requires files from Santec to be present in the
 :mod:`~slmsuite.hardware.slms` directory:
 
- - A header file (_slm_win.py) and
  - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).
 
 These files should be copied in before use.
@@ -17,7 +16,6 @@ Note
 Santec provides base wavefront correction accounting for the curvature of the SLM surface.
 Consider loading these files via :meth:`.SLM.load_vendor_phase_correction()`
 """
-import os
 import time
 import ctypes
 import numpy as np
@@ -31,7 +29,6 @@ try:                        # Load Santec's header file.
 except BaseException as e:  # Provide an informative error should something go wrong.
     print("santec.py: Santec DLLs not installed. Install these to use Santec SLMs.")
     print(  "  Files from Santec must be present in the slms directory:\n"
-            "  - A header file (_slm_win.py) and\n"
             "  - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).\n"
             "Check that theses files are present and are error-free.\n{}".format(e))
 

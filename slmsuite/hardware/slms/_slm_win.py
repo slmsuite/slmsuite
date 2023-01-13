@@ -1,6 +1,7 @@
 """
 A slightly-modified Santec header file for Santec SLMs.
-Modified for dll handling for other versions of python.
+Modified for dll handling for other versions of python,
+along with error handling and status dictionaries.
 See santec.py.
 """
 import os

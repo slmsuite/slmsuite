@@ -3,10 +3,8 @@ A slightly-modified Santec header file for Santec SLMs.
 Modified for dll handling for other versions of python.
 See santec.py.
 """
-import sys
+import os
 from ctypes import *
-
-
 STRING = c_char_p
 from ctypes.wintypes import DWORD
 from ctypes.wintypes import ULONG
@@ -22,7 +20,6 @@ from ctypes.wintypes import LPSTR
 from ctypes.wintypes import LPCSTR
 from ctypes.wintypes import LPCWSTR
 from ctypes.wintypes import FILETIME
-import os
 
 if hasattr(os, "add_dll_directory"):    # python >= 3.8
     os.add_dll_directory(os.getcwd())
@@ -36,7 +33,6 @@ else:                                   # python < 3.8
     os.environ['PATH'] = _libpath + os.pathsep + os.environ['PATH']
     _libraries = {}
     _libraries[_libname] = windll.LoadLibrary(_libname)
-
 
 # ctypes
 USHORT = c_ushort

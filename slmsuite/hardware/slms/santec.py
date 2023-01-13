@@ -106,15 +106,25 @@ class Santec(SLM):
 
         if verbose:
             print("Santec slm_number={} initializing... ".format(self.slm_number), end="")
-        self.parse_status(slm_funcs.SLM_Ctrl_Open(self.slm_number))
-        self.parse_status(slm_funcs.SLM_Ctrl_WriteVI(self.slm_number, 1))   # 0:Memory 1:DVI
+        Santec._parse_status(slm_funcs.SLM_Ctrl_Open(self.slm_number))
+
+        # Wait for the SLM to no longer be busy.
+        while True:
+            status = slm_funcs.SLM_Ctrl_ReadSU(self.slm_number)
+
+            if status == 0:     break       # SLM_OK (proceed)
+            elif status == 2:   continue    # SLM_BS (busy)
+            else:               Santec._parse_status(status)
+
+        # Right now, only DVI mode is supported.
+        Santec._parse_status(slm_funcs.SLM_Ctrl_WriteVI(self.slm_number, 1))   # 0:Memory 1:DVI
         if verbose:
             print("success")
 
         # Update wavelength if needed
         wav_current_nm = ctypes.c_uint32(0)
         phase_current = ctypes.c_ulong(0)
-        self.parse_status(
+        Santec._parse_status(
             slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
         )
 
@@ -130,14 +140,14 @@ class Santec(SLM):
                 print("     ...Updating wavelength table (this may take 30 seconds)...")
 
             # Set wavelength (nm) and maximum phase (100 * [float pi])
-            self.parse_status(
+            Santec._parse_status(
                 slm_funcs.SLM_Ctrl_WriteWL(self.slm_number, wav_desired_nm, phase_desired)
             )
             # Save wavelength
-            self.parse_status(slm_funcs.SLM_Ctrl_WriteAW(self.slm_number))
+            Santec._parse_status(slm_funcs.SLM_Ctrl_WriteAW(self.slm_number))
 
             # Verify wavelength
-            self.parse_status(
+            Santec._parse_status(
                 slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
             )
             if verbose:
@@ -151,7 +161,7 @@ class Santec(SLM):
 
         if verbose:
             print("Looking for display... ", end="")
-        self.parse_status(
+        Santec._parse_status(
             slm_funcs.SLM_Disp_Info2(self.display_number, width, height, display_name)
         )
 
@@ -175,7 +185,7 @@ class Santec(SLM):
         # Populate some info
         driveboard_id = ctypes.create_string_buffer(16)
         optionboard_id = ctypes.create_string_buffer(16)
-        self.parse_status(
+        Santec._parse_status(
             slm_funcs.SLM_Ctrl_ReadSDO(self.slm_number, driveboard_id, optionboard_id)
         )
 
@@ -186,7 +196,7 @@ class Santec(SLM):
         # Open SLM
         if verbose:
             print("Opening {}... ".format(name), end="")
-        self.parse_status(slm_funcs.SLM_Disp_Open(self.display_number))
+        Santec._parse_status(slm_funcs.SLM_Disp_Open(self.display_number))
         if verbose:
             print("success")
 
@@ -232,7 +242,7 @@ class Santec(SLM):
             height = ctypes.c_ushort(0)
             display_name = ctypes.create_string_buffer(128)
 
-            self.parse_status(
+            Santec._parse_status(
                 slm_funcs.SLM_Disp_Info2(display_number, width, height, display_name)
             )
             name = display_name.value.decode("mbcs")
@@ -295,14 +305,13 @@ class Santec(SLM):
     def _write_hw(self, phase):
         """See :meth:`.SLM._write_hw`."""
         matrix = phase.astype(slm_funcs.USHORT)
-
         n_h, n_w = self.shape
 
         # Write to SLM
         c = matrix.ctypes.data_as(ctypes.POINTER((slm_funcs.USHORT * n_h) * n_w)).contents
-        self.parse_status(slm_funcs.SLM_Disp_Data(self.display_number, n_w, n_h, 0, c))
+        Santec._parse_status(slm_funcs.SLM_Disp_Data(self.display_number, n_w, n_h, 0, c))
 
-    # Extra functionality
+    ### Additional Santec-specific functionality
 
     def read_temperature(self):
         """
@@ -317,11 +326,11 @@ class Santec(SLM):
         drive_temp = ctypes.c_int32(0)
         option_temp = ctypes.c_int32(0)
 
-        self.parse_status(slm_funcs.SLM_Ctrl_ReadT(self.slm_number, drive_temp, option_temp))
+        Santec._parse_status(slm_funcs.SLM_Ctrl_ReadT(self.slm_number, drive_temp, option_temp))
 
         return (drive_temp.value / 10., option_temp.value / 10.)
 
-    def check_error(self, raise_error=True):
+    def get_error(self, raise_error=True):
         """
         **(Untested)**
         Read the drive board and option board errors.
@@ -352,27 +361,43 @@ class Santec(SLM):
 
         return errors
 
-    def parse_status(self, status=None, raise_error=True):
+    def get_status(self, raise_error=True):
         """
         **(Untested)**
-        Parses the meaning of a ``SLM_STATUS`` return from the Santec SLM.
+        Gets ``SLM_STATUS`` return from a Santec SLM and parses the result.
+
+        Parameters
+        ----------
+        raise_error : bool
+            Whether to raise an error (if True) or a warning (if False) when status is
+            not ``SLM_OK``.
+
+        Returns
+        -------
+        (int, str, str)
+            Status in ``(num, name, note)`` form.
+        """
+        return Santec._parse_status(slm_funcs.SLM_Ctrl_ReadSU(self.slm_number), raise_error)
+
+    @staticmethod
+    def _parse_status(status, raise_error=True):
+        """
+        **(Untested)**
+        Parses the meaning of a ``SLM_STATUS`` return from a Santec SLM.
 
         Parameters
         ----------
         status : int
-            ``SLM_STATUS`` return. If ``None``, the SLM is polled for status instead.
+            ``SLM_STATUS`` return.
         raise_error : bool
             Whether to raise an error (if True) or a warning (if False) when status is not ``SLM_OK``.
 
         Returns
         -------
-        (str, str)
+        (int, str, str)
             Status in ``(name, note)`` form.
         """
         # Parse status
-        if status is None:
-            status = slm_funcs.SLM_Ctrl_ReadSU(self.slm_number)
-
         status = int(status)
 
         if not status in slm_funcs.SLM_STATUS_DICT.keys():
@@ -389,7 +414,7 @@ class Santec(SLM):
             else:
                 warnings.warn(status_str)
 
-        return (name, note)
+        return (status, name, note)
 
     def write_csv(self, filename):
         """
@@ -401,4 +426,83 @@ class Santec(SLM):
         filename : str
             Path to the .csv file.
         """
-        slm_funcs.SLM_Disp_ReadCSV(self.display_number, 0, filename)
+        Santec._parse_status(slm_funcs.SLM_Disp_ReadCSV(self.display_number, 0, filename))
+
+    ### Low priority trigger and memory features.
+    ### Feel free to finish, or poke regarding implementation.
+
+    # def software_trigger(self):
+    #     slm_funcs.SLM_Ctrl_WriteTS(self.slm_number)
+
+    # def set_intput_trigger(self, enabled=True):
+    #     slm_funcs.SLM_Ctrl_WriteTI(self.slm_number, int(enabled))
+
+    # def set_intput_trigger_direction(self, ascending=True):
+    #     slm_funcs.SLM_Ctrl_WriteTC(self.slm_number, int(ascending))
+
+    # def set_output_trigger(self, enabled=True):
+    #     slm_funcs.SLM_Ctrl_WriteTM(self.slm_number, int(enabled))
+
+    # def set_memory_framerate(self, framerate_hz):
+    #     # Not sure if it's actually Hz
+    #     assert framerate_hz >= 0
+    #     assert framerate_hz <= 120
+    #     slm_funcs.SLM_Ctrl_WriteMW(self.slm_number, int(framerate_hz))
+
+    # def get_memory_framerate(self):
+    #     framerate_hz = slm_funcs.DWORD(0)
+
+    #     slm_funcs.SLM_Ctrl_ReadMW(self.slm_number, framerate_hz)
+
+    #     return int(framerate_hz.value)
+
+    # def start_memory_continuous(self, ascending=True):
+    #     slm_funcs.SLM_Ctrl_WriteDR(self.slm_number, int(ascending))
+
+    # def stop_memory_continuous(self):
+    #     slm_funcs.SLM_Ctrl_WriteDB(self.slm_number)
+
+    # def set_memory_table(self, mapping):
+    #     assert len(mapping) == 128
+
+    #     for entry, map in zip(range(1, 129), mapping):
+    #         Santec._parse_status(
+    #             slm_funcs.SLM_Ctrl_WriteMT(self.slm_number, entry, int(map))
+    #         )
+
+    # def get_memory_table(self):
+    #     table = []
+
+    #     ptr = slm_funcs.DWORD(0)
+
+    #     for entry in range(1, 129):
+    #         Santec._parse_status(
+    #             slm_funcs.SLM_Ctrl_ReadMS(self.slm_number, entry, ptr)
+    #         )
+    #         table.append(int(ptr.value))
+
+    #     return table
+
+    # def set_memory_table_position(self, position):
+    #     slm_funcs.SLM_Ctrl_WriteMP(self.slm_number, int(position))
+
+    # def get_memory_table_position(self, position):
+    #     # Function does not exist?
+    #     slm_funcs.SLM_Ctrl_ReadMP(self.slm_number, int(position))
+
+    # def set_memory_table_range(self, start, end):
+    #     # end is one above the true end, according to docs.
+    #     slm_funcs.SLM_Ctrl_WriteMR(self.slm_number, int(start), int(end))
+
+    # def get_memory_table_range(self):
+    #     start = slm_funcs.DWORD(0)
+    #     end = slm_funcs.DWORD(0)
+
+    #     slm_funcs.SLM_Ctrl_ReadMR(self.slm_number, start, end)
+
+    #     return (start.value, end.value)
+
+    # def write_memory(self, phase):
+    #     # Needs to be combined with write(), probably.
+    #     slm_funcs.SLM_Ctrl_WriteMI()
+    #     raise NotImplementedError()

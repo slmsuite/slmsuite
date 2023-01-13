@@ -138,12 +138,14 @@ class Santec(SLM):
             wav_desired_nm = int(1e3 * wav_design_um)
             phase_desired = int(np.floor(max_phase * 100 / np.pi))
 
+            # Update the phase table if necessary. This sometimes fails for unknown 
+            # reasons, so we do multiple attempts. Reasons for failure might include overheating
+            # while the energy-intensive process of updating the table is underway.
             attempt = 1
-
             while wav_current_nm.value != wav_desired_nm and attempt < 5:
                 if verbose:
                     if attempt > 1:
-                        print("(attempt {}, temperature={})".format(attempt, self.get_temperature()))
+                        print("(attempt {})".format(attempt))
                     else:
                         print("Current phase table: wav = {0} nm, maxphase = {1:.2f}pi"
                             .format(wav_current_nm.value, phase_current.value / 100.0))
@@ -173,13 +175,14 @@ class Santec(SLM):
                 
                 attempt += 1
 
+            # Raise an error if we failed.
             if wav_current_nm.value != wav_desired_nm or abs(phase_current.value - 200) > 100:
                 raise RuntimeError("Failed to update Santec phase table.")
 
             # Note phase table issues if they are present
-            if verbose and abs(phase_current.value - 200) > 2:
+            if verbose and abs(phase_current.value - 200) > 4:
                 wav_design_fixed_um = wav_design_um * (phase_current.value / 200.0)
-                print("  Warning: the Santec phase table maximum deviates significantly (>1%) from 2pi ({0:.2f}pi).".format(phase_current.value / 100.0))
+                print("  Warning: the Santec phase table maximum deviates significantly (>2%) from 2pi ({0:.2f}pi).".format(phase_current.value / 100.0))
                 print("    This is likely due to internal checks avoiding 'abnormal' phase table results.")
                 print("    To compensate for this, wav_design_um is noted to equal {} instead of the desired {}.".format(wav_design_fixed_um, wav_design_um))
                 if wav_um / wav_design_fixed_um != 1:
@@ -193,7 +196,7 @@ class Santec(SLM):
             display_name = ctypes.create_string_buffer(128)
 
             if verbose:
-                print("Looking for display... ", end="")
+                print("Looking for display_number={}... ".format(self.display_number), end="")
             Santec._parse_status(
                 slm_funcs.SLM_Disp_Info2(self.display_number, width, height, display_name)
             )

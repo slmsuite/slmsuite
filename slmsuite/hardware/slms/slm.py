@@ -72,9 +72,7 @@ class SLM:
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
         Of size :attr:`shape`. Defaults to ``None`` when no correction is provided.
     phase : numpy.ndarray
-        Displayed data in units of phase delay (normalized). If integer data was passed
-        to :meth:`write()`, then the data stored in :attr:`phase` is **not** updated for
-        performance reasons.
+        Displayed data in units of phase delay (normalized).
     display : numpy.ndarray
         Displayed data in SLM units (integers).
     """
@@ -220,7 +218,7 @@ class SLM:
         :mod:`slmsuite`'s 'increasing value ==> increasing phase delay' convention.
         As a result, zero phase will appear entirely white (255 for an 8-bit SLM), and increasing phase
         will darken the displayed pattern.
-        If integer data is passed, the sign is *not* flipped.
+        If integer data is passed, this data is displayed directly and the sign is *not* flipped.
 
         Important
         ~~~~~~~~~
@@ -273,8 +271,8 @@ class SLM:
             ``phase`` is stored in the attribute :attr:`phase`.
             However, in cases where :attr:`phase_scaling` not one, this
             copy is modified to include how the data was wrapped. If the data was
-            cropped, then the cropped data is stored, etc. If integer data was passed,
-            then the attribute :attr:`phase` is unchanged.
+            cropped, then the cropped data is stored, etc. If integer data was passed, the
+            equivalent floating point phase is computed and stored in the attribute :attr:`phase`.
         phase_correct : bool
             Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction` to ``phase``.
         settle : bool
@@ -317,6 +315,9 @@ class SLM:
                 np.copyto(self.display, toolbox.unpad(phase, self.shape))
             else:
                 np.copyto(self.display, phase)
+
+            # Update the phase variable with the integer data that we displayed.
+            self.phase = 2 * np.pi - self.display * (2 * np.pi / self.phase_scaling / self.bitresolution)
         else:
             # If float data was passed (or the None case).
             # Copy the pattern and unpad if necessary.

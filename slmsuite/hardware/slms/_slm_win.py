@@ -1,5 +1,7 @@
 """
-Modified Santec header file.
+A slightly-modified Santec header file for Santec SLMs.
+Modified for dll handling for other versions of python.
+See santec.py.
 """
 import sys
 from ctypes import *
@@ -22,12 +24,18 @@ from ctypes.wintypes import LPCWSTR
 from ctypes.wintypes import FILETIME
 import os
 
-if (sys.version_info.major * 100 + sys.version_info.minor) >= 308:
+if hasattr(os, "add_dll_directory"):    # python >= 3.8
     os.add_dll_directory(os.getcwd())
-
-_libname = "SLMFunc.dll"
-_libraries = {}
-_libraries[_libname] = WinDLL(_libname)
+    os.add_dll_directory(os.path.dirname(os.path.abspath(__file__)))
+    _libname = "SLMFunc.dll"
+    _libraries = {}
+    _libraries[_libname] = WinDLL(_libname)
+else:                                   # python < 3.8
+    _libname = "SLMFunc.dll"
+    _libpath = os.path.dirname(os.path.abspath(__file__))
+    os.environ['PATH'] = _libpath + os.pathsep + os.environ['PATH']
+    _libraries = {}
+    _libraries[_libname] = windll.LoadLibrary(_libname)
 
 
 # ctypes

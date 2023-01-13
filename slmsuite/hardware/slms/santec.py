@@ -21,6 +21,7 @@ import os
 import ctypes
 import numpy as np
 import cv2
+import warnings
 
 from .slm import SLM
 
@@ -51,6 +52,12 @@ class Santec(SLM):
         USB port number assigned by Santec SDK.
     display_number : int
         Display number assigned by Santec SDK.
+    optionboard_id : str
+        ID of the option board
+    driveboard_id : str
+        ID of the drive board
+    product_code_id : str
+        Product code of the device
     """
 
     def __init__(self, slm_number=1, display_number=2, verbose=True, **kwargs):
@@ -98,18 +105,18 @@ class Santec(SLM):
             wav_design_um = wav_um
 
         if verbose:
-            print("Santec initializing... ", end="")
-        assert (
-            slm_funcs.SLM_Ctrl_Open(self.slm_number) == 0
-        ), "Opening Santec slm_number={} failed.".format(self.slm_number)
-        slm_funcs.SLM_Ctrl_WriteVI(self.slm_number, 1)  # 0:Memory 1:DVI
+            print("Santec slm_number={} initializing... ".format(self.slm_number), end="")
+        self.parse_status(slm_funcs.SLM_Ctrl_Open(self.slm_number))
+        self.parse_status(slm_funcs.SLM_Ctrl_WriteVI(self.slm_number, 1))   # 0:Memory 1:DVI
         if verbose:
             print("success")
 
         # Update wavelength if needed
         wav_current_nm = ctypes.c_uint32(0)
         phase_current = ctypes.c_ulong(0)
-        slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
+        self.parse_status(
+            slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
+        )
 
         wav_desired_nm = int(1e3 * wav_design_um)
         phase_desired = int(np.floor(max_phase * 100 / np.pi))
@@ -123,12 +130,16 @@ class Santec(SLM):
                 print("     ...Updating wavelength table (this may take 30 seconds)...")
 
             # Set wavelength (nm) and maximum phase (100 * [float pi])
-            slm_funcs.SLM_Ctrl_WriteWL(self.slm_number, wav_desired_nm, phase_desired)
+            self.parse_status(
+                slm_funcs.SLM_Ctrl_WriteWL(self.slm_number, wav_desired_nm, phase_desired)
+            )
             # Save wavelength
-            slm_funcs.SLM_Ctrl_WriteAW(self.slm_number)
+            self.parse_status(slm_funcs.SLM_Ctrl_WriteAW(self.slm_number))
 
             # Verify wavelength
-            slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
+            self.parse_status(
+                slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
+            )
             if verbose:
                 print("Updated wavelength table: wav = {0} nm, maxphase = {1:.2f}pi"
                         .format(wav_current_nm.value, phase_current.value / 100.0))
@@ -136,13 +147,16 @@ class Santec(SLM):
         # Check for the SLM parameters and save them
         width = ctypes.c_ushort(0)
         height = ctypes.c_ushort(0)
-        display_name = ctypes.create_string_buffer(64)
+        display_name = ctypes.create_string_buffer(128)
 
         if verbose:
             print("Looking for display... ", end="")
-        slm_funcs.SLM_Disp_Info2(self.display_number, width, height, display_name)
+        self.parse_status(
+            slm_funcs.SLM_Disp_Info2(self.display_number, width, height, display_name)
+        )
 
         # For instance, "LCOS-SLM,SOC,8001,2018021001"
+        # Format is "UserFriendlyName,ManufacterName,ProductCodeID,SerialNumberID"
         name = display_name.value.decode("mbcs")
         if verbose:
             print("success")
@@ -151,16 +165,28 @@ class Santec(SLM):
 
         # If the target display_number is not found, then print some debug:
         if names[0] != "LCOS-SLM":
+            # Don't parse status around this one...
             slm_funcs.SLM_Ctrl_Close(self.slm_number)
 
-            raise ValueError(   "SLM not found at display_number {}. " \
+            raise ValueError(   "SLM not found at display_number={}. " \
                                 "Use .info() to find the correct display!" \
                                 .format(self.display_number)    )
+
+        # Populate some info
+        driveboard_id = ctypes.create_string_buffer(16)
+        optionboard_id = ctypes.create_string_buffer(16)
+        self.parse_status(
+            slm_funcs.SLM_Ctrl_ReadSDO(self.slm_number, driveboard_id, optionboard_id)
+        )
+
+        self.driveboard_id = driveboard_id.value.decode("mbcs")
+        self.optionboard_id = optionboard_id.value.decode("mbcs")
+        self.product_code_id = names[2]
 
         # Open SLM
         if verbose:
             print("Opening {}... ".format(name), end="")
-        slm_funcs.SLM_Disp_Open(self.display_number)
+        self.parse_status(slm_funcs.SLM_Disp_Open(self.display_number))
         if verbose:
             print("success")
 
@@ -168,7 +194,7 @@ class Santec(SLM):
             int(width.value),
             int(height.value),
             bitdepth=10,
-            name="Santec_" + names[-1],
+            name=names[-1], # SerialNumberID
             wav_um=wav_um,
             wav_design_um=wav_design_um,
             dx_um=8,
@@ -204,9 +230,11 @@ class Santec(SLM):
         for display_number in range(1, 9):
             width = ctypes.c_ushort(0)
             height = ctypes.c_ushort(0)
-            display_name = ctypes.create_string_buffer(64)
+            display_name = ctypes.create_string_buffer(128)
 
-            slm_funcs.SLM_Disp_Info2(display_number, width, height, display_name)
+            self.parse_status(
+                slm_funcs.SLM_Disp_Info2(display_number, width, height, display_name)
+            )
             name = display_name.value.decode("mbcs")
             if verbose:
                 print("{},  {}".format(display_number, name))
@@ -266,15 +294,102 @@ class Santec(SLM):
 
     def _write_hw(self, phase):
         """See :meth:`.SLM._write_hw`."""
-        matrix = phase.astype(ctypes.c_uint16)
+        matrix = phase.astype(slm_funcs.USHORT)
 
         n_h, n_w = self.shape
 
         # Write to SLM
-        c = matrix.ctypes.data_as(ctypes.POINTER((ctypes.c_int16 * n_h) * n_w)).contents
-        ret = slm_funcs.SLM_Disp_Data(self.display_number, n_w, n_h, 0, c)
-        if ret != 0:
-            raise RuntimeError("SLM returned error {}.".format(ret))
+        c = matrix.ctypes.data_as(ctypes.POINTER((slm_funcs.USHORT * n_h) * n_w)).contents
+        self.parse_status(slm_funcs.SLM_Disp_Data(self.display_number, n_w, n_h, 0, c))
+
+    # Extra functionality
+
+    def read_temperature(self):
+        """
+        **(Untested)**
+        Read the drive board and option board temperatures.
+
+        Returns
+        -------
+        (float, float)
+            Temperature in Celsius of the drive and option board
+        """
+        drive_temp = ctypes.c_int32(0)
+        option_temp = ctypes.c_int32(0)
+
+        self.parse_status(slm_funcs.SLM_Ctrl_ReadT(self.slm_number, drive_temp, option_temp))
+
+        return (drive_temp.value / 10., option_temp.value / 10.)
+
+    def check_error(self, raise_error=True):
+        """
+        **(Untested)**
+        Read the drive board and option board errors.
+
+        Returns
+        -------
+        list of str
+            List of errors.
+        """
+        drive_error = ctypes.c_uint32(0)
+        option_error = ctypes.c_uint32(0)
+
+        slm_funcs.SLM_Ctrl_ReadEDO(self.slm_number, drive_error, option_error)
+
+        # Check the resulting bitstrings for errors (0 ==> all good).
+        errors = []
+
+        for drive_error_bit in slm_funcs.SLM_DRIVEBOARD_ERROR.keys():
+            if drive_error.value & drive_error_bit:
+                errors.append(slm_funcs.SLM_DRIVEBOARD_ERROR[drive_error_bit])
+
+        for option_error_bit in slm_funcs.SLM_OPTIONBOARD_ERROR.keys():
+            if option_error.value & option_error_bit:
+                errors.append(slm_funcs.SLM_OPTIONBOARD_ERROR[option_error_bit])
+
+        if len(errors) > 0:
+            raise RuntimeError("Santec error: " + ", ".join(["'" + err + "'" for err in errors]))
+
+        return errors
+
+    def parse_status(self, status=None, raise_error=True):
+        """
+        **(Untested)**
+        Parses the meaning of a ``SLM_STATUS`` return from the Santec SLM.
+
+        Parameters
+        ----------
+        status : int
+            ``SLM_STATUS`` return. If ``None``, the SLM is polled for status instead.
+        raise_error : bool
+            Whether to raise an error (if True) or a warning (if False) when status is not ``SLM_OK``.
+
+        Returns
+        -------
+        (str, str)
+            Status in ``(name, note)`` form.
+        """
+        # Parse status
+        if status is None:
+            status = slm_funcs.SLM_Ctrl_ReadSU(self.slm_number)
+
+        status = int(status)
+
+        if not status in slm_funcs.SLM_STATUS_DICT.keys():
+            raise ValueError("SLM status '{}' not recognized.".format(status))
+
+        # Recover the meaning of status
+        (name, note) = slm_funcs.SLM_STATUS_DICT[status]
+
+        status_str = "Santec error {}; '{}'".format(name, note)
+
+        if status != 0:
+            if raise_error:
+                raise RuntimeError(status_str)
+            else:
+                warnings.warn(status_str)
+
+        return (name, note)
 
     def write_csv(self, filename):
         """

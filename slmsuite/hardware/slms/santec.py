@@ -18,6 +18,7 @@ Santec provides base wavefront correction accounting for the curvature of the SL
 Consider loading these files via :meth:`.SLM..load_vendor_phase_correction()`
 """
 import os
+import time
 import ctypes
 import numpy as np
 import cv2
@@ -61,7 +62,7 @@ class Santec(SLM):
     """
 
     def __init__(self, slm_number=1, display_number=2, verbose=True, **kwargs):
-        """
+        r"""
         Initializes an instance of a Santec SLM.
 
         Arguments
@@ -77,17 +78,22 @@ class Santec(SLM):
 
         Note
         ----
-        Santec sets the voltage lookup table to correspond to the wavelength
-        supplied to :attr:`.SLM.wav_um`. This allows :attr:`.SLM.phase_scaling` to
-        always be one, and make use of optimized routines (see :meth`.write()`)
+        Santec SLMs can reconfigure their phase table: the correspondence between
+        grayscale values and applied voltages. This is configured based upon the wavelength
+        supplied to :attr:`.SLM.wav_design_um`. This allows :attr:`.SLM.phase_scaling`
+        to be one if desired, and make use of optimized routines (see :meth`.write()`).
+        However, sometimes setting the phase table runs into issues, where the maximum value 
+        doesn't correspond to exactly :math:`2\pi` at the target wavelength. This is noted
+        in the initialization, and the user should update :attr:`.SLM.wav_design_um` or otherwise
+        to avoid undesired behavior.
 
         Caution
         ~~~~~~~
         :class:`.Santec` defaults to 8 micron SLM pixel size
         (:attr:`.SLM.dx_um` = :attr:`.SLM.dy_um` = 8)
         and 10-bit :attr:`.SLM.bitdepth`.
-        This is valid for SLM-200, SLM-210, and SLM-300, but may not be valid for future
-        Santec models.
+        This is valid for SLM-200, SLM-210, and SLM-300, 
+        but may not be valid for future Santec models.
         """
         # Default max phase. Maybe this should be opened to the user in the future.
         # Otherwise, wav_um and wav_design_um have the same functionality.
@@ -108,111 +114,148 @@ class Santec(SLM):
             print("Santec slm_number={} initializing... ".format(self.slm_number), end="")
         Santec._parse_status(slm_funcs.SLM_Ctrl_Open(self.slm_number))
 
-        # Wait for the SLM to no longer be busy.
-        while True:
-            status = slm_funcs.SLM_Ctrl_ReadSU(self.slm_number)
+        try:
+            # Wait for the SLM to no longer be busy.
+            while True:
+                status = slm_funcs.SLM_Ctrl_ReadSU(self.slm_number)
 
-            if status == 0:     break       # SLM_OK (proceed)
-            elif status == 2:   continue    # SLM_BS (busy)
-            else:               Santec._parse_status(status)
+                if status == 0:     break       # SLM_OK (proceed)
+                elif status == 2:   continue    # SLM_BS (busy)
+                else:               Santec._parse_status(status)
 
-        # Right now, only DVI mode is supported.
-        Santec._parse_status(slm_funcs.SLM_Ctrl_WriteVI(self.slm_number, 1))   # 0:Memory 1:DVI
-        if verbose:
-            print("success")
+            # Check to see if the device or option boards have an error.
+            self.get_error(raise_error=True)
 
-        # Update wavelength if needed
-        wav_current_nm = ctypes.c_uint32(0)
-        phase_current = ctypes.c_ulong(0)
-        Santec._parse_status(
-            slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
-        )
-
-        wav_desired_nm = int(1e3 * wav_design_um)
-        phase_desired = int(np.floor(max_phase * 100 / np.pi))
-
-        if wav_current_nm.value != wav_desired_nm:
+            # Right now, only DVI mode is supported.
+            Santec._parse_status(slm_funcs.SLM_Ctrl_WriteVI(self.slm_number, 1))   # 0:Memory 1:DVI
             if verbose:
-                print("Current wavelength table: wav = {0} nm, maxphase = {1:.2f}pi"
-                    .format(wav_current_nm.value, phase_current.value / 100.0))
-                print("Desired wavelength table: wav = {0} nm, maxphase = {1:.2f}pi"
-                        .format(wav_desired_nm, phase_desired / 100.0))
-                print("     ...Updating wavelength table (this may take 30 seconds)...")
+                print("success")
 
-            # Set wavelength (nm) and maximum phase (100 * [float pi])
-            Santec._parse_status(
-                slm_funcs.SLM_Ctrl_WriteWL(self.slm_number, wav_desired_nm, phase_desired)
-            )
-            # Save wavelength
-            Santec._parse_status(slm_funcs.SLM_Ctrl_WriteAW(self.slm_number))
+            time.sleep(.1)
 
-            # Verify wavelength
+            # Update wavelength if needed
+            wav_current_nm = ctypes.c_uint32(0)
+            phase_current = ctypes.c_ulong(0)
             Santec._parse_status(
                 slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
             )
+
+            wav_desired_nm = int(1e3 * wav_design_um)
+            phase_desired = int(np.floor(max_phase * 100 / np.pi))
+
+            attempt = 1
+
+            while wav_current_nm.value != wav_desired_nm and attempt < 5:
+                if verbose:
+                    if attempt > 1:
+                        print("(attempt {}, temperature={})".format(attempt, self.get_temperature()))
+                    else:
+                        print("Current phase table: wav = {0} nm, maxphase = {1:.2f}pi"
+                            .format(wav_current_nm.value, phase_current.value / 100.0))
+                        print("Desired phase table: wav = {0} nm, maxphase = {1:.2f}pi"
+                            .format(wav_desired_nm, phase_desired / 100.0))
+                    print("     ...Updating phase table (this may take 40 seconds)...")
+
+                # Set wavelength (nm) and maximum phase (100 * [float pi])
+                Santec._parse_status(
+                    slm_funcs.SLM_Ctrl_WriteWL(self.slm_number, ctypes.c_uint32(wav_desired_nm), phase_desired)
+                )
+
+                time.sleep(.1)
+
+                # Save wavelength
+                Santec._parse_status(slm_funcs.SLM_Ctrl_WriteAW(self.slm_number))
+
+                time.sleep(.1)
+
+                # Verify wavelength
+                Santec._parse_status(
+                    slm_funcs.SLM_Ctrl_ReadWL(self.slm_number, wav_current_nm, phase_current)
+                )
+                if verbose:
+                    print("Updated phase table: wav = {0} nm, maxphase = {1:.2f}pi"
+                            .format(wav_current_nm.value, phase_current.value / 100.0))
+                
+                attempt += 1
+
+            if wav_current_nm.value != wav_desired_nm or abs(phase_current.value - 200) > 100:
+                raise RuntimeError("Failed to update Santec phase table.")
+
+            # Note phase table issues if they are present
+            if verbose and abs(phase_current.value - 200) > 2:
+                wav_design_fixed_um = wav_design_um * (phase_current.value / 200.0)
+                print("  Warning: the Santec phase table maximum deviates significantly (>1%) from 2pi ({0:.2f}pi).".format(phase_current.value / 100.0))
+                print("    This is likely due to internal checks avoiding 'abnormal' phase table results.")
+                print("    To compensate for this, wav_design_um is noted to equal {} instead of the desired {}.".format(wav_design_fixed_um, wav_design_um))
+                if wav_um / wav_design_fixed_um != 1:
+                    print("    This results in phase_scaling={0:.4f} != 1, which has negative speed implications (see .write()).".format(wav_um / wav_design_fixed_um))
+                print("    If this behavior is undesired, play with wav_design_um to find a better regime.")
+                wav_design_um = wav_design_fixed_um
+
+            # Check for the SLM parameters and save them
+            width = ctypes.c_ushort(0)
+            height = ctypes.c_ushort(0)
+            display_name = ctypes.create_string_buffer(128)
+
             if verbose:
-                print("Updated wavelength table: wav = {0} nm, maxphase = {1:.2f}pi"
-                        .format(wav_current_nm.value, phase_current.value / 100.0))
+                print("Looking for display... ", end="")
+            Santec._parse_status(
+                slm_funcs.SLM_Disp_Info2(self.display_number, width, height, display_name)
+            )
 
-        # Check for the SLM parameters and save them
-        width = ctypes.c_ushort(0)
-        height = ctypes.c_ushort(0)
-        display_name = ctypes.create_string_buffer(128)
+            # For instance, "LCOS-SLM,SOC,8001,2018021001"
+            # Format is "UserFriendlyName,ManufacterName,ProductCodeID,SerialNumberID"
+            name = display_name.value.decode("mbcs")
+            if verbose:
+                print("success")
 
-        if verbose:
-            print("Looking for display... ", end="")
-        Santec._parse_status(
-            slm_funcs.SLM_Disp_Info2(self.display_number, width, height, display_name)
-        )
+            names = name.split(",")
 
-        # For instance, "LCOS-SLM,SOC,8001,2018021001"
-        # Format is "UserFriendlyName,ManufacterName,ProductCodeID,SerialNumberID"
-        name = display_name.value.decode("mbcs")
-        if verbose:
-            print("success")
+            # If the target display_number is not found, then print some debug:
+            if names[0] != "LCOS-SLM":
+                # Don't parse status around this one...
+                raise ValueError(   "SLM not found at display_number={}. " \
+                                    "Use .info() to find the correct display!" \
+                                    .format(self.display_number)    )
 
-        names = name.split(",")
+            # Populate some info
+            driveboard_id = ctypes.create_string_buffer(16)
+            optionboard_id = ctypes.create_string_buffer(16)
+            Santec._parse_status(
+                slm_funcs.SLM_Ctrl_ReadSDO(self.slm_number, driveboard_id, optionboard_id)
+            )
 
-        # If the target display_number is not found, then print some debug:
-        if names[0] != "LCOS-SLM":
-            # Don't parse status around this one...
-            slm_funcs.SLM_Ctrl_Close(self.slm_number)
+            self.driveboard_id = driveboard_id.value.decode("mbcs")
+            self.optionboard_id = optionboard_id.value.decode("mbcs")
+            self.product_code_id = names[2]
 
-            raise ValueError(   "SLM not found at display_number={}. " \
-                                "Use .info() to find the correct display!" \
-                                .format(self.display_number)    )
+            # Open SLM
+            if verbose:
+                print("Opening {}... ".format(name), end="")
+            Santec._parse_status(slm_funcs.SLM_Disp_Open(self.display_number))
+            if verbose:
+                print("success")
 
-        # Populate some info
-        driveboard_id = ctypes.create_string_buffer(16)
-        optionboard_id = ctypes.create_string_buffer(16)
-        Santec._parse_status(
-            slm_funcs.SLM_Ctrl_ReadSDO(self.slm_number, driveboard_id, optionboard_id)
-        )
+            super().__init__(
+                int(width.value),
+                int(height.value),
+                bitdepth=10,
+                name=names[-1], # SerialNumberID
+                wav_um=wav_um,
+                wav_design_um=wav_design_um,
+                dx_um=8,
+                dy_um=8,
+                **kwargs
+            )
 
-        self.driveboard_id = driveboard_id.value.decode("mbcs")
-        self.optionboard_id = optionboard_id.value.decode("mbcs")
-        self.product_code_id = names[2]
+            self.write(None)
+        except Exception as init_error:
+            try:
+                Santec._parse_status(slm_funcs.SLM_Ctrl_Close(self.slm_number))
+            except Exception as close_error:
+                print("Could not close attempt to open Santec slm_number={}: {}".format(slm_number, str(close_error)))
 
-        # Open SLM
-        if verbose:
-            print("Opening {}... ".format(name), end="")
-        Santec._parse_status(slm_funcs.SLM_Disp_Open(self.display_number))
-        if verbose:
-            print("success")
-
-        super().__init__(
-            int(width.value),
-            int(height.value),
-            bitdepth=10,
-            name=names[-1], # SerialNumberID
-            wav_um=wav_um,
-            wav_design_um=wav_design_um,
-            dx_um=8,
-            dy_um=8,
-            **kwargs
-        )
-
-        self.write(None)
+            raise init_error
 
     @staticmethod
     def info(verbose=True):
@@ -228,7 +271,7 @@ class Santec(SLM):
         Returns
         --------
         list of (int, str) tuples
-            The number and name of each SLM.
+            The number and name of each potential display.
         """
         # Check for the SLM parameters and save them
         display_list = []
@@ -242,14 +285,17 @@ class Santec(SLM):
             height = ctypes.c_ushort(0)
             display_name = ctypes.create_string_buffer(128)
 
-            Santec._parse_status(
-                slm_funcs.SLM_Disp_Info2(display_number, width, height, display_name)
-            )
-            name = display_name.value.decode("mbcs")
-            if verbose:
-                print("{},  {}".format(display_number, name))
+            status = slm_funcs.SLM_Disp_Info2(display_number, width, height, display_name)
 
-            display_list.append((display_number, name))
+            if not (status == 0 or status == -1):
+                Santec._parse_status(status)
+
+            name = display_name.value.decode("mbcs")
+            if len(name) > 0:
+                if verbose:
+                    print("{},  {}".format(display_number, name))
+
+                display_list.append((display_number, name))
 
         return display_list
 
@@ -313,9 +359,8 @@ class Santec(SLM):
 
     ### Additional Santec-specific functionality
 
-    def read_temperature(self):
+    def get_temperature(self):
         """
-        **(Untested)**
         Read the drive board and option board temperatures.
 
         Returns
@@ -323,8 +368,10 @@ class Santec(SLM):
         (float, float)
             Temperature in Celsius of the drive and option board
         """
-        drive_temp = ctypes.c_int32(0)
-        option_temp = ctypes.c_int32(0)
+        # Note that the Santec documentation suggests using signed 
+        # integers, but the header requests unsigned integers.
+        drive_temp = ctypes.c_uint32(0)
+        option_temp = ctypes.c_uint32(0)
 
         Santec._parse_status(slm_funcs.SLM_Ctrl_ReadT(self.slm_number, drive_temp, option_temp))
 
@@ -332,7 +379,6 @@ class Santec(SLM):
 
     def get_error(self, raise_error=True):
         """
-        **(Untested)**
         Read the drive board and option board errors.
 
         Returns
@@ -356,14 +402,13 @@ class Santec(SLM):
             if option_error.value & option_error_bit:
                 errors.append(slm_funcs.SLM_OPTIONBOARD_ERROR[option_error_bit])
 
-        if len(errors) > 0:
+        if raise_error and len(errors) > 0:
             raise RuntimeError("Santec error: " + ", ".join(["'" + err + "'" for err in errors]))
 
         return errors
 
     def get_status(self, raise_error=True):
         """
-        **(Untested)**
         Gets ``SLM_STATUS`` return from a Santec SLM and parses the result.
 
         Parameters
@@ -382,7 +427,6 @@ class Santec(SLM):
     @staticmethod
     def _parse_status(status, raise_error=True):
         """
-        **(Untested)**
         Parses the meaning of a ``SLM_STATUS`` return from a Santec SLM.
 
         Parameters

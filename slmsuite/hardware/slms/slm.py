@@ -413,6 +413,12 @@ class SLM:
             if np.amin(phase) <= -self.bitresolution or np.amax(phase) > 0:
                 # Minus 1 is to conform with the in-bound case.
                 phase -= 1
+                # np.mod is the slowest step. It could maybe be faster if phase is converted to 
+                # an integer beforehand, but there is an amount of risk for overflow.
+                # For instance, a standard double can represent numbers far larger than 
+                # even a 64 bit integer. If this optimization is implement, take care to 
+                # generate checks for the conversion to long integer / etc before the final 
+                # conversion to dtype of uint8 or uint16.
                 np.mod(phase, self.bitresolution * self.phase_scaling, out=phase)
                 phase +=  self.bitresolution * (1-self.phase_scaling)
 

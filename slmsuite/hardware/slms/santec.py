@@ -4,10 +4,11 @@ Tested with Santec LCoS SLM-200, SLM-210, and SLM-300.
 
 Note
 ~~~~
-:class:`.Santec` requires files from Santec to be present in the
+:class:`.Santec` requires dynamically linked libraries from Santec to be present in the
 :mod:`~slmsuite.hardware.slms` directory:
 
- - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).
+ - SLMFunc.dll
+ - FTD3XX.dll
 
 These files should be copied in before use.
 
@@ -16,6 +17,7 @@ Note
 Santec provides base wavefront correction accounting for the curvature of the SLM surface.
 Consider loading these files via :meth:`.SLM.load_vendor_phase_correction()`
 """
+import os
 import time
 import ctypes
 import numpy as np
@@ -28,9 +30,12 @@ try:                        # Load Santec's header file.
     from . import _slm_win as slm_funcs
 except BaseException as e:  # Provide an informative error should something go wrong.
     print("santec.py: Santec DLLs not installed. Install these to use Santec SLMs.")
-    print(  "  Files from Santec must be present in the slms directory:\n"
-            "  - Dynamically linked libraries (SLMFunc.dll and FTD3XX.dll).\n"
-            "Check that theses files are present and are error-free.\n{}".format(e))
+    print(  "  Dynamically linked libraries from Santec (usually provided via USB) must be present in the slms directory:\n"
+            "  - SLMFunc.dll\n  - FTD3XX.dll\n"
+            "  You can find the slms directory at '{}'\n"
+            "  Check that theses files are present and are error-free.\nOriginal error: {}".format(
+                os.path.dirname(os.path.abspath(__file__)), e
+    ))
 
 
 class Santec(SLM):

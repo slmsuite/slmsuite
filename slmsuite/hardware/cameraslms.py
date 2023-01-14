@@ -169,7 +169,6 @@ class FourierSLM(CameraSLM):
 
         return results
 
-
     ### Fourier Calibration ###
 
     def fourier_calibrate(
@@ -521,6 +520,7 @@ class FourierSLM(CameraSLM):
         self,
         interference_point,
         field_point,
+        field_point_units="ij",
         superpixel_size=50,
         phase_steps=10,
         exclude_superpixels=(0, 0),
@@ -554,6 +554,13 @@ class FourierSLM(CameraSLM):
             blazed toward in order to reduce light in the camera's field. Suggested
             approach is to set this outside the field of view of the camera and make
             sure that other diffraction orders are far from the `interference_point`.
+        field_point_units : str
+            Defaults to ``"ij"``. If it is instead a unit compatible with 
+            :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`, then the
+            ``field_point`` value is interpreted as the blaze to set the field to
+            (i.e. instead of the difference between the zeroth order and the field point).
+            In this case, setting one coordinate of ``field_point`` to zero is suggested
+            to minimize higher order diffraction.
         superpixel_size : int
             The width and height in pixels of each SLM superpixel.
             If this is not a devisor of both dimensions of the SLM's :attr:`shape`,
@@ -601,13 +608,25 @@ class FourierSLM(CameraSLM):
         # Clean the points
         base_point = self.kxyslm_to_ijcam([0, 0]).astype(np.int)
         interference_point = format_2vectors(interference_point).astype(np.int)
-        field_point = format_2vectors(field_point).astype(np.int)
+        field_point = format_2vectors(field_point)
 
         # Use the Fourier calibration to help find points/sizes in the imaging plane.
         assert self.fourier_calibration is not None, \
             "Fourier calibration must be done before wavefront calibration."
         interference_blaze = self.ijcam_to_kxyslm(interference_point)
-        field_blaze = self.ijcam_to_kxyslm(field_point)
+        if field_point_units == "ij":
+            field_blaze = self.ijcam_to_kxyslm(field_point)
+        else:
+            field_blaze = toolbox.convert_blaze_vector(
+                field_point,
+                from_units=field_point_units,
+                to_units="kxy",
+                slm=self.slm
+            )
+
+            field_point = self.kxyslm_to_ijcam(field_blaze)
+
+        field_point = format_2vectors(field_point).astype(np.int)
 
         # Determine how many rows and columns of superpixels we will use.
         [NY, NX] = np.ceil(np.array(self.slm.shape) / superpixel_size).astype(np.int)
@@ -857,7 +876,7 @@ class FourierSLM(CameraSLM):
                 plt.show()
 
         def find_center(img, plot=False):
-            masked_pic_mode = mask(img, interference_point, 8 * interference_size)
+            masked_pic_mode = mask(img, interference_point, 4 * interference_size)
 
             if plot_everything or plot:
                 plt.imshow(masked_pic_mode)
@@ -866,7 +885,7 @@ class FourierSLM(CameraSLM):
             # found_center = analysis.image_positions([masked_pic_mode]) + interference_point
 
             # Blur a lot and assume the maximum corresponds to the center.
-            blur = 4 * int(np.min(interference_size)) + 1
+            blur = 2 * int(np.min(interference_size)) + 1
             masked_pic_mode = analysis._make_8bit(masked_pic_mode)
             masked_pic_mode = cv2.GaussianBlur(masked_pic_mode, (blur, blur), 0)
             _, _, _, max_loc = cv2.minMaxLoc(masked_pic_mode)
@@ -921,8 +940,6 @@ class FourierSLM(CameraSLM):
             # Determine whether to use a progress bar.
             if verbose:
                 description = "superpixel=({},{})".format(index[0], index[1])
-                np.savez(description + "_back.npz", background_image)
-                np.savez(description + "_norm.npz", normalization_image)
                 prange = tqdm(phases, position=0, leave=False, desc=description)
             else:
                 prange = phases

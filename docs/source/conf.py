@@ -11,7 +11,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 
-import shutil
+# import shutil
 import base64
 import os
 import sys
@@ -170,3 +170,4 @@ def setup(app):
     except BaseException as e:
         print("WARNING: Unable to download example notebooks. "
               "Building without examples. Error:\n{}".format(e))
+              

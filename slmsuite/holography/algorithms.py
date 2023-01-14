@@ -217,14 +217,19 @@ class Hologram:
             :meth:`.calculate_padded_shape()` can be of particular help for calculating the
             shape that will produce desired results (in terms of precision, etc).
         amp : array_like OR None
-            See :attr:`amp`. Of shape :attr:`slm_shape`.
+            The near-field amplitude. See :attr:`amp`. Of shape :attr:`slm_shape`.
         phase : array_like OR None
+            The near-field initial phase.
             See :attr:`phase`. :attr:`phase` should only be passed if the user wants to
             precondition the optimization. Of shape :attr:`slm_shape`.
-        slm_shape : (int, int) OR slmsuite.hardware.FourierSLM OR None
-            The original shape of the SLM. The user can pass a
-            :class:`slmsuite.hardware.FourierSLM` instead.
-            If ``None``, set to :attr:`shape`.
+        slm_shape : (int, int) OR slmsuite.hardware.FourierSLM OR slmsuite.hardware.slms.SLM OR None
+            The shape of the near-field of the SLM.
+            The user can pass a
+            :class:`slmsuite.hardware.FourierSLM` or
+            :class:`slmsuite.hardware.slms.SLM` instead,
+            and ``slm_shape`` (and ``amp`` if it is ``None``) are populated from this.
+            If ``None``, tries to use the shape of ``amp`` or ``phase``, but if these
+            are not present, defaults to :attr:`shape` (which is usually determined by ``target``).
         dtype : type
             See :attr:`dtype`; type to use for stored arrays.
         """
@@ -267,10 +272,23 @@ class Hologram:
             slm_shape = (np.nan, np.nan)
         else:
             try:  # Check if slm_shape is a CameraSLM.
+                if amp is None:
+                    amp = slm_shape.slm.measured_amplitude
                 slm_shape = slm_shape.slm.shape
             except:
                 pass
 
+            try:  # Check if slm_shape is an SLM (or I guess a numpy array too).
+                if amp is None:
+                    amp = slm_shape.measured_amplitude
+                slm_shape = slm_shape.shape
+            except:
+                pass
+
+            assert len(slm_shape) == 2
+
+        # We now have a few options for what the shape could be.
+        # Parse these to validate consistency.
         stack = np.vstack((amp_shape, phase_shape, slm_shape))
 
         if np.all(np.isnan(stack)):

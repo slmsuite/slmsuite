@@ -667,8 +667,8 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
     Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`
     on a set of ``vectors`` using the helper function
     :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
-    This iteratively forces a set of point away from each other until they become
-    more evenly distributed over a space.
+    This iteratively forces a set of ``vectors` away from each other until
+    they become more evenly distributed over a space.
 
     Parameters
     ----------
@@ -717,8 +717,8 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
 def lloyds_points(grid, n_points, iterations=10, plot=False):
     r"""
     Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`
-    without seed ``vectors``. Autogenerates the seed ``vectors`` randomly. See
-    :meth:`~slmsuite.holography.toolbox.lloyds_algorithm()`.
+    without seed ``vectors``. Instead, autogenerates the seed ``vectors`` randomly.
+    See :meth:`~slmsuite.holography.toolbox.lloyds_algorithm()`.
 
     Parameters
     ----------

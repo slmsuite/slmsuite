@@ -353,7 +353,7 @@ class Santec(SLM):
 
         # Write to SLM
         c = matrix.ctypes.data_as(ctypes.POINTER((slm_funcs.USHORT * n_h) * n_w)).contents
-        Santec._parse_status(slm_funcs.SLM_Disp_Data(self.display_number, n_w, n_h, 0, c))
+        Santec._parse_status(slm_funcs.SLM_Disp_Data(self.display_number, n_w, n_h, 0, c), raise_error=False)
 
     ### Additional Santec-specific functionality
 
@@ -375,19 +375,30 @@ class Santec(SLM):
 
         return (drive_temp.value / 10., option_temp.value / 10.)
 
-    def get_error(self, raise_error=True):
+    def get_error(self, raise_error=True, return_codes=False):
         """
         Read the drive board and option board errors.
 
+        Parameters
+        ----------
+        raise_error : bool
+            Whether to raise an error (if True) or a warning (if False) if error(s) are detected.
+        return_codes : bool
+            Whether to return an error string or integer error codes 
+            (in ``(drive_error, option_error)`` form).
+
         Returns
         -------
-        list of str
+        list of str OR (int, int)
             List of errors.
         """
         drive_error = ctypes.c_uint32(0)
         option_error = ctypes.c_uint32(0)
 
-        slm_funcs.SLM_Ctrl_ReadEDO(self.slm_number, drive_error, option_error)
+        Santec._parse_status(
+            slm_funcs.SLM_Ctrl_ReadEDO(self.slm_number, drive_error, option_error),
+            raise_error=raise_error
+        )
 
         # Check the resulting bitstrings for errors (0 ==> all good).
         errors = []
@@ -401,9 +412,16 @@ class Santec(SLM):
                 errors.append(slm_funcs.SLM_OPTIONBOARD_ERROR[option_error_bit])
 
         if raise_error and len(errors) > 0:
-            raise RuntimeError("Santec error: " + ", ".join(["'" + err + "'" for err in errors]))
+            error = "Santec error: " + ", ".join(["'" + err + "'" for err in errors])
+            if raise_error:
+                raise RuntimeError(error)
+            else:
+                warnings.warn(error)
 
-        return errors
+        if return_codes:
+            return (drive_error.value, option_error.value)
+        else:
+            return errors
 
     def get_status(self, raise_error=True):
         """

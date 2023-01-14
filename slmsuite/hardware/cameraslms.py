@@ -280,12 +280,15 @@ class FourierSLM(CameraSLM):
         M = np.array(orientation["M"])
         b = format_2vectors(orientation["b"])
 
-        knm_conv = (np.array((self.slm.dx, self.slm.dy))
+        # blob_array_detect returns the calibration from ij to the space of the array, so
+        # as a last step we must convert from the array to (centered) knm space, and then
+        # one step further to kxy space. This is done by a simple scaling.
+        scaling =   ( np.array((self.slm.dx, self.slm.dy))
                     * np.flip(np.squeeze(hologram.shape))
-                    / np.squeeze(array_pitch))
+                    / np.squeeze(array_pitch) )
 
-        M = np.array([  [M[0, 0] * knm_conv[0], M[0, 1] * knm_conv[1]],
-                        [M[1, 0] * knm_conv[0], M[1, 1] * knm_conv[1]]  ])
+        M = np.array([  [M[0, 0] * scaling[0], M[0, 1] * scaling[1]],
+                        [M[1, 0] * scaling[0], M[1, 1] * scaling[1]]  ])
 
         self.fourier_calibration = {"M": M, "b": b, "a": a}
 

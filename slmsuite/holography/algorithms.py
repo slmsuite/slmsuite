@@ -14,6 +14,28 @@ This module makes use of the GPU-accelerated computing library :mod:`cupy` [4]_.
 If :mod:`cupy` is not supported, then :mod:`numpy` is used as a fallback, though
 CPU alone is significantly slower. Using :mod:`cupy` is highly encouraged.
 
+Important
+~~~~~~~~~
+This package uses a number of bases or coordinate spaces. Some coordinate spaces are
+directly used by the user (most often the camera basis ``"ij"`` used for feedback).
+Other bases are less often used directly, but are important to how holograms are
+optimized under the hood (esp. ``"knm"``, the coordinate space of optimization).
+
+.. list-table:: Bases used in :mod:`slmsuite`.
+   :widths: 25 75
+   :header-rows: 1
+
+   * - Basis
+     - Meaning
+   * - ``"ij"``
+     - Pixel basis of the camera. Centered at ``cam.shape/2``.
+   * - ``"kxy"``
+     - Normalized (floating point) basis of the SLM's k-space. Centered at ``(0,0)``.
+   * - ``"knm"``
+     - Pixel basis of the SLM's computational k-space.
+       Functions accepting ``"knm"`` expects coordinates centered at ``(0,0)``.
+       However, ``"knm"`` is centered at ``hologram.shape/2`` internally.
+
 References
 ----------
 .. [1] R. W. Gerchberg and W. O. Saxton, "A Practical Algorithm for Determination
@@ -64,10 +86,12 @@ class Hologram:
     The Fourier domain (kxy) of an SLM with shape :attr:`slm_shape` also has the shape
     :attr:`slm_shape` under FFT. However, the extents of this domain correspond to the edges
     of the farfield (:math:`\pm\frac{\lambda}{2\Delta x}` radians, where :math:`\Delta x`
-    is the SLM pixel pitch). This means that resolution of the
-    relevant region at the center of the farfield can be quite poor.
-    The solution is to pad the SLM shape --- increasing the width and height even
-    though the extents remain the same --- and thus increase the resolution of the farfield.
+    is the SLM pixel pitch). This means that resolution of the farfield
+    :math:`\pm\frac{\lambda}{2N_x\Delta x}` can be quite poor with small :math:`N_x`.
+    The solution is to zero-pad the SLM shape
+    --- artificially increasing the width :math:`N_x` and height
+    :math:`N_y` even though the extent of the non-zero data remains the same ---
+    and thus enhance the resolution of the farfield.
     In practice, padding is accomplished by passing a :attr:`shape` or
     :attr:`target` of appropriate shape (see constructor :meth:`.__init__()` and subclasses),
     potentially with the aid of the static helper function :meth:`.calculate_padded_shape()`.
@@ -95,30 +119,32 @@ class Hologram:
         ``None``, then the shape of the :attr:`target` is used instead
         (:attr:`slm_shape` == :attr:`shape`).
     phase : numpy.ndarray OR cupy.ndarray OR None
-        Near-field phase pattern to optimize.
+        **Near-field** phase pattern to optimize.
         Initialized to with :meth:`random.default_rng().uniform()` by default (``None``).
-        This is of shape :attr:`slm_shape`.
+        This is of shape :attr:`slm_shape`
+        and (during optimization) padded to shape :attr:`shape`.
     amp : numpy.ndarray OR cupy.ndarray OR None
-        Near-field source amplitude pattern (i.e. image-space constraints).
+        **Near-field** source amplitude pattern (i.e. image-space constraints).
         Uniform illumination is assumed by default (``None``).
-        This is of shape :attr:`slm_shape`.
+        This is of shape :attr:`slm_shape`
+        and (during optimization) padded to shape :attr:`shape`.
     shape : (int, int)
-        The shape of the computational space.
+        The shape of the computational space, i.e. the ``"knm"`` basis.
         This often differs from :attr:`slm_shape` due to padding.
     target : numpy.ndarray OR cupy.ndarray
-        Desired far-field amplitude in the slm's "knm" basis.
-        The goal of optimization. This is of shape :attr:`shape`.
+        Desired **far-field** amplitude in the ``"knm"`` basis. The goal of optimization.
+        This is of shape :attr:`shape`.
     weights : numpy.ndarray OR cupy.ndarray
-        The mutable far-field amplitude used in GS.
+        The mutable **far-field** amplitude in the ``"knm"`` basis used in GS.
         Starts as :attr:`target` but may be modified by weighted feedback in WGS.
         This is of shape :attr:`shape`.
     phase_ff : numpy.ndarray OR cupy.ndarray
-        Algorithm-constrained far-field phase. Stored for certain computational algorithms.
+        Algorithm-constrained **far-field** phase in the ``"knm"`` basis. Stored for certain computational algorithms.
         (see :meth:`~slmsuite.holography.algorithms.Hologram.GS`).
         This is of shape :attr:`shape`.
     amp_ff : numpy.ndarray OR cupy.ndarray
-        Far-field (Fourier-space) amplitude. Used for comparing this, the computational
-        result, with the :attr:`target`.
+        **Far-field** amplitude in the ``"knm"`` basis.
+        Used for comparing this, the computational result, with the :attr:`target`.
         This is of shape :attr:`shape`.
     dtype : type
         Datatype for stored near- and far-field arrays, which are **all real**.
@@ -1248,10 +1274,13 @@ class FeedbackHologram(Hologram):
         Array containing points corresponding to the corners of the camera in the SLM's k-space.
         First point is repeated at the end for easy plotting.
     target_ij :  array_like OR None
-        Target in the ``"ij"`` basis. Of same ``shape`` as the camera in :attr:`cameraslm`.
-        Counterpart to :attr:`target` which is in the ``"knm"`` basis.
+        Target in the ``"ij"`` (camera) basis. Of same ``shape`` as the camera in
+        :attr:`cameraslm`.  Counterpart to :attr:`target` which is in the ``"knm"``
+        (computational k-space) basis.
     img_ij, img_knm
-        Cached feedback image in the ``"ij"`` (raw) basis or ``"knm"`` (transformed) basis.
+        Cached feedback image in the
+        ``"ij"`` (raw camera) basis or
+        ``"knm"`` (transformed to computational k-space) basis.
         Measured with :meth:`.measure()`.
     """
 
@@ -1413,12 +1442,20 @@ class FeedbackHologram(Hologram):
     def measure(self, basis="ij"):
         """
         Method to request a measurement to occur. If :attr:`img_ij` is ``None``,
-        then a new image will be grabbed from the camera.
+        then a new image will be grabbed from the camera (this is done automatically in
+        algorithms).
 
         Parameters
         ----------
         basis : str
-            The basis to be sure to fill with data. Can be ``"ij"`` or ``"knm"``.
+            The cached image to be sure to fill with new data.
+            Can be ``"ij"`` or ``"knm"``.
+
+             - If ``"knm"``, then :attr:`img_ij` and :attr:`img_knm` are filled.
+             - If ``"ij"``, then :attr:`img_ij` is filled, and :attr:`img_knm` is ignored.
+
+            This is useful to avoid (expensive) transfromation from the ``"ij"`` to the
+            ``"knm"`` basis if :attr:`img_knm` is not needed.
         """
         if self.img_ij is None:
             self.cameraslm.slm.write(self.extract_phase(), settle=True)
@@ -1521,22 +1558,26 @@ class SpotHologram(FeedbackHologram):
 
     Attributes
     ----------
-    spot_knm, spot_kxy, spot_ij : array_like OR None
+    spot_knm, spot_kxy, spot_ij : array_lik of float OR None
         Stored vectors with shape ``(2, N)`` in the style of
         :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
+        These vectors are floats.
         The subscript refers to the basis of the vectors, the transformations between
         which are autocomputed.
         If necessary transformations do not exist, :attr:`spot_ij` is set to ``None``.
-    spot_knm_rounded : array_like
-        :attr:`spot_knm` rounded to nearest integers (indices). This is necessary because
+    spot_knm_rounded : array_like of int
+        :attr:`spot_knm` rounded to nearest integers (indices).
+        These vectors are integers.
+        This is necessary because
         GS algorithms operate on a pixel grid, and the target for each spot in a
         :class:`SpotHologram` is a single pixel (index).
-    spot_kxy_rounded, spot_ij_rounded : array_like
+    spot_kxy_rounded, spot_ij_rounded : array_like of float
         Once :attr:`spot_knm_rounded` is rounded, the original :attr:`spot_kxy`
         and :attr:`spot_ij` are no longer accurate. Transformations are again used
         to backcompute the positons in the ``"ij"`` and ``"kxy"`` bases corresponding
         to the true computational location of a given spot.
-    spot_amp : array_like
+        These vectors are floats.
+    spot_amp : array_like of float
         The target amplitude for each spot.
         Must have length corresponding to the number of spots.
         For instance, the user can request dimmer or brighter spots.
@@ -1563,7 +1604,9 @@ class SpotHologram(FeedbackHologram):
 
             - ``"ij"`` for camera coordinates (pixels),
             - ``"kxy"`` for centered normalized SLM k-space (radians).
-            - ``"knm"`` for centered computational SLM k-space (pixels).
+            - ``"knm"`` for centered computational SLM k-space (pixels). Note that
+              unlike other cases of ``"knm"``, this is **centered** such that ``(0,0)``
+              is at the center of the space.
 
             Defaults to ``"knm"`` if ``None``.
         spot_amp : array_like OR None
@@ -1759,12 +1802,12 @@ class SpotHologram(FeedbackHologram):
 
         shape = toolbox.format_2vectors(self.shape).astype(np.float)
 
-        self.spot_knm_rounded = np.around(shape / 2 + self.spot_knm.astype(np.float))
+        self.spot_knm_rounded = np.around(shape / 2. + self.spot_knm.astype(np.float))
         self.spot_knm_rounded = self.spot_knm_rounded.astype(np.int)
 
         if self.cameraslm is not None:
             self.spot_kxy_rounded = toolbox.convert_blaze_vector(
-                self.spot_knm_rounded - shape / 2,
+                self.spot_knm_rounded - shape / 2.,
                 "knm",
                 "kxy",
                 self.cameraslm.slm,

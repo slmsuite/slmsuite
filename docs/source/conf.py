@@ -11,6 +11,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 
+import shutil
 import base64
 import os
 import sys
@@ -105,7 +106,7 @@ html_theme = "sphinx_rtd_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
+# so a file named "default.css" will overwrite the built-in "default.css".
 html_static_path = ["static"]
 
 # Add a logo
@@ -133,11 +134,15 @@ def skip(app, what, name, obj, would_skip, options):
 examples_repo_owner = "QPG-MIT"
 examples_repo_name = "slmsuite-examples"
 # relative to this directory
-examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "examples")
+examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_examples")
 
 def setup(app):
     app.connect("autodoc-skip-member", skip)
     app.add_css_file('css/custom.css')
+
+    # Use local notebooks
+    # examples_source = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../..", "slmsuite-examples/examples")
+    # shutil.copytree(examples_source,examples_path)
 
     # Download example notebooks.
     # NOTE: GitHub API only supports downloading files up to 100 MB.
@@ -165,5 +170,3 @@ def setup(app):
     except BaseException as e:
         print("WARNING: Unable to download example notebooks. "
               "Building without examples. Error:\n{}".format(e))
-
-

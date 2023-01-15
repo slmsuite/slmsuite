@@ -213,9 +213,15 @@ def convert_blaze_vector(
             Equivalent to radians in the small angle approximation.
             This is the default unit for :mod:`slmsuite`.
           ``"knm"``
-            Computational blaze units for a given Fourier domain ``shape``, zero-centered.
-            This corresponds to integer points on the grid of this padded SLM's Fourier transform.
+            Computational blaze units for a given Fourier domain ``shape``.
+            This corresponds to integer points on the grid of this
+            (potentially padded) SLM's Fourier transform.
             See :class:`~slmsuite.holography.Hologram`.
+
+            Important
+            ~~~~~~~~~
+            The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
+
           ``"freq"``
             Pixel frequency of a grating producing the blaze.
             e.g. 1/16 is a grating with a period of 16 pixels.
@@ -225,7 +231,7 @@ def convert_blaze_vector(
             Angle at which light is blazed in various units. Small angle approximation is assumed.
 
         Warning
-        ~~~~~~~~
+        ~~~~~~~
         The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
         so a ``slm`` should be passed. ``"knm"`` additionally requires the ``shape`` of
         the computational space. If these arguments are not included, the function returns
@@ -243,7 +249,8 @@ def convert_blaze_vector(
             Relevant SLM to pull data from in the case of
             ``"freq"``, ``"knm"``, or ``"lpmm"``.
         shape : (int, int) OR None
-            Shape of the computational SLM space.
+            Shape of the computational SLM space. Defaults to ``slm.shape`` if ``slm``
+            is not ``None``.
 
         Returns
         --------
@@ -273,7 +280,10 @@ def convert_blaze_vector(
             pitch = format_2vectors([slm.dx, slm.dy])
 
         if shape is None:
-            shape = np.nan
+            if slm is None:
+                shape = np.nan
+            else:
+                shape = format_2vectors(np.flip(np.squeeze(slm.shape)))
         else:
             shape = format_2vectors(np.flip(np.squeeze(shape)))
 
@@ -282,7 +292,7 @@ def convert_blaze_vector(
     if from_units == "norm" or from_units == "kxy" or from_units == "rad":
         rad = vector
     elif from_units == "knm":
-        rad = vector / knm_conv
+        rad = (vector - shape / 2.0) / knm_conv
     elif from_units == "freq":
         rad = vector * wav_um / pitch_um
     elif from_units == "lpmm":
@@ -295,7 +305,7 @@ def convert_blaze_vector(
     if to_units == "norm" or to_units == "kxy" or to_units == "rad":
         return rad
     elif to_units == "knm":
-        return rad * knm_conv
+        return rad * knm_conv + shape / 2.0
     elif to_units == "freq":
         return rad * pitch_um / wav_um
     elif to_units == "lpmm":

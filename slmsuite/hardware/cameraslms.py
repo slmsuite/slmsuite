@@ -354,7 +354,7 @@ class FourierSLM(CameraSLM):
 
         return file_path
 
-    def project_fourier_grid(self, array_shape=10, array_pitch=10, array_center=(0, 0),
+    def project_fourier_grid(self, array_shape=10, array_pitch=10, array_center=None,
                                 **kwargs):
         """
         Projects a Fourier space grid (``"knm"``) onto pixel space (``"ij"``).

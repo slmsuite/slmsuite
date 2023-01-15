@@ -33,8 +33,6 @@ optimized under the hood (esp. ``"knm"``, the coordinate space of optimization).
      - Normalized (floating point) basis of the SLM's k-space. Centered at ``(0,0)``.
    * - ``"knm"``
      - Pixel basis of the SLM's computational k-space.
-       Functions accepting ``"knm"`` expect coordinates centered at ``(0,0)``.
-       However, ``"knm"`` is centered at ``hologram.shape/2`` internally.
 
 References
 ----------
@@ -1125,15 +1123,15 @@ class Hologram:
         # plot a yellow rectangle for the extents of the camera
         try:
             axs[0].plot(
-                self.shape[1] / 2.0 + self.cam_points[0],
-                self.shape[0] / 2.0 + self.cam_points[1],
+                self.cam_points[0],
+                self.cam_points[1],
                 c="y",
             )
             axs[0].annotate(
                 "Camera FoV",
                 (
-                    self.shape[1] / 2.0 + np.mean(self.cam_points[0]),
-                    self.shape[0] / 2.0 + np.max(self.cam_points[1])
+                    np.mean(self.cam_points[0]),
+                    np.max(self.cam_points[1])
                 ),
                 c="y", size="x-small", ha="center"
             )
@@ -1410,8 +1408,13 @@ class FeedbackHologram(Hologram):
         assert self.cameraslm.fourier_calibration is not None
 
         # First transformation.
-        conversion = toolbox.convert_blaze_vector(
-            [1, 1], "knm", "kxy", slm=self.cameraslm.slm, shape=self.shape
+        conversion = (
+            toolbox.convert_blaze_vector(
+                (1, 1), "knm", "kxy", slm=self.cameraslm.slm, shape=self.shape
+            ) -
+            toolbox.convert_blaze_vector(
+                (0, 0), "knm", "kxy", slm=self.cameraslm.slm, shape=self.shape
+            )
         )
         M1 = np.diag(np.squeeze(conversion))
         b1 = -toolbox.format_2vectors(np.flip(np.squeeze(self.shape)) / 2)
@@ -1628,9 +1631,7 @@ class SpotHologram(FeedbackHologram):
 
             - ``"ij"`` for camera coordinates (pixels),
             - ``"kxy"`` for centered normalized SLM k-space (radians).
-            - ``"knm"`` for centered computational SLM k-space (pixels). Note that
-              unlike other cases of ``"knm"``, this is **centered** such that ``(0,0)``
-              is at the center of the space.
+            - ``"knm"`` for computational SLM k-space (pixels).
 
             Defaults to ``"knm"`` if ``None``.
         spot_amp : array_like OR None
@@ -1745,7 +1746,7 @@ class SpotHologram(FeedbackHologram):
         shape,
         array_shape,
         array_pitch,
-        array_center=(0, 0),
+        array_center=None,
         basis="knm",
         orientation_check=False,
         **kwargs
@@ -1769,16 +1770,23 @@ class SpotHologram(FeedbackHologram):
         Parameters
         ----------
         shape : (int, int)
-            Computational shape of the SLM. See :meth:`.Hologram.__init__()`.
+            Computational shape of the SLM. See :meth:`.SpotHologram.__init__()`.
         array_shape : (int, int) OR int
-            The size of the rectangular array in number of spots (NX, NY).
-            If a single N is given, assume (N, N).
+            The size of the rectangular array in number of spots ``(NX, NY)``.
+            If a single N is given, assume ``(N, N)``.
         array_pitch : (float, float) OR float
             The spacing between spots in the x and y directions in kxy coordinates.
-            If a single pitch is given, assume (pitch, pitch).
-        array_center : (float, float)
-            The shift of the center of the spot array from the zeroth order in
-            kxy coordinates. (kx, ky) form.
+            If a single pitch is given, assume ``(pitch, pitch)``.
+        array_center : (float, float) OR None
+            The shift of the center of the spot array from the zeroth order.
+            ``(kx, ky)`` form.
+            Always defaults to the position of the zeroth order, converted into the
+            relevant basis:
+
+             - If ``"knm"``, this is ``shape/2``.
+             - If ``"kxy"``, this is ``(0,0)``.
+             - If ``"ij"``, this is the pixel position of the zeroth order on the camera.
+
         basis : str
             See :meth:`__init__()`.
         orientation_check : bool
@@ -1791,6 +1799,26 @@ class SpotHologram(FeedbackHologram):
             array_shape = (int(array_shape), int(array_shape))
         if isinstance(array_pitch, (int, float)):
             array_pitch = (array_pitch, array_pitch)
+
+        # Determine array_center default.
+        if array_center is None:
+            if basis == "knm":
+                array_center = (shape[0] / 2.0, shape[1] / 2.0)
+            elif basis == "kxy":
+                array_center = (0, 0)
+            elif basis == "ij":
+                assert "cameraslm" in kwargs, "We need an cameraslm to interpret ij."
+                cameraslm = kwargs["cameraslm"]
+                assert cameraslm is not None, "We need an cameraslm to interpret ij."
+                assert cameraslm.fourier_calibration is not None, (
+                    "We need an cameraslm with "
+                    "fourier-calibrated kxyslm_to_ijcam and ijcam_to_kxyslm transforms "
+                    "to interpret ij."
+                )
+
+                array_center = toolbox.convert_blaze_vector(
+                    (0, 0), "kxy", "ij", cameraslm.slm
+                )
 
         # Make the grid edges.
         x_edge = (np.arange(array_shape[0]) - (array_shape[0] - 1) / 2)
@@ -1819,14 +1847,12 @@ class SpotHologram(FeedbackHologram):
         # Erase previous target in-place. Future: Optimize speed if positions haven't shifted?
         self.target.fill(0)
 
-        shape = toolbox.format_2vectors(self.shape).astype(np.float)
-
-        self.spot_knm_rounded = np.around(shape / 2. + self.spot_knm.astype(np.float))
+        self.spot_knm_rounded = np.around(self.spot_knm.astype(np.float))
         self.spot_knm_rounded = self.spot_knm_rounded.astype(np.int)
 
         if self.cameraslm is not None:
             self.spot_kxy_rounded = toolbox.convert_blaze_vector(
-                self.spot_knm_rounded - shape / 2.,
+                self.spot_knm_rounded,
                 "knm",
                 "kxy",
                 self.cameraslm.slm,

@@ -230,8 +230,8 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
 
     Warning
     ~~~~~~~
-    This function does not check if the images in ``images`` are non-negative, or correct
-    for this. Negative values may produce unusual results.
+    This function does not check if the passed ``images`` are not negative, or correct
+    for negative values this. Negative values may produce unusual results.
 
     Warning
     ~~~~~~~
@@ -244,7 +244,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     moment : (int, int)
@@ -311,15 +311,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
         edge_x = np.power(edge_x, moment[0], out=edge_x)
         edge_y = np.power(edge_y, moment[1], out=edge_y)
 
-        #plt.plot(np.squeeze(edge_x[0,:,:]))
-        #plt.show()
-        #plt.plot(np.squeeze(edge_y[0,:,:]))
-        #plt.show()
-
         if moment[1] == 0:  # only x case
-            #plt.imshow((images * edge_x)[0,:,:])
-            #plt.colorbar()
-            #plt.show()
             return np_sum(images * edge_x, axis=(1, 2), keepdims=False) * reciprical
         elif moment[0] == 0:  # only y case
             return np_sum(images * edge_y, axis=(1, 2), keepdims=False) * reciprical
@@ -1163,6 +1155,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
 
             plt.show()
 
+    # Hone the center of our fit by averaging the positional deviations of spots.
     def hone():
         guess_positions = np.matmul(orientation["M"], centers) + orientation["b"]
 
@@ -1176,7 +1169,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
 
         # TODO: Update with take and take moments.
 
-        # Filter the images, but not the stack.
+        # Filter the images, but not in the direction of the stack.
         sp_gaussian_filter1d(regions, blur, axis=1, output=regions)
         sp_gaussian_filter1d(regions, blur, axis=2, output=regions)
 
@@ -1187,8 +1180,9 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         shift_y = (
             np.argmax(np.amax(regions, axis=2, keepdims=True), axis=1) - (psf - 1) / 2
         )
-        shift_error = np.sqrt(np.square(shift_x) + np.square(shift_y))
 
+        # Remove outliers
+        shift_error = np.sqrt(np.square(shift_x) + np.square(shift_y))
         thresh = np.mean(shift_error)
 
         shift_x[shift_error > thresh] = np.nan
@@ -1206,6 +1200,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
 
             plt.show()
 
+        # Correct the fit.
         orientation["b"] += format_2vectors([np.nanmean(shift_x), np.nanmean(shift_y)])
 
     hone()

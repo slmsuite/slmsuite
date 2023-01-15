@@ -33,7 +33,7 @@ optimized under the hood (esp. ``"knm"``, the coordinate space of optimization).
      - Normalized (floating point) basis of the SLM's k-space. Centered at ``(0,0)``.
    * - ``"knm"``
      - Pixel basis of the SLM's computational k-space.
-       Functions accepting ``"knm"`` expects coordinates centered at ``(0,0)``.
+       Functions accepting ``"knm"`` expect coordinates centered at ``(0,0)``.
        However, ``"knm"`` is centered at ``hologram.shape/2`` internally.
 
 References

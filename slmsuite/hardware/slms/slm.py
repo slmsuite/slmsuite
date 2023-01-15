@@ -19,19 +19,29 @@ class SLM:
     shape : (int, int)
         Stores ``(height, width)`` of the SLM in pixels, same form as :attr:`numpy.ndarray.shape`.
     wav_um : float
-        Operating wavelength targeted by the SLM in microns.
+        Operating wavelength targeted by the SLM in microns. Defaults to 780 nm.
     wav_design_um : float
         Design wavelength for which the maximum settable value corresponds to a
-        2 pi phase shift. This is useful for using, for instance, an SLM designed
+        :math:`2\pi` phase shift.
+        Defaults to :attr:`wav_um` if passed ``None``.
+
+        Tip
+        ~~~
+        :attr:`wav_design_um` is useful for using, for instance, an SLM designed
         at 1064 nm for an application at 780 nm by using only a fraction (780/1064)
-        of the full dynamic range. Useful for SLMs which do not have builtin
+        of the full dynamic range. It is especially useful for SLMs which do not have builtin
         capability to change their voltage lookup tables (e.g. Thorlabs).
+        Even so, the max lookup wavelength (:attr:`wav_design_um`) could be set larger
+        than :attr:`wav_um` should the user want to have a phase range larger than
+        :math:`2\pi`, for SLMs with lookup table capability.
+
     phase_scaling : float
         Wavelength normalized to the phase range of the SLM. See :attr:`wav_design_um`.
         Determined by ``phase_scaling = wav_um / wav_design_um``.
     bitdepth : int
         Depth of SLM pixel well in bits. This is useful for converting the floats which
-        the user provides to the ``bitdepth``-bit ints that the SLM reads (see :meth:`_phase2gray`).
+        the user provides to the ``bitdepth``-bit ints that the SLM reads (see the
+        private method :meth:`_phase2gray`).
     bitresolution : int
         Stores ``2 ** bitdepth``.
     settle_time_s : float
@@ -48,6 +58,7 @@ class SLM:
         See :attr:`dx`.
     x_grid : numpy.ndarray of floats
         Point grid of the SLM's :attr:`shape` derived from :meth:`numpy.meshgrid` ing.
+        This uses normalized units (:attr:`dx`, :attr:`dy`).
     y_grid : numpy.ndarray of floats
         See :attr:`x_grid`.
     measured_amplitude : numpy.ndarray or None
@@ -72,7 +83,7 @@ class SLM:
         height,
         bitdepth,
         name="SLM",
-        wav_um=0.532,
+        wav_um=0.780,
         wav_design_um=None,
         dx_um=8,
         dy_um=8,
@@ -128,8 +139,8 @@ class SLM:
         self.dy = dy_um / self.wav_um
 
         # Make normalized coordinate grids.
-        xpix = np.linspace(-(width - 1) / 2.0, (width - 1) / 2.0, width)
-        ypix = np.linspace(-(height - 1) / 2.0, (height - 1) / 2.0, height)
+        xpix = (width - 1) *  np.linspace(-.5, .5, width)
+        ypix = (height - 1) * np.linspace(-.5, .5, height)
         self.x_grid, self.y_grid = np.meshgrid(self.dx * xpix, self.dy * ypix)
 
         # Phase and amplitude corrections.
@@ -172,7 +183,7 @@ class SLM:
 
     def _write_hw(self, phase):
         """
-        Abstract function to communicate with the SLM. Subclasses should overwrite this.
+        Abstract method to communicate with the SLM. Subclasses **should** overwrite this.
         :meth:`write()` contains error checks and overhead, then calls :meth:`_write_hw()`.
 
         Parameters
@@ -191,8 +202,13 @@ class SLM:
     ):
         r"""
         Checks, cleans, and adds to data, then sends the data to the SLM and
-        potentially waits for settle. This function calls the SLM-specific private method
+        potentially waits for settle. This method calls the SLM-specific private method
         :meth:`_write_hw()` which transfers the data to the SLM.
+
+        Warning
+        ~~~~~~~
+        Subclasses implementing vendor-specific software *should not* overwrite this
+        method. Subclasses *should* overwrite :meth:`_write_hw()` instead.
 
         Caution
         ~~~~~~~
@@ -202,35 +218,61 @@ class SLM:
         :mod:`slmsuite`'s 'increasing value ==> increasing phase delay' convention.
         As a result, zero phase will appear entirely white (255 for an 8-bit SLM), and increasing phase
         will darken the displayed pattern.
+        If integer data is passed, this data is displayed directly and the sign is *not* flipped.
 
         Important
         ~~~~~~~~~
-        The user does not need to wrap (e.g. :meth:`numpy.mod(data, 2*np.pi)`) the passed phase data,
+        The user does not need to wrap (e.g. :mod:`numpy.mod(data, 2*numpy.pi)`) the passed phase data,
         unless they are pre-caching data for speed (see below).
-        :meth:`.write()` uses optimized routines to wrap the phase (see :meth:`._phase2gray()`).
+        :meth:`.write()` uses optimized routines to wrap the phase (see the
+        private method :meth:`_phase2gray`).
         Which routine is used depends on :attr:`phase_scaling`:
 
-        :attr:`phase_scaling` is one.
-          Fast bitwise integer modulo is used. Much faster than the other routines which
-          depend on :meth:`numpy.mod()`.
-        :attr:`phase_scaling` is less than one.
-          In this case, the SLM has **more phase tuning range** than necessary.
-          If the data is within the SLM range ``[0, 2*pi/phase_scaling]``, then the data is passed directly.
-          Otherwise, the data is wrapped by :math:`2\pi` using the very slow :meth:`numpy.mod()`.
-          Try to avoid this in applications where speed is important.
-        :attr:`phase_scaling` is more than one.
-          In this case, the SLM has **less phase tuning range** than necessary.
-          Processed the same way as the :attr:`phase_scaling` is less than one case, with the
-          important exception that phases (after wrapping) between ``2*pi/phase_scaling`` and
-          ``2*pi`` are set to zero. For instance, a sawtooth blaze would be truncated at the tips.
+         - :attr:`phase_scaling` is one.
+
+            Fast bitwise integer modulo is used. Much faster than the other routines which
+            depend on :meth:`numpy.mod()`.
+
+         - :attr:`phase_scaling` is less than one.
+
+            In this case, the SLM has **more phase tuning range** than necessary.
+            If the data is within the SLM range ``[0, 2*pi/phase_scaling]``, then the data is passed directly.
+            Otherwise, the data is wrapped by :math:`2\pi` using the very slow :meth:`numpy.mod()`.
+            Try to avoid this in applications where speed is important.
+
+         - :attr:`phase_scaling` is more than one.
+
+            In this case, the SLM has **less phase tuning range** than necessary.
+            Processed the same way as the :attr:`phase_scaling` is less than one case, with the
+            important exception that phases (after wrapping) between ``2*pi/phase_scaling`` and
+            ``2*pi`` are set to zero. For instance, a sawtooth blaze would be truncated at the tips.
 
         Parameters
         ----------
         phase : numpy.ndarray or None
-            Data to display in units of phase delay. Data must be larger than the SLM. If larger,
-            the data is cropped to size in a centered manner. If ``None``, data is zeroed.
-            Usually, this is an exact stored copy of the data passed by the user. However, in cases
-            where :attr:`phase_scaling` not one, this copy is modified to include how the data was wrapped.
+            Data to display in units of phase delay (unless the passed data is of integer type).
+
+             - If ``None`` is passed to :meth:`.write()`, data is zeroed.
+             - If the array has a larger shape than the SLM shape, then the data is
+               cropped to size in a centered manner
+               (:attr:`~slmsuite.holography.toolbox.unpad`).
+             - If integer data is passed with the same type as :attr:`display`
+               (``np.uint8`` for <=8-bit SLMs, ``np.uint16`` otherwise),
+               then this data is **directly** passed to the
+               SLM, without going through the "phase delay to grayscale" conversion
+               defined in the private method :meth:`_phase2gray`. In this situation,
+               ``phase_correct`` and non-zero ``blaze_vector`` are **ignored**.
+               This is error-checked such that bits with greater significance than the
+               bitdepth of the SLM are zero (e.g. the final 6 bits of 16 bit data for a
+               10-bit SLM). Integer data with type different from :attr:`display` leads
+               to an AssertionError.
+
+            Usually, an **exact** stored copy of the data passed by the user under
+            ``phase`` is stored in the attribute :attr:`phase`.
+            However, in cases where :attr:`phase_scaling` not one, this
+            copy is modified to include how the data was wrapped. If the data was
+            cropped, then the cropped data is stored, etc. If integer data was passed, the
+            equivalent floating point phase is computed and stored in the attribute :attr:`phase`.
         phase_correct : bool
             Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction` to ``phase``.
         settle : bool
@@ -240,32 +282,73 @@ class SLM:
             If ``None``, no blaze is applied.
 
         Returns
-        ----------
+        -------
         numpy.ndarray
            :attr:`~slmsuite.hardware.slms.slm.SLM.display`, the integer data sent to the SLM.
+
+        Raises
+        ------
+        AssertionError
+            If integer data is incompatible with the bitdepth or if the passed phase is
+            otherwise incompatible (not a 2D array or smaller than the SLM shape, etc).
         """
+        # Helper variable to speed the case where phase is None.
+        zero_phase = False
+
         # Parse phase.
         if phase is None:
             # Zero the phase pattern.
             self.phase.fill(0)
+            zero_phase = True
         else:
-            # Copy the pattern.
-            # Unpad if necessary.
-            if self.phase.shape != self.shape:
-                np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
+            # Make sure the array is an ndarray.
+            phase = np.array(phase)
+
+        if phase is not None and phase.dtype == self.display.dtype:
+            # If integer data was passed.
+            # Check that we are not out of range.
+            assert not np.any(phase >= self.bitresolution), \
+                "Integer data must be within the bitdepth ({}-bit) of the SLM.".format(self.bitdepth)
+
+            # Copy the pattern and unpad if necessary.
+            if phase.shape != self.shape:
+                np.copyto(self.display, toolbox.unpad(phase, self.shape))
             else:
-                np.copyto(self.phase, phase)
+                np.copyto(self.display, phase)
 
-        # Add phase correction if requested.
-        if phase_correct and self.phase_correction is not None:
-            self.phase += self.phase_correction
+            # Update the phase variable with the integer data that we displayed.
+            self.phase = 2 * np.pi - self.display * (2 * np.pi / self.phase_scaling / self.bitresolution)
+        else:
+            # If float data was passed (or the None case).
+            # Copy the pattern and unpad if necessary.
+            if phase is not None:
+                assert not isinstance(phase.flat[0], (int, np.uint)), \
+                    "Integer data must have the same type as slm.display ({})." \
+                    "Instead received {}".format(type(self.display.dtype), type(phase.flat[0]))
 
-        # Blaze if requested.
-        if blaze_vector is not None and (blaze_vector[0] != 0 or blaze_vector[1] != 0):
-            self.phase += blaze(self, blaze_vector)
+                if self.phase.shape != self.shape:
+                    np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
+                else:
+                    np.copyto(self.phase, phase)
 
-        # Turn the floats in phase space to integer data for the SLM.
-        self.display = self._phase2gray(self.phase, out=self.display)
+            # Add phase correction if requested.
+            if phase_correct and self.phase_correction is not None:
+                self.phase += self.phase_correction
+                zero_phase = False
+
+            # Blaze if requested.
+            if blaze_vector is not None and (blaze_vector[0] != 0 or blaze_vector[1] != 0):
+                self.phase += blaze(self, blaze_vector)
+                zero_phase = False
+
+            # Pass the data to self.display.
+            if zero_phase:
+                # If None was passed and neither phase_correct nor blaze_vector were
+                # passed, then use a faster method.
+                self.display.fill(0)
+            else:
+                # Turn the floats in phase space to integer data for the SLM.
+                self.display = self._phase2gray(self.phase, out=self.display)
 
         # Write!
         self._write_hw(self.display)
@@ -287,7 +370,8 @@ class SLM:
         phase : numpy.ndarray
             Array of phases in radians.
         out : numpy.ndarray
-            Array to store integer values scaled to SLM voltage.
+            Array to store integer values scaled to SLM voltage, i.e. for in-place
+            operations.
             If ``None``, an appropriate array will be allocated.
 
         Returns
@@ -330,6 +414,12 @@ class SLM:
             if np.amin(phase) <= -self.bitresolution or np.amax(phase) > 0:
                 # Minus 1 is to conform with the in-bound case.
                 phase -= 1
+                # np.mod is the slowest step. It could maybe be faster if phase is converted to
+                # an integer beforehand, but there is an amount of risk for overflow.
+                # For instance, a standard double can represent numbers far larger than
+                # even a 64 bit integer. If this optimization is implement, take care to
+                # generate checks for the conversion to long integer / etc before the final
+                # conversion to dtype of uint8 or uint16.
                 np.mod(phase, self.bitresolution * self.phase_scaling, out=phase)
                 phase +=  self.bitresolution * (1-self.phase_scaling)
 
@@ -348,19 +438,7 @@ class SLM:
 
         return out
 
-    def phase_wrapped(self):
-        r"""
-        Return the phase last written to the SLM (
-        :attr:`~slmsuite.hardware.slms.slm.SLM.phase`) mod :math:`2\pi`.
-
-        Returns
-        -------
-        numpy.ndarray
-            :attr:`~slmsuite.hardware.slms.slm.SLM.phase` mod 2pi.
-        """
-        return np.mod(self.phase, 2 * np.pi)
-
-    def set_measured_amplitude_analytic(self, radius):
+    def set_measured_amplitude_analytic(self, radius, units="norm"):
         """
         Sets :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude` used
         for hologram generation in the absence of a proper wavefront calibration.
@@ -373,21 +451,40 @@ class SLM:
         is used for better refinement of holograms during numerical
         optimization. If one does not have a camera to use for
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`,
-        this function allows the user to set an approximation of the source amplitude
-        based on an assumed 1/e amplitude (1/e^2 power) Gaussian beam radius.
+        this method allows the user to set an approximation of the source amplitude
+        based on an assumed :math:`1/e` amplitude (:math:`1/e^2` power) Gaussian beam radius.
 
         Parameters
         ----------
         radius : float
             Radius in normalized units to assume for the source Gaussian beam.
+        units : str in {"norm", "nm", "um", "mm", "m"}
+            Units for the given radius.
 
         Returns
         --------
         numpy.ndarray
             :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude`.
         """
+        # Convert the x and y grid to normalized units.
+        if "norm" in units:
+            dx = 1
+            dy = 1
+        else:
+            if units == "m":
+                factor = 1e6
+            elif units == "mm":
+                factor = 1e3
+            elif units == "um":
+                factor = 1
+            elif units == "nm":
+                factor = 1e-3
+            else:
+                raise RuntimeError("Did not recognize units '{}'".format(units))
+            dx = factor * self.dx / self.dx_um
+            dy = factor * self.dy / self.dy_um
 
-        r2_grid = np.square(self.x_grid) + np.square(self.y_grid)
+        r2_grid = np.square(self.x_grid / dx) + np.square(self.y_grid / dy)
 
         self.measured_amplitude = np.exp(-r2_grid * (1 / radius ** 2))
 

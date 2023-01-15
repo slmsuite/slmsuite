@@ -1,10 +1,11 @@
 """
-Modified Santec header file.
+A slightly-modified Santec header file for Santec SLMs.
+Modified for dll handling for other versions of python,
+along with error handling and status dictionaries.
+See santec.py.
 """
-import sys
+import os
 from ctypes import *
-
-
 STRING = c_char_p
 from ctypes.wintypes import DWORD
 from ctypes.wintypes import ULONG
@@ -20,15 +21,21 @@ from ctypes.wintypes import LPSTR
 from ctypes.wintypes import LPCSTR
 from ctypes.wintypes import LPCWSTR
 from ctypes.wintypes import FILETIME
-import os
 
-if (sys.version_info.major * 100 + sys.version_info.minor) >= 308:
+if hasattr(os, "add_dll_directory"):    # python >= 3.8
     os.add_dll_directory(os.getcwd())
+    os.add_dll_directory(os.path.dirname(os.path.abspath(__file__)))
+    _libname = "SLMFunc.dll"
+    _libraries = {}
+    _libraries[_libname] = WinDLL(_libname)
+else:                                   # python < 3.8
+    _libname = "SLMFunc.dll"
+    _libpath = os.path.dirname(os.path.abspath(__file__))
+    os.environ['PATH'] = _libpath + os.pathsep + os.environ['PATH']
+    _libraries = {}
+    _libraries[_libname] = windll.LoadLibrary(_libname)
 
-_libname = "SLMFunc.dll"
-_libraries = {}
-_libraries[_libname] = WinDLL(_libname)
-
+# ctypes
 USHORT = c_ushort
 SHORT = c_short
 UCHAR = c_ubyte
@@ -50,6 +57,68 @@ VOID = None
 ULONGLONG = c_ulonglong
 SLM_STATUS = c_int32
 
+# SLM_Ctrl_ReadEDO coding
+SLM_DRIVEBOARD_ERROR = {
+    0x01 : "Startup error 1 (Drive board)",
+    0x02 : "Startup error 2 (Drive board)",
+    0x04 : "Video signal error (No signal)",
+    0x08 : "Drive board temperature error (70°C or higher)"
+}
+SLM_OPTIONBOARD_ERROR = {
+    0x01 : "Startup error 1 (Option board)",
+    0x02 : "Startup error 2 (Option board)",
+    0x04 : "Voltage level error (DC 5.0V)",
+    0x08 : "Option board temperature error (70°C or higher)"
+}
+
+# SLM_STATUS
+# From Table 3.4-1 SLM_STATUS. Some notes are modified to include implied meaning.
+# { value : ("name", "note") }
+SLM_STATUS_DICT = {
+    0 :      ("SLM_OK", "All good!"),
+    1 :      ("SLM_NG", "NG"),
+    2 :      ("SLM_BS", "SLM is busy."),
+    3 :      ("SLM_ER", "Parameter error."),
+    -1 :     ("SLM_INVAID_MONITOR", "Could not find specified display number."),
+    -2 :     ("SLM_NOT_OPEN_MONITOR", "Display has not been opened."),
+    -3 :     ("SLM_OPEN_WINDOW_ERR", "Window open error."),
+    -4 :     ("SLM_DATA_FORMAT_ERR", "Data format error."),
+    -101 :   ("SLM_FILE_READ_ERR", "File contained data over 1023."),
+    -200 :   ("SLM_NOT_OPEN_USB", "USB is not open."),
+    -1000 :  ("SLM_OTHER_ERROR", "Other error."),
+    -10001 : ("FT_INVALID_HANDLE", "USB driver error."),
+    -10002 : ("FT_DEVICE_NOT_FOUND", "Device not found. Check device's power. If connected, reset the power."),
+    -10003 : ("FT_DEVICE_NOT_OPENED", "Already opened."),
+    -10004 : ("FT_IO_ERROR", "USB driver error."),
+    -10005 : ("FT_INSUFFICIENT_RESOURCES", "USB driver error."),
+    -10006 : ("FT_INVALID_PARAMETER", "USB driver error."),
+    -10007 : ("FT_INVALID_BAUD_RATE", "USB driver error."),
+    -10008 : ("FT_DEVICE_NOT_OPENED_FOR_ERASE", "USB driver error."),
+    -10009 : ("FT_DEVICE_NOT_OPENED_FOR_WRITE", "USB driver error."),
+    -10010 : ("FT_FAILED_TO_WRITE_DEVICE",      "USB driver error."),
+    -10011 : ("FT_EEPROM_READ_FAILED", "USB driver error."),
+    -10012 : ("FT_EEPROM_WRITE_FAILED", "USB driver error."),
+    -10013 : ("FT_EEPROM_ERASE_FAILED", "USB driver error."),
+    -10014 : ("FT_EEPROM_NOT_PRESENT", "USB driver error."),
+    -10015 : ("FT_EEPROM_NOT_PROGRAMMED", "USB driver error."),
+    -10016 : ("FT_INVALID_ARGS", "USB driver error."),
+    -10017 : ("FT_NOT_SUPPORTED", "USB driver error."),
+    -10018 : ("FT_NO_MORE_ITEMS", "USB driver error."),
+    -10019 : ("FT_TIMEOUT", "USB driver error."),
+    -10020 : ("FT_OPERATION_ABORTED", "USB driver error."),
+    -10021 : ("FT_RESERVED_PIPE", "USB driver error."),
+    -10022 : ("FT_INVALID_CONTROL_REQUEST_DIRECTION", "USB driver error."),
+    -10023 : ("FT_INVALID_CONTROL_REQUEST_TYPE", "USB driver error."),
+    -10024 : ("FT_IO_PENDING", "USB driver error."),
+    -10025 : ("FT_IO_INCOMPLETE", "USB driver error."),
+    -10026 : ("FT_HANDLE_EOF", "USB driver error."),
+    -10027 : ("FT_BUSY", "USB driver error."),
+    -10028 : ("FT_NO_SYSTEM_RESOURCES", "USB driver error."),
+    -10029 : ("FT_DEVICE_LIST_NOT_READY", "USB driver error."),
+    -10030 : ("FT_DEVICE_NOT_CONNECTED", "USB driver error."),
+    -10031 : ("FT_INCORRECT_DEVICE_PATH", "USB driver error."),
+    -10032 : ("FT_OTHER_ERROR", "USB driver error.")
+}
 
 SLM_Disp_Info = _libraries[_libname].SLM_Disp_Info
 SLM_Disp_Info.restype = SLM_STATUS

@@ -343,7 +343,7 @@ def format_2vectors(vectors):
     Returns
     -------
     vectors : numpy.ndarray
-        Cleaned column vector.
+        Cleaned column vector(s).
 
     Raises
     ------
@@ -566,7 +566,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     Parameters
     ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
         Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
@@ -603,10 +603,10 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
         x_list = x_grid[0, :]
         y_list = y_grid[:, 0]
 
-        vectors = np.vstack(
+        vectors = np.vstack((
             np.interp(vectors[0, :], x_list, np.arange(shape[1])),
             np.interp(vectors[1, :], y_list, np.arange(shape[0])),
-        )
+        ))
 
     # Half shape data.
     hsx = shape[1] / 2
@@ -660,6 +660,112 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
             filled_regions.append(canvas1 > 0)
 
     return filled_regions
+
+
+def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
+    r"""
+    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`
+    on a set of ``vectors`` using the helper function
+    :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
+    This iteratively forces a set of ``vectors` away from each other until
+    they become more evenly distributed over a space.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
+        See :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
+    vectors : array_like
+        See :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
+    iterations : int
+        Number of iterations to apply Lloyd's Algorithm.
+    plot : bool
+        Whether to plot each iteration of the algorithm.
+
+    Returns
+    -------
+    numpy.ndarray
+        The result of Lloyd's Algorithm.
+    """
+    result = np.copy(format_2vectors(vectors))
+    (x_grid, y_grid) = _process_grid(grid)
+
+    for _ in range(iterations):
+        windows = voronoi_windows(grid, result, plot=plot)
+
+        no_change = True
+
+        # For each point, move towards the centroid of the window.
+        for index, window in enumerate(windows):
+            centroid_x = np.mean(x_grid[window])
+            centroid_y = np.mean(y_grid[window])
+
+            # Iterate
+            if abs(centroid_x - result[0, index]) < 1 and abs(centroid_y - result[1, index]) < 1:
+                pass
+            else:
+                no_change = False
+                result[0, index] = np.mean(x_grid[window])
+                result[1, index] = np.mean(y_grid[window])
+
+        # If this iteration did nothing, then finish.
+        if no_change:
+            break
+
+    return result
+
+
+def lloyds_points(grid, n_points, iterations=10, plot=False):
+    r"""
+    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`
+    without seed ``vectors``. Instead, autogenerates the seed ``vectors`` randomly.
+    See :meth:`~slmsuite.holography.toolbox.lloyds_algorithm()`.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
+        See :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
+    n_points : int
+        Number of points to generate inside a space.
+    iterations : int
+        Number of iterations to apply Lloyd's Algorithm.
+    plot : bool
+        Whether to plot each iteration of the algorithm.
+
+    Returns
+    -------
+    numpy.ndarray
+        The result of Lloyd's Algorithm.
+    """
+    if (
+        isinstance(grid, (list, tuple))
+        and isinstance(grid[0], (int))
+        and isinstance(grid[1], (int))
+    ):
+        shape = grid
+    else:
+        (x_grid, y_grid) = _process_grid(grid)
+        shape = x_grid.shape
+
+    vectors = np.vstack((
+        np.random.randint(0, shape[1], n_points),
+        np.random.randint(0, shape[0], n_points)
+    ))
+
+    # Regenerate until no overlaps (improve for performance?)
+    while smallest_distance(vectors) < 1:
+        vectors = np.vstack((
+            np.random.randint(0, shape[1], n_points),
+            np.random.randint(0, shape[0], n_points)
+        ))
+
+    grid2 = np.meshgrid(range(shape[1]), range(shape[0]))
+
+    result = lloyds_algorithm(grid2, vectors, iterations, plot)
+
+    if isinstance(grid, (list, tuple)):
+        return result
+    else:
+        return np.vstack((x_grid[result], y_grid[result]))
 
 
 # Basic functions

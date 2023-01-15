@@ -224,7 +224,7 @@ class Hologram:
             precondition the optimization. Of shape :attr:`slm_shape`.
         slm_shape : (int, int) OR slmsuite.hardware.FourierSLM OR slmsuite.hardware.slms.SLM OR None
             The shape of the near-field of the SLM.
-            The user can pass a
+            Optionally, as a quality of life feature, the user can pass a
             :class:`slmsuite.hardware.FourierSLM` or
             :class:`slmsuite.hardware.slms.SLM` instead,
             and ``slm_shape`` (and ``amp`` if it is ``None``) are populated from this.
@@ -280,8 +280,8 @@ class Hologram:
                     if amp is None:
                         amp = slm_shape.measured_amplitude
                     slm_shape = slm_shape.shape
-                except:
-                    slm_shape = (np.nan, np.nan)
+                except: # (int, int) case
+                    pass
 
             if len(slm_shape) != 2:
                 slm_shape = (np.nan, np.nan)

@@ -580,7 +580,9 @@ def image_fit(images, function=gaussian2d, guess=None, plot=False):
     guess : None OR numpy.ndarray (parameter_count, image_count)
         - If ``guess`` is ``None``, will construct a guess based on the ``function`` passed.
           Functions for which guesses are implemented include:
+
           - :meth:`~~slmsuite.misc.fitfunctions.gaussian2d()`
+
         - If ``guess`` is ``None`` and ``function`` does not have a guess
           implemented, no guess will be provided to the optimizer.
         - If ``guess`` is a ``numpy.ndarray``, a slice of the array will be provided
@@ -604,7 +606,8 @@ def image_fit(images, function=gaussian2d, guess=None, plot=False):
 
     Raises
     ------
-        NotImplementedError if the provided ``function`` does not have a guess implemented.
+    NotImplementedError
+        If the provided ``function`` does not have a guess implemented.
     """
     # Setup.
     (image_count, w_y, w_x) = images.shape

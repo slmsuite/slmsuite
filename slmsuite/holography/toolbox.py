@@ -227,9 +227,9 @@ def convert_blaze_vector(
         Warning
         ~~~~~~~~
         The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
-        so a ``slm`` should be passed. ``"knm"`` additionally requires the ``shape`` of
-        the computational space. If these arguments are not included, the function returns
-        an array ``nan`` values of the same shape as a valid result.
+        so a ``slm`` should be passed (otherwise returns an array of ``nan`` values).
+        ``"knm"`` additionally requires the ``shape`` of the computational space.
+        If not included when an slm is passed, ``shape=slm.shape`` is assumed.
 
         Parameters
         ----------
@@ -272,10 +272,12 @@ def convert_blaze_vector(
         else:
             pitch = format_2vectors([slm.dx, slm.dy])
 
-        if shape is None:
+        if shape is None and slm is not None:
+            shape = slm.shape
+        elif shape is None:
             shape = np.nan
-        else:
-            shape = format_2vectors(np.flip(np.squeeze(shape)))
+        # else:
+        shape = format_2vectors(np.flip(np.squeeze(shape)))
 
         knm_conv = pitch * shape
 

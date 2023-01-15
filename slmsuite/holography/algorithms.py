@@ -46,6 +46,7 @@ References
 .. [4] https://github.com/cupy/cupy/
 """
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import cv2
 from tqdm import tqdm
 
@@ -276,12 +277,12 @@ class Hologram:
                     amp = slm_shape.slm.measured_amplitude
                 slm_shape = slm_shape.slm.shape
             except:
-                try:  # Check if slm_shape is an SLM (or I guess a numpy array too).
+                try:  # Check if slm_shape is an SLM
                     if amp is None:
                         amp = slm_shape.measured_amplitude
                     slm_shape = slm_shape.shape
-                except:
-                    slm_shape = (np.nan, np.nan)
+                except: # SLM shape is an numpy array
+                    pass
 
             if len(slm_shape) != 2:
                 slm_shape = (np.nan, np.nan)
@@ -658,13 +659,10 @@ class Hologram:
                 #         out=farfield[mask], where=farfield!=0)
                 # cp.multiply(farfield[mask], self.weights[mask], out=farfield[mask])
 
-            # Move to real space.
+            # Move to image (i.e. camera/real) space.
             nearfield = cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho")
-            cp.arctan2(
-                nearfield.imag[i0:i1, i2:i3],
-                nearfield.real[i0:i1, i2:i3],
-                out=self.phase,
-            )
+            self.phase = cp.arctan2(nearfield.imag[i0:i1, i2:i3],
+                                    nearfield.real[i0:i1, i2:i3])
 
             # Increment iteration.
             self.iter += 1
@@ -991,7 +989,8 @@ class Hologram:
         self._update_stats_dictionary(stats)
 
     # Visualization
-    def plot_nearfield(self, title="", padded=False):
+    def plot_nearfield(self, title="", padded=False, basis="knm", slm=None,
+                       figsize=(8,4), cbar=False):
         """
         Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
         The amplitude is assumed (whether uniform, or experimentally computed) while the
@@ -999,6 +998,7 @@ class Hologram:
 
         Parameters
         ----------
+        # TODO: document new parameters
         title : str
             Title of the plots.
         padded : bool
@@ -1006,7 +1006,7 @@ class Hologram:
             Otherwise, shows the region at the center of the computational space of
             size :attr:`slm_shape`.
         """
-        _, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(12, 6))
+        fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=figsize)
 
         try:
             if isinstance(self.amp, float):
@@ -1019,7 +1019,7 @@ class Hologram:
             phase = self.phase
 
         if isinstance(amp, float):
-            axs[0].imshow(
+            im_amp = axs[0].imshow(
                 toolbox.pad(
                     amp * np.ones(self.slm_shape),
                     self.shape if padded else self.slm_shape,
@@ -1034,10 +1034,10 @@ class Hologram:
                 vmax=np.amax(amp),
             )
 
-        axs[1].imshow(
-            toolbox.pad(phase, self.shape if padded else self.slm_shape),
-            vmin=-np.pi,
-            vmax=np.pi,
+        im_phase = axs[1].imshow(
+            toolbox.pad(phase/np.pi, self.shape if padded else self.slm_shape),
+            vmin=-1,
+            vmax=1,
             interpolation="none",
             cmap="twilight",
         )
@@ -1048,13 +1048,42 @@ class Hologram:
         axs[0].set_title(title + "Amplitude")
         axs[1].set_title(title + "Phase")
 
+        # Add colorbars if desired
+        if cbar:
+            fig.tight_layout(pad=5.0)
+            cax = make_axes_locatable(axs[0]).append_axes('right', size='5%', pad=0.05)
+            fig.colorbar(im_amp, cax=cax, orientation='vertical', format="%1.2f")
+            cax = make_axes_locatable(axs[1]).append_axes('right', size='5%', pad=0.05)
+            fig.colorbar(im_phase, cax=cax, orientation='vertical', format = r"%1.2f$\pi$")
+
+        # Calculate extent for the given basis
+        if basis == "knm":
+            fig.supxlabel('$n$'); fig.supylabel('$m$')
+        else:
+            if slm is None:
+                raise Exception("Must include SLM object for plotting in bases other than knm!")
+            if basis == "kxy" or "norm":
+                ext_nm = im_amp.get_extent()
+                ext_min = np.squeeze(toolbox.convert_blaze_vector([ext_nm[0],ext_nm[-1]],from_units="knm",slm=slm))
+                ext_max = np.squeeze(toolbox.convert_blaze_vector([ext_nm[1],ext_nm[2]],from_units="knm",slm=slm))
+                ext_xy = [ext_min[0],ext_max[0],ext_max[1],ext_min[1]]
+                im_amp.set_extent(ext_xy); im_phase.set_extent(ext_xy)
+                fig.supxlabel(r'$k_x/k$'); fig.supylabel(r'$k_y/k$')
+            else:
+                raise Exception("Unrecognized basis '{}'.".format(basis))
+            
+                             
         plt.show()
-    def plot_farfield(self, source=None, limits=None, limit_padding=0.1, title=''):
+        
+    def plot_farfield(self, title='', source=None, limits=None, basis="ij", camera=None,
+                      limit_padding=0.1, figsize=(8,4), cbar=False):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
 
         Parameters
         ----------
+        title : str
+            Title of the plots.
         source : array_like OR None
             Should have shape equal to :attr:`shape`.
             If ``None``, defaults to :attr:`target`.
@@ -1066,17 +1095,25 @@ class Hologram:
             as zero values are set to actually be zero. However, doing so on
             computational or experimental outputs (e.g. :attr:`amp_ff`) will likely perform
             poorly, as values deviate slightly from zero and artificially expand the ``limits``.
+        basis : str
+            Coordinate basis for plots (``"ij"`` or ``"xy"``) see :class:`Hologram`).
+        camera : slmsuite.hardware.cameras.Camera
+            Contains camera position parameters needed to plot in the "xy" (real position) basis.
         limit_padding : float
             Fraction of the width and height to expand the limits by, only if
             the passed ``limits`` is ``None`` (autocompute).
-        title : str
-            Title of the plots.
+        figsize : tuple
+            Size of the plot. 
+        cbar : bool
+            Whether to add colorbars to the plots. Defaults to false. 
 
         Returns
         -------
         ((float, float), (float, float))
             Used ``limits``, which may be autocomputed. If autocomputed, the result will
             be integers.
+        axs
+            Set of axes for modifying plots
         """
         if source is None:
             source = self.target
@@ -1089,7 +1126,7 @@ class Hologram:
         except:
             npsource = np.abs(source)
 
-        _, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(12, 6))
+        fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=figsize)
 
         if limits == None:
             # Determine the bounds of the zoom region, padded by 20%
@@ -1109,7 +1146,7 @@ class Hologram:
 
         # Plot the full target, blurred so single pixels are visible in low res
         b = 2 * int(max(self.shape) / 500) + 1  # Future: fix arbitrary
-        axs[0].imshow(cv2.GaussianBlur(npsource, (b, b), 0))
+        full = axs[0].imshow(cv2.GaussianBlur(npsource, (b, b), 0))
 
         # Plot a red rectangle to show the extents of the zoom region
         rect = plt.Rectangle(
@@ -1121,7 +1158,7 @@ class Hologram:
         )
         axs[0].add_patch(rect)
 
-        # If cam_points is defined (i.e. is a FeedbackSLM),
+        # If cam_points is defined (i.e. is a FeedbackHologram),
         # plot a yellow rectangle for the extents of the camera
         try:
             axs[0].plot(
@@ -1147,18 +1184,47 @@ class Hologram:
 
         # Zoom in on our spots
         b = 2*int(np.diff(limits[0])/500) + 1  # Future: fix arbitrary
-        axs[1].imshow(cv2.GaussianBlur(npsource, (b, b), 0))
-        axs[1].set_xlim(limits[0])
-        axs[1].set_ylim(np.flip(limits[1]))
+
+        zoom_data = npsource[np.ix_(np.arange(limits[1][0]-1, limits[1][1]+2),
+                                    np.arange(limits[0][0]-1, limits[0][1]+2))]
+        print(limits)
+        print(zoom_data.shape)        
+        zoom = axs[1].imshow(cv2.GaussianBlur(zoom_data, (b, b), 0),
+                             extent=[limits[0][0]-1, limits[0][1]+1,
+                                     limits[1][0]+1,limits[1][1]-1])
         axs[1].set_title(title + "Zoom")
+
+        # Calculate extent for the given basis
+        if basis == "ij":
+            fig.supxlabel('$i$'); fig.supylabel('$j$')
+        elif basis == "xy":
+            if camera is None:
+                raise Exception("Must include camera object for plotting in the xy basis!")
+            fig.supxlabel(r'$x/\lambda$'); fig.supylabel(r'$y/\lambda$')
+            
+            # Convert extents to normalized coord using camera specs
+            full.set_extent([np.amin(camera.x_grid), np.amax(camera.x_grid),
+                             np.amax(camera.y_grid), np.amin(camera.y_grid)])
+                             
+            # TODO: extent incorrect when zoom-box is at edge of camera
+            zoom_extent = np.reshape(np.array(zoom.get_extent()),(2,2))
+            zoom.set_extent(np.concatenate((camera.x_grid[0,zoom_extent[0]],
+                                            camera.y_grid[zoom_extent[1],0])))
+        else:
+            raise Exception("Unrecognized basis '{}'.".format(basis))
 
         for spine in ["top", "bottom", "right", "left"]:
             axs[1].spines[spine].set_color("r")
             axs[1].spines[spine].set_linewidth(1.5)
 
+        # Add colorbar if desired
+        if cbar:
+            cax = make_axes_locatable(axs[1]).append_axes('right', size='5%', pad=0.05)
+            fig.colorbar(full, cax=cax, orientation='vertical')
+
         plt.show()
 
-        return limits
+        return axs, limits
 
     def plot_stats(self, stats_dict=None):
         """

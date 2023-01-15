@@ -83,11 +83,11 @@ class SLM:
         height,
         bitdepth,
         name="SLM",
-        wav_um=0.780,
+        wav_um=1,
         wav_design_um=None,
-        dx_um=8,
-        dy_um=8,
-        settle_time_s=0.3,
+        dx_um=1,
+        dy_um=1,
+        settle_time_s=0,
     ):
         """
         Initialize SLM.

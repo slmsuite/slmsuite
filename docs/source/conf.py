@@ -29,7 +29,7 @@ for module_path in module_paths:
 # -- Project information -----------------------------------------------------
 
 project = "slmsuite"
-copyright = "2022, slmsuite Developers"
+copyright = "2023, slmsuite Developers"
 author = "slmsuite Developers"
 release = "0.0.0"
 
@@ -47,6 +47,7 @@ extensions = [
     "IPython.sphinxext.ipython_directive",
     "IPython.sphinxext.ipython_console_highlighting",
     "nbsphinx",
+    'sphinx_gallery.load_style',
     "sphinx_copybutton",
     "sphinx_last_updated_by_git"
 ]
@@ -170,4 +171,3 @@ def setup(app):
     except BaseException as e:
         print("WARNING: Unable to download example notebooks. "
               "Building without examples. Error:\n{}".format(e))
-              

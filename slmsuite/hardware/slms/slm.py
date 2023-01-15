@@ -81,7 +81,7 @@ class SLM:
         self,
         width,
         height,
-        bitdepth,
+        bitdepth=8,
         name="SLM",
         wav_um=1,
         wav_design_um=None,
@@ -97,7 +97,7 @@ class SLM:
         width, height
             See :attr:`shape`.
         bitdepth
-            See :attr:`bitdepth`.
+            See :attr:`bitdepth`. Defaults to 8.
         name
             See :attr:`name`.
         wav_um

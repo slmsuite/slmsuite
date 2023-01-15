@@ -698,17 +698,17 @@ def blaze(grid, vector=(0, 0), offset=0):
     r"""
     Returns a simple blaze (phase ramp).
 
-    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k}_g \cdot \vec{x} + o
+    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k}_{norm} \cdot \vec{x}_{norm} + o
 
     Parameters
     ----------
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        :math:`\vec{x}_{norm}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     vector : (float, float)
-        Blaze vector in normalized :math:`\frac{k_x}{k}` units.
+        :math:`\vec{k}_{norm}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
         See :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`
     offset :
         Phase offset for this blaze.

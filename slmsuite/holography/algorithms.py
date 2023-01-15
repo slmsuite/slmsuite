@@ -1129,6 +1129,14 @@ class Hologram:
                 self.shape[0] / 2.0 + self.cam_points[1],
                 c="y",
             )
+            axs[0].annotate(
+                "Camera FoV",
+                (
+                    self.shape[1] / 2.0 + np.mean(self.cam_points[0]),
+                    self.shape[0] / 2.0 + np.max(self.cam_points[1])
+                ),
+                c="y", size="x-small", ha="center"
+            )
         except:
             pass
 
@@ -1143,6 +1151,10 @@ class Hologram:
         axs[1].set_xlim(limits[0])
         axs[1].set_ylim(np.flip(limits[1]))
         axs[1].set_title(title + "Zoom")
+
+        for spine in ["top", "bottom", "right", "left"]:
+            axs[1].spines[spine].set_color("r")
+            axs[1].spines[spine].set_linewidth(1.5)
 
         plt.show()
 

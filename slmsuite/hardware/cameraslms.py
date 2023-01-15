@@ -555,10 +555,11 @@ class FourierSLM(CameraSLM):
             approach is to set this outside the field of view of the camera and make
             sure that other diffraction orders are far from the `interference_point`.
         field_point_units : str
-            Defaults to ``"ij"``. If it is instead a unit compatible with 
+            Default to ``"ij"`` which moves first diffraction order
+             to the camera pixel ``field_point``.
+            If it is instead a unit compatible with
             :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`, then the
-            ``field_point`` value is interpreted as the blaze to set the field to
-            (i.e. instead of the difference between the zeroth order and the field point).
+            ``field_point`` value is interpreted as a shifting blaze vector.
             In this case, setting one coordinate of ``field_point`` to zero is suggested
             to minimize higher order diffraction.
         superpixel_size : int

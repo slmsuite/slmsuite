@@ -230,8 +230,8 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
 
     Warning
     ~~~~~~~
-    This function does not check if the passed ``images`` are not negative, or correct
-    for negative values this. Negative values may produce unusual results.
+    This function does not check (or correct for) passed ``images`` with negative
+    values. Negative values may produce unusual results.
 
     Warning
     ~~~~~~~

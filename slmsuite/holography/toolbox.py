@@ -975,7 +975,7 @@ def zernike_sum(grid, weights, aperture=None):
     Cropping this aperture breaks the orthogonality and normalization of the set, but
     this is fine for many applications. While it is possible to orthonormalize the
     cropped set, we do not do so in :mod:`slmsuite`, as this is not critical for target
-    applications such as abberation correction.
+    applications such as aberration correction.
 
     Parameters
     ----------
@@ -1254,7 +1254,7 @@ def hermite_gaussian(grid, n, m, w=None):
 
 def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
     r"""
-    **(Untested)** Returns the phase farfield for an Ince-Gaussian beam.
+    **(NotImplemented)** Returns the phase farfield for an Ince-Gaussian beam.
 
     Ref: https://doi.org/10.1364/OL.29.000144
 

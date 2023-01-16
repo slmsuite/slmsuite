@@ -987,7 +987,7 @@ class Hologram:
         self._update_stats_dictionary(stats)
 
     # Visualization
-    def plot_nearfield(self, title="", padded=False, basis="knm", slm=None,
+    def plot_nearfield(self, title="", padded=False, normalize=False,
                        figsize=(8,4), cbar=False):
         """
         Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
@@ -996,13 +996,18 @@ class Hologram:
 
         Parameters
         ----------
-        # TODO: document new parameters
         title : str
             Title of the plots.
         padded : bool
             If ``True``, shows the full computational space of shape :attr:`shape`.
             Otherwise, shows the region at the center of the computational space of
             size :attr:`slm_shape`.
+        normalize : bool
+            Normalizes amplitude to unity if ``True``.
+        figsize : tuple
+            Size of the plot. 
+        cbar : bool
+            Whether to add colorbars to the plots. Defaults to false. 
         """
         fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=figsize)
 
@@ -1015,6 +1020,8 @@ class Hologram:
         except:
             amp = self.amp
             phase = self.phase
+        if normalize:
+            amp /= np.amax(amp)
 
         if isinstance(amp, float):
             im_amp = axs[0].imshow(
@@ -1048,32 +1055,15 @@ class Hologram:
 
         # Add colorbars if desired
         if cbar:
-            fig.tight_layout(pad=5.0)
+            fig.tight_layout(pad=4.0)
             cax = make_axes_locatable(axs[0]).append_axes('right', size='5%', pad=0.05)
-            fig.colorbar(im_amp, cax=cax, orientation='vertical', format="%1.2f")
+            fig.colorbar(im_amp, cax=cax, orientation='vertical')
             cax = make_axes_locatable(axs[1]).append_axes('right', size='5%', pad=0.05)
-            fig.colorbar(im_phase, cax=cax, orientation='vertical', format = r"%1.2f$\pi$")
-
-        # Calculate extent for the given basis
-        if basis == "knm":
-            fig.supxlabel('$n$'); fig.supylabel('$m$')
-        else:
-            if slm is None:
-                raise Exception("Must include SLM object for plotting in bases other than knm!")
-            if basis == "kxy" or "norm":
-                ext_nm = im_amp.get_extent()
-                ext_min = np.squeeze(toolbox.convert_blaze_vector([ext_nm[0],ext_nm[-1]],from_units="knm",slm=slm))
-                ext_max = np.squeeze(toolbox.convert_blaze_vector([ext_nm[1],ext_nm[2]],from_units="knm",slm=slm))
-                ext_xy = [ext_min[0],ext_max[0],ext_max[1],ext_min[1]]
-                im_amp.set_extent(ext_xy); im_phase.set_extent(ext_xy)
-                fig.supxlabel(r'$k_x/k$'); fig.supylabel(r'$k_y/k$')
-            else:
-                raise Exception("Unrecognized basis '{}'.".format(basis))
-            
+            fig.colorbar(im_phase, cax=cax, orientation='vertical', format = r"%1.1f$\pi$")
                              
         plt.show()
         
-    def plot_farfield(self, title='', source=None, limits=None, basis="ij", camera=None,
+    def plot_farfield(self, title='', source=None, limits=None, basis="ij", CameraSLM=None,
                       limit_padding=0.1, figsize=(8,4), cbar=False):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
@@ -1094,9 +1084,10 @@ class Hologram:
             computational or experimental outputs (e.g. :attr:`amp_ff`) will likely perform
             poorly, as values deviate slightly from zero and artificially expand the ``limits``.
         basis : str
-            Coordinate basis for plots (``"ij"`` or ``"xy"``) see :class:`Hologram`).
-        camera : slmsuite.hardware.cameras.Camera
-            Contains camera position parameters needed to plot in the "xy" (real position) basis.
+            Coordinate basis for plots (see 
+            :func:`~slmsuite.holography.toolbox.convert_blaze_vector` for options).
+        CameraSLM : slmsuite.hardware.cameraslms.CameraSLM
+            Contains experimental parameters needed to plot in various bases.
         limit_padding : float
             Fraction of the width and height to expand the limits by, only if
             the passed ``limits`` is ``None`` (autocompute).
@@ -1145,12 +1136,48 @@ class Hologram:
         # Plot the full target, blurred so single pixels are visible in low res
         b = 2 * int(max(self.shape) / 500) + 1  # Future: fix arbitrary
         full = axs[0].imshow(cv2.GaussianBlur(npsource, (b, b), 0))
+        if len(title) > 0:
+            title += ": "
+        axs[0].set_title(title + "Full")
 
-        # Plot a red rectangle to show the extents of the zoom region
+        # Zoom in on our spots in a second plot
+        b = 2*int(np.diff(limits[0])/500) + 1  # Future: fix arbitrary
+        zoom_data = npsource[np.ix_(np.arange(limits[1][0]-1, limits[1][1]+2),
+                                    np.arange(limits[0][0]-1, limits[0][1]+2))]
+        zoom = axs[1].imshow(cv2.GaussianBlur(zoom_data, (b, b), 0),
+                             extent=[limits[0][0]-1, limits[0][1]+1,
+                                     limits[1][0]+1,limits[1][1]-1])
+        axs[1].set_title(title + "Zoom")
+        # Red border (to match red zoom box applied below in "full" img)
+        for spine in ["top", "bottom", "right", "left"]:
+            axs[1].spines[spine].set_color("r")
+            axs[1].spines[spine].set_linewidth(1.5)
+
+        # Helper fxn: calculate extent for the given basis
+        def rebase(img, to_basis):
+            ext_nm = img.get_extent()
+            ext_min = np.squeeze(toolbox.convert_blaze_vector([ext_nm[0],ext_nm[-1]],
+                                 from_units="knm",to_units=to_basis,slm=CameraSLM.slm))
+            ext_max = np.squeeze(toolbox.convert_blaze_vector([ext_nm[1],ext_nm[2]],
+                                 from_units="knm",to_units=to_basis,slm=CameraSLM.slm))
+            img.set_extent([ext_min[0],ext_max[0],ext_max[1],ext_min[1]])
+            return
+
+        # Scale and label plots depending on basis
+        if basis == "knm":
+            fig.supxlabel('$n$'); fig.supylabel('$m$')
+        elif CameraSLM is None:
+            raise Exception("Must include CameraSLM object for plotting in bases other than ``ij``!")
+        else:
+            rebase(full,basis); rebase(zoom,basis)
+            fig.supxlabel(basis+"_x"); fig.supylabel(basis+"_y")
+
+        # Bonus: Plot a red rectangle to show the extents of the zoom region
+        extent = zoom.get_extent()
         rect = plt.Rectangle(
-            [limits[0][0], limits[1][0]],
-            np.diff(limits[0])[0],
-            np.diff(limits[1])[0],
+            extent[::2],
+            np.diff(extent[0:2])[0],
+            np.diff(extent[2:])[0],
             ec="r",
             fc="none",
         )
@@ -1158,6 +1185,7 @@ class Hologram:
 
         # If cam_points is defined (i.e. is a FeedbackHologram),
         # plot a yellow rectangle for the extents of the camera
+        # TODO: needs to be implemented if plotting in bases other than knm.. 
         try:
             axs[0].plot(
                 self.cam_points[0],
@@ -1174,46 +1202,6 @@ class Hologram:
             )
         except:
             pass
-
-        if len(title) > 0:
-            title += ": "
-
-        axs[0].set_title(title + "Full")
-
-        # Zoom in on our spots
-        b = 2*int(np.diff(limits[0])/500) + 1  # Future: fix arbitrary
-
-        zoom_data = npsource[np.ix_(np.arange(limits[1][0]-1, limits[1][1]+2),
-                                    np.arange(limits[0][0]-1, limits[0][1]+2))]
-        print(limits)
-        print(zoom_data.shape)        
-        zoom = axs[1].imshow(cv2.GaussianBlur(zoom_data, (b, b), 0),
-                             extent=[limits[0][0]-1, limits[0][1]+1,
-                                     limits[1][0]+1,limits[1][1]-1])
-        axs[1].set_title(title + "Zoom")
-
-        # Calculate extent for the given basis
-        if basis == "ij":
-            fig.supxlabel('$i$'); fig.supylabel('$j$')
-        elif basis == "xy":
-            if camera is None:
-                raise Exception("Must include camera object for plotting in the xy basis!")
-            fig.supxlabel(r'$x/\lambda$'); fig.supylabel(r'$y/\lambda$')
-            
-            # Convert extents to normalized coord using camera specs
-            full.set_extent([np.amin(camera.x_grid), np.amax(camera.x_grid),
-                             np.amax(camera.y_grid), np.amin(camera.y_grid)])
-                             
-            # TODO: extent incorrect when zoom-box is at edge of camera
-            zoom_extent = np.reshape(np.array(zoom.get_extent()),(2,2))
-            zoom.set_extent(np.concatenate((camera.x_grid[0,zoom_extent[0]],
-                                            camera.y_grid[zoom_extent[1],0])))
-        else:
-            raise Exception("Unrecognized basis '{}'.".format(basis))
-
-        for spine in ["top", "bottom", "right", "left"]:
-            axs[1].spines[spine].set_color("r")
-            axs[1].spines[spine].set_linewidth(1.5)
 
         # Add colorbar if desired
         if cbar:
@@ -1766,9 +1754,8 @@ class SpotHologram(FeedbackHologram):
             raise Exception("Unrecognized basis '{}'.".format(basis))
 
         # Check to make sure spots are within relevant camera and SLM shapes.
-        if np.any(np.abs(self.spot_knm[0]) > shape[1] / 2.0) or np.any(
-            np.abs(self.spot_knm[1]) > shape[0] / 2.0
-        ):
+        if np.any(np.abs(self.spot_knm[0]) > shape[1]) or \
+           np.any(np.abs(self.spot_knm[1]) > shape[0]):
             raise ValueError("Spots outside SLM computational space bounds!")
 
         if self.spot_ij is not None:

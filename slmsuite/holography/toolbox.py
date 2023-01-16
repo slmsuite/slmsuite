@@ -199,7 +199,6 @@ def imprint(
 # Unit helper functions
 blaze_units = ["norm", "kxy", "rad", "knm", "freq", "lpmm", "mrad", "deg"]
 
-
 def convert_blaze_vector(
     vector, from_units="norm", to_units="norm", slm=None, shape=None
 ):

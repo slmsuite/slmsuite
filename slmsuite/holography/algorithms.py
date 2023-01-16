@@ -1130,10 +1130,10 @@ class Hologram:
             axs[0].annotate(
                 "Camera FoV",
                 (
-                    np.mean(self.cam_points[0]),
-                    np.max(self.cam_points[1])
+                    np.mean(self.cam_points[0, :4]),
+                    np.max(self.cam_points[1, :4])
                 ),
-                c="y", size="x-small", ha="center"
+                c="y", size="x-small", ha="center", va="top"
             )
         except:
             pass
@@ -1520,7 +1520,7 @@ class FeedbackHologram(Hologram):
         basis : str
             The correction can be in any of the following bases:
             - ``"ij"`` changes the pixel that the spot is expected at,
-            - ``"kxy"``, ``"knm"`` changes the k-vector which the SLM targets.
+            - ``"kxy"`` or ``"knm"`` changes the k-vector which the SLM targets.
             Defaults to ``"kxy"`` if ``None``.
 
         Returns
@@ -1700,8 +1700,11 @@ class SpotHologram(FeedbackHologram):
             raise Exception("Unrecognized basis '{}'.".format(basis))
 
         # Check to make sure spots are within relevant camera and SLM shapes.
-        if np.any(np.abs(self.spot_knm[0]) > shape[1] / 2.0) or np.any(
-            np.abs(self.spot_knm[1]) > shape[0] / 2.0
+        if (
+            np.any(self.spot_knm[0] < 0) or 
+            np.any(self.spot_knm[1] < 0) or
+            np.any(self.spot_knm[0] > shape[1]-1) or 
+            np.any(self.spot_knm[1] > shape[0]-1)
         ):
             raise ValueError("Spots outside SLM computational space bounds!")
 

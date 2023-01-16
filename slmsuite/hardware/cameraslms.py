@@ -175,7 +175,7 @@ class FourierSLM(CameraSLM):
         self,
         array_shape=10,
         array_pitch=10,
-        array_center=(0, 0),
+        array_center=None,
         plot=False,
         autofocus=False,
         autoexposure=False,
@@ -235,6 +235,9 @@ class FourierSLM(CameraSLM):
             array_center=array_center,
             **kwargs
         )
+
+        array_center = np.mean(hologram.spot_kxy_rounded, axis=1)
+        print(array_center)
 
         if plot:
             hologram.plot_farfield()

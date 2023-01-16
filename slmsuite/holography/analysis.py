@@ -1143,6 +1143,9 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
                 s=1000,
                 linewidths=1,
             )
+            for spine in ["top", "bottom", "right", "left"]:
+                axs[1].spines[spine].set_color("r")
+                axs[1].spines[spine].set_linewidth(1.5)
 
             # Plot the unzoomed figure
             axs[0].imshow(plt_img)
@@ -1244,6 +1247,10 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         axs[1].set_title("Result - Zoom")
         axs[1].set_xlim(xl)
         axs[1].set_ylim(np.flip(yl))
+
+        for spine in ["top", "bottom", "right", "left"]:
+            axs[1].spines[spine].set_color("r")
+            axs[1].spines[spine].set_linewidth(1.5)
 
         axs[0].imshow(cv2img)
         axs[0].scatter(array_center[0], array_center[1], c="r", marker="x", s=10)

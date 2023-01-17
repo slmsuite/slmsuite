@@ -72,6 +72,7 @@ except ImportError:
 
 # Import helper functions
 from slmsuite.holography import analysis, toolbox
+from slmsuite.holography.toolbox import BLAZE_UNITS, BLAZE_LABELS
 
 
 class Hologram:
@@ -268,7 +269,7 @@ class Hologram:
             phase_shape = phase.shape
 
         if slm_shape is None:
-            slm_shape = (np.nan, np.nan)
+            slm_shape = target.shape #TODO: review; changed from (nan,nan)
         else:
             try:  # Check if slm_shape is a CameraSLM.
                 if amp is None:
@@ -354,7 +355,7 @@ class Hologram:
             :class:`slmsuite.hardware.FourierSLM` instead, and should pass this
             when using the ``precision`` parameter.
         padding_order : int
-            Scales to the ``padding_order`` th closest greater power of 2.
+            Scales to the ``padding_order``th closest greater power of 2.
             A ``padding_order`` of zero does nothing.
         square_padding : bool
             If ``True``, sets both shape dimensions to the largest of the two
@@ -386,10 +387,12 @@ class Hologram:
                 pixels = slm_range / precision
             elif precision_basis == "kxy":
                 pixels = fs / precision
-
+                
             # Raise to the nearest greater power of 2.
             pixels = np.power(2, int(np.ceil(np.log2(pixels))))
             precision_shape = (pixels, pixels)
+        elif np.isfinite(precision):
+            raise Exception("Must supply a CameraSLM object to implement precision calculations!")
         else:
             precision_shape = slm_shape
 
@@ -669,7 +672,7 @@ class Hologram:
         nearfield.fill(0)
         nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
         farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm="ortho"))
-        cp.abs(farfield, out=self.amp_ff)
+        self.amp_ff = cp.abs(farfield)
         self.phase_ff = cp.angle(farfield)
 
     # User interactions: Changing the target and recovering the phase.
@@ -1033,7 +1036,7 @@ class Hologram:
                 vmax=amp,
             )
         else:
-            axs[0].imshow(
+            im_amp = axs[0].imshow(
                 toolbox.pad(amp, self.shape if padded else self.slm_shape),
                 vmin=0,
                 vmax=np.amax(amp),
@@ -1063,7 +1066,7 @@ class Hologram:
                              
         plt.show()
         
-    def plot_farfield(self, title='', source=None, limits=None, basis="ij", CameraSLM=None,
+    def plot_farfield(self, title='', source=None, limits=None, units="knm", CameraSLM=None,
                       limit_padding=0.1, figsize=(8,4), cbar=False):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
@@ -1083,8 +1086,8 @@ class Hologram:
             as zero values are set to actually be zero. However, doing so on
             computational or experimental outputs (e.g. :attr:`amp_ff`) will likely perform
             poorly, as values deviate slightly from zero and artificially expand the ``limits``.
-        basis : str
-            Coordinate basis for plots (see 
+        units : str
+            Far-field units for plots (see 
             :func:`~slmsuite.holography.toolbox.convert_blaze_vector` for options).
         CameraSLM : slmsuite.hardware.cameraslms.CameraSLM
             Contains experimental parameters needed to plot in various bases.
@@ -1153,24 +1156,27 @@ class Hologram:
             axs[1].spines[spine].set_color("r")
             axs[1].spines[spine].set_linewidth(1.5)
 
-        # Helper fxn: calculate extent for the given basis
-        def rebase(img, to_basis):
+        # Helper fxn: calculate extent for the given units
+        def rebase(img, to_units):
             ext_nm = img.get_extent()
             ext_min = np.squeeze(toolbox.convert_blaze_vector([ext_nm[0],ext_nm[-1]],
-                                 from_units="knm",to_units=to_basis,slm=CameraSLM.slm))
+                                 from_units="knm", to_units=to_units,
+                                 slm=CameraSLM.slm, shape=npsource.shape))
             ext_max = np.squeeze(toolbox.convert_blaze_vector([ext_nm[1],ext_nm[2]],
-                                 from_units="knm",to_units=to_basis,slm=CameraSLM.slm))
+                                 from_units="knm", to_units=to_units,
+                                 slm=CameraSLM.slm, shape=npsource.shape))
             img.set_extent([ext_min[0],ext_max[0],ext_max[1],ext_min[1]])
             return
 
-        # Scale and label plots depending on basis
-        if basis == "knm":
+        # Scale and label plots depending on units
+        if units == "knm":
             fig.supxlabel('$n$'); fig.supylabel('$m$')
         elif CameraSLM is None:
-            raise Exception("Must include CameraSLM object for plotting in bases other than ``ij``!")
+            raise Exception("Must include CameraSLM object for plotting in bases other than ``knm``!")
         else:
-            rebase(full,basis); rebase(zoom,basis)
-            fig.supxlabel(basis+"_x"); fig.supylabel(basis+"_y")
+            rebase(full,units); rebase(zoom,units)
+            loc = np.where(units==np.array(BLAZE_UNITS))[0][0]
+            fig.supxlabel(BLAZE_LABELS[loc][0]); fig.supylabel(BLAZE_LABELS[loc][1])
 
         # Bonus: Plot a red rectangle to show the extents of the zoom region
         extent = zoom.get_extent()

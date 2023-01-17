@@ -46,7 +46,7 @@ class Camera:
         self,
         width,
         height,
-        bitdepth,
+        bitdepth=8,
         dx_um=1,
         dy_um=1,
         wav_um=0.78,

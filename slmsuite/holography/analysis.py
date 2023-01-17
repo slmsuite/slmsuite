@@ -58,8 +58,8 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
     vectors = format_2vectors(vectors)
 
     # Prepare helper variables. Future: consider caching for speed, if not negligible.
-    edge_x = np.arange(size[0]) - (int(size[0] / 2) if centered else 0)
-    edge_y = np.arange(size[1]) - (int(size[1] / 2) if centered else 0)
+    edge_x = np.arange(size[0]) - ((int(size[0] - 1) / 2) if centered else 0)
+    edge_y = np.arange(size[1]) - ((int(size[1] - 1) / 2) if centered else 0)
 
     region_x, region_y = np.meshgrid(edge_x, edge_y)
 
@@ -106,7 +106,7 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
         take_plot(np.reshape(result, (vectors.shape[1], size[1], size[0])))
 
     if integrate:  # Sum over the integration axis
-        return np.sum(result, axis=-1)
+        return np.squeeze(np.sum(result, axis=-1))
     else:  # Reshape the integration axis
         return np.reshape(result, (vectors.shape[1], size[1], size[0]))
 
@@ -129,10 +129,19 @@ def take_plot(images):
     sy = sy / 2.0 - 0.5
     extent = (-sx, sx, -sy, sy)
 
+    vmin = np.min(images)
+    vmax = np.max(images)
+
     for x in range(img_count):
         ax = plt.subplot(M, M, x + 1)
 
-        ax.imshow(images[x, :, :], extent=extent)
+        ax.imshow(
+            images[x, :, :], 
+            vmin=vmin,
+            vmax=vmax,
+            extent=extent, 
+            interpolation='none'
+        )
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
 
@@ -1082,8 +1091,6 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
                 M_fixed = np.matmul(M_trial, np.matmul(rotation, flip))
                 parity_success = True
             except Exception as e:
-                print(e)
-
                 M_fixed = M_trial
                 parity_success = False
         else:
@@ -1109,7 +1116,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         true_centers = np.matmul(orientation["M"], centers) + orientation["b"]
 
         if start_orientation is None:
-            fig, axs = plt.subplots(1, 2, figsize=(12, 6), facecolor='white')
+            fig, axs = plt.subplots(1, 2, figsize=(12, 12), facecolor='white')
 
             plt_img = _make_8bit(dft_amp.copy())
 
@@ -1160,6 +1167,13 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
             axs[1].set_xlim(xl)
             axs[1].set_ylim(np.flip(yl))
 
+            # fig.supxlabel("Image Reciprocal $x$ [1/pix]")
+            # fig.supylabel("Image Reciprocal $y$ [1/pix]")
+            for ax in axs:
+                ax.set_xlabel("Image Reciprocal $x$ [1/pix]")
+                ax.set_ylabel("Image Reciprocal $y$ [1/pix]")
+            fig.tight_layout(pad=4.0)
+
             plt.show()
 
     # Hone the center of our fit by averaging the positional deviations of spots.
@@ -1167,26 +1181,33 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         guess_positions = np.matmul(orientation["M"], centers) + orientation["b"]
 
         # Odd helper parameters.
-        psf = 2 * int(np.floor(np.amin(np.amax(orientation["M"], axis=0))) / 2) + 1
+        psf = 2 * int(np.floor(np.amin(np.amax(np.abs(orientation["M"]), axis=0))) / 2) + 1
         blur = 2 * int(psf / 16) + 1
 
         regions = take(
             img, guess_positions, psf, centered=True, integrate=False, clip=True
         )
 
+        # take_plot(regions)
+
         # TODO: Update with take and take moments.
+        shift = image_positions(regions)
+        shift_x = shift[0, :]
+        shift_y = shift[1, :]
 
-        # Filter the images, but not in the direction of the stack.
-        sp_gaussian_filter1d(regions, blur, axis=1, output=regions)
-        sp_gaussian_filter1d(regions, blur, axis=2, output=regions)
+        # # Filter the images, but not in the direction of the stack.
+        # sp_gaussian_filter1d(regions, blur, axis=1, output=regions)
+        # sp_gaussian_filter1d(regions, blur, axis=2, output=regions)
 
-        # Future: fit gaussians instead of taking the (integer) max point for floating accuracy.
-        shift_x = (
-            np.argmax(np.amax(regions, axis=1, keepdims=True), axis=2) - (psf - 1) / 2
-        )
-        shift_y = (
-            np.argmax(np.amax(regions, axis=2, keepdims=True), axis=1) - (psf - 1) / 2
-        )
+        # # Future: fit gaussians instead of taking the (integer) max point for floating accuracy.
+        # shift_x = (
+        #     np.argmax(np.amax(regions, axis=1, keepdims=True), axis=2) - (psf - 1) / 2
+        # )
+        # shift_y = (
+        #     np.argmax(np.amax(regions, axis=2, keepdims=True), axis=1) - (psf - 1) / 2
+        # )
+
+        # take_plot(regions)
 
         # Remove outliers
         shift_error = np.sqrt(np.square(shift_x) + np.square(shift_y))
@@ -1212,6 +1233,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
 
     hone()
     hone()
+    hone()
 
     if plot:
         array_center = orientation["b"]
@@ -1219,8 +1241,8 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
 
         showmatch = False
 
-        _, axs = plt.subplots(
-            1, 2 + showmatch, constrained_layout=True, figsize=(12, 6)
+        fig, axs = plt.subplots(
+            1, 2 + showmatch, constrained_layout=True, figsize=(12, 12)
         )
 
         # Determine the bounds of the zoom region, padded by 50
@@ -1266,6 +1288,13 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         if showmatch:
             axs[2].imshow(match)
             axs[2].set_title("Result - Match")
+
+        # fig.supxlabel("Image $x$ [pix]")
+        # fig.supylabel("Image $y$ [pix]")
+        for ax in axs[:2]:
+            ax.set_xlabel("Image $x$ [pix]")
+            ax.set_ylabel("Image $y$ [pix]")
+        fig.tight_layout(pad=4.0)
 
         plt.show()
 

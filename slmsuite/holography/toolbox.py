@@ -197,14 +197,17 @@ def imprint(
 
 
 # Unit helper functions
-BLAZE_UNITS = ["norm", "kxy", "rad", "knm", "freq", "lpmm", "mrad", "deg"]
-BLAZE_LABELS = [(r"$k_x/k$", r"$k_y/k$"), (r"$k_x/k$", r"$k_y/k$"),
-                (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
-                (r"$n$", r"m"), (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
-                (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
-                (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
-                (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]")
-                ]
+BLAZE_LABELS = {
+    "norm" : (r"$k_x/k$", r"$k_y/k$"), 
+    "kxy" : (r"$k_x/k$", r"$k_y/k$"),
+    "rad" : (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
+    "knm" : (r"$n$ [pix]", r"$m$ [pix]"), 
+    "freq" : (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
+    "lpmm" : (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
+    "mrad" : (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
+    "deg" : (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]")
+}
+BLAZE_UNITS = BLAZE_LABELS.keys()
 
 def convert_blaze_vector(
     vector, from_units="norm", to_units="norm", slm=None, shape=None

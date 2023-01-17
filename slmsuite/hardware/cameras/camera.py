@@ -47,9 +47,8 @@ class Camera:
         width,
         height,
         bitdepth=8,
-        dx_um=1,
-        dy_um=1,
-        wav_um=0.78,
+        dx_um=None,
+        dy_um=None,
         rot="0",
         fliplr=False,
         flipud=False,
@@ -73,8 +72,6 @@ class Camera:
             See :attr:`dx_um`.
         dy_um
             See :attr:`dy_um`.
-        wav_um : float
-            Wavelength of light detected by camera. Defaults to 780 nm.
         rot : str or int
             Rotates returned image by the corresponding degrees in ``["90", "180", "270"]``
             or :meth:`numpy.rot90` code in ``[1, 2, 3]``. Defaults to no rotation.
@@ -108,17 +105,8 @@ class Camera:
         self.bitresolution = 2 ** bitdepth
 
         # Spatial dimensions
-        self.wav_um = wav_um
         self.dx_um = dx_um
         self.dy_um = dy_um
-
-        self.dx = dx_um / self.wav_um
-        self.dy = dy_um / self.wav_um
-
-        # Make normalized coordinate grids.
-        xpix = (width - 1) *  np.linspace(-.5, .5, width)
-        ypix = (height - 1) * np.linspace(-.5, .5, height)
-        self.x_grid, self.y_grid = np.meshgrid(self.dx * xpix, self.dy * ypix)
 
         self.name = name
 

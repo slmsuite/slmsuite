@@ -582,7 +582,7 @@ class Hologram:
         # Helper variables for speeding up source phase and amplitude fixing.
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
-        for _ in iterations:
+        for iter in iterations:
             # Fix the relevant part of the nearfield amplitude to the source amplitude.
             # Everything else is zero because power outside the SLM is assumed unreflected.
             # This is optimized for when shape is much larger than slm_shape.
@@ -612,6 +612,8 @@ class Hologram:
                 ):
                     # Calculate amp_ff for weighting (if None, will init; otherwise in-place).
                     self.amp_ff = cp.abs(farfield, out=self.amp_ff)
+                if "experimental" in self.flags["feedback"]:
+                    pass
 
             self.update_stats(self.flags["stat_groups"])
 
@@ -626,7 +628,7 @@ class Hologram:
 
                 if not "fixed_phase_iterations" in self.flags:
                     self.flags["fixed_phase_iterations"] = 20
-                if self.iter > self.flags["fixed_phase_iterations"]:
+                if iter > self.flags["fixed_phase_iterations"]:
                     self.flags["fixed_phase"] = True
 
             # Run step function and check termination conditions.
@@ -787,16 +789,18 @@ class Hologram:
         assert self.method[:4] == "WGS-", "For now, assume weighting is for WGS."
         method = self.method[4:]
 
+        # Parse feedback_amp
         if target_amp is None:  # Uniform
-            feedback_corrected = feedback_amp
+            feedback_corrected = cp.array(feedback_amp, dtype=self.dtype)
         else:  # Non-uniform
-            feedback_corrected = feedback_amp
-            feedback_corrected *= 1 / Hologram._norm(feedback_amp)
+            feedback_corrected = cp.array(feedback_amp, dtype=self.dtype)
+            feedback_corrected *= 1 / Hologram._norm(feedback_corrected)
 
-            cp.divide(feedback_corrected, target_amp, out=feedback_corrected)
+            cp.divide(feedback_corrected, cp.array(target_amp), out=feedback_corrected)
 
             cp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
+        # Apply weighting
         if method == "Leonardo" or method == "Kim":
             if not "power" in self.flags:
                 self.flags["power"] = 0.7
@@ -910,8 +914,23 @@ class Hologram:
         rmax = float(mp.amax(ratio_pwr))
         uniformity = 1 - (rmax - rmin) / (rmax + rmin)
 
-        pkpk_err = float(mp.amax(pwr_err) - mp.amin(pwr_err))
-        std_err = float(mp.std(pwr_err))
+        pkpk_err = pwr_err.size * float(mp.amax(pwr_err) - mp.amin(pwr_err))
+        std_err = pwr_err.size * float(mp.std(pwr_err))
+
+        # if len(feedback_pwr) < 200:
+        #     try:
+        #         dat = feedback_pwr.get()
+        #     except:
+        #         dat = feedback_pwr
+        #     plt.hist(pwr_err.size * dat)
+        #     result = {
+        #         "efficiency": efficiency,
+        #         "uniformity": uniformity,
+        #         "pkpk_err": pkpk_err,
+        #         "std_err": std_err,
+        #     }
+        #     plt.title(str(result))
+        #     plt.show()
 
         return {
             "efficiency": efficiency,
@@ -1012,8 +1031,8 @@ class Hologram:
         self._update_stats_dictionary(stats)
 
     # Visualization
-    def plot_nearfield(self, title="", padded=False, normalize=False,
-                       figsize=(8,4), cbar=False):
+    def plot_nearfield(self, title="", padded=False,
+                       figsize=(12,6), cbar=False):
         """
         Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
         The amplitude is assumed (whether uniform, or experimentally computed) while the
@@ -1024,15 +1043,13 @@ class Hologram:
         title : str
             Title of the plots.
         padded : bool
-            If ``True``, shows the full computational space of shape :attr:`shape`.
+            If ``True``, shows the full computational nearfield of shape :attr:`shape`.
             Otherwise, shows the region at the center of the computational space of
-            size :attr:`slm_shape`.
-        normalize : bool
-            Normalizes amplitude to unity if ``True``.
+            size :attr:`slm_shape` corresponding to the unpadded SLM.
         figsize : tuple
             Size of the plot.
         cbar : bool
-            Whether to add colorbars to the plots. Defaults to false.
+            Whether to add colorbars to the plots. Defaults to ``False``.
         """
         fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=figsize)
 
@@ -1045,8 +1062,6 @@ class Hologram:
         except:
             amp = self.amp
             phase = self.phase
-        if normalize:
-            amp /= np.amax(amp)
 
         if isinstance(amp, float):
             im_amp = axs[0].imshow(
@@ -1065,7 +1080,7 @@ class Hologram:
             )
 
         im_phase = axs[1].imshow(
-            toolbox.pad(phase/np.pi, self.shape if padded else self.slm_shape),
+            toolbox.pad(np.mod(phase, 2*np.pi) / np.pi, self.shape if padded else self.slm_shape),
             vmin=0,
             vmax=2,
             interpolation="none",
@@ -1078,6 +1093,12 @@ class Hologram:
         axs[0].set_title(title + "Amplitude")
         axs[1].set_title(title + "Phase")
 
+        # fig.supxlabel("SLM $x$ [pix]")
+        # fig.supylabel("SLM $y$ [pix]")
+        for ax in axs:
+            ax.set_xlabel("SLM $x$ [pix]")
+            ax.set_ylabel("SLM $y$ [pix]")
+
         # Add colorbars if desired
         if cbar:
             fig.tight_layout(pad=4.0)
@@ -1088,18 +1109,18 @@ class Hologram:
 
         plt.show()
 
-    def plot_farfield(self, title='', source=None, limits=None, units="knm", CameraSLM=None,
-                      limit_padding=0.1, figsize=(8,4), cbar=False):
+    def plot_farfield(self, source=None, title="", limits=None, units="knm",
+                      limit_padding=0.1, figsize=(12,6), cbar=False):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
 
         Parameters
         ----------
-        title : str
-            Title of the plots.
         source : array_like OR None
             Should have shape equal to :attr:`shape`.
             If ``None``, defaults to :attr:`target`.
+        title : str
+            Title of the plots.
         limits : ((float, float), (float, float)) OR None
             :math:`x` and :math:`y` limits for the zoom plot.
             If None, ``limits`` are autocomputed as the smallest bounds
@@ -1111,24 +1132,23 @@ class Hologram:
         units : str
             Far-field units for plots (see
             :func:`~slmsuite.holography.toolbox.convert_blaze_vector` for options).
-        CameraSLM : slmsuite.hardware.cameraslms.CameraSLM
-            Contains experimental parameters needed to plot in various bases.
+            If units requiring a SLM are desired, the attribute :attr:`cameraslm` must be
+            filled.
         limit_padding : float
             Fraction of the width and height to expand the limits by, only if
             the passed ``limits`` is ``None`` (autocompute).
         figsize : tuple
             Size of the plot.
         cbar : bool
-            Whether to add colorbars to the plots. Defaults to false.
+            Whether to add colorbars to the plots. Defaults to ``False``.
 
         Returns
         -------
         ((float, float), (float, float))
             Used ``limits``, which may be autocomputed. If autocomputed, the result will
             be integers.
-        axs
-            Set of axes for modifying plots
         """
+        # Parse source
         if source is None:
             source = self.target
 
@@ -1140,10 +1160,12 @@ class Hologram:
         except:
             npsource = np.abs(source)
 
-        fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=figsize)
+        # Check units:
+        assert units in toolbox.BLAZE_UNITS
 
+        # Parse limits with limit_padding
         if limits == None:
-            # Determine the bounds of the zoom region, padded by 20%
+            # Determine the bounds of the zoom region, padded by limit_padding
             limits = []
             binary = npsource > 0
 
@@ -1157,6 +1179,10 @@ class Hologram:
                 limit = np.clip(limit, 0, self.shape[a])
 
                 limits.append(limit)
+
+
+        # Start making the plot
+        fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=figsize)
 
         # Plot the full target, blurred so single pixels are visible in low res
         b = 2 * int(max(self.shape) / 500) + 1  # Future: fix arbitrary
@@ -1179,26 +1205,29 @@ class Hologram:
             axs[1].spines[spine].set_linewidth(1.5)
 
         # Helper fxn: calculate extent for the given units
+        try:
+            slm = self.cameraslm.slm
+        except:
+            slm = None
+
         def rebase(img, to_units):
             ext_nm = img.get_extent()
-            ext_min = np.squeeze(toolbox.convert_blaze_vector([ext_nm[0],ext_nm[-1]],
+            ext_min = np.squeeze(toolbox.convert_blaze_vector([ext_nm[0], ext_nm[-1]],
                                  from_units="knm", to_units=to_units,
-                                 slm=CameraSLM.slm, shape=npsource.shape))
-            ext_max = np.squeeze(toolbox.convert_blaze_vector([ext_nm[1],ext_nm[2]],
+                                 slm=slm, shape=npsource.shape))
+            ext_max = np.squeeze(toolbox.convert_blaze_vector([ext_nm[1], ext_nm[2]],
                                  from_units="knm", to_units=to_units,
-                                 slm=CameraSLM.slm, shape=npsource.shape))
+                                 slm=slm, shape=npsource.shape))
             img.set_extent([ext_min[0],ext_max[0],ext_max[1],ext_min[1]])
             return
 
         # Scale and label plots depending on units
-        if units == "knm":
-            fig.supxlabel('$n$'); fig.supylabel('$m$')
-        elif CameraSLM is None:
-            raise Exception("Must include CameraSLM object for plotting in bases other than ``knm``!")
-        else:
-            rebase(full,units); rebase(zoom,units)
-            loc = np.where(units==np.array(BLAZE_UNITS))[0][0]
-            fig.supxlabel(BLAZE_LABELS[loc][0]); fig.supylabel(BLAZE_LABELS[loc][1])
+        rebase(full,units); rebase(zoom,units)
+        # fig.supxlabel(BLAZE_LABELS[units][0])
+        # fig.supylabel(BLAZE_LABELS[units][1])
+        for ax in axs:
+            ax.set_xlabel(BLAZE_LABELS[units][0])
+            ax.set_ylabel(BLAZE_LABELS[units][1])
 
         # Bonus: Plot a red rectangle to show the extents of the zoom region
         extent = zoom.get_extent()
@@ -1238,7 +1267,7 @@ class Hologram:
 
         plt.show()
 
-        return axs, limits
+        return limits
 
     def plot_stats(self, stats_dict=None):
         """
@@ -1260,11 +1289,12 @@ class Hologram:
         legendstats = ["inefficiency", "nonuniformity", "pkpk_err", "std_err"]
         niter = np.arange(0, len(stats_dict["method"]))
 
-        stat_keys = stats_dict["stats"].keys()
+        stat_keys = list(stats_dict["stats"].keys())
         assert len(stat_keys) <= 10, "Not enough default colors to describe all modes."
 
         lines = []
         color_num = 0
+        min = 0
 
         for stat_key in stat_keys:
             stat_group = stats_dict["stats"][stat_key]
@@ -1288,13 +1318,13 @@ class Hologram:
         dummy_lines = []
         for i in range(len(stats)):
             dummy_lines.append(ax.plot([], [], c="black", ls=linestyles[i])[0])
-        legend1 = plt.legend(dummy_lines, legendstats, loc="center right")
+        # legend1 = plt.legend(dummy_lines, legendstats, loc="best")
 
         # Make the color legend.
-        plt.legend(lines, stat_keys, loc="center left")
+        plt.legend(lines + dummy_lines, stat_keys + legendstats, loc="lower left")
 
         # Add the linestyle legend back in and show.
-        ax.add_artist(legend1)
+        # ax.add_artist(legend1)
         plt.show()
 
     # Other helper functions
@@ -1329,7 +1359,7 @@ class Hologram:
             )
 
     @staticmethod
-    def _norm(matrix):
+    def _norm(matrix, mp=cp):
         r"""
         Computes the root of the sum of squares of the given ``matrix``. Implements:
 
@@ -1339,16 +1369,18 @@ class Hologram:
         ----------
         matrix : numpy.ndarray OR cupy.ndarray
             Data, potentially complex.
+        mp : cupy or numpy
+            Which module to use for norm.
 
         Returns
         -------
         float
             The result.
         """
-        if cp.iscomplexobj(matrix):
-            return cp.sqrt(cp.sum(cp.square(cp.abs(matrix))))
+        if mp.iscomplexobj(matrix):
+            return mp.sqrt(mp.sum(mp.square(mp.abs(matrix))))
         else:
-            return cp.sqrt(cp.sum(cp.square(matrix)))
+            return mp.sqrt(mp.sum(mp.square(matrix)))
 
 
 class FeedbackHologram(Hologram):
@@ -1368,11 +1400,11 @@ class FeedbackHologram(Hologram):
         Array containing points corresponding to the corners of the camera in the SLM's k-space.
         First point is repeated at the end for easy plotting.
     target_ij :  array_like OR None
-        Target in the ``"ij"`` (camera) basis. Of same ``shape`` as the camera in
+        Amplitude target in the ``"ij"`` (camera) basis. Of same ``shape`` as the camera in
         :attr:`cameraslm`.  Counterpart to :attr:`target` which is in the ``"knm"``
         (computational k-space) basis.
     img_ij, img_knm
-        Cached feedback image in the
+        Cached amplitude feedback image in the
         ``"ij"`` (raw camera) basis or
         ``"knm"`` (transformed to computational k-space) basis.
         Measured with :meth:`.measure()`.
@@ -1566,7 +1598,7 @@ class FeedbackHologram(Hologram):
              - If ``"knm"``, then :attr:`img_ij` and :attr:`img_knm` are filled.
              - If ``"ij"``, then :attr:`img_ij` is filled, and :attr:`img_knm` is ignored.
 
-            This is useful to avoid (expensive) transfromation from the ``"ij"`` to the
+            This is useful to avoid (expensive) transformation from the ``"ij"`` to the
             ``"knm"`` basis if :attr:`img_knm` is not needed.
         """
         if self.img_ij is None:
@@ -1582,7 +1614,7 @@ class FeedbackHologram(Hologram):
 
             self.img_ij = np.sqrt(
                 self.img_ij
-            )  # Don't load to the GPU if not neccesary.
+            )  # Don't load to the GPU if not necessary.
         elif basis == "knm":
             if self.img_knm is None:
                 self.ijcam_to_knmslm(np.square(self.img_ij), out=self.img_knm)
@@ -1816,7 +1848,7 @@ class SpotHologram(FeedbackHologram):
 
         # Parse spot_amp.
         if spot_amp is None:
-            self.spot_amp = np.ones_like(vectors[0])
+            self.spot_amp = np.full(len(vectors[0]), 1.0 / len(vectors[0]))
         else:
             self.spot_amp = spot_amp.ravel()
 
@@ -2059,17 +2091,21 @@ class SpotHologram(FeedbackHologram):
 
         if feedback == "computational":
             self._update_weights_generic(self.weights, self.amp_ff, self.target)
-        elif feedback == "experimental-spot":
+        elif feedback == "experimental_spot":
             self.measure(basis="ij")
 
             feedback = analysis.take(
-                self.img_ij, self.spot_ij, self.psf, centered=True, integrate=True
+                np.square(self.img_ij), self.spot_ij, self.psf, centered=True, integrate=True
             )
 
-            self._update_weights_generic(
-                self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
-                feedback,
-                self.spot_amp,
+            feedback = np.sqrt(np.array(feedback, dtype=self.dtype))
+
+            self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (
+                self._update_weights_generic(
+                    self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
+                    cp.array(feedback),
+                    self.spot_amp,
+                )
             )
 
     def _calculate_stats_spots(self, stats, stat_groups=[]):
@@ -2088,13 +2124,14 @@ class SpotHologram(FeedbackHologram):
             self.measure(basis="ij")
 
             feedback = analysis.take(
-                self.img_ij, self.spot_ij, self.psf, centered=True, integrate=True
+                np.square(self.img_ij), self.spot_ij, self.psf, centered=True, integrate=True
             )
+            feedback = np.sqrt(np.array(feedback, dtype=self.dtype))
 
-            total = cp.sum(self.img_ij)
+            total = np.sum(self.dtype(np.square(self.img_ij)))
 
             stats["experimental_spot"] = self._calculate_stats(
-                np.sqrt(feedback),
+                np.sqrt(np.array(feedback, dtype=self.dtype)),
                 self.spot_amp,
                 mp=np,
                 efficiency_compensation=False,

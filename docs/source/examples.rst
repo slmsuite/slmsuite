@@ -1,5 +1,8 @@
 .. _examples:
 
+Examples
+========
+
 .. nbgallery::
     :caption: Examples
     :name: examples

@@ -17,7 +17,7 @@ from .camera import Camera
 try:
     import PySpin
 except ImportError:
-    print("PySpin not installed. Install to use FLIR cameras.")
+    print("filr.py: PySpin not installed. Install to use FLIR cameras.")
 
 
 class FLIR(Camera):

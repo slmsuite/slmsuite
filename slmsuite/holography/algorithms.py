@@ -533,6 +533,7 @@ class Hologram:
         # Switch between methods
         if "GS" in method:
             if "WGS" in method:
+                # Default to computational feedback
                 if len(self.flags["feedback"]) == 0:
                     self.flags["feedback"] = "computational"
 
@@ -656,9 +657,12 @@ class Hologram:
                 #         out=farfield[mask], where=farfield!=0)
                 # cp.multiply(farfield[mask], self.weights[mask], out=farfield[mask])
 
-            # Move to real space.
+            # Move to nearfield.
             nearfield = cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho")
-            cp.arctan2(
+
+            # Grab the phase from the complex nearfield.
+            # Use arctan2() directly instead of angle() for in-place operations.
+            self.phase = cp.arctan2(
                 nearfield.imag[i0:i1, i2:i3],
                 nearfield.real[i0:i1, i2:i3],
                 out=self.phase,
@@ -730,6 +734,24 @@ class Hologram:
         if cp != np:
             return self.phase.get() + np.pi
         return self.phase + np.pi
+    
+    def extract_farfield(self):
+        r"""
+        Collects the current near-field phase from the GPU with :meth:`cupy.ndarray.get()`.
+        Also shifts the :math:`[-\pi, \pi]` range of :meth:`numpy.arctan2()` to :math:`[0, 2\pi]`
+        for faster writing to the SLM (see :meth:`~slmsuite.hardware.slms.slm.SLM.write()`).
+
+        Returns
+        -------
+        numpy.ndarray
+            Current near-field phase computed by GS.
+        """
+        nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), self.shape)
+        farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm="ortho"))
+
+        if cp != np:
+            return farfield.get()
+        return farfield
 
     # Weighting
     def _update_weights_generic(self, weight_amp, feedback_amp, target_amp=None):
@@ -767,8 +789,7 @@ class Hologram:
             feedback_corrected = feedback_amp
         else:  # Non-uniform
             feedback_corrected = feedback_amp
-            norm = Hologram._norm(feedback_amp)
-            feedback_corrected *= 1 / norm
+            feedback_corrected *= 1 / Hologram._norm(feedback_amp)
 
             cp.divide(feedback_corrected, target_amp, out=feedback_corrected)
 
@@ -786,7 +807,7 @@ class Hologram:
                 self.flags["factor"] = 0.1
 
             # Taylor expand 1/(1-g(1-x)) -> 1 + g(1-x) + (g(1-x))^2 ~ 1 + g(1-x)
-            feedback_corrected *= -(1 / cp.nanmean(feedback_corrected))
+            feedback_corrected *= -(1 / cp.mean(feedback_corrected))
             feedback_corrected += 1
             feedback_corrected *= -self.flags["factor"]
             feedback_corrected += 1
@@ -1133,7 +1154,7 @@ class Hologram:
                     np.mean(self.cam_points[0, :4]),
                     np.max(self.cam_points[1, :4])
                 ),
-                c="y", size="x-small", ha="center", va="top"
+                c="y", size="small", ha="center", va="top"
             )
         except:
             pass

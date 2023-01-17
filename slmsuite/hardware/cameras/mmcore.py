@@ -18,7 +18,7 @@ from slmsuite.hardware.cameras.camera import Camera
 try:
     import pymmcore
 except ImportError:
-    print("pymmcore not installed. Install to use Micro-Manager cameras.")
+    print("mmcore.py: pymmcore not installed. Install to use Micro-Manager cameras.")
 
 
 class MMCore(Camera):

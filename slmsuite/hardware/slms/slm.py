@@ -158,12 +158,30 @@ class SLM:
         self.display = np.zeros(self.shape, dtype=dtype)
 
     def close(self):
-        """Close the SLM and delete related objects."""
+        """Abstract method to close the SLM and delete related objects."""
         raise NotImplementedError()
+
+    @staticmethod
+    def info(verbose=True):
+        """
+        Abstract method to load display information.
+
+        Parameters
+        ----------
+        verbose : bool
+            Whether or not to print display information.
+
+        Returns
+        -------
+        list
+            An empty list.
+        """
+        if verbose: print(".info() NotImplemented.")
+        return []
 
     def load_vendor_phase_correction(self, file_path):
         """
-        Load vendor-provided phase correction from file,
+        Abstract method to load vendor-provided phase correction from file,
         setting :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`.
         Subclasses should implement vendor-specific routines for loading and
         interpreting the file.

@@ -197,7 +197,7 @@ def imprint(
 
 
 # Unit helper functions
-blaze_units = ["norm", "kxy", "rad", "knm", "freq", "lpmm", "mrad", "deg"]
+blaze_units = ["norm", "kxy", "knm", "freq", "lpmm", "rad", "mrad", "deg"]
 
 
 def convert_blaze_vector(
@@ -644,6 +644,8 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
         plt.xlim(-0.05 * sx, 1.05 * sx)
         plt.ylim(1.05 * sy, -0.05 * sy)
 
+        plt.gca().set_aspect('equal')
+
         plt.title("Voronoi Cells")
 
         plt.show()
@@ -946,6 +948,9 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
             out = (x_grid - center[0]) * (y_grid - center[1]) * shear
         else:
             out += (x_grid - center[0]) * (y_grid - center[1]) * shear
+
+    if out is None:
+        out = 0 * x_grid
 
     return out
 

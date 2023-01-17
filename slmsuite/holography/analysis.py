@@ -1109,7 +1109,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
         true_centers = np.matmul(orientation["M"], centers) + orientation["b"]
 
         if start_orientation is None:
-            _, axs = plt.subplots(1, 2, figsize=(12, 6))
+            fig, axs = plt.subplots(1, 2, figsize=(12, 6), facecolor='white')
 
             plt_img = _make_8bit(dft_amp.copy())
 
@@ -1127,13 +1127,21 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
                 np.clip(np.amin(y) - zoom_pad, 0, dft_amp.shape[0]),
                 np.clip(np.amax(y) + zoom_pad, 0, dft_amp.shape[0]),
             ]
+            
+            # Plot the unzoomed figure
+            axs[0].imshow(plt_img)
 
+            # Plot a red rectangle to show the extents of the zoom region
+            rect = plt.Rectangle(
+                [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
+            )
+            axs[0].add_patch(rect)
+            axs[0].set_title("DFT Result - Full")
+            axs[0].set_xticks([])
+            axs[0].set_yticks([])
+
+            # Plot the zoomed figure
             axs[1].imshow(plt_img)
-            axs[1].set_title("DFT Result - Zoom")
-            axs[1].set_xticks([])
-            axs[1].set_yticks([])
-            axs[1].set_xlim(xl)
-            axs[1].set_ylim(np.flip(yl))
             axs[1].scatter(
                 x,
                 y,
@@ -1146,18 +1154,11 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
             for spine in ["top", "bottom", "right", "left"]:
                 axs[1].spines[spine].set_color("r")
                 axs[1].spines[spine].set_linewidth(1.5)
-
-            # Plot the unzoomed figure
-            axs[0].imshow(plt_img)
-
-            # Plot a red rectangle to show the extents of the zoom region
-            rect = plt.Rectangle(
-                [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
-            )
-            axs[0].add_patch(rect)
-            axs[0].set_title("DFT Result - Full")
-            axs[0].set_xticks([])
-            axs[0].set_yticks([])
+            axs[1].set_title("DFT Result - Zoom")
+            axs[1].set_xticks([])
+            axs[1].set_yticks([])
+            axs[1].set_xlim(xl)
+            axs[1].set_ylim(np.flip(yl))
 
             plt.show()
 

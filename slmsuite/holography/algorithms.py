@@ -534,6 +534,7 @@ class Hologram:
         # Switch between methods
         if "GS" in method:
             if "WGS" in method:
+                # Default to computational feedback
                 if len(self.flags["feedback"]) == 0:
                     self.flags["feedback"] = "computational"
 
@@ -657,10 +658,16 @@ class Hologram:
                 #         out=farfield[mask], where=farfield!=0)
                 # cp.multiply(farfield[mask], self.weights[mask], out=farfield[mask])
 
-            # Move to image (i.e. camera/real) space.
+            # Move to nearfield.
             nearfield = cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho")
-            self.phase = cp.arctan2(nearfield.imag[i0:i1, i2:i3],
-                                    nearfield.real[i0:i1, i2:i3])
+
+            # Grab the phase from the complex nearfield.
+            # Use arctan2() directly instead of angle() for in-place operations.
+            self.phase = cp.arctan2(
+                nearfield.imag[i0:i1, i2:i3],
+                nearfield.real[i0:i1, i2:i3],
+                out=self.phase,
+            )
 
             # Increment iteration.
             self.iter += 1
@@ -729,6 +736,22 @@ class Hologram:
             return self.phase.get() + np.pi
         return self.phase + np.pi
 
+    def extract_farfield(self):
+        r"""
+        Collects the current complex far-field from the GPU with :meth:`cupy.ndarray.get()`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Current near-field phase computed by GS.
+        """
+        nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), self.shape)
+        farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm="ortho"))
+
+        if cp != np:
+            return farfield.get()
+        return farfield
+
     # Weighting
     def _update_weights_generic(self, weight_amp, feedback_amp, target_amp=None):
         """
@@ -765,8 +788,7 @@ class Hologram:
             feedback_corrected = feedback_amp
         else:  # Non-uniform
             feedback_corrected = feedback_amp
-            norm = Hologram._norm(feedback_amp)
-            feedback_corrected *= 1 / norm
+            feedback_corrected *= 1 / Hologram._norm(feedback_amp)
 
             cp.divide(feedback_corrected, target_amp, out=feedback_corrected)
 
@@ -784,7 +806,7 @@ class Hologram:
                 self.flags["factor"] = 0.1
 
             # Taylor expand 1/(1-g(1-x)) -> 1 + g(1-x) + (g(1-x))^2 ~ 1 + g(1-x)
-            feedback_corrected *= -(1 / cp.nanmean(feedback_corrected))
+            feedback_corrected *= -(1 / cp.mean(feedback_corrected))
             feedback_corrected += 1
             feedback_corrected *= -self.flags["factor"]
             feedback_corrected += 1
@@ -1005,9 +1027,9 @@ class Hologram:
         normalize : bool
             Normalizes amplitude to unity if ``True``.
         figsize : tuple
-            Size of the plot. 
+            Size of the plot.
         cbar : bool
-            Whether to add colorbars to the plots. Defaults to false. 
+            Whether to add colorbars to the plots. Defaults to false.
         """
         fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=figsize)
 
@@ -1041,8 +1063,8 @@ class Hologram:
 
         im_phase = axs[1].imshow(
             toolbox.pad(phase/np.pi, self.shape if padded else self.slm_shape),
-            vmin=-1,
-            vmax=1,
+            vmin=0,
+            vmax=2,
             interpolation="none",
             cmap="twilight",
         )
@@ -1060,9 +1082,9 @@ class Hologram:
             fig.colorbar(im_amp, cax=cax, orientation='vertical')
             cax = make_axes_locatable(axs[1]).append_axes('right', size='5%', pad=0.05)
             fig.colorbar(im_phase, cax=cax, orientation='vertical', format = r"%1.1f$\pi$")
-                             
+
         plt.show()
-        
+
     def plot_farfield(self, title='', source=None, limits=None, basis="ij", CameraSLM=None,
                       limit_padding=0.1, figsize=(8,4), cbar=False):
         """
@@ -1084,7 +1106,7 @@ class Hologram:
             computational or experimental outputs (e.g. :attr:`amp_ff`) will likely perform
             poorly, as values deviate slightly from zero and artificially expand the ``limits``.
         basis : str
-            Coordinate basis for plots (see 
+            Coordinate basis for plots (see
             :func:`~slmsuite.holography.toolbox.convert_blaze_vector` for options).
         CameraSLM : slmsuite.hardware.cameraslms.CameraSLM
             Contains experimental parameters needed to plot in various bases.
@@ -1092,9 +1114,9 @@ class Hologram:
             Fraction of the width and height to expand the limits by, only if
             the passed ``limits`` is ``None`` (autocompute).
         figsize : tuple
-            Size of the plot. 
+            Size of the plot.
         cbar : bool
-            Whether to add colorbars to the plots. Defaults to false. 
+            Whether to add colorbars to the plots. Defaults to false.
 
         Returns
         -------
@@ -1185,7 +1207,7 @@ class Hologram:
 
         # If cam_points is defined (i.e. is a FeedbackHologram),
         # plot a yellow rectangle for the extents of the camera
-        # TODO: needs to be implemented if plotting in bases other than knm.. 
+        # TODO: needs to be implemented if plotting in bases other than knm..
         try:
             axs[0].plot(
                 self.cam_points[0],
@@ -1195,10 +1217,10 @@ class Hologram:
             axs[0].annotate(
                 "Camera FoV",
                 (
-                    np.mean(self.cam_points[0]),
-                    np.max(self.cam_points[1])
+                    np.mean(self.cam_points[0, :4]),
+                    np.max(self.cam_points[1, :4])
                 ),
-                c="y", size="x-small", ha="center"
+                c="y", size="small", ha="center", va="top"
             )
         except:
             pass
@@ -1574,7 +1596,7 @@ class FeedbackHologram(Hologram):
         basis : str
             The correction can be in any of the following bases:
             - ``"ij"`` changes the pixel that the spot is expected at,
-            - ``"kxy"``, ``"knm"`` changes the k-vector which the SLM targets.
+            - ``"kxy"`` or ``"knm"`` changes the k-vector which the SLM targets.
             Defaults to ``"kxy"`` if ``None``.
 
         Returns
@@ -1754,8 +1776,12 @@ class SpotHologram(FeedbackHologram):
             raise Exception("Unrecognized basis '{}'.".format(basis))
 
         # Check to make sure spots are within relevant camera and SLM shapes.
-        if np.any(np.abs(self.spot_knm[0]) > shape[1]) or \
-           np.any(np.abs(self.spot_knm[1]) > shape[0]):
+        if (
+            np.any(self.spot_knm[0] < 0) or
+            np.any(self.spot_knm[1] < 0) or
+            np.any(self.spot_knm[0] > shape[1]-1) or
+            np.any(self.spot_knm[1] > shape[0]-1)
+        ):
             raise ValueError("Spots outside SLM computational space bounds!")
 
         if self.spot_ij is not None:

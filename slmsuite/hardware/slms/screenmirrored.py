@@ -10,7 +10,7 @@ try:
     import pyglet
     import pyglet.gl as gl
 except ImportError:
-    print("pyglet not installed. Install to use ScreenMirrored SLMs.")
+    print("screenmirrored.py: pyglet not installed. Install to use ScreenMirrored SLMs.")
 
 
 class ScreenMirrored(SLM):

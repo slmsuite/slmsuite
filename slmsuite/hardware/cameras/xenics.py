@@ -4,8 +4,6 @@ Hardware control for Xenics camera via the :mod:`Xeneth` interface.
 Python wrapper for Xenith C++ SDK 2.7 from Xenics; see xeneth-sdk.chm
 there for additional documentation.
 """
-
-from socket import timeout
 import time
 from ctypes import *
 

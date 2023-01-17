@@ -24,6 +24,8 @@ import numpy as np
 import cv2
 import warnings
 
+import matplotlib.pyplot as plt
+
 from .slm import SLM
 
 try:                        # Load Santec's header file.
@@ -126,8 +128,6 @@ class Santec(SLM):
             if verbose:
                 print("success")
 
-            time.sleep(.1)
-
             # Update wavelength if needed
             wav_current_nm = ctypes.c_uint32(0)
             phase_current = ctypes.c_ulong(0)
@@ -158,12 +158,8 @@ class Santec(SLM):
                     slm_funcs.SLM_Ctrl_WriteWL(self.slm_number, ctypes.c_uint32(wav_desired_nm), phase_desired)
                 )
 
-                time.sleep(.1)
-
                 # Save wavelength
                 Santec._parse_status(slm_funcs.SLM_Ctrl_WriteAW(self.slm_number))
-
-                time.sleep(.1)
 
                 # Verify wavelength
                 Santec._parse_status(
@@ -275,8 +271,8 @@ class Santec(SLM):
         display_list = []
 
         if verbose:
+            print("Displays detected by Santec")
             print("display_number, display_name:")
-            print("#,  Name")
 
         for display_number in range(1, 9):
             width = ctypes.c_ushort(0)
@@ -297,7 +293,7 @@ class Santec(SLM):
 
         return display_list
 
-    def load_vendor_phase_correction(self, file_path, wav_correction_um=0.830, smooth=False):
+    def load_vendor_phase_correction(self, file_path, smooth=False, overwrite=True):
         """
         Load phase correction provided by Santec from file,
         setting :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`.
@@ -306,10 +302,14 @@ class Santec(SLM):
         ----------
         file_path : str
             File path for the vendor-provided phase correction.
-        wav_correction_um : float
-            The wavelength the phase correction was taken at in um. Default is 830nm.
         smooth : bool
             Whether to apply a Gaussian blur to smooth the data.
+        overwrite : bool
+            Whether to overwrite the previous :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`.
+
+        Note
+        ~~~~
+        This correction is only fully valid at the wavelength at which it was collected.
 
         Returns
         ----------
@@ -321,13 +321,13 @@ class Santec(SLM):
             # Load from .csv, skipping the first row and column
             # (corresponding to X and Y coordinates).
             map = np.loadtxt(file_path, skiprows=1, dtype=int, delimiter=",")[:, 1:]
-            phase = (-2 * np.pi / self.bitresolution * self.wav_um / wav_correction_um) * map.astype(float)
+            phase = (-2 * np.pi / self.bitresolution) * map.astype(float)
 
             # Smooth the map
             if smooth:
                 real = np.cos(phase)
                 imag = np.sin(phase)
-                size_blur = 15
+                size_blur = 15          # The user should have access to this eventually
 
                 real = cv2.GaussianBlur(real, (size_blur, size_blur), 0)
                 imag = cv2.GaussianBlur(imag, (size_blur, size_blur), 0)
@@ -335,11 +335,14 @@ class Santec(SLM):
                 # Recombine the components
                 phase = np.arctan2(imag, real) + np.pi
 
-            self.phase_correction = phase
-        except BaseException as e:
-            print("Error while loading phase correction.\n{}".format(e))
+            if overwrite:
+                self.phase_correction = phase
 
-        return self.phase_correction
+            return phase
+        except BaseException as e:
+            warnings.warn("Error while loading phase correction.\n{}".format(e))
+            return self.phase_correction
+
 
     def close(self):
         """See :meth:`.SLM.close`."""

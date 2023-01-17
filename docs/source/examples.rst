@@ -3,7 +3,9 @@
 Examples
 ========
 
-.. nbgallery::
+.. toctree::
+   :maxdepth: 2
+
    _examples/computational_holography
    _examples/experimental_holography
    _examples/wavefront_calibration

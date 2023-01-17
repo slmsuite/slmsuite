@@ -197,7 +197,14 @@ def imprint(
 
 
 # Unit helper functions
-blaze_units = ["norm", "kxy", "knm", "freq", "lpmm", "rad", "mrad", "deg"]
+BLAZE_UNITS = ["norm", "kxy", "rad", "knm", "freq", "lpmm", "mrad", "deg"]
+BLAZE_LABELS = [(r"$k_x/k$", r"$k_y/k$"), (r"$k_x/k$", r"$k_y/k$"),
+                (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
+                (r"$n$", r"m"), (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
+                (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
+                (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
+                (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]")
+                ]
 
 def convert_blaze_vector(
     vector, from_units="norm", to_units="norm", slm=None, shape=None
@@ -256,7 +263,7 @@ def convert_blaze_vector(
         numpy.ndarray
             Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
         """
-    assert from_units in blaze_units and to_units in blaze_units
+    assert from_units in BLAZE_UNITS and to_units in BLAZE_UNITS
 
     vector = format_2vectors(vector).astype(np.float)
 
@@ -329,7 +336,7 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
     **kwargs
         Passed to :meth:`convert_blaze_vector()`.
     """
-    for unit in blaze_units:
+    for unit in BLAZE_UNITS:
         result = convert_blaze_vector(
             vector, from_units=from_units, to_units=unit, **kwargs
         )

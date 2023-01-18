@@ -3,12 +3,14 @@
 Tips
 ====
 
+**(Under construction)**
+
 Building an SLM Setup
 ---------------------
 
 Computer Configuration
 ----------------------
 
-Screen sleep - Never
-
-Windows Aero Peek disable.
+ - Set "Screen Sleep" to "Never"
+ - Disable "Windows Aero Peek"
+ - Disable "Windows Update"

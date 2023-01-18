@@ -156,7 +156,7 @@ def setup(app):
         tree_response = requests.get(tree_url).json()
         for path_object in tree_response["tree"]:
             path_str = path_object["path"]
-            if path_str[0:9] == "examples/":
+            if path_str[0:9] == "examples/" and path_str[-6:] == ".ipynb":
                 file_name = path_str[9:]
                 file_path = os.path.join(examples_path, file_name)
                 file_url = (

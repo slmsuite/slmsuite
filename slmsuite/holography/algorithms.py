@@ -1102,7 +1102,7 @@ class Hologram:
 
         # Add colorbars if desired
         if cbar:
-            fig.tight_layout(pad=4.0)
+            # fig.tight_layout(pad=4.0)
             cax = make_axes_locatable(axs[0]).append_axes('right', size='5%', pad=0.05)
             fig.colorbar(im_amp, cax=cax, orientation='vertical')
             cax = make_axes_locatable(axs[1]).append_axes('right', size='5%', pad=0.05)
@@ -1174,13 +1174,12 @@ class Hologram:
                 collapsed = np.where(np.any(binary, axis=a))  # Collapse the other axis
                 limit = np.array([np.amin(collapsed), np.amax(collapsed)])
 
-                padding = int(np.diff(limit) * limit_padding)
-                limit += np.array([-padding, padding])
+                padding = int(np.diff(limit) * limit_padding)+1
+                limit += np.array([-padding, padding+1])
 
                 limit = np.clip(limit, 0, self.shape[a])
 
                 limits.append(tuple(limit))
-
 
         # Start making the plot
         fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=figsize)
@@ -1210,21 +1209,22 @@ class Hologram:
             slm = self.cameraslm.slm
         except:
             slm = None
+            units = "knm"
 
         def rebase(img, to_units):
-            ext_nm = img.get_extent()
-            ext_min = np.squeeze(toolbox.convert_blaze_vector([ext_nm[0], ext_nm[-1]],
-                                 from_units="knm", to_units=to_units,
-                                 slm=slm, shape=npsource.shape))
-            ext_max = np.squeeze(toolbox.convert_blaze_vector([ext_nm[1], ext_nm[2]],
-                                 from_units="knm", to_units=to_units,
-                                 slm=slm, shape=npsource.shape))
-            img.set_extent([ext_min[0],ext_max[0],ext_max[1],ext_min[1]])
-            return
+            if to_units != "knm":
+                ext_nm = img.get_extent()
+                ext_min = np.squeeze(toolbox.convert_blaze_vector([ext_nm[0], ext_nm[-1]],
+                                    from_units="knm", to_units=to_units,
+                                    slm=slm, shape=npsource.shape))
+                ext_max = np.squeeze(toolbox.convert_blaze_vector([ext_nm[1], ext_nm[2]],
+                                    from_units="knm", to_units=to_units,
+                                    slm=slm, shape=npsource.shape))
+                img.set_extent([ext_min[0],ext_max[0],ext_max[1],ext_min[1]])
 
         # Scale and label plots depending on units
-        rebase(full,units)
-        rebase(zoom,units)
+        rebase(full, units)
+        rebase(zoom, units)
         # fig.supxlabel(toolbox.BLAZE_LABELS[units][0])
         # fig.supylabel(toolbox.BLAZE_LABELS[units][1])
         for ax in axs:
@@ -1232,17 +1232,17 @@ class Hologram:
             ax.set_ylabel(toolbox.BLAZE_LABELS[units][1])
 
         # Bonus: Plot a red rectangle to show the extents of the zoom region
-        extent = zoom.get_extent()
-        rect = plt.Rectangle(
-            extent[::2],
-            np.diff(extent[0:2])[0],
-            np.diff(extent[2:])[0],
-            ec="r",
-            fc="none",
-        )
-        axs[0].add_patch(rect)
-        # axs[0].set_xlim([0, self.shape[1]])
-        # axs[0].set_ylim([self.shape[0], 0])
+        if np.diff(limits[0]) > 0 and np.diff(limits[1]) > 0:
+            extent = zoom.get_extent()
+            pix_width = (np.diff(extent[0:2])[0]) / np.diff(limits[0])
+            rect = plt.Rectangle(
+                np.array(extent[::2]) - pix_width/2,
+                np.diff(extent[0:2])[0],
+                np.diff(extent[2:])[0],
+                ec="r",
+                fc="none",
+            )
+            axs[0].add_patch(rect)
 
         # If cam_points is defined (i.e. is a FeedbackHologram),
         # plot a yellow rectangle for the extents of the camera

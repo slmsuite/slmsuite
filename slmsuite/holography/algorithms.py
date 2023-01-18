@@ -268,7 +268,7 @@ class Hologram:
             phase_shape = phase.shape
 
         if slm_shape is None:
-            slm_shape = target.shape #TODO: review; changed from (nan,nan)
+            slm_shape = (np.nan, np.nan) #TODO: review; should be target size?
         else:
             try:  # Check if slm_shape is a CameraSLM.
                 if amp is None:
@@ -470,7 +470,7 @@ class Hologram:
 
         Note
         ~~~~
-        This function uses parameter naming convention borrowed from
+        This function uses a parameter naming convention borrowed from
         :meth:`scipy.optimize.minimize()` and other functions in
         :mod:`scipy.optimize`. The parameters ``method``, ``maxiter``, and ``callback``
         have the same functionality as the equivalently-named parameters in
@@ -1033,7 +1033,7 @@ class Hologram:
 
     # Visualization
     def plot_nearfield(self, title="", padded=False,
-                       figsize=(12,6), cbar=False):
+                       figsize=(8,4), cbar=False):
         """
         Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
         The amplitude is assumed (whether uniform, or experimentally computed) while the
@@ -1052,7 +1052,7 @@ class Hologram:
         cbar : bool
             Whether to add colorbars to the plots. Defaults to ``False``.
         """
-        fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=figsize)
+        fig, axs = plt.subplots(1, 2, figsize=figsize)
 
         try:
             if isinstance(self.amp, float):
@@ -1096,9 +1096,9 @@ class Hologram:
 
         # fig.supxlabel("SLM $x$ [pix]")
         # fig.supylabel("SLM $y$ [pix]")
-        for ax in axs:
+        for i,ax in enumerate(axs):
             ax.set_xlabel("SLM $x$ [pix]")
-            ax.set_ylabel("SLM $y$ [pix]")
+            if i==0: ax.set_ylabel("SLM $y$ [pix]")
 
         # Add colorbars if desired
         if cbar:
@@ -1108,10 +1108,11 @@ class Hologram:
             cax = make_axes_locatable(axs[1]).append_axes('right', size='5%', pad=0.05)
             fig.colorbar(im_phase, cax=cax, orientation='vertical', format = r"%1.1f$\pi$")
 
+        fig.tight_layout()
         plt.show()
 
     def plot_farfield(self, source=None, title="", limits=None, units="knm",
-                      limit_padding=0.1, figsize=(12,6), cbar=False):
+                      limit_padding=0.1, figsize=(8,4), cbar=False):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
 
@@ -1119,7 +1120,7 @@ class Hologram:
         ----------
         source : array_like OR None
             Should have shape equal to :attr:`shape`.
-            If ``None``, defaults to :attr:`target`.
+            If ``None``, defaults to :attr:`amp_ff`.
         title : str
             Title of the plots.
         limits : ((float, float), (float, float)) OR None
@@ -1151,10 +1152,10 @@ class Hologram:
         """
         # Parse source
         if source is None:
-            source = self.target
+            source = self.amp_ff
 
             if len(title) == 0:
-                title = "Target"
+                title = "FF Amp"
 
         try:
             npsource = cp.abs(source).get()
@@ -1182,11 +1183,11 @@ class Hologram:
                 limits.append(tuple(limit))
 
         # Start making the plot
-        fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=figsize)
+        fig, axs = plt.subplots(1, 2, figsize=figsize)
 
         # Plot the full target, blurred so single pixels are visible in low res
         b = 2 * int(max(self.shape) / 500) + 1  # Future: fix arbitrary
-        full = axs[0].imshow(cv2.GaussianBlur(npsource, (b, b), 0))
+        full = axs[0].imshow(cv2.GaussianBlur(npsource, (b, b), 0), vmin=0, vmax=npsource.max())
         if len(title) > 0:
             title += ": "
         axs[0].set_title(title + "Full")
@@ -1195,9 +1196,9 @@ class Hologram:
         b = 2*int(np.diff(limits[0])/500) + 1  # Future: fix arbitrary
         zoom_data = npsource[np.ix_(np.arange(limits[1][0], limits[1][1]),
                                     np.arange(limits[0][0], limits[0][1]))]
-        zoom = axs[1].imshow(cv2.GaussianBlur(zoom_data, (b, b), 0),
+        zoom = axs[1].imshow(cv2.GaussianBlur(zoom_data, (b, b), 0), vmin=0, vmax=npsource.max(),
                              extent=[limits[0][0], limits[0][1],
-                                     limits[1][0],limits[1][1]])
+                                     limits[1][1],limits[1][0]])
         axs[1].set_title(title + "Zoom")
         # Red border (to match red zoom box applied below in "full" img)
         for spine in ["top", "bottom", "right", "left"]:
@@ -1227,9 +1228,9 @@ class Hologram:
         rebase(zoom, units)
         # fig.supxlabel(toolbox.BLAZE_LABELS[units][0])
         # fig.supylabel(toolbox.BLAZE_LABELS[units][1])
-        for ax in axs:
+        for i,ax in enumerate(axs):
             ax.set_xlabel(toolbox.BLAZE_LABELS[units][0])
-            ax.set_ylabel(toolbox.BLAZE_LABELS[units][1])
+            if i==0: ax.set_ylabel(toolbox.BLAZE_LABELS[units][1])
 
         # Bonus: Plot a red rectangle to show the extents of the zoom region
         if np.diff(limits[0]) > 0 and np.diff(limits[1]) > 0:
@@ -1267,8 +1268,9 @@ class Hologram:
         # Add colorbar if desired
         if cbar:
             cax = make_axes_locatable(axs[1]).append_axes('right', size='5%', pad=0.05)
-            fig.colorbar(full, cax=cax, orientation='vertical')
-
+            fig.colorbar(zoom, cax=cax, orientation='vertical')
+        
+        plt.tight_layout()
         plt.show()
 
         return limits
@@ -1285,7 +1287,7 @@ class Hologram:
         if stats_dict is None:
             stats_dict = self.stats
 
-        _, ax = plt.subplots(1, 1)
+        _, ax = plt.subplots(1, 1, figsize=(6,4))
 
         # solid, densely dashed, sparesely dotted, densely dotted
         linestyles = ["solid", (0, (5, 1)), (0, (1, 2)), (0, (1, 1))]
@@ -1294,17 +1296,12 @@ class Hologram:
         niter = np.arange(0, len(stats_dict["method"]))
 
         stat_keys = list(stats_dict["stats"].keys())
-        assert len(stat_keys) <= 10, "Not enough default colors to describe all modes."
+        assert len(stat_keys) <= len(linestyles), "Not enough linestyles to describe all modes."
 
-        lines = []
-        color_num = 0
-        min = 0
+        dummylines_modes = []
 
-        for stat_key in stat_keys:
+        for ls_num,stat_key in enumerate(stat_keys):
             stat_group = stats_dict["stats"][stat_key]
-
-            color = "C" + str(color_num)
-            color_num += 1
 
             for i in range(len(stats)):
                 # Invert the stats if it is efficiency or uniformity.
@@ -1312,24 +1309,28 @@ class Hologram:
                 if i < 2:
                     y = 1 - np.array(y)
 
-                line = ax.semilogy(niter, y, c=color, ls=linestyles[i])[0]
+                line = ax.semilogy(niter, y, c="C%d"%i, ls=linestyles[ls_num])[0]
 
                 if i == 0:  # Remember the solid lines for the legend.
-                    lines.append(line)
-
+                    line = ax.plot([], [], c="k", ls=linestyles[ls_num])[0]
+                    dummylines_modes.append(line)
+            
         # Make the linestyle legend.
         # Inspired from https://stackoverflow.com/a/46214879
-        dummy_lines = []
+        dummylines_keys = []
         for i in range(len(stats)):
-            dummy_lines.append(ax.plot([], [], c="black", ls=linestyles[i])[0])
-        # legend1 = plt.legend(dummy_lines, legendstats, loc="best")
+            dummylines_keys.append(ax.plot([], [], c="C%d"%i, ls=linestyles[0])[0])
 
-        # Make the color legend.
-        plt.legend(lines + dummy_lines, stat_keys + legendstats, loc="lower left")
+        # Make the color/linestyle legend.
+        plt.legend(dummylines_keys + dummylines_modes, legendstats + stat_keys, loc="lower left")
 
         # Add the linestyle legend back in and show.
-        # ax.add_artist(legend1)
-        plt.show()
+        ax.set_xlabel('Iteration')
+        ax.set_title('SpotHologram Statistics')
+        plt.grid()
+        plt.tight_layout()
+        
+        return ax
 
     # Other helper functions
     @staticmethod

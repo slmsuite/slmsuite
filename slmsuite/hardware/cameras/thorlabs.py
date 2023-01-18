@@ -174,8 +174,8 @@ class ThorCam(Camera):
 
         Returns
         --------
-        list of (int, (int, int, int, int)) tuples
-            The number and geometry of each display.
+        list of str
+            List of ThorCam serial numbers.
         """
         if ThorCam.sdk is None:
             ThorCam.sdk = TLCameraSDK()

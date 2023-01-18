@@ -72,7 +72,6 @@ except ImportError:
 
 # Import helper functions
 from slmsuite.holography import analysis, toolbox
-from slmsuite.holography.toolbox import BLAZE_UNITS, BLAZE_LABELS
 
 
 class Hologram:
@@ -1178,7 +1177,7 @@ class Hologram:
 
                 limit = np.clip(limit, 0, self.shape[a])
 
-                limits.append(limit)
+                limits.append(tuple(limit))
 
 
         # Start making the plot
@@ -1193,11 +1192,11 @@ class Hologram:
 
         # Zoom in on our spots in a second plot
         b = 2*int(np.diff(limits[0])/500) + 1  # Future: fix arbitrary
-        zoom_data = npsource[np.ix_(np.arange(limits[1][0]-1, limits[1][1]+2),
-                                    np.arange(limits[0][0]-1, limits[0][1]+2))]
+        zoom_data = npsource[np.ix_(np.arange(limits[1][0], limits[1][1]),
+                                    np.arange(limits[0][0], limits[0][1]))]
         zoom = axs[1].imshow(cv2.GaussianBlur(zoom_data, (b, b), 0),
-                             extent=[limits[0][0]-1, limits[0][1]+1,
-                                     limits[1][0]+1,limits[1][1]-1])
+                             extent=[limits[0][0], limits[0][1],
+                                     limits[1][0],limits[1][1]])
         axs[1].set_title(title + "Zoom")
         # Red border (to match red zoom box applied below in "full" img)
         for spine in ["top", "bottom", "right", "left"]:
@@ -1222,12 +1221,13 @@ class Hologram:
             return
 
         # Scale and label plots depending on units
-        rebase(full,units); rebase(zoom,units)
-        # fig.supxlabel(BLAZE_LABELS[units][0])
-        # fig.supylabel(BLAZE_LABELS[units][1])
+        rebase(full,units)
+        rebase(zoom,units)
+        # fig.supxlabel(toolbox.BLAZE_LABELS[units][0])
+        # fig.supylabel(toolbox.BLAZE_LABELS[units][1])
         for ax in axs:
-            ax.set_xlabel(BLAZE_LABELS[units][0])
-            ax.set_ylabel(BLAZE_LABELS[units][1])
+            ax.set_xlabel(toolbox.BLAZE_LABELS[units][0])
+            ax.set_ylabel(toolbox.BLAZE_LABELS[units][1])
 
         # Bonus: Plot a red rectangle to show the extents of the zoom region
         extent = zoom.get_extent()
@@ -1239,6 +1239,8 @@ class Hologram:
             fc="none",
         )
         axs[0].add_patch(rect)
+        # axs[0].set_xlim([0, self.shape[1]])
+        # axs[0].set_ylim([self.shape[0], 0])
 
         # If cam_points is defined (i.e. is a FeedbackHologram),
         # plot a yellow rectangle for the extents of the camera
@@ -1468,10 +1470,7 @@ class FeedbackHologram(Hologram):
             self.cameraslm is not None
             and self.cameraslm.fourier_calibration is not None
         ):
-            # Transform the target, if it is provided.
-            if target_ij is not None:
-                self.update_target(target_ij, reset_weights=True)
-
+            # Generate a list of the corners of the camera, for plotting.
             cam_shape = self.cameraslm.cam.shape
 
             ll = [0, 0]
@@ -1485,6 +1484,11 @@ class FeedbackHologram(Hologram):
                 points_kxy, "kxy", "knm", slm=self.cameraslm.slm, shape=self.shape
             )
             self.cam_shape = cam_shape
+
+            # Transform the target, if it is provided.
+            if target_ij is not None:
+                self.update_target(target_ij, reset_weights=True)
+
         else:
             self.cam_points = None
             self.cam_shape = None
@@ -1531,7 +1535,7 @@ class FeedbackHologram(Hologram):
             )
         )
         M1 = np.diag(np.squeeze(conversion))
-        b1 = -toolbox.format_2vectors(np.flip(np.squeeze(self.shape)) / 2)
+        b1 = np.matmul(M1, -toolbox.format_2vectors(np.flip(np.squeeze(self.shape)) / 2))
 
         # Second transformation.
         M2 = self.cameraslm.fourier_calibration["M"]
@@ -1540,8 +1544,8 @@ class FeedbackHologram(Hologram):
         )
 
         # Composite transformation (along with xy -> yx).
-        M = cp.array(np.matmul(M2, M1).T)
-        b = cp.array(np.flip(np.matmul(np.matmul(M2, M1), b1) + b2))
+        M = cp.array(np.flip(np.flip(np.matmul(M2, M1), axis=0), axis=1))
+        b = cp.array(np.flip(np.matmul(M2, b1) + b2))
 
         # See if the user wants to blur.
         if blur_ij is None:
@@ -1550,11 +1554,11 @@ class FeedbackHologram(Hologram):
             else:
                 blur_ij = 0
 
-        # Future: use cp_gaussian_filter; was having trouble with this.
+        # Future: use cp_gaussian_filter (faster?); was having trouble with cp_gaussian_filter.
         if blur_ij > 0:
             img = sp_gaussian_filter(img, (blur_ij, blur_ij), output=img, truncate=2)
 
-        cp_img = cp.array(img.astype(self.dtype))
+        cp_img = cp.array(img)
         cp.abs(cp_img, out=cp_img)
 
         # Perform affine.
@@ -1568,12 +1572,17 @@ class FeedbackHologram(Hologram):
             cval=0,
         )
 
+        target = cp.array(target, dtype=self.dtype)
+
         # Filter the image. Future: fix.
         # target = cp_gaussian_filter1d(target, blur, axis=0, output=target, truncate=2)
         # target = cp_gaussian_filter1d(target, blur, axis=1, output=target, truncate=2)
 
         target = cp.abs(target, out=target)
-        target *= 1 / Hologram._norm(target)
+        norm = Hologram._norm(target)
+        target *= 1 / norm
+
+        assert norm != 0, "FeedbackHologram.ijcam_to_knmslm(): target_ij is out of range of knm space. Check transformations."
 
         return target
 

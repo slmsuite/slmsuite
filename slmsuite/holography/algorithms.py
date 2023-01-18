@@ -797,6 +797,8 @@ class Hologram:
 
             cp.divide(feedback_corrected, cp.array(target_amp), out=feedback_corrected)
 
+            feedback_corrected[feedback_corrected > np.inf] = 0
+
             cp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
         # Apply weighting
@@ -1558,7 +1560,7 @@ class FeedbackHologram(Hologram):
         if blur_ij > 0:
             img = sp_gaussian_filter(img, (blur_ij, blur_ij), output=img, truncate=2)
 
-        cp_img = cp.array(img)
+        cp_img = cp.array(img, dtype=self.dtype)
         cp.abs(cp_img, out=cp_img)
 
         # Perform affine.
@@ -1571,8 +1573,6 @@ class FeedbackHologram(Hologram):
             mode="constant",
             cval=0,
         )
-
-        target = cp.array(target, dtype=self.dtype)
 
         # Filter the image. Future: fix.
         # target = cp_gaussian_filter1d(target, blur, axis=0, output=target, truncate=2)

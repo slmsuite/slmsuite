@@ -256,26 +256,36 @@ class Hologram:
         # Initialize statistics dictionary
         self.stats = {"method": [], "flags": {}, "stats": {}}
 
-        # Determine the shape of the SLM
+        # Determine the shape of the SLM. We have three sources of this shape, which are
+        # optional to pass, but must be self-consistant if passed:
+        # 1) The shape of the nearfield amplitude
+        # 2) The shape of the seed nearfield phase
+        # 3) slm_shape itself (which is set to the shape of a passed SLM, if given).
+        # If no parameter is passed, these shapes are set to (nan, nan) to prepare for a
+        # vote (next section).
+
+        # Option 1
         if amp is None:
             amp_shape = (np.nan, np.nan)
         else:
             amp_shape = amp.shape
 
+        # Option 2
         if phase is None:
             phase_shape = (np.nan, np.nan)
         else:
             phase_shape = phase.shape
 
+        # Option 3
         if slm_shape is None:
-            slm_shape = target.shape #TODO: review; changed from (nan,nan)
+            slm_shape = (np.nan, np.nan)
         else:
-            try:  # Check if slm_shape is a CameraSLM.
+            try:        # Check if slm_shape is a CameraSLM.
                 if amp is None:
                     amp = slm_shape.slm.measured_amplitude
                 slm_shape = slm_shape.slm.shape
             except:
-                try:  # Check if slm_shape is an SLM
+                try:    # Check if slm_shape is an SLM
                     if amp is None:
                         amp = slm_shape.measured_amplitude
                     slm_shape = slm_shape.shape

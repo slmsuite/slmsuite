@@ -622,13 +622,15 @@ class Hologram:
                     stats = self.stats["stats"]
                     groups = tuple(stats.keys())
                     eff = stats[groups[-1]]["efficiency"][self.iter]
-                    if eff > self.flags["fixed_phase_efficiency"]:
+                    if eff > self.flags["fixed_phase_efficiency"] and not self.flags["fixed_phase"]:
                         self.flags["fixed_phase"] = True
-
+                        self.phase_ff = cp.angle(farfield)
                 if not "fixed_phase_iterations" in self.flags:
-                    self.flags["fixed_phase_iterations"] = 20
-                if iter > self.flags["fixed_phase_iterations"]:
+                    self.flags["fixed_phase_iterations"] = 5
+                    # TODO: add prinouts with assmed values throughout
+                if iter > self.flags["fixed_phase_iterations"] and not self.flags["fixed_phase"]:
                     self.flags["fixed_phase"] = True
+                    self.phase_ff = cp.angle(farfield)
 
             # Run step function and check termination conditions.
             if callback is not None and callback(self):
@@ -1289,15 +1291,16 @@ class Hologram:
 
         _, ax = plt.subplots(1, 1, figsize=(6,4))
 
-        # solid, densely dashed, sparesely dotted, densely dotted
-        linestyles = ["solid", (0, (5, 1)), (0, (1, 2)), (0, (1, 1))]
         stats = ["efficiency", "uniformity", "pkpk_err", "std_err"]
+        markers = [">", "o", "D", "P"]
         legendstats = ["inefficiency", "nonuniformity", "pkpk_err", "std_err"]
+
+        #TODO: implement desired stats only
+        # if stats is not None:
+
         niter = np.arange(0, len(stats_dict["method"]))
 
         stat_keys = list(stats_dict["stats"].keys())
-        assert len(stat_keys) <= len(linestyles), "Not enough linestyles to describe all modes."
-
         dummylines_modes = []
 
         for ls_num,stat_key in enumerate(stat_keys):
@@ -1309,24 +1312,26 @@ class Hologram:
                 if i < 2:
                     y = 1 - np.array(y)
 
-                line = ax.semilogy(niter, y, c="C%d"%i, ls=linestyles[ls_num])[0]
+                line = ax.scatter(niter, y, c="C%d"%ls_num, marker=markers[i])
+                ax.plot(niter, y, c="C%d"%ls_num, lw=0.5)
 
                 if i == 0:  # Remember the solid lines for the legend.
-                    line = ax.plot([], [], c="k", ls=linestyles[ls_num])[0]
+                    line = ax.plot([],[], c="C%d"%ls_num)[0]
                     dummylines_modes.append(line)
             
         # Make the linestyle legend.
         # Inspired from https://stackoverflow.com/a/46214879
         dummylines_keys = []
         for i in range(len(stats)):
-            dummylines_keys.append(ax.plot([], [], c="C%d"%i, ls=linestyles[0])[0])
+            dummylines_keys.append(ax.scatter([], [], c="k",marker=markers[i]))
 
         # Make the color/linestyle legend.
-        plt.legend(dummylines_keys + dummylines_modes, legendstats + stat_keys, loc="lower left")
+        plt.legend(dummylines_modes + dummylines_keys, stat_keys + legendstats, loc="lower left")
 
         # Add the linestyle legend back in and show.
         ax.set_xlabel('Iteration')
         ax.set_title('SpotHologram Statistics')
+        ax.set_yscale("log")
         plt.grid()
         plt.tight_layout()
         

@@ -38,21 +38,19 @@ def configure_tlcam_dll_path(
     else:
         dll_path += "32_lib"
 
-    os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]
-
     if hasattr(os, "add_dll_directory"):
         try:
             os.add_dll_directory(dll_path)
         except BaseException as e:
-            print("thorlabs_tsi_sdk DLL not found. Resolve to use Thorlabs cameras.")
+            print("thorlabs.py: thorlabs_tsi_sdk DLL not found. Resolve to use Thorlabs cameras.")
     else:
-        print("thorlabs.py: os has no attribute add_dll_directory.")
+        os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]
 
 configure_tlcam_dll_path()
 try:
     from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, ROI
 except ImportError:
-    print("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
+    print("thorlabs.py: thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
 
 
 class ThorCam(Camera):
@@ -176,8 +174,8 @@ class ThorCam(Camera):
 
         Returns
         --------
-        list of (int, (int, int, int, int)) tuples
-            The number and geometry of each display.
+        list of str
+            List of ThorCam serial numbers.
         """
         if ThorCam.sdk is None:
             ThorCam.sdk = TLCameraSDK()

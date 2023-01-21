@@ -46,7 +46,7 @@ class Camera:
         self,
         width,
         height,
-        bitdepth,
+        bitdepth=8,
         dx_um=None,
         dy_um=None,
         rot="0",
@@ -104,6 +104,7 @@ class Camera:
         self.bitdepth = bitdepth
         self.bitresolution = 2 ** bitdepth
 
+        # Spatial dimensions
         self.dx_um = dx_um
         self.dy_um = dy_um
 
@@ -114,19 +115,38 @@ class Camera:
 
     def close(self):
         """
-        Close the camera and delete related objects.
+        Abstract method to close the camera and delete related objects.
         """
         raise NotImplementedError()
 
+    @staticmethod
+    def info(verbose=True):
+        """
+        Abstract method to load display information.
+
+        Parameters
+        ----------
+        verbose : bool
+            Whether or not to print display information.
+
+        Returns
+        -------
+        list
+            An empty list.
+        """
+        if verbose: print(".info() NotImplemented.")
+        return []
+
     def reset(self):
         """
-        Reset the camera to a default state.
+        Abstract method to reset the camera to a default state.
         """
         raise NotImplementedError()
 
     def get_exposure(self):
         """
-        Get the integration time in seconds. Used in :meth:`.autoexposure()`.
+        Abstract method to get the integration time in seconds. 
+        Used in :meth:`.autoexposure()`.
 
         Returns
         -------
@@ -137,7 +157,8 @@ class Camera:
 
     def set_exposure(self, exposure_s):
         """
-        Set the integration time in seconds. Used in :meth:`.autoexposure()`.
+        Abstract method to set the integration time in seconds. 
+        Used in :meth:`.autoexposure()`.
 
         Parameters
         ----------
@@ -148,7 +169,8 @@ class Camera:
 
     def set_woi(self, woi=None):
         """
-        Narrows the imaging region to a 'window of interest' for faster framerates.
+        Abstract method to narrow the imaging region to a 'window of interest' 
+        for faster framerates.
 
         Parameters
         ----------
@@ -161,11 +183,13 @@ class Camera:
         woi : list
             :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        raise NotImplementedError()
+        return
+        # raise NotImplementedError()
 
     def flush(self, timeout_s=1):
         """
-        Cycle the image buffer (if any) such that all new :meth:`.get_image()`
+        Abstract method to cycle the image buffer (if any) 
+        such that all new :meth:`.get_image()`
         calls yield fresh frames.
 
         Parameters
@@ -177,7 +201,7 @@ class Camera:
 
     def get_image(self, timeout_s=1):
         """
-        Pull an image from the camera and return.
+        Abstract method to pull an image from the camera and return.
 
         Parameters
         ----------

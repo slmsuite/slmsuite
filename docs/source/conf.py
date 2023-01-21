@@ -11,7 +11,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 
-import shutil
+# import shutil
 import base64
 import os
 import sys
@@ -29,7 +29,7 @@ for module_path in module_paths:
 # -- Project information -----------------------------------------------------
 
 project = "slmsuite"
-copyright = "2022, slmsuite Developers"
+copyright = "2023, slmsuite Developers"
 author = "slmsuite Developers"
 release = "0.0.0"
 
@@ -155,7 +155,7 @@ def setup(app):
         tree_response = requests.get(tree_url).json()
         for path_object in tree_response["tree"]:
             path_str = path_object["path"]
-            if path_str[0:9] == "examples/":
+            if path_str[0:9] == "examples/" and path_str[-6:] == ".ipynb":
                 file_name = path_str[9:]
                 file_path = os.path.join(examples_path, file_name)
                 file_url = (

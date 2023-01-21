@@ -17,6 +17,7 @@ spatial light modulator (SLM) control and holography.
 
    examples
    api
+   tips
 
 .. |slmsuite| replace:: :mod:`slmsuite`
 .. _slmsuite: https://github.com/QPG-MIT/slmsuite

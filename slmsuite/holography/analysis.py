@@ -60,8 +60,8 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
     vectors = format_2vectors(vectors)
 
     # Prepare helper variables. Future: consider caching for speed, if not negligible.
-    edge_x = np.arange(size[0]) - (int(size[0] / 2) if centered else 0)
-    edge_y = np.arange(size[1]) - (int(size[1] / 2) if centered else 0)
+    edge_x = np.arange(size[0]) - ((int(size[0] - 1) / 2) if centered else 0)
+    edge_y = np.arange(size[1]) - ((int(size[1] - 1) / 2) if centered else 0)
 
     region_x, region_y = np.meshgrid(edge_x, edge_y)
 
@@ -109,7 +109,7 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
         take_plot(np.reshape(result, (vectors.shape[1], size[1], size[0])))
 
     if integrate:  # Sum over the integration axis
-        return np.sum(result, axis=-1)
+        return np.squeeze(np.sum(result, axis=-1))
     else:  # Reshape the integration axis
         return np.reshape(result, (vectors.shape[1], size[1], size[0]))
 
@@ -132,10 +132,19 @@ def take_plot(images):
     sy = sy / 2.0 - 0.5
     extent = (-sx, sx, -sy, sy)
 
+    vmin = np.min(images)
+    vmax = np.max(images)
+
     for x in range(img_count):
         ax = plt.subplot(M, M, x + 1)
 
-        ax.imshow(images[x, :, :], extent=extent)
+        ax.imshow(
+            images[x, :, :],
+            vmin=vmin,
+            vmax=vmax,
+            extent=extent,
+            interpolation='none'
+        )
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
 
@@ -233,8 +242,8 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
 
     Warning
     ~~~~~~~
-    This function does not check if the images in ``images`` are non-negative, or correct
-    for this. Negative values may produce unusual results.
+    This function does not check (or correct for) passed ``images`` with negative
+    values. Negative values may produce unusual results.
 
     Warning
     ~~~~~~~
@@ -247,7 +256,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     moment : (int, int)
@@ -314,15 +323,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
         edge_x = np.power(edge_x, moment[0], out=edge_x)
         edge_y = np.power(edge_y, moment[1], out=edge_y)
 
-        #plt.plot(np.squeeze(edge_x[0,:,:]))
-        #plt.show()
-        #plt.plot(np.squeeze(edge_y[0,:,:]))
-        #plt.show()
-
         if moment[1] == 0:  # only x case
-            #plt.imshow((images * edge_x)[0,:,:])
-            #plt.colorbar()
-            #plt.show()
             return np_sum(images * edge_x, axis=(1, 2), keepdims=False) * reciprical
         elif moment[0] == 0:  # only y case
             return np_sum(images * edge_y, axis=(1, 2), keepdims=False) * reciprical
@@ -593,7 +594,9 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
     guess : None OR numpy.ndarray (parameter_count, image_count)
         - If ``guess`` is ``None``, will construct a guess based on the ``function`` passed.
           Functions for which guesses are implemented include:
+
           - :meth:`~~slmsuite.misc.fitfunctions.gaussian2d()`
+
         - If ``guess`` is ``None`` and ``function`` does not have a guess
           implemented, no guess will be provided to the optimizer.
         - If ``guess`` is a ``numpy.ndarray``, a slice of the array will be provided
@@ -617,7 +620,8 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
 
     Raises
     ------
-        NotImplementedError if the provided ``function`` does not have a guess implemented.
+    NotImplementedError
+        If the provided ``function`` does not have a guess implemented.
     """
     # Setup.
     (image_count, w_y, w_x) = images.shape
@@ -660,7 +664,7 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
                 variances[0:2, :],
                 variances[2, :]
             ))
-    
+
     # Fit and plot each image.
     for img_idx in range(image_count):
         img = images[img_idx, :, :].ravel()
@@ -1219,8 +1223,6 @@ def blob_array_detect(
                 M_fixed = np.matmul(M_trial, np.matmul(rotation, flip))
                 parity_success = True
             except Exception as e:
-                print(e)
-
                 M_fixed = M_trial
                 parity_success = False
         else:
@@ -1241,33 +1243,107 @@ def blob_array_detect(
 
     orientation = {"M": results[index][2], "b": results[index][1]}
 
-    hone_count = 2
+    if plot:
+        array_center = orientation["b"]
+        true_centers = np.matmul(orientation["M"], centers) + orientation["b"]
+
+        if start_orientation is None:
+            fig, axs = plt.subplots(1, 2, figsize=(12, 12), facecolor='white')
+
+            plt_img = _make_8bit(dft_amp.copy())
+
+            # Determine the bounds of the zoom region, padded by zoom_pad
+            zoom_pad = 50
+
+            x = np.array([blob.pt[0] for blob in blobs])
+            xl = [
+                np.clip(np.amin(x) - zoom_pad, 0, dft_amp.shape[1]),
+                np.clip(np.amax(x) + zoom_pad, 0, dft_amp.shape[1]),
+            ]
+
+            y = np.array([blob.pt[1] for blob in blobs])
+            yl = [
+                np.clip(np.amin(y) - zoom_pad, 0, dft_amp.shape[0]),
+                np.clip(np.amax(y) + zoom_pad, 0, dft_amp.shape[0]),
+            ]
+
+            # Plot the unzoomed figure
+            axs[0].imshow(plt_img)
+
+            # Plot a red rectangle to show the extents of the zoom region
+            rect = plt.Rectangle(
+                [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
+            )
+            axs[0].add_patch(rect)
+            axs[0].set_title("DFT Result - Full")
+            axs[0].set_xticks([])
+            axs[0].set_yticks([])
+
+            # Plot the zoomed figure
+            axs[1].imshow(plt_img)
+            axs[1].scatter(
+                x,
+                y,
+                facecolors="none",
+                edgecolors="r",
+                marker="o",
+                s=1000,
+                linewidths=1,
+            )
+            for spine in ["top", "bottom", "right", "left"]:
+                axs[1].spines[spine].set_color("r")
+                axs[1].spines[spine].set_linewidth(1.5)
+            axs[1].set_title("DFT Result - Zoom")
+            axs[1].set_xticks([])
+            axs[1].set_yticks([])
+            axs[1].set_xlim(xl)
+            axs[1].set_ylim(np.flip(yl))
+
+            # fig.supxlabel("Image Reciprocal $x$ [1/pix]")
+            # fig.supylabel("Image Reciprocal $y$ [1/pix]")
+            for ax in axs:
+                ax.set_xlabel("Image Reciprocal $x$ [1/pix]")
+                ax.set_ylabel("Image Reciprocal $y$ [1/pix]")
+            fig.tight_layout(pad=4.0)
+
+            plt.show()
+
+    # Hone the center of our fit by averaging the positional deviations of spots.
+    hone_count = 3
     for _ in range(hone_count):
         guess_positions = np.matmul(orientation["M"], centers) + orientation["b"]
 
         # Odd helper parameters.
-        psf = 2 * int(np.floor(np.amin(np.amax(orientation["M"], axis=0))) / 2) + 1
+        psf = 2 * int(np.floor(np.amin(np.amax(np.abs(orientation["M"]), axis=0))) / 2) + 1
         blur = 2 * int(psf / 16) + 1
 
         regions = take(
             img, guess_positions, psf, centered=True, integrate=False, clip=True
         )
 
+        # take_plot(regions)
+
         # TODO: Update with take and take moments.
+        shift = image_positions(regions)
+        shift_x = shift[0, :]
+        shift_y = shift[1, :]
 
-        # Filter the images, but not the stack.
-        sp_gaussian_filter1d(regions, blur, axis=1, output=regions)
-        sp_gaussian_filter1d(regions, blur, axis=2, output=regions)
+        # # Filter the images, but not in the direction of the stack.
+        # sp_gaussian_filter1d(regions, blur, axis=1, output=regions)
+        # sp_gaussian_filter1d(regions, blur, axis=2, output=regions)
 
-        # Future: fit gaussians instead of taking the (integer) max point for floating accuracy.
-        shift_x = (
-            np.argmax(np.amax(regions, axis=1, keepdims=True), axis=2) - (psf - 1) / 2
-        )
-        shift_y = (
-            np.argmax(np.amax(regions, axis=2, keepdims=True), axis=1) - (psf - 1) / 2
-        )
+        # # Future: fit gaussians instead of taking the (integer) max point for floating accuracy.
+        # shift_x = (
+        #     np.argmax(np.amax(regions, axis=1, keepdims=True), axis=2) - (psf - 1) / 2
+        # )
+        # shift_y = (
+        #     np.argmax(np.amax(regions, axis=2, keepdims=True), axis=1) - (psf - 1) / 2
+        # )
+
+        # take_plot(regions)
+
+        # Remove outliers
         shift_error = np.sqrt(np.square(shift_x) + np.square(shift_y))
-
         thresh = np.mean(shift_error)
 
         shift_x[shift_error > thresh] = np.nan
@@ -1285,6 +1361,7 @@ def blob_array_detect(
 
             plt.show()
 
+        # Correct the fit.
         orientation["b"] += format_2vectors([np.nanmean(shift_x), np.nanmean(shift_y)])
 
     if plot:
@@ -1293,8 +1370,8 @@ def blob_array_detect(
 
         showmatch = False
 
-        _, axs = plt.subplots(
-            1, 2 + showmatch, constrained_layout=True, figsize=(12, 6)
+        fig, axs = plt.subplots(
+            1, 2 + showmatch, constrained_layout=True, figsize=(12, 12)
         )
 
         # Determine the bounds of the zoom region, padded by 50
@@ -1323,6 +1400,10 @@ def blob_array_detect(
         axs[1].set_xlim(xl)
         axs[1].set_ylim(np.flip(yl))
 
+        for spine in ["top", "bottom", "right", "left"]:
+            axs[1].spines[spine].set_color("r")
+            axs[1].spines[spine].set_linewidth(1.5)
+
         axs[0].imshow(img_8it)
         axs[0].scatter(array_center[0], array_center[1], c="r", marker="x", s=10)
 
@@ -1336,6 +1417,13 @@ def blob_array_detect(
         if showmatch:
             axs[2].imshow(match)
             axs[2].set_title("Result - Match")
+
+        # fig.supxlabel("Image $x$ [pix]")
+        # fig.supylabel("Image $y$ [pix]")
+        for ax in axs[:2]:
+            ax.set_xlabel("Image $x$ [pix]")
+            ax.set_ylabel("Image $y$ [pix]")
+        fig.tight_layout(pad=4.0)
 
         plt.show()
 

@@ -19,7 +19,7 @@ from slmsuite.hardware.cameras.camera import Camera
 try:
     import vimba
 except ImportError:
-    print("vimba not installed. Install to use AlliedVision cameras.")
+    print("alliedvision.py: vimba not installed. Install to use AlliedVision cameras.")
 
 
 class AlliedVision(Camera):
@@ -139,6 +139,41 @@ class AlliedVision(Camera):
 
         if close_sdk:
             self.close_sdk()
+
+    @staticmethod
+    def info(verbose=True):
+        """
+        Discovers all Thorlabs scientific cameras.
+
+        Parameters
+        ----------
+        verbose : bool
+            Whether to print the discovered information.
+
+        Returns
+        --------
+        list of str
+            List of AlliedVision serial numbers.
+        """
+        if AlliedVision.sdk is None:
+            AlliedVision.sdk = vimba.Vimba.get_instance()
+            AlliedVision.sdk.__enter__()
+            close_sdk = True
+        else:
+            close_sdk = False
+
+        camera_list = AlliedVision.sdk.get_all_cameras()
+        serial_list = [cam.get_serial() for cam in camera_list]
+
+        if verbose:
+            print("AlliedVision serials:")
+            for serial in serial_list:
+                print("\"{}\"".format(serial))
+
+        if close_sdk:
+            AlliedVision.close_sdk()
+
+        return serial_list
 
     @classmethod
     def close_sdk(cls):

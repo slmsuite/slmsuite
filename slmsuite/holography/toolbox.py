@@ -14,8 +14,7 @@ from slmsuite.misc.math import (
     INTEGER_TYPES, REAL_TYPES, iseven
 )
 
-# Windows are views into 2D array.s
-
+# Windows are views into 2D arrays
 def window_slice(window, shape=None, centered=False):
     """
     Get the slices that describe the window's view into the larger array.
@@ -36,7 +35,7 @@ def window_slice(window, shape=None, centered=False):
         If passed, indices beyond those allowed by ``shape`` will be clipped.
     centered : bool
         See ``window``.
-    
+
     Returns
     -------
     slice_ : (slice, slice) OR (array_like, array_like) OR (array_like)
@@ -52,7 +51,7 @@ def window_slice(window, shape=None, centered=False):
         if shape is not None:
             xi = np.clip(xi, 0, shape[1] - 1)
             xf = np.clip(xf, 0, shape[1] - 1)
-            yi = np.clip(yi, 0, shape[0] - 1) 
+            yi = np.clip(yi, 0, shape[0] - 1)
             yf = np.clip(yf, 0, shape[0] - 1)
         slice_ = (slice(yi, yf), slice(xi, xf))
     # (y_ind, x_ind) format
@@ -69,8 +68,9 @@ def window_slice(window, shape=None, centered=False):
         slice_ = window
     else:
         raise ValueError("Unrecognized format for ``window``.")
-    
+
     return slice_
+
 
 def window_square(window):
     """
@@ -80,7 +80,7 @@ def window_square(window):
     ----------
     window : numpy.ndarray<bool> (height, width)
         Boolean mask.
-    
+
     Returns
     -------
     window_square : (int, int, int, int)
@@ -97,7 +97,7 @@ def window_square(window):
     jmaxs = np.zeros(window.shape[1])
     for j in range(window.shape[0]):
         active_inds = np.argwhere(window[j, :])
-        imins[j] = np.inf if len(active_inds) == 0 else np.min(active_inds) 
+        imins[j] = np.inf if len(active_inds) == 0 else np.min(active_inds)
         imaxs[j] = -np.inf if len(active_inds) == 0 else np.max(active_inds)
     for i in range(window.shape[1]):
         active_inds = np.argwhere(window[:, i])
@@ -110,6 +110,7 @@ def window_square(window):
 
     return (imin, imax - imin, jmin, jmax - jmin)
 
+
 def voronoi_windows(grid, vectors, radius=None, plot=False):
     r"""
     Gets boolean array windows for an array of vectors in the style of
@@ -118,7 +119,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     Parameters
     ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
         Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
@@ -126,7 +127,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
         If an ``(int, int)`` is passed, this is assumed to be the shape of the device, and
         ``vectors`` are **assumed to be in pixel units instead of normalized units**.
     vectors : array_like
-        Centers of the Vornoi cells.
+        Points to Voronoi-ify.
         Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
     radius : float
         Cells on the edge of the set of cells might be very large. This parameter bounds
@@ -143,8 +144,8 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     if (
         isinstance(grid, (list, tuple))
-        and isinstance(grid[0], INTEGER_TYPES)
-        and isinstance(grid[1], INTEGER_TYPES)
+        and isinstance(grid[0], (int))
+        and isinstance(grid[1], (int))
     ):
         shape = grid
     else:
@@ -154,7 +155,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
         x_list = x_grid[0, :]
         y_list = y_grid[:, 0]
-        # Get indices into the grid from the coordinates `vectors`.
+
         vectors = np.vstack((
             np.interp(vectors[0, :], x_list, np.arange(shape[1])),
             np.interp(vectors[1, :], y_list, np.arange(shape[0])),
@@ -186,6 +187,8 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
         plt.xlim(-0.05 * sx, 1.05 * sx)
         plt.ylim(1.05 * sy, -0.05 * sy)
 
+        plt.gca().set_aspect('equal')
+
         plt.title("Voronoi Cells")
 
         plt.show()
@@ -213,8 +216,8 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     return filled_regions
 
-# Phase pattern collation and manipulation.
 
+# Phase pattern collation and manipulation.
 def imprint(
     matrix,
     window,
@@ -284,9 +287,11 @@ def imprint(
     """
     # Format the grid.
     (x_grid, y_grid) = _process_grid(grid)
+
     # Get slices for the window in the matrix.
     shape = matrix.shape if clip else None
     slice_ = window_slice(window, shape=shape, centered=centered)
+
     # Modify the matrix.
     if imprint_operation == "replace":
         matrix[slice_] = function(
@@ -302,10 +307,19 @@ def imprint(
     return matrix
 
 
-# Unit helper functions.
+# Unit helper functions
 # TODO: @tpr0p thinks knm should be kij and ij should be xij
-blaze_units = ["norm", "kxy", "rad", "knm", "freq", "lpmm", "mrad", "deg"]
-
+BLAZE_LABELS = {
+    "norm" : (r"$k_x/k$", r"$k_y/k$"),
+    "kxy" : (r"$k_x/k$", r"$k_y/k$"),
+    "rad" : (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
+    "knm" : (r"$n$ [pix]", r"$m$ [pix]"),
+    "freq" : (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
+    "lpmm" : (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
+    "mrad" : (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
+    "deg" : (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]")
+}
+BLAZE_UNITS = BLAZE_LABELS.keys()
 
 def convert_blaze_vector(
     vector, from_units="norm", to_units="norm", slm=None, shape=None
@@ -320,9 +334,15 @@ def convert_blaze_vector(
             Equivalent to radians in the small angle approximation.
             This is the default unit for :mod:`slmsuite`.
           ``"knm"``
-            Computational blaze units for a given Fourier domain ``shape``, zero-centered.
-            This corresponds to integer points on the grid of this padded SLM's Fourier transform.
+            Computational blaze units for a given Fourier domain ``shape``.
+            This corresponds to integer points on the grid of this
+            (potentially padded) SLM's Fourier transform.
             See :class:`~slmsuite.holography.Hologram`.
+
+            Important
+            ~~~~~~~~~
+            The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
+
           ``"freq"``
             Pixel frequency of a grating producing the blaze.
             e.g. 1/16 is a grating with a period of 16 pixels.
@@ -332,11 +352,11 @@ def convert_blaze_vector(
             Angle at which light is blazed in various units. Small angle approximation is assumed.
 
         Warning
-        ~~~~~~~~
+        ~~~~~~~
         The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
-        so a ``slm`` should be passed. ``"knm"`` additionally requires the ``shape`` of
-        the computational space. If these arguments are not included, the function returns
-        an array ``nan`` values of the same shape as a valid result.
+        so a ``slm`` should be passed (otherwise returns an array of ``nan`` values).
+        ``"knm"`` additionally requires the ``shape`` of the computational space.
+        If not included when an slm is passed, ``shape=slm.shape`` is assumed.
 
         Parameters
         ----------
@@ -350,14 +370,15 @@ def convert_blaze_vector(
             Relevant SLM to pull data from in the case of
             ``"freq"``, ``"knm"``, or ``"lpmm"``.
         shape : (int, int) OR None
-            Shape of the computational SLM space.
+            Shape of the computational SLM space. Defaults to ``slm.shape`` if ``slm``
+            is not ``None``.
 
         Returns
         --------
         numpy.ndarray
             Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
         """
-    assert from_units in blaze_units and to_units in blaze_units
+    assert from_units in BLAZE_UNITS and to_units in BLAZE_UNITS
 
     vector = format_2vectors(vector).astype(np.float)
 
@@ -380,16 +401,18 @@ def convert_blaze_vector(
             pitch = format_2vectors([slm.dx, slm.dy])
 
         if shape is None:
-            shape = np.nan
-        else:
-            shape = format_2vectors(np.flip(np.squeeze(shape)))
+            if slm is None:
+                shape = np.nan
+            else:
+                shape = slm.shape
+        shape = format_2vectors(np.flip(np.squeeze(shape)))
 
         knm_conv = pitch * shape
 
     if from_units == "norm" or from_units == "kxy" or from_units == "rad":
         rad = vector
     elif from_units == "knm":
-        rad = vector / knm_conv
+        rad = (vector - shape / 2.0) / knm_conv
     elif from_units == "freq":
         rad = vector * wav_um / pitch_um
     elif from_units == "lpmm":
@@ -402,7 +425,7 @@ def convert_blaze_vector(
     if to_units == "norm" or to_units == "kxy" or to_units == "rad":
         return rad
     elif to_units == "knm":
-        return rad * knm_conv
+        return rad * knm_conv + shape / 2.0
     elif to_units == "freq":
         return rad * pitch_um / wav_um
     elif to_units == "lpmm":
@@ -428,7 +451,7 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
     **kwargs
         Passed to :meth:`convert_blaze_vector()`.
     """
-    for unit in blaze_units:
+    for unit in BLAZE_UNITS:
         result = convert_blaze_vector(
             vector, from_units=from_units, to_units=unit, **kwargs
         )
@@ -437,77 +460,6 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
 
 
 # Vector and window helper functions
-def high_coordinate(N):
-    """
-    The high coordinate in a coordinate array, normalized to dx = 1.
-    See the module note on slmsuite's coordinate array convention.
-
-    Parameters
-    ----------
-    N : int
-        The number of elements in the coordinate array.
-
-    Returns
-    -------
-    real
-        The highest coordinate in the coordinate array.
-    """
-    return (N - 1) / 2
-
-
-def low_coordinate(N):
-    """
-    The low coordinate in a coordinate array, normalized to dx = 1.
-    See the module note on slmsuite's coordinate array convention.
-
-    Parameters
-    ----------
-    N : int
-        The number of elements in the coordinate array.
-
-    Returns
-    -------
-    real
-        The lowest coordinate in the coordinate array.
-    """
-    return -(N - 1) / 2
-
-
-def center_index(N):
-    """
-    Determine the middle index of a coordinate array.
-    See the module note for slmsuite's coordinate array convention.
-
-    Parameters
-    ----------
-    N : int
-        The number of elements in the coordinate array.
-
-    Returns
-    -------
-    int
-        The index of the center of the array.
-    """
-    return N / 2 - 1 if iseven(N) else (N - 1) / 2
-
-
-def generate_coordinate_array(N):
-    """
-    Generate coordinate values for a coordinate array.
-
-    Parameters
-    ----------
-    N : int
-        The number of values in the coordinate array.
-    
-    Returns
-    -------
-    numpy.ndarray<int> (N,)
-        coordinates of the coordinate array.
-    """
-    return np.linspace(low_coordinate(N), high_coordinate(N), N)
-
-
 def _process_grid(grid):
     r"""
     Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
@@ -550,7 +502,7 @@ def format_2vectors(vectors):
     Returns
     -------
     vectors : numpy.ndarray
-        Cleaned column vector.
+        Cleaned column vector(s).
 
     Raises
     ------
@@ -748,7 +700,7 @@ def fit_lattice2d(p0, a1, a2, N, orientation_check=False):
         The number of points in the ``a1`` and ``a2`` directions of the lattice.
     orientaiton_check : bool
         See :meth:`fit_affine`.
-    
+
     Returns
     -------
     lattice_coordinates : (2, point_count)
@@ -756,8 +708,8 @@ def fit_lattice2d(p0, a1, a2, N, orientation_check=False):
     """
     p1 = p0 + a1
     p2 = p0 + a2
-    i0 = center_index(N[0])
-    j0 = center_index(N[1])
+    i0 = N[0] / 2 - 1 if iseven(N[0]) else (N[0] - 1) / 2
+    j0 = N[1] / 2 - 1 if iseven(N[1]) else (N[1] - 1) / 2
     i1 = i0 + 1
     j1 = j0
     i2 = i0
@@ -808,7 +760,144 @@ def smallest_distance(vectors, metric=chebyshev):
     return minimum
 
 
-# Standard phase patterns.
+def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
+    r"""
+    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`
+    on a set of ``vectors`` using the helper function
+    :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
+    This iteratively forces a set of ``vectors` away from each other until
+    they become more evenly distributed over a space.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
+        See :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
+    vectors : array_like
+        See :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
+    iterations : int
+        Number of iterations to apply Lloyd's Algorithm.
+    plot : bool
+        Whether to plot each iteration of the algorithm.
+
+    Returns
+    -------
+    numpy.ndarray
+        The result of Lloyd's Algorithm.
+    """
+    result = np.copy(format_2vectors(vectors))
+    (x_grid, y_grid) = _process_grid(grid)
+
+    for _ in range(iterations):
+        windows = voronoi_windows(grid, result, plot=plot)
+
+        no_change = True
+
+        # For each point, move towards the centroid of the window.
+        for index, window in enumerate(windows):
+            centroid_x = np.mean(x_grid[window])
+            centroid_y = np.mean(y_grid[window])
+
+            # Iterate
+            if abs(centroid_x - result[0, index]) < 1 and abs(centroid_y - result[1, index]) < 1:
+                pass
+            else:
+                no_change = False
+                result[0, index] = np.mean(x_grid[window])
+                result[1, index] = np.mean(y_grid[window])
+
+        # If this iteration did nothing, then finish.
+        if no_change:
+            break
+
+    return result
+
+
+def lloyds_points(grid, n_points, iterations=10, plot=False):
+    r"""
+    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`
+    without seed ``vectors``. Instead, autogenerates the seed ``vectors`` randomly.
+    See :meth:`~slmsuite.holography.toolbox.lloyds_algorithm()`.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
+        See :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
+    n_points : int
+        Number of points to generate inside a space.
+    iterations : int
+        Number of iterations to apply Lloyd's Algorithm.
+    plot : bool
+        Whether to plot each iteration of the algorithm.
+
+    Returns
+    -------
+    numpy.ndarray
+        The result of Lloyd's Algorithm.
+    """
+    if (
+        isinstance(grid, (list, tuple))
+        and isinstance(grid[0], (int))
+        and isinstance(grid[1], (int))
+    ):
+        shape = grid
+    else:
+        (x_grid, y_grid) = _process_grid(grid)
+        shape = x_grid.shape
+
+    vectors = np.vstack((
+        np.random.randint(0, shape[1], n_points),
+        np.random.randint(0, shape[0], n_points)
+    ))
+
+    # Regenerate until no overlaps (improve for performance?)
+    while smallest_distance(vectors) < 1:
+        vectors = np.vstack((
+            np.random.randint(0, shape[1], n_points),
+            np.random.randint(0, shape[0], n_points)
+        ))
+
+    grid2 = np.meshgrid(range(shape[1]), range(shape[0]))
+
+    result = lloyds_algorithm(grid2, vectors, iterations, plot)
+
+    if isinstance(grid, (list, tuple)):
+        return result
+    else:
+        return np.vstack((x_grid[result], y_grid[result]))
+
+
+# Basic functions
+def _process_grid(grid):
+    r"""
+    Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
+    coordinate of each corresponding pixel. This helper function interprets what the user passes.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+
+    Returns
+    --------
+    (array_like, array_like)
+        The grids in ``(x_grid, y_grid)`` form.
+    """
+
+    # See if grid has x_grid or y_grid (==> SLM class)
+    try:
+        return (grid.x_grid, grid.y_grid)
+    except:
+        pass
+
+    # Otherwise, assume it's a tuple
+    assert len(grid) == 2, "Expected a 2-tuple with x and y meshgrids."
+
+    return grid
+
+
 def blaze(grid, vector=(0, 0), offset=0):
     r"""
     Returns a simple blaze (phase ramp).
@@ -946,6 +1035,9 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
         else:
             out += (x_grid - center[0]) * (y_grid - center[1]) * shear
 
+    if out is None:
+        out = 0 * x_grid
+
     return out
 
 
@@ -984,7 +1076,7 @@ def zernike_sum(grid, weights, aperture=None):
     Cropping this aperture breaks the orthogonality and normalization of the set, but
     this is fine for many applications. While it is possible to orthonormalize the
     cropped set, we do not do so in :mod:`slmsuite`, as this is not critical for target
-    applications such as abberation correction.
+    applications such as aberration correction.
 
     Parameters
     ----------
@@ -1078,7 +1170,9 @@ def zernike_sum(grid, weights, aperture=None):
 
     return canvas
 
+
 _zernike_cache = {}
+
 
 def _zernike_coefficients(n, m):
     """
@@ -1138,6 +1232,7 @@ def _zernike_coefficients(n, m):
         _zernike_cache[key] = {power_key: factor for power_key, factor in zernike_this.items() if factor != 0}
 
     return _zernike_cache[key]
+
 
 # Structured light phase patterns.
 def _determine_source_radius(grid, w=None):
@@ -1263,7 +1358,7 @@ def hermite_gaussian(grid, n, m, w=None):
 
 def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
     r"""
-    **(Untested)** Returns the phase farfield for an Ince-Gaussian beam.
+    **(NotImplemented)** Returns the phase farfield for an Ince-Gaussian beam.
 
     Ref: https://doi.org/10.1364/OL.29.000144
 

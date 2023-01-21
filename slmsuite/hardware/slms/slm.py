@@ -56,10 +56,12 @@ class SLM:
         Normalized x pixel pitch ``dx_um / wav_um``.
     dy : float
         See :attr:`dx`.
-    x_grid : numpy.ndarray of floats
-        Point grid of the SLM's :attr:`shape` derived from :meth:`numpy.meshgrid` ing.
-        This uses normalized units (:attr:`dx`, :attr:`dy`).
-    y_grid : numpy.ndarray of floats
+    x_grid : numpy.ndarray<float> (height, width)
+        Coordinates of the SLM's pixels in wavelengths
+        (see :attr:`wav_um`, :attr:`dx`, :attr:`dy`)
+        measured from the center of the SLM.
+        Of size :attr:`shape`. Produced by :meth:`numpy.meshgrid`.
+    y_grid
         See :attr:`x_grid`.
     measured_amplitude : numpy.ndarray or None
         Amplitude measured on the SLM via

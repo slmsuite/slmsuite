@@ -81,15 +81,14 @@ from slmsuite.holography import analysis, toolbox
 #      stability at the cost of slower convergence.
 ALGORITHM_DEFAULTS = {
     "GS":             {},                                   # No feedback for bare GS
-    "WGS-Leonardo" :  {"feedback" : "computational",
-                        "feedback_exponent" : 0.9},
-    "WGS-Kim" :       {"feedback" : "computational",
-                        "fixed_phase" : False,              # *Starts* without fixed phase
+    "WGS-Leonardo" :  { "feedback" : "computational",
+                        "feedback_exponent" : 0.9 },
+    "WGS-Kim" :       { "feedback" : "computational",
+                        "feedback_exponent" : 0.9,
                         "fixed_phase_activation_efficiency" : None,
-                        "fixed_phase_activation_iteration" : 5,
-                        "feedback_exponent" : 0.9},
-    "WGS-Nogrette" :  {"feedback" : "computational",
-                        "feedback_factor" : 0.1}
+                        "fixed_phase_activation_iteration" : 5 },
+    "WGS-Nogrette" :  { "feedback" : "computational",
+                        "feedback_factor" : 0.1 }
 }
 
 class Hologram:
@@ -657,11 +656,7 @@ class Hologram:
 
             # Fix amplitude, potentially also fixing the phase.
             # FUTURE: check optimized versions in git history.
-            if (
-                "fixed_phase" in self.flags
-                and self.flags["fixed_phase"]
-                and self.phase_ff is not None
-            ):
+            if ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
                 # Set the farfield to the stored phase and updated weights.
                 cp.exp(1j * self.phase_ff, out=farfield)
                 cp.multiply(farfield, self.weights, out=farfield)
@@ -720,17 +715,24 @@ class Hologram:
 
             # Decide whether to fix phase.
             if "Kim" in self.method:
+                was_not_fixed = not self.flags["fixed_phase"]
+
                 if self.flags["fixed_phase_activation_efficiency"] is not None:
                     stats = self.stats["stats"]
                     groups = tuple(stats.keys())
-                    assert len(stats)>0, "Must track statistics to fix phase based on efficiency!"
+
+                    assert len(stats) > 0, "Must track statistics to fix phase based on efficiency!"
+
                     eff = stats[groups[-1]]["efficiency"][self.iter]
-                    if eff > self.flags["fixed_phase_activation_efficiency"] and not self.flags["fixed_phase"]:
+                    if eff > self.flags["fixed_phase_activation_efficiency"]:
                         self.flags["fixed_phase"] = True
-                        self.phase_ff = cp.angle(farfield)
-                if iter > self.flags["fixed_phase_activation_iteration"] and not self.flags["fixed_phase"]:
+                if iter > self.flags["fixed_phase_activation_iteration"]:
                     self.flags["fixed_phase"] = True
+
+                if self.flags["fixed_phase"] and self.phase_ff is None or was_not_fixed:
                     self.phase_ff = cp.angle(farfield)
+            else:
+                self.flags["fixed_phase"] = False
 
         self.update_stats(self.flags["stat_groups"])
 

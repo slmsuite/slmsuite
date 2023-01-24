@@ -594,8 +594,8 @@ class Hologram:
         callback : callable OR None
             See :meth:`.optimize()`.
         """
-        # Future: in-place FFT
-        # Future: rename nearfield and farfield to both be "complex" to avoid hogging memory.
+        # FUTURE: in-place FFT
+        # FUTURE: rename nearfield and farfield to use the same array to avoid hogging memory.
 
         # Proxy to initialize nearfield with the correct shape and (complex) type.
         nearfield = cp.exp(1j * self.target)
@@ -603,7 +603,7 @@ class Hologram:
         # Helper variables for speeding up source phase and amplitude fixing.
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
-        for iter in iterations:
+        for _ in iterations:
             # Fix the relevant part of the nearfield amplitude to the source amplitude.
             # Everything else is zero because power outside the SLM is assumed unreflected.
             # This is optimized for when shape is much larger than slm_shape.
@@ -611,52 +611,16 @@ class Hologram:
             nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
             farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm="ortho"))
 
-            # Calculate amp_ff, if needed.
-            if "computational" in self.flags["feedback"] or any(
-                "computational" in grp for grp in self.flags["stat_groups"]
-            ):
-                # Calculate amp_ff for weighting (if None, will init; otherwise in-place).
-                self.amp_ff = cp.abs(farfield, out=self.amp_ff)
+            # Evaluate method-specific routines, stats, etc.
+            # If you want to add new functionality to GS, do so here to keep the main loop clean.
+            self._GS_farfield_routines(farfield)
 
-            # Erase irrelevant images from the past loop.
-            if hasattr(self, "img_ij"):
-                self.img_ij = None
-
-            # Weight, if desired. This function also updates stats.
-            if "WGS" in self.method:
-                self._update_weights()
-
-                # Calculate amp_ff again, as _update_weights may have modified it.
-                # This is to reduce memory use at the slight cost of performance.
-                if "computational" in self.flags["feedback"] or any(
-                    "computational" in grp for grp in self.flags["stat_groups"]
-                ):
-                    # Calculate amp_ff for weighting (if None, will init; otherwise in-place).
-                    self.amp_ff = cp.abs(farfield, out=self.amp_ff)
-                if "experimental" in self.flags["feedback"]:
-                    pass
-
-            self.update_stats(self.flags["stat_groups"])
-
-            # Decide whether to fix phase.
-            if "Kim" in self.method:
-                if self.flags["fixed_phase_efficiency"] is not None: 
-                    stats = self.stats["stats"]
-                    groups = tuple(stats.keys())
-                    assert len(stats)>0, "Must track statistics to fix phase based on efficiency!"
-                    eff = stats[groups[-1]]["efficiency"][self.iter]
-                    if eff > self.flags["fixed_phase_efficiency"] and not self.flags["fixed_phase"]:
-                        self.flags["fixed_phase"] = True
-                        self.phase_ff = cp.angle(farfield)
-                if iter > self.flags["fixed_phase_iterations"] and not self.flags["fixed_phase"]:
-                    self.flags["fixed_phase"] = True
-                    self.phase_ff = cp.angle(farfield)
-
-            # Run step function and check termination conditions.
+            # Midloop: Run step function and check termination conditions.
             if callback is not None and callback(self):
                 break
 
             # Fix amplitude, potentially also fixing the phase.
+            # FUTURE: check optimized versions in git history.
             if (
                 "fixed_phase" in self.flags
                 and self.flags["fixed_phase"]
@@ -665,30 +629,17 @@ class Hologram:
                 # Set the farfield to the stored phase and updated weights.
                 cp.exp(1j * self.phase_ff, out=farfield)
                 cp.multiply(farfield, self.weights, out=farfield)
-
-                # Future: check this potentially-optimized method
-                # farfield.fill(0)
-                # mask = self.weights != 0
-                # cp.exp(1j * self.phase_ff[mask], out=farfield[mask])
-                # cp.multiply(farfield[mask], self.weights[mask], out=farfield[mask])
             else:
                 # Set the farfield amplitude to the updated weights.
                 cp.divide(farfield, cp.abs(farfield), out=farfield)
                 cp.multiply(farfield, self.weights, out=farfield)
                 cp.nan_to_num(farfield, copy=False, nan=0)
 
-                # Future: check this potentially-optimized method
-                # farfield.fill(0)
-                # mask = self.weights != 0
-                # cp.divide(farfield[mask], cp.abs(farfield[mask]), \
-                #         out=farfield[mask], where=farfield!=0)
-                # cp.multiply(farfield[mask], self.weights[mask], out=farfield[mask])
-
             # Move to nearfield.
             nearfield = cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho")
 
             # Grab the phase from the complex nearfield.
-            # Use arctan2() directly instead of angle() for in-place operations.
+            # Use arctan2() directly instead of angle() for in-place operations (out=).
             self.phase = cp.arctan2(
                 nearfield.imag[i0:i1, i2:i3],
                 nearfield.real[i0:i1, i2:i3],
@@ -704,6 +655,48 @@ class Hologram:
         farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm="ortho"))
         self.amp_ff = cp.abs(farfield)
         self.phase_ff = cp.angle(farfield)
+
+    def _GS_farfield_routines(self, farfield):
+        # Calculate amp_ff, if needed.
+        if "computational" in self.flags["feedback"] or any(
+            "computational" in grp for grp in self.flags["stat_groups"]
+        ):
+            # Calculate amp_ff for weighting (if None, will init; otherwise in-place).
+            self.amp_ff = cp.abs(farfield, out=self.amp_ff)
+
+        # Erase irrelevant images from the past loop.
+        if hasattr(self, "img_ij"):
+            self.img_ij = None
+
+        # Weight, if desired. This function also updates stats.
+        if "WGS" in self.method:
+            self._update_weights()
+
+            # Calculate amp_ff again, as _update_weights may have modified it.
+            # This is to reduce memory use at the slight cost of performance.
+            if "computational" in self.flags["feedback"] or any(
+                "computational" in grp for grp in self.flags["stat_groups"]
+            ):
+                # Calculate amp_ff for weighting (if None, will init; otherwise in-place).
+                self.amp_ff = cp.abs(farfield, out=self.amp_ff)
+            if "experimental" in self.flags["feedback"]:
+                pass
+
+            # Decide whether to fix phase.
+            if "Kim" in self.method:
+                if self.flags["fixed_phase_efficiency"] is not None: 
+                    stats = self.stats["stats"]
+                    groups = tuple(stats.keys())
+                    assert len(stats)>0, "Must track statistics to fix phase based on efficiency!"
+                    eff = stats[groups[-1]]["efficiency"][self.iter]
+                    if eff > self.flags["fixed_phase_efficiency"] and not self.flags["fixed_phase"]:
+                        self.flags["fixed_phase"] = True
+                        self.phase_ff = cp.angle(farfield)
+                if iter > self.flags["fixed_phase_iterations"] and not self.flags["fixed_phase"]:
+                    self.flags["fixed_phase"] = True
+                    self.phase_ff = cp.angle(farfield)
+
+        self.update_stats(self.flags["stat_groups"])
 
     # User interactions: Changing the target and recovering the phase.
     def _update_target(self, new_target, reset_weights=False):
@@ -1284,7 +1277,7 @@ class Hologram:
         if cbar:
             cax = make_axes_locatable(axs[1]).append_axes('right', size='5%', pad=0.05)
             fig.colorbar(zoom, cax=cax, orientation='vertical')
-        
+
         plt.tight_layout()
         plt.show()
 
@@ -1329,7 +1322,7 @@ class Hologram:
                 if i == 0:  # Remember the solid lines for the legend.
                     line = ax.plot([],[], c="C%d"%ls_num)[0]
                     dummylines_modes.append(line)
-            
+
         # Make the linestyle legend.
         # Inspired from https://stackoverflow.com/a/46214879
         dummylines_keys = []
@@ -1337,17 +1330,30 @@ class Hologram:
             dummylines_keys.append(ax.scatter([], [], marker=markers[i], ec="k",
                                               fc = "None" if i<1 else "k"))
 
-        # Make the color/linestyle legend.
-        plt.legend(dummylines_modes + dummylines_keys, stat_keys + legendstats, loc="lower left")
-
-        # Add the linestyle legend back in and show.
         ax.set_xlabel('Iteration')
         ax.set_ylabel('Relative Metrics')
         ax.set_title('SpotHologram Statistics')
         ax.set_yscale("log")
         plt.grid()
         plt.tight_layout()
-        
+
+        # Shade fixed_phase. FUTURE: A more general method could be written
+        if "fixed_phase" in stats_dict["flags"] and any(stats_dict["flags"]["fixed_phase"]):
+            fp = np.concatenate((stats_dict["flags"]["fixed_phase"], [stats_dict["flags"]["fixed_phase"][-1]]))
+            niter_fp = np.arange(0, len(stats_dict["method"]) + 1)
+
+            ylim = ax.get_ylim()
+            poly = ax.fill_between(niter_fp - .5, ylim[0], ylim[1], where=fp, alpha=0.1, color='b')
+            ax.set_ylim(ylim)
+
+            dummylines_keys.append(poly)
+            legendstats.append("fixed_phase")
+
+        # Make the color/linestyle legend.
+        plt.legend(dummylines_modes + dummylines_keys, stat_keys + legendstats, loc="lower left")
+
+        ax.set_xlim([-.75, len(stats_dict["method"]) - .25])
+
         return ax
 
     # Other helper functions

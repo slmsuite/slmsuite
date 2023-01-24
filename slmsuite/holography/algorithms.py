@@ -1331,7 +1331,7 @@ class Hologram:
             # fp = fp | np.roll(fp, shift=1)
             # fp = fp & np.roll(fp, shift=-1)
 
-            ylim = ax.get_ylim() d
+            ylim = ax.get_ylim()
             poly = ax.fill_between(niter_fp - .5, ylim[0], ylim[1], where=fp, alpha=0.1, color='b')
             ax.set_ylim(ylim)
 

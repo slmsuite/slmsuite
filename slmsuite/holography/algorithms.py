@@ -47,6 +47,8 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import cv2
 from tqdm import tqdm
+import warnings
+import pprint
 
 # Import numpy and scipy dependencies.
 import numpy as np
@@ -73,6 +75,21 @@ except ImportError:
 # Import helper functions
 from slmsuite.holography import analysis, toolbox
 
+# List of algorithms and default parameters
+# See algorithm documentation for parameter definitions.
+# Tip: In general, decreasing the feedback exponent improves 
+#      stability at the cost of slower convergence.
+ALGORITHM_DEFAULTS = {"GS":             {"feedback" : ""}, # No feedback for bare GS
+                      "WGS-Leonardo" :  {"feedback" : "computational",
+                                         "feedback_exponent" : 1},
+                      "WGS-Kim" :       {"feedback" : "computational",
+                                         "fixed_phase" : False, # *Starts* without fixed phase
+                                         "fixed_phase_efficiency" : None,
+                                         "fixed_phase_iterations" : 5,
+                                         "feedback_exponent" : 1},
+                      "WGS-Nogrette" :  {"feedback" : "computational",
+                                         "factor":0.1}
+                     }
 
 class Hologram:
     r"""
@@ -251,7 +268,7 @@ class Hologram:
         self.dtype = dtype
         self.iter = 0
         self.method = ""
-        self.flags = {"fixed_phase": False, "stat_groups": []}
+        self.flags = {}
 
         # Initialize statistics dictionary
         self.stats = {"method": [], "flags": {}, "stats": {}}
@@ -448,7 +465,7 @@ class Hologram:
               are the weight amplitudes,
               target (goal) amplitudes, and
               feedback (measured/) amplitudes,
-              and :math:`p` is the power passed as ``"power"`` in
+              and :math:`p` is the power passed as ``"feedback_exponent"`` in
               :attr:`~slmsuite.holography.algorithms.Hologram.flags` (see ``kwargs``).
               The power :math:`p` defaults to .7 if not passed.
 
@@ -511,7 +528,7 @@ class Hologram:
         """
 
         # Check and record method.
-        methods = ["GS", "WGS-Leonardo", "WGS-Kim", "WGS-Nogrette"]
+        methods = list(ALGORITHM_DEFAULTS.keys())
 
         assert (
             method in methods
@@ -519,15 +536,25 @@ class Hologram:
 
         self.method = method
 
-        # Handle flags.
+        # Parse flags: empty old, load defaults, then update
+        self.flags = {}
+        self.flags = ALGORITHM_DEFAULTS[method]
         for flag in kwargs:
-            self.flags[flag] = kwargs[flag]
+            if flag in list(ALGORITHM_DEFAULTS[method].keys()):
+                self.flags[flag] = kwargs[flag]
+            else:
+                warnings.warn("Warning: unexpected flag %s supplied to %s!"%(flag,method))
 
-        self.flags["feedback"] = feedback
+        #TODO: this is separate from other flags; restructure?
         self.flags["stat_groups"] = stat_groups
 
         # Iterations to process.
         iterations = range(maxiter)
+
+        # Print the optimization flags
+        if verbose:
+            print("Optimizing with %s using the following flags:"%(self.method))
+            pprint.pprint(self.flags)
 
         # Decide whether to use a tqdm progress bar. Don't use a bar for maxiter == 1.
         if verbose and maxiter > 1:
@@ -535,11 +562,6 @@ class Hologram:
 
         # Switch between methods
         if "GS" in method:
-            if "WGS" in method:
-                # Default to computational feedback
-                if len(self.flags["feedback"]) == 0:
-                    self.flags["feedback"] = "computational"
-
             self.GS(iterations, callback)
 
     # Optimization methods (currently only GS-type is supported)
@@ -618,16 +640,14 @@ class Hologram:
 
             # Decide whether to fix phase.
             if "Kim" in self.method:
-                if "fixed_phase_efficiency" in self.flags:
+                if self.flags["fixed_phase_efficiency"] is not None: 
                     stats = self.stats["stats"]
                     groups = tuple(stats.keys())
+                    assert len(stats)>0, "Must track statistics to fix phase based on efficiency!"
                     eff = stats[groups[-1]]["efficiency"][self.iter]
                     if eff > self.flags["fixed_phase_efficiency"] and not self.flags["fixed_phase"]:
                         self.flags["fixed_phase"] = True
                         self.phase_ff = cp.angle(farfield)
-                if not "fixed_phase_iterations" in self.flags:
-                    self.flags["fixed_phase_iterations"] = 5
-                    # TODO: add prinouts with assmed values throughout
                 if iter > self.flags["fixed_phase_iterations"] and not self.flags["fixed_phase"]:
                     self.flags["fixed_phase"] = True
                     self.phase_ff = cp.angle(farfield)
@@ -805,16 +825,9 @@ class Hologram:
 
         # Apply weighting
         if method == "Leonardo" or method == "Kim":
-            if not "power" in self.flags:
-                self.flags["power"] = 0.7
-
-            # Leonardo uses amp.
-            cp.power(feedback_corrected, -self.flags["power"], out=feedback_corrected)
+            cp.power(feedback_corrected, -self.flags["feedback_exponent"], out=feedback_corrected)
             weight_amp *= feedback_corrected
         elif method == "Nogrette":
-            if not "factor" in self.flags:
-                self.flags["factor"] = 0.1
-
             # Taylor expand 1/(1-g(1-x)) -> 1 + g(1-x) + (g(1-x))^2 ~ 1 + g(1-x)
             feedback_corrected *= -(1 / cp.mean(feedback_corrected))
             feedback_corrected += 1
@@ -1295,9 +1308,6 @@ class Hologram:
         markers = [">", "o", "D", "P"]
         legendstats = ["inefficiency", "nonuniformity", "pkpk_err", "std_err"]
 
-        #TODO: implement desired stats only
-        # if stats is not None:
-
         niter = np.arange(0, len(stats_dict["method"]))
 
         stat_keys = list(stats_dict["stats"].keys())
@@ -1312,7 +1322,8 @@ class Hologram:
                 if i < 2:
                     y = 1 - np.array(y)
 
-                line = ax.scatter(niter, y, c="C%d"%ls_num, marker=markers[i])
+                line = ax.scatter(niter, y, marker=markers[i], ec="C%d"%ls_num,
+                                  fc="None" if i<1 else "C%d"%ls_num)
                 ax.plot(niter, y, c="C%d"%ls_num, lw=0.5)
 
                 if i == 0:  # Remember the solid lines for the legend.
@@ -1323,13 +1334,15 @@ class Hologram:
         # Inspired from https://stackoverflow.com/a/46214879
         dummylines_keys = []
         for i in range(len(stats)):
-            dummylines_keys.append(ax.scatter([], [], c="k",marker=markers[i]))
+            dummylines_keys.append(ax.scatter([], [], marker=markers[i], ec="k",
+                                              fc = "None" if i<1 else "k"))
 
         # Make the color/linestyle legend.
         plt.legend(dummylines_modes + dummylines_keys, stat_keys + legendstats, loc="lower left")
 
         # Add the linestyle legend back in and show.
         ax.set_xlabel('Iteration')
+        ax.set_ylabel('Relative Metrics')
         ax.set_title('SpotHologram Statistics')
         ax.set_yscale("log")
         plt.grid()
@@ -1501,7 +1514,7 @@ class FeedbackHologram(Hologram):
             self.cam_points = None
             self.cam_shape = None
 
-    def ijcam_to_knmslm(self, img, out=None, blur_ij=None):
+    def ijcam_to_knmslm(self, img, out=None, blur_ij=0):
         """
         Convert an image in the camera domain to computational SLM k-space using, in part, the
         affine transformation stored in a cameraslm's Fourier calibration.
@@ -1522,8 +1535,10 @@ class FeedbackHologram(Hologram):
         ----------
         img : numpy.ndarray OR cupy.ndarray
             Image to transform. This should be the same shape as images returned by the camera.
-        output : numpy.ndarray OR cupy.ndarray OR None
-            If ``output`` is not ``None``, this array will be used to write the memory in-place.
+        out : numpy.ndarray OR cupy.ndarray OR None
+            If ``out`` is not ``None``, this array will be used to write the memory in-place.
+        blur_ij : int
+            Applies a ``blur_ij`` pixel-width Gaussian blur to ``img``. 
 
         Returns
         -------
@@ -1554,13 +1569,6 @@ class FeedbackHologram(Hologram):
         # Composite transformation (along with xy -> yx).
         M = cp.array(np.flip(np.flip(np.matmul(M2, M1), axis=0), axis=1))
         b = cp.array(np.flip(np.matmul(M2, b1) + b2))
-
-        # See if the user wants to blur.
-        if blur_ij is None:
-            if "blur_ij" in self.flags:
-                blur_ij = self.flags["blur_ij"]
-            else:
-                blur_ij = 0
 
         # Future: use cp_gaussian_filter (faster?); was having trouble with cp_gaussian_filter.
         if blur_ij > 0:

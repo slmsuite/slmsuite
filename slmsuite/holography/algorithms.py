@@ -85,11 +85,11 @@ ALGORITHM_DEFAULTS = {
                         "feedback_exponent" : 0.9},
     "WGS-Kim" :       {"feedback" : "computational",
                         "fixed_phase" : False,              # *Starts* without fixed phase
-                        "fixed_phase_efficiency" : None,
-                        "fixed_phase_iterations" : 5,
+                        "fixed_phase_activation_efficiency" : None,
+                        "fixed_phase_activation_iteration" : 5,
                         "feedback_exponent" : 0.9},
     "WGS-Nogrette" :  {"feedback" : "computational",
-                        "feedback_feedback_factor" : 0.1}
+                        "feedback_factor" : 0.1}
 }
 
 class Hologram:
@@ -501,18 +501,21 @@ class Hologram:
             ``'WGS-Kim'`` [3]_
 
               Improves the convergence of `Leonardo` by fixing the far-field
-              phase after a desired number of iterations or after achieving a desired
-              efficiency (fraction of far-field energy at the desired points).
+              phase strictly after a desired number of iterations
+              specified by ``"fixed_phase_activation_iteration"``
+              or after exceeding a desired efficiency
+              (fraction of far-field energy at the desired points)
+              specified by ``"fixed_phase_activation_efficiency"``
 
             ``'WGS-Nogrette'`` [7]_
 
-              Weights target intensities by a tunable gain feedback_factor.
+              Weights target intensities by a tunable gain factor.
 
               .. math:: \mathcal{W} = \mathcal{W}/\left(1 - f\left(1 - \mathcal{F}/\mathcal{T}\right)\right)
 
-              where :math:`f` is the gain feedback_factor passed as ``"feedback_feedback_factor"`` in
+              where :math:`f` is the gain factor passed as ``"feedback_factor"`` in
               :attr:`~slmsuite.holography.algorithms.Hologram.flags` (see ``kwargs``).
-              The feedback_factor :math:`f` defaults to .1 if not passed.
+              The factor :math:`f` defaults to .1 if not passed.
 
               Note that while Nogrette et al compares powers, this implementation
               compares amplitudes for speed. These are identical to first order.
@@ -717,15 +720,15 @@ class Hologram:
 
             # Decide whether to fix phase.
             if "Kim" in self.method:
-                if self.flags["fixed_phase_efficiency"] is not None:
+                if self.flags["fixed_phase_activation_efficiency"] is not None:
                     stats = self.stats["stats"]
                     groups = tuple(stats.keys())
                     assert len(stats)>0, "Must track statistics to fix phase based on efficiency!"
                     eff = stats[groups[-1]]["efficiency"][self.iter]
-                    if eff > self.flags["fixed_phase_efficiency"] and not self.flags["fixed_phase"]:
+                    if eff > self.flags["fixed_phase_activation_efficiency"] and not self.flags["fixed_phase"]:
                         self.flags["fixed_phase"] = True
                         self.phase_ff = cp.angle(farfield)
-                if iter > self.flags["fixed_phase_iterations"] and not self.flags["fixed_phase"]:
+                if iter > self.flags["fixed_phase_activation_iteration"] and not self.flags["fixed_phase"]:
                     self.flags["fixed_phase"] = True
                     self.phase_ff = cp.angle(farfield)
 
@@ -959,21 +962,6 @@ class Hologram:
 
         pkpk_err = pwr_err.size * float(mp.amax(pwr_err) - mp.amin(pwr_err))
         std_err = pwr_err.size * float(mp.std(pwr_err))
-
-        # if len(feedback_pwr) < 200:
-        #     try:
-        #         dat = feedback_pwr.get()
-        #     except:
-        #         dat = feedback_pwr
-        #     plt.hist(pwr_err.size * dat)
-        #     result = {
-        #         "efficiency": efficiency,
-        #         "uniformity": uniformity,
-        #         "pkpk_err": pkpk_err,
-        #         "std_err": std_err,
-        #     }
-        #     plt.title(str(result))
-        #     plt.show()
 
         return {
             "efficiency": efficiency,
@@ -2153,6 +2141,7 @@ class SpotHologram(FeedbackHologram):
         feedback = self.flags["feedback"]
 
         if feedback == "computational":
+            # TODO: Modify this by integrating over psf_knm?
             self._update_weights_generic(self.weights, self.amp_ff, self.target)
         elif feedback == "experimental_spot":
             self.measure(basis="ij")
@@ -2175,6 +2164,7 @@ class SpotHologram(FeedbackHologram):
         """
         Wrapped by :meth:`SpotHologram.update_stats()`.
         """
+        # TODO: Modify this by integrating over psf_knm?
         if "computational_spot" in stat_groups:
             total = cp.sum(cp.square(self.amp_ff))
             stats["computational_spot"] = self._calculate_stats(

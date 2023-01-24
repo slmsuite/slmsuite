@@ -1325,18 +1325,16 @@ class Hologram:
         plt.tight_layout()
 
         # Shade fixed_phase. FUTURE: A more general method could be written
-        if "fixed_phase" in stats_dict["flags"]:
+        if "fixed_phase" in stats_dict["flags"] and any(stats_dict["flags"]["fixed_phase"]):
             fp = np.concatenate((stats_dict["flags"]["fixed_phase"], [stats_dict["flags"]["fixed_phase"][-1]]))
             niter_fp = np.arange(0, len(stats_dict["method"]) + 1)
-            # fp = fp | np.roll(fp, shift=1)
-            # fp = fp & np.roll(fp, shift=-1)
 
             ylim = ax.get_ylim()
             poly = ax.fill_between(niter_fp - .5, ylim[0], ylim[1], where=fp, alpha=0.1, color='b')
             ax.set_ylim(ylim)
 
             dummylines_keys.append(poly)
-            legendstats.append("Fixed Phase")
+            legendstats.append("fixed_phase")
 
         # Make the color/linestyle legend.
         plt.legend(dummylines_modes + dummylines_keys, stat_keys + legendstats, loc="lower left")

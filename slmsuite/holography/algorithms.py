@@ -77,19 +77,20 @@ from slmsuite.holography import analysis, toolbox
 
 # List of algorithms and default parameters
 # See algorithm documentation for parameter definitions.
-# Tip: In general, decreasing the feedback exponent improves 
+# Tip: In general, decreasing the feedback_exponent improves
 #      stability at the cost of slower convergence.
-ALGORITHM_DEFAULTS = {"GS":             {"feedback" : ""}, # No feedback for bare GS
-                      "WGS-Leonardo" :  {"feedback" : "computational",
-                                         "feedback_exponent" : 1},
-                      "WGS-Kim" :       {"feedback" : "computational",
-                                         "fixed_phase" : False, # *Starts* without fixed phase
-                                         "fixed_phase_efficiency" : None,
-                                         "fixed_phase_iterations" : 5,
-                                         "feedback_exponent" : 1},
-                      "WGS-Nogrette" :  {"feedback" : "computational",
-                                         "factor":0.1}
-                     }
+ALGORITHM_DEFAULTS = {
+    "GS":             {},                                   # No feedback for bare GS
+    "WGS-Leonardo" :  {"feedback" : "computational",
+                        "feedback_exponent" : 0.9},
+    "WGS-Kim" :       {"feedback" : "computational",
+                        "fixed_phase" : False,              # *Starts* without fixed phase
+                        "fixed_phase_efficiency" : None,
+                        "fixed_phase_iterations" : 5,
+                        "feedback_exponent" : 0.9},
+    "WGS-Nogrette" :  {"feedback" : "computational",
+                        "feedback_feedback_factor" : 0.1}
+}
 
 class Hologram:
     r"""
@@ -127,25 +128,27 @@ class Hologram:
 
     Attributes
     ----------
-    slm_shape : (int, int) OR None
-        The shape of the device producing the hologram. This is important to record because
+    slm_shape : (int, int)
+        The shape of the **near-field** device producing the hologram in the **far-field**.
+        This is important to record because
         certain optimizations and calibrations depend on it. If multiple of :attr:`slm_shape`,
         :attr:`phase`, or :attr:`amp` are not ``None``, the shapes must agree. If all are
         ``None``, then the shape of the :attr:`target` is used instead
         (:attr:`slm_shape` == :attr:`shape`).
-    phase : numpy.ndarray OR cupy.ndarray OR None
+    phase : numpy.ndarray OR cupy.ndarray
         **Near-field** phase pattern to optimize.
         Initialized to with :meth:`random.default_rng().uniform()` by default (``None``).
         This is of shape :attr:`slm_shape`
         and (during optimization) padded to shape :attr:`shape`.
-    amp : numpy.ndarray OR cupy.ndarray OR None
+    amp : numpy.ndarray OR cupy.ndarray
         **Near-field** source amplitude pattern (i.e. image-space constraints).
         Uniform illumination is assumed by default (``None``).
         This is of shape :attr:`slm_shape`
         and (during optimization) padded to shape :attr:`shape`.
     shape : (int, int)
-        The shape of the computational space, i.e. the ``"knm"`` basis.
-        This often differs from :attr:`slm_shape` due to padding.
+        The shape of the computational space in the **near-field** and **far-field**.
+        Corresponds to the the ``"knm"`` basis in the **far-field**.
+        This often differs from :attr:`slm_shape` due to padding of the **near-field**.
     target : numpy.ndarray OR cupy.ndarray
         Desired **far-field** amplitude in the ``"knm"`` basis. The goal of optimization.
         This is of shape :attr:`shape`.
@@ -153,16 +156,16 @@ class Hologram:
         The mutable **far-field** amplitude in the ``"knm"`` basis used in GS.
         Starts as :attr:`target` but may be modified by weighted feedback in WGS.
         This is of shape :attr:`shape`.
-    phase_ff : numpy.ndarray OR cupy.ndarray
+    phase_ff : numpy.ndarray OR cupy.ndarray OR None
         Algorithm-constrained **far-field** phase in the ``"knm"`` basis. Stored for certain computational algorithms.
         (see :meth:`~slmsuite.holography.algorithms.Hologram.GS`).
         This is of shape :attr:`shape`.
-    amp_ff : numpy.ndarray OR cupy.ndarray
+    amp_ff : numpy.ndarray OR cupy.ndarray OR None
         **Far-field** amplitude in the ``"knm"`` basis.
         Used for comparing this, the computational result, with the :attr:`target`.
         This is of shape :attr:`shape`.
     dtype : type
-        Datatype for stored near- and far-field arrays, which are **all real**.
+        Datatype for stored **near-** and **far-field** arrays, which are **all real**.
         Some internal variables are complex. The complex numbers
         follow :mod:`numpy` type promotion [5]_. Complex datatypes are derived from ``dtype``:
 
@@ -223,11 +226,16 @@ class Hologram:
     def __init__(self, target, amp=None, phase=None, slm_shape=None, dtype=np.float32):
         r"""
         Initialize datastructures for optimization.
+        When :mod:`cupy` is enabled, arrays are initialized on the GPU as :mod:`cupy` arrays:
+        take care to use class methods to access these parameters instead of editing
+        them directly, as :mod:`cupy` arrays behave slightly differently than numpy arrays in
+        some cases.
+
         Parameters additional to class attributes are described below:
 
         Parameters
         ----------
-        target : numpy.ndarray OR cupy.ndarray OR (int, int)
+        target : array_like OR (int, int)
             Target to optimize to. The user can also pass a shape, and this constructor
             will create an empty target of all zeros.
             :meth:`.calculate_padded_shape()` can be of particular help for calculating the
@@ -249,6 +257,7 @@ class Hologram:
         dtype : type
             See :attr:`dtype`; type to use for stored arrays.
         """
+        # 1) Parse inputs
         # Parse target and create shape.
         if len(target) == 2:  # (int, int) was passed.
             self.shape = target
@@ -264,16 +273,7 @@ class Hologram:
                 "FFT computation.".format(self.shape)
             )
 
-        # Initialize storage vars
-        self.dtype = dtype
-        self.iter = 0
-        self.method = ""
-        self.flags = {}
-
-        # Initialize statistics dictionary
-        self.stats = {"method": [], "flags": {}, "stats": {}}
-
-        # Determine the shape of the SLM
+        # 1.5) Determine the shape of the SLM
         if amp is None:
             amp_shape = (np.nan, np.nan)
         else:
@@ -302,7 +302,7 @@ class Hologram:
             if len(slm_shape) != 2:
                 slm_shape = (np.nan, np.nan)
 
-        # We now have a few options for what the shape could be.
+        # 1.5 [cont]) We now have a few options for what the shape of the SLM could be.
         # Parse these to validate consistency.
         stack = np.vstack((amp_shape, phase_shape, slm_shape))
 
@@ -320,29 +320,56 @@ class Hologram:
 
             self.slm_shape = tuple(self.slm_shape)
 
+        # 2) Initialize variables.
+        # Save the data type.
+        self.dtype = dtype
+
         # Initialize and normalize near-field amplitude
-        if amp is None:  # Uniform amplitude by default (scalar)
+        if amp is None:     # Uniform amplitude by default (scalar).
             self.amp = 1 / np.sqrt(np.prod(self.slm_shape))
-        else:  # Otherwise, initialize and normalize
+        else:               # Otherwise, initialize and normalize.
             self.amp = cp.array(amp, dtype=dtype)
             self.amp *= 1 / Hologram._norm(self.amp)
 
         # Initialize near-field phase
-        if phase is None:  # Random near-field phase by default
-            if cp == np:  # numpy does not support dtype=
-                rng = np.random.default_rng()
-                self.phase = rng.uniform(-np.pi, np.pi, self.slm_shape).astype(dtype)
-            else:
-                self.phase = cp.random.uniform(
-                    -np.pi, np.pi, self.slm_shape, dtype=dtype
-                )
-        else:  # Initialize
+        if phase is None:   # reset() will set to random phase.
+            self.phase = None
+        else:               # Initialize to provided phase.
             self.phase = cp.array(phase, dtype=dtype)
 
-        # Initialize target and weights.
-        self._update_target(target, reset_weights=True)
+        # Initialize target. reset() will handle weights.
+        self._update_target(target, reset_weights=False)
 
-        # Initialize SLM farfield data variables.
+        # Initialize everything else inside reset.
+        self.reset(reset_phase=False)
+
+    def reset(self, reset_phase=True):
+        r"""
+        Resets the hologram to a random state. Does not restore the preconditioned ``phase``
+        that may have been passed to the constructor. Also uses the current ``target``
+        rather than the ``target`` that may have been passed to the constructor (e.g.
+        includes :meth:`.refine_offset()` changes, etc).
+        """
+        if self.phase is None or reset_phase:
+            # Reset phase to random.
+            if cp == np:  # numpy does not support `dtype=`
+                rng = np.random.default_rng()
+                self.phase = rng.uniform(-np.pi, np.pi, self.slm_shape).astype(self.dtype)
+            else:
+                self.phase = cp.random.uniform(
+                    -np.pi, np.pi, self.slm_shape, dtype=self.dtype
+                )
+
+        # Reset weights.
+        self.weights = cp.copy(self.target)
+
+        # Reset vars.
+        self.iter = 0
+        self.method = ""
+        self.flags = {}
+        self.stats = {"method": [], "flags": {}, "stats": {}}
+
+        # Reset farfield storage.
         self.amp_ff = None
         self.phase_ff = None
 
@@ -434,7 +461,7 @@ class Hologram:
         maxiter=20,
         verbose=True,
         callback=None,
-        feedback="",
+        feedback=None,
         stat_groups=[],
         **kwargs
     ):
@@ -454,6 +481,7 @@ class Hologram:
           techniques from literature. The ``method`` keywords are:
 
             ``'WGS-Leonardo'`` [6]_
+
               Original WGS algorithm. Weights the target
               amplitudes by the ratio of mean amplitude to computed amplitude, which
               amplifies weak spots while attenuating strong spots. Uses the following
@@ -464,23 +492,27 @@ class Hologram:
               where :math:`\mathcal{W}`, :math:`\mathcal{T}`, and :math:`\mathcal{F}`
               are the weight amplitudes,
               target (goal) amplitudes, and
-              feedback (measured/) amplitudes,
+              feedback (measured) amplitudes,
               and :math:`p` is the power passed as ``"feedback_exponent"`` in
               :attr:`~slmsuite.holography.algorithms.Hologram.flags` (see ``kwargs``).
-              The power :math:`p` defaults to .7 if not passed.
+              The power :math:`p` defaults to .9 if not passed. In general, smaller
+              :math:`p` will lead to slower yet more stable optimization.
 
             ``'WGS-Kim'`` [3]_
+
               Improves the convergence of `Leonardo` by fixing the far-field
               phase after a desired number of iterations or after achieving a desired
               efficiency (fraction of far-field energy at the desired points).
+
             ``'WGS-Nogrette'`` [7]_
-              Weights target intensities by a tunable gain factor.
+
+              Weights target intensities by a tunable gain feedback_factor.
 
               .. math:: \mathcal{W} = \mathcal{W}/\left(1 - f\left(1 - \mathcal{F}/\mathcal{T}\right)\right)
 
-              where :math:`f` is the gain factor passed as ``"factor"`` in
+              where :math:`f` is the gain feedback_factor passed as ``"feedback_feedback_factor"`` in
               :attr:`~slmsuite.holography.algorithms.Hologram.flags` (see ``kwargs``).
-              The factor :math:`f` defaults to .1 if not passed.
+              The feedback_factor :math:`f` defaults to .1 if not passed.
 
               Note that while Nogrette et al compares powers, this implementation
               compares amplitudes for speed. These are identical to first order.
@@ -529,14 +561,15 @@ class Hologram:
 
         # Check and record method.
         methods = list(ALGORITHM_DEFAULTS.keys())
-
         assert (
             method in methods
         ), "Unrecognized method {}. Valid methods include [{}]".format(method, methods)
-
         self.method = method
 
         # Parse flags: empty old, load defaults, then update
+        if feedback is not None:
+            kwargs["feedback"] = feedback
+
         self.flags = {}
         self.flags = ALGORITHM_DEFAULTS[method]
         for flag in kwargs:
@@ -684,7 +717,7 @@ class Hologram:
 
             # Decide whether to fix phase.
             if "Kim" in self.method:
-                if self.flags["fixed_phase_efficiency"] is not None: 
+                if self.flags["fixed_phase_efficiency"] is not None:
                     stats = self.stats["stats"]
                     groups = tuple(stats.keys())
                     assert len(stats)>0, "Must track statistics to fix phase based on efficiency!"
@@ -705,8 +738,9 @@ class Hologram:
 
         Parameters
         ----------
-        new_target : numpy.ndarray OR cupy.ndarray OR None
-            If ``None``, sets the target to zero.
+        new_target : array_like OR None
+            If ``None``, sets the target to zero. The ``None`` case is used internally
+            by :class:`SpotHologram`.
         reset_weights : bool
             Whether to overwrite ``weights`` with ``target``.
         """
@@ -824,7 +858,7 @@ class Hologram:
             # Taylor expand 1/(1-g(1-x)) -> 1 + g(1-x) + (g(1-x))^2 ~ 1 + g(1-x)
             feedback_corrected *= -(1 / cp.mean(feedback_corrected))
             feedback_corrected += 1
-            feedback_corrected *= -self.flags["factor"]
+            feedback_corrected *= -self.flags["feedback_factor"]
             feedback_corrected += 1
             cp.reciprocal(feedback_corrected, out=feedback_corrected)
 
@@ -1544,7 +1578,7 @@ class FeedbackHologram(Hologram):
         out : numpy.ndarray OR cupy.ndarray OR None
             If ``out`` is not ``None``, this array will be used to write the memory in-place.
         blur_ij : int
-            Applies a ``blur_ij`` pixel-width Gaussian blur to ``img``. 
+            Applies a ``blur_ij`` pixel-width Gaussian blur to ``img``.
 
         Returns
         -------

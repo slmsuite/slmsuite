@@ -47,7 +47,6 @@ extensions = [
     "IPython.sphinxext.ipython_directive",
     "IPython.sphinxext.ipython_console_highlighting",
     "nbsphinx",
-    'sphinx_gallery.load_style',
     "sphinx_copybutton",
     "sphinx_last_updated_by_git"
 ]

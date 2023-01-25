@@ -77,16 +77,16 @@ from slmsuite.holography import analysis, toolbox
 
 # List of algorithms and default parameters
 # See algorithm documentation for parameter definitions.
-# Tip: In general, decreasing the feedback exponent improves 
-#      stability at the cost of slower convergence.
+# Tip: In general, decreasing the feedback exponent (from 1) improves 
+#      stability at the cost of slower convergence. The default (0.9)
+#      is an empirically derived value for a reasonable tradeoff. 
 ALGORITHM_DEFAULTS = {"GS":             {"feedback" : ""}, # No feedback for bare GS
                       "WGS-Leonardo" :  {"feedback" : "computational",
-                                         "feedback_exponent" : 1},
+                                         "feedback_exponent" : 0.9},
                       "WGS-Kim" :       {"feedback" : "computational",
-                                         "fixed_phase" : False, # *Starts* without fixed phase
                                          "fixed_phase_efficiency" : None,
-                                         "fixed_phase_iterations" : 5,
-                                         "feedback_exponent" : 1},
+                                         "fixed_phase_iterations" : 10,
+                                         "feedback_exponent" : 0.9},
                       "WGS-Nogrette" :  {"feedback" : "computational",
                                          "factor":0.1}
                      }
@@ -538,15 +538,16 @@ class Hologram:
 
         # Parse flags: empty old, load defaults, then update
         self.flags = {}
-        self.flags = ALGORITHM_DEFAULTS[method]
+        self.flags = ALGORITHM_DEFAULTS[method].copy()
         for flag in kwargs:
             if flag in list(ALGORITHM_DEFAULTS[method].keys()):
                 self.flags[flag] = kwargs[flag]
             else:
                 warnings.warn("Warning: unexpected flag %s supplied to %s!"%(flag,method))
 
-        #TODO: this is separate from other flags; restructure?
+        # Add in non-defaulted flags
         self.flags["stat_groups"] = stat_groups
+        self.flags["fixed_phase"] = False
 
         # Iterations to process.
         iterations = range(maxiter)
@@ -603,7 +604,7 @@ class Hologram:
         # Helper variables for speeding up source phase and amplitude fixing.
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
-        for _ in iterations:
+        for iter in iterations:
             # Fix the relevant part of the nearfield amplitude to the source amplitude.
             # Everything else is zero because power outside the SLM is assumed unreflected.
             # This is optimized for when shape is much larger than slm_shape.
@@ -613,7 +614,7 @@ class Hologram:
 
             # Evaluate method-specific routines, stats, etc.
             # If you want to add new functionality to GS, do so here to keep the main loop clean.
-            self._GS_farfield_routines(farfield)
+            self._GS_farfield_routines(farfield, iter)
 
             # Midloop: Run step function and check termination conditions.
             if callback is not None and callback(self):
@@ -656,7 +657,7 @@ class Hologram:
         self.amp_ff = cp.abs(farfield)
         self.phase_ff = cp.angle(farfield)
 
-    def _GS_farfield_routines(self, farfield):
+    def _GS_farfield_routines(self, farfield, iter):
         # Calculate amp_ff, if needed.
         if "computational" in self.flags["feedback"] or any(
             "computational" in grp for grp in self.flags["stat_groups"]
@@ -668,7 +669,10 @@ class Hologram:
         if hasattr(self, "img_ij"):
             self.img_ij = None
 
-        # Weight, if desired. This function also updates stats.
+        # Update statistics
+        self.update_stats(self.flags["stat_groups"])
+
+        # Weight, if desired.
         if "WGS" in self.method:
             self._update_weights()
 
@@ -695,8 +699,6 @@ class Hologram:
                 if iter > self.flags["fixed_phase_iterations"] and not self.flags["fixed_phase"]:
                     self.flags["fixed_phase"] = True
                     self.phase_ff = cp.angle(farfield)
-
-        self.update_stats(self.flags["stat_groups"])
 
     # User interactions: Changing the target and recovering the phase.
     def _update_target(self, new_target, reset_weights=False):
@@ -1339,11 +1341,13 @@ class Hologram:
 
         # Shade fixed_phase. FUTURE: A more general method could be written
         if "fixed_phase" in stats_dict["flags"] and any(stats_dict["flags"]["fixed_phase"]):
-            fp = np.concatenate((stats_dict["flags"]["fixed_phase"], [stats_dict["flags"]["fixed_phase"][-1]]))
+            fp = np.concatenate((stats_dict["flags"]["fixed_phase"],
+                                [stats_dict["flags"]["fixed_phase"][-1]]))
             niter_fp = np.arange(0, len(stats_dict["method"]) + 1)
 
             ylim = ax.get_ylim()
-            poly = ax.fill_between(niter_fp - .5, ylim[0], ylim[1], where=fp, alpha=0.1, color='b')
+            poly = ax.fill_between(niter_fp - .5, ylim[0], ylim[1], where=fp,
+                                   alpha=0.1, color='b', zorder=-np.inf)
             ax.set_ylim(ylim)
 
             dummylines_keys.append(poly)

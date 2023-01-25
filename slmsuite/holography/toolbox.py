@@ -965,7 +965,8 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
 
 def zernike(grid, n, m, aperture=None):
     r"""
-    Returns a single Zernike polynomial.
+    Returns a single Zernike polynomial. To improve performance, especially for higher
+    order polynomials, we store a cached of Zernike coefficients to avoid regeneration.
 
     Parameters
     ----------
@@ -989,7 +990,8 @@ def zernike(grid, n, m, aperture=None):
 
 def zernike_sum(grid, weights, aperture=None):
     r"""
-    Returns a summation of Zernike polynomials.
+    Returns a summation of Zernike polynomials. To improve performance, especially for higher
+    order polynomials, we store a cached of Zernike coefficients to avoid regeneration.
 
     Important
     ~~~~~~~~~

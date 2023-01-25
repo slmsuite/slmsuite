@@ -117,6 +117,14 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
     :meth:`~slmsuite.holography.toolbox.imprint()`,
     such that the ith window corresponds to the Voronoi cell centered around the ith vector.
 
+    Note
+    ~~~~
+    The :meth:`cv2.fillConvexPoly()` function used to fill each window dilates 
+    slightly outside the window bounds. To avoid pixels belonging to multiple windows
+    simutaneously, we crop away previously-assigned pixels from new windows while these are 
+    being iteratively generated. As a result, windows earlier in the list will be slightly 
+    larger than windows later in the list.
+
     Parameters
     ----------
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
@@ -195,6 +203,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     N = np.shape(vectors)[1]
     filled_regions = []
+    already_filled = np.zeros(shape, dtype=np.uint8)
 
     for x in range(N):
         point = vor.points[x]
@@ -210,9 +219,11 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
                 canvas2, tuple(point.astype(np.int32)), int(np.ceil(radius)), 255, -1
             )
 
-            filled_regions.append((canvas1 > 0) & (canvas2 > 0))
+            filled_regions.append((canvas1 > 0) & (canvas2 > 0) & np.logical_not(already_filled))
         else:
-            filled_regions.append(canvas1 > 0)
+            filled_regions.append((canvas1 > 0) & np.logical_not(already_filled))
+
+        already_filled |= filled_regions[-1]
 
     return filled_regions
 

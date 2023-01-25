@@ -84,8 +84,8 @@ ALGORITHM_DEFAULTS = {"GS":             {"feedback" : ""}, # No feedback for bar
                       "WGS-Leonardo" :  {"feedback" : "computational",
                                          "feedback_exponent" : 0.9},
                       "WGS-Kim" :       {"feedback" : "computational",
-                                         "fixed_phase_efficiency" : None,
-                                         "fixed_phase_iterations" : 10,
+                                         "fix_phase_efficiency" : None,
+                                         "fix_phase_iteration" : 5,
                                          "feedback_exponent" : 0.9},
                       "WGS-Nogrette" :  {"feedback" : "computational",
                                          "factor":0.1}
@@ -501,10 +501,10 @@ class Hologram:
 
               Improves the convergence of `Leonardo` by fixing the far-field
               phase strictly after a desired number of iterations
-              specified by ``"fixed_phase_activation_iteration"``
+              specified by ``"fix_phase_iteration"``
               or after exceeding a desired efficiency
               (fraction of far-field energy at the desired points)
-              specified by ``"fixed_phase_activation_efficiency"``
+              specified by ``"fix_phase_efficiency"``
 
             ``'WGS-Nogrette'`` [7]_
 
@@ -721,16 +721,16 @@ class Hologram:
             if "Kim" in self.method:
                 was_not_fixed = not self.flags["fixed_phase"]
 
-                if self.flags["fixed_phase_activation_efficiency"] is not None:
+                if self.flags["fix_phase_efficiency"] is not None:
                     stats = self.stats["stats"]
                     groups = tuple(stats.keys())
 
                     assert len(stats) > 0, "Must track statistics to fix phase based on efficiency!"
 
                     eff = stats[groups[-1]]["efficiency"][self.iter]
-                    if eff > self.flags["fixed_phase_activation_efficiency"]:
+                    if eff > self.flags["fix_phase_efficiency"]:
                         self.flags["fixed_phase"] = True
-                if iter > self.flags["fixed_phase_activation_iteration"]:
+                if iter > self.flags["fix_phase_iteration"]:
                     self.flags["fixed_phase"] = True
 
                 if self.flags["fixed_phase"] and self.phase_ff is None or was_not_fixed:

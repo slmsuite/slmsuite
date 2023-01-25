@@ -198,10 +198,10 @@ def imprint(
 
 # Unit helper functions
 BLAZE_LABELS = {
-    "norm" : (r"$k_x/k$", r"$k_y/k$"), 
+    "norm" : (r"$k_x/k$", r"$k_y/k$"),
     "kxy" : (r"$k_x/k$", r"$k_y/k$"),
     "rad" : (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
-    "knm" : (r"$n$ [pix]", r"$m$ [pix]"), 
+    "knm" : (r"$n$ [pix]", r"$m$ [pix]"),
     "freq" : (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
     "lpmm" : (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
     "mrad" : (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),

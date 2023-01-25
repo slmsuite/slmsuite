@@ -136,10 +136,10 @@ def take_plot(images):
         ax = plt.subplot(M, M, x + 1)
 
         ax.imshow(
-            images[x, :, :], 
+            images[x, :, :],
             vmin=vmin,
             vmax=vmax,
-            extent=extent, 
+            extent=extent,
             interpolation='none'
         )
         ax.axes.xaxis.set_visible(False)
@@ -154,7 +154,7 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     Consider, for example, a small spot on a field with strong background.
     Moment calculations in this situation will dominantly measure the moments
     of the rectangular field. This function zeros the fields below some threshold.
-    This thresold is set to either the mean plus ``deviations`` standard deviations,
+    This threshold is set to either the mean plus ``deviations`` standard deviations,
     computed uniquely for each image, or the median of each image if ``deviations``
     is ``None``.
 
@@ -1134,7 +1134,7 @@ def blob_array_detect(img, size, orientation=None, orientation_check=True, plot=
                 np.clip(np.amin(y) - zoom_pad, 0, dft_amp.shape[0]),
                 np.clip(np.amax(y) + zoom_pad, 0, dft_amp.shape[0]),
             ]
-            
+
             # Plot the unzoomed figure
             axs[0].imshow(plt_img)
 

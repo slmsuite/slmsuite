@@ -284,7 +284,7 @@ class Hologram:
             phase_shape = phase.shape
 
         if slm_shape is None:
-            slm_shape = (np.nan, np.nan) #TODO: review; should be target size?
+            slm_shape = (np.nan, np.nan) 
         else:
             try:  # Check if slm_shape is a CameraSLM.
                 if amp is None:
@@ -1842,7 +1842,7 @@ class SpotHologram(FeedbackHologram):
                 self.spot_kxy = None
                 self.spot_ij = None
         elif basis == "kxy":  # Normalized units
-            assert cameraslm is not None, "We need an cameraslm to interpret ij."
+            assert cameraslm is not None, "We need a cameraslm to interpret ij."
 
             self.spot_kxy = vectors
 
@@ -1879,17 +1879,15 @@ class SpotHologram(FeedbackHologram):
         ):
             raise ValueError("Spots outside SLM computational space bounds!")
 
+        # FUTURE: More rigorous PSF bounding based on imaged spots
         if self.spot_ij is not None:
             cam_shape = cameraslm.cam.shape
 
-            # Calculate the width of the integration region for the spot.
+            # Calculate the width of the integration region for the spot
+            # based on the smallest distance between target_spots.
             # Currently bounded between a width of 3 and 15, but maybe this
             # should be opened up to the user.
             psf = 2 * int(toolbox.smallest_distance(self.spot_ij) / 2) + 1
-            if psf < 3:
-                psf = 3
-            if psf > 15:
-                psf = 15
 
             if (
                 np.any(self.spot_ij[0] < psf / 2)
@@ -1898,10 +1896,15 @@ class SpotHologram(FeedbackHologram):
                 or np.any(self.spot_ij[1] >= cam_shape[0] - psf / 2)
             ):
                 raise ValueError("Spots outside camera bounds!")
-
-            self.psf = psf
         else:
-            self.psf = None
+            psf = 2 * int(toolbox.smallest_distance(self.spot_knm) / 2) + 1
+
+        # Bound and assign PSF
+        if psf < 3:
+            psf = 3
+        if psf > 15:
+            psf = 15
+        self.psf = psf
 
         # Parse spot_amp.
         if spot_amp is None:
@@ -2147,8 +2150,35 @@ class SpotHologram(FeedbackHologram):
         feedback = self.flags["feedback"]
 
         if feedback == "computational":
-            # TODO: Modify this by integrating over psf_knm?
+            # Pixel-by-pixel weighing
             self._update_weights_generic(self.weights, self.amp_ff, self.target)
+        elif feedback == "computational_spot":
+            if self.shape == self.slm_shape:
+                # PSF is one pixel wide: no integration required.
+                self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (
+                    self._update_weights_generic(
+                        self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
+                        self.amp_ff[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
+                        self.spot_amp,
+                    )
+                )
+            else:
+                # Spot PSF is wider than a pixel: integrate a window around each spot
+                feedback = analysis.take(
+                    np.square(self.amp_ff.get()), self.spot_knm_rounded, self.psf,
+                    centered=True, integrate=True,
+                )
+                
+                feedback = np.sqrt(np.array(feedback, dtype=self.dtype))
+
+                self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (
+                    self._update_weights_generic(
+                        self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
+                        cp.array(feedback),
+                        self.spot_amp,
+                    )
+                )
+
         elif feedback == "experimental_spot":
             self.measure(basis="ij")
 
@@ -2170,15 +2200,34 @@ class SpotHologram(FeedbackHologram):
         """
         Wrapped by :meth:`SpotHologram.update_stats()`.
         """
-        # TODO: Modify this by integrating over psf_knm?
+
         if "computational_spot" in stat_groups:
-            total = cp.sum(cp.square(self.amp_ff))
-            stats["computational_spot"] = self._calculate_stats(
-                self.amp_ff[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
-                self.spot_amp,
-                efficiency_compensation=False,
-                total=total,
-            )
+            if self.shape == self.slm_shape:
+                # PSF is one pixel wide: no integration required.
+                total = cp.sum(cp.square(self.amp_ff))
+                stats["computational_spot"] = self._calculate_stats(
+                    self.amp_ff[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
+                    self.spot_amp,
+                    efficiency_compensation=False,
+                    total=total,
+                )
+            else:
+                # Spot PSF is wider than a pixel: integrate a window around each spot
+                pwr_ff = np.square(self.amp_ff.get())
+                feedback = analysis.take(
+                    pwr_ff, self.spot_knm, self.psf, centered=True, integrate=True
+                )
+                feedback = np.sqrt(np.array(feedback, dtype=self.dtype))
+                total = np.sum(self.dtype(pwr_ff))
+                
+                stats["experimental_spot"] = self._calculate_stats(
+                    np.sqrt(np.array(feedback, dtype=self.dtype)),
+                    self.spot_amp,
+                    mp=np,
+                    efficiency_compensation=False,
+                    total=total,
+                )
+
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
 
@@ -2186,7 +2235,6 @@ class SpotHologram(FeedbackHologram):
                 np.square(self.img_ij), self.spot_ij, self.psf, centered=True, integrate=True
             )
             feedback = np.sqrt(np.array(feedback, dtype=self.dtype))
-
             total = np.sum(self.dtype(np.square(self.img_ij)))
 
             stats["experimental_spot"] = self._calculate_stats(

@@ -77,9 +77,9 @@ from slmsuite.holography import analysis, toolbox
 
 # List of algorithms and default parameters
 # See algorithm documentation for parameter definitions.
-# Tip: In general, decreasing the feedback exponent (from 1) improves 
+# Tip: In general, decreasing the feedback exponent (from 1) improves
 #      stability at the cost of slower convergence. The default (0.9)
-#      is an empirically derived value for a reasonable tradeoff. 
+#      is an empirically derived value for a reasonable tradeoff.
 ALGORITHM_DEFAULTS = {"GS":             {"feedback" : ""}, # No feedback for bare GS
                       "WGS-Leonardo" :  {"feedback" : "computational",
                                          "feedback_exponent" : 0.9},
@@ -272,26 +272,36 @@ class Hologram:
                 "FFT computation.".format(self.shape)
             )
 
-        # 1.5) Determine the shape of the SLM
+        # 1.5) Determine the shape of the SLM. We have three sources of this shape, which are
+        # optional to pass, but must be self-consistant if passed:
+        # a) The shape of the nearfield amplitude
+        # b) The shape of the seed nearfield phase
+        # c) slm_shape itself (which is set to the shape of a passed SLM, if given).
+        # If no parameter is passed, these shapes are set to (nan, nan) to prepare for a
+        # vote (next section).
+
+        # Option a
         if amp is None:
             amp_shape = (np.nan, np.nan)
         else:
             amp_shape = amp.shape
 
+        # Option b
         if phase is None:
             phase_shape = (np.nan, np.nan)
         else:
             phase_shape = phase.shape
 
+        # Option c
         if slm_shape is None:
             slm_shape = (np.nan, np.nan) 
         else:
-            try:  # Check if slm_shape is a CameraSLM.
+            try:        # Check if slm_shape is a CameraSLM.
                 if amp is None:
                     amp = slm_shape.slm.measured_amplitude
                 slm_shape = slm_shape.slm.shape
             except:
-                try:  # Check if slm_shape is an SLM
+                try:    # Check if slm_shape is an SLM
                     if amp is None:
                         amp = slm_shape.measured_amplitude
                     slm_shape = slm_shape.shape
@@ -301,7 +311,7 @@ class Hologram:
             if len(slm_shape) != 2:
                 slm_shape = (np.nan, np.nan)
 
-        # 1.5 [cont]) We now have a few options for what the shape of the SLM could be.
+        # 1.5) [cont] We now have a few options for what the shape of the SLM could be.
         # Parse these to validate consistency.
         stack = np.vstack((amp_shape, phase_shape, slm_shape))
 

@@ -681,11 +681,11 @@ class FourierSLM(CameraSLM):
                 correction_dict.update({key: np.zeros((NY, NX), dtype=np.float32)})
 
         # Remove the current calibration
-        amplitude_measured = self.slm.amplitude_measured
-        phase_correction = self.slm.amplitude_measured
+        measured_amplitude = self.slm.measured_amplitude
+        phase_correction = self.slm.measured_amplitude
         wavefront_calibration = self.wavefront_calibration
 
-        self.slm.amplitude_measured = None
+        self.slm.measured_amplitude = None
         self.slm.phase_correction = None
         self.wavefront_calibration = None
 
@@ -1018,7 +1018,7 @@ class FourierSLM(CameraSLM):
                 plot_labeled(interference_image, plot=plot, title="Best Interference")
 
             if test_superpixel is not None:
-                self.slm.amplitude_measured = amplitude_measured
+                self.slm.measured_amplitude = measured_amplitude
                 self.slm.phase_correction = phase_correction
                 self.wavefront_calibration = wavefront_calibration
 

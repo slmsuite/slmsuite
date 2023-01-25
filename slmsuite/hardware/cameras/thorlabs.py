@@ -253,19 +253,19 @@ class ThorCam(Camera):
             woi = (
                 self.cam.roi_range.upper_left_x_pixels_min,
                 self.cam.roi_range.lower_right_x_pixels_max
-                - self.cam.roi_range.upper_left_x_pixels_min,
+                - self.cam.roi_range.upper_left_x_pixels_min + 1,
                 self.cam.roi_range.upper_left_y_pixels_min,
                 self.cam.roi_range.lower_right_y_pixels_max
-                - self.cam.roi_range.upper_left_y_pixels_min,
+                - self.cam.roi_range.upper_left_y_pixels_min + 1,
             )
 
         self.woi = woi
 
         newroi = ROI(
-            self.cam.roi_range.lower_right_x_pixels_max - woi[0] - woi[1],
+            self.cam.roi_range.lower_right_x_pixels_max - woi[0] - woi[1] + 1,
             woi[2],
             self.cam.roi_range.lower_right_x_pixels_max - woi[0],
-            woi[2] + woi[3],
+            woi[2] + woi[3] - 1,
         )
 
         assert (
@@ -289,10 +289,13 @@ class ThorCam(Camera):
             <= self.cam.roi_range.lower_right_y_pixels_max
         )
 
+        # Update the woi
         self.cam.roi = newroi
-
         self.woi = woi
-        self.shape = (woi[3], woi[1])
+
+        # Update the shape (test the transform; maybe make this more efficient in the future)
+        test = np.zeros((woi[3], woi[1]))
+        self.shape = np.shape(self.transform(test))
 
         # Restore profile
         self.setup(profile)
@@ -375,7 +378,7 @@ class ThorCam(Camera):
 
                 if ret is not None:
                     break
-                
+
         return ret
 
     def flush(self, timeout_s=1, verbose=False):

@@ -403,7 +403,7 @@ class Hologram:
             pixels = np.power(2, int(np.ceil(np.log2(pixels))))
             precision_shape = (pixels, pixels)
         elif np.isfinite(precision):
-            raise Exception("Must supply a CameraSLM object to implement precision calculations!")
+            raise Exception("Must pass a CameraSLM object to slm_shape to implement precision calculations!")
         else:
             precision_shape = slm_shape
 
@@ -1854,7 +1854,7 @@ class SpotHologram(FeedbackHologram):
                 self.spot_kxy, "kxy", "knm", cameraslm.slm, shape
             )
         else:
-            raise Exception("Unrecognized basis '{}'.".format(basis))
+            raise Exception("Unrecognized basis for spots '{}'.".format(basis))
 
         # Check to make sure spots are within relevant camera and SLM shapes.
         if (
@@ -1863,7 +1863,11 @@ class SpotHologram(FeedbackHologram):
             np.any(self.spot_knm[0] > shape[1]-1) or
             np.any(self.spot_knm[1] > shape[0]-1)
         ):
-            raise ValueError("Spots outside SLM computational space bounds!")
+            raise ValueError(
+                "Spots outside SLM computational space bounds!\nSpots: {}\nBounds: {}".format(
+                    self.spot_knm, shape
+                )
+            )
 
         if self.spot_ij is not None:
             cam_shape = cameraslm.cam.shape
@@ -1884,7 +1888,11 @@ class SpotHologram(FeedbackHologram):
                 or np.any(self.spot_ij[1] < psf / 2)
                 or np.any(self.spot_ij[1] >= cam_shape[0] - psf / 2)
             ):
-                raise ValueError("Spots outside camera bounds!")
+                raise ValueError(
+                    "Spots outside camera bounds!\nSpots: {}\nBounds: {}".format(
+                        self.spot_ij, cam_shape
+                    )
+                )
 
             self.psf = psf
         else:

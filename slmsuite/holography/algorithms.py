@@ -2230,7 +2230,7 @@ class SpotHologram(FeedbackHologram):
                 feedback = np.sqrt(np.array(feedback, dtype=self.dtype))
                 total = np.sum(self.dtype(pwr_ff))
                 
-                stats["experimental_spot"] = self._calculate_stats(
+                stats["computational_spot"] = self._calculate_stats(
                     np.sqrt(np.array(feedback, dtype=self.dtype)),
                     self.spot_amp,
                     mp=np,

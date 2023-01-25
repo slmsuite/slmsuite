@@ -47,7 +47,7 @@ class SLM:
     settle_time_s : float
         Delay in seconds to allow the SLM to settle. This is mostly useful for applications
         requiring high precision. This delay is applied if the user flags ``settle``
-        in :meth:`write()`.
+        in :meth:`write()`. Defaults to .3 sec for precision.
     dx_um : float
         x pixel pitch in um.
     dy_um : float
@@ -89,7 +89,7 @@ class SLM:
         wav_design_um=None,
         dx_um=1,
         dy_um=1,
-        settle_time_s=0,
+        settle_time_s=0.3,
     ):
         """
         Initialize SLM.
@@ -500,73 +500,3 @@ class SLM:
         self.measured_amplitude = np.exp(-r2_grid * (1 / radius ** 2))
 
         return self.measured_amplitude
-
-
-class VirtualSLM(SLM):
-    """
-    An SLM that controls a subset of another SLM's pixels.
-
-    Attributes
-    ----------
-    parent : SLM
-        The SLM on which this SLM controls pixels.
-    window_mask : numpy.ndarray<bool> (height, width)
-        Boolean mask that describes the pixels on the parent this SLM controls.
-        If ``None``, the active pixels are determined by :attr:`window_square`.
-        See :meth:`~slmsuite.holography.toolbox.window_slice`.
-    window_square : (int, int, int, int)
-        If :attr:`window_mask` is ``None``, this window describes
-        the pixels on the parent this SLM controls. Otherwise, this
-        window covers :attr:`window_mask`. The square
-        is specified in the format (x, width, y, height).
-        See :meth:`~slmsuite.holography.toolbox.window_slice`.
-
-    """
-
-    def __init__(self, parent, window_mask=None, window_square=None):
-        """
-        Parameters
-        ----------
-        parent
-            See :attr:`parent`.
-        window_mask
-            See :meth:`set_window`.
-        window_square
-            See :meth:`set_window`.
-        """
-        self.parent = parent
-        self.set_window(window_mask, window_square=window_square)
-
-    def set_window(self, window_mask, window_square=None):
-        """
-        Sets :attr:`window_mask`, :attr:`window_square`, and :attr:`shape`.
-
-        Parameters
-        ----------
-        window_mask
-            See :attr:`window_mask`.
-        window_square
-            See :attr:`window_square`. If ``None``, one will
-            be created for ``window_mask`` if ``window_mask``
-            is not also ``None``.
-        """
-        self.window_mask = window_mask
-        if window_square is None and window_mask is not None:
-            self.window_square = toolbox.window_square(window_mask)
-        else:
-            self.window_square = window_square
-        if self.window_square is None:
-            self.shape = None
-        else:
-            self.shape = (self.window_square[3], self.window_square[1])
-
-    def __getattr__(self, name):
-        """
-        VirtualSLM inherits parent's attributes.
-        """
-        if name in self.__dict__.keys():
-            value = self.__dict__[name]
-        else:
-            value = parent.__getattr__(name)
-
-        return value

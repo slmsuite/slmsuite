@@ -332,7 +332,7 @@ class ThorCam(Camera):
 
             self.profile = profile
 
-    def get_image(self, timeout_s=1, trigger=True, grab=True):
+    def get_image(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
         """
         See :meth:`.Camera.get_image`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
@@ -353,25 +353,29 @@ class ThorCam(Camera):
         numpy.ndarray or None
             Array of shape :attr:`shape` if ``grab=True``, else ``None``.
         """
-        if trigger:
-            if self.profile == "single":
-                t = time.time()
-                self.cam.issue_software_trigger()
+        for _ in range(attempts):
+            if trigger:
+                if self.profile == "single":
+                    t = time.time()
+                    self.cam.issue_software_trigger()
 
-        ret = None
-        if grab:
-            # Start the timer.
-            if not trigger:
-                t = time.time()
+            ret = None
+            if grab:
+                # Start the timer.
+                if not trigger:
+                    t = time.time()
 
-            frame = None
+                frame = None
 
-            # Try to grab a frame until we succeed.
-            while time.time() - t < timeout_s and frame is None:
-                frame = self.cam.get_pending_frame_or_null()
+                # Try to grab a frame until we succeed.
+                while time.time() - t < timeout_s and frame is None:
+                    frame = self.cam.get_pending_frame_or_null()
 
-            ret = self.transform(np.copy(frame.image_buffer)) if frame is not None else None
+                ret = self.transform(np.copy(frame.image_buffer)) if frame is not None else None
 
+                if ret is not None:
+                    break
+                
         return ret
 
     def flush(self, timeout_s=1, verbose=False):

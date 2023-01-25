@@ -459,7 +459,7 @@ class Hologram:
               where :math:`\mathcal{W}`, :math:`\mathcal{T}`, and :math:`\mathcal{F}`
               are the weight amplitudes,
               target (goal) amplitudes, and
-              feedback (measured/) amplitudes,
+              feedback (measured) amplitudes,
               and :math:`p` is the power passed as ``"power"`` in
               :attr:`~slmsuite.holography.algorithms.Hologram.flags` (see ``kwargs``).
               The power :math:`p` defaults to .7 if not passed.

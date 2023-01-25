@@ -9,7 +9,7 @@ from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
 from scipy.optimize import curve_fit
 
 from slmsuite.holography.toolbox import format_2vectors
-from slmsuite.misc.math import INTEGER_TYPES
+from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.fitfunctions import gaussian2d
 
 
@@ -54,7 +54,7 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
         where each float corresponds to the :meth:`numpy.sum` of a cropped image.
     """
     # Clean variables.
-    if isinstance(size, INTEGER_TYPES):
+    if isinstance(size, REAL_TYPES):
         size = (size, size)
 
     vectors = format_2vectors(vectors)
@@ -65,13 +65,13 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
 
     region_x, region_y = np.meshgrid(edge_x, edge_y)
 
-    # TODO: maybe want np.around here rather than integer truncation
-    integration_x = np.add(
+    # Get the lists for the integration regions.
+    integration_x = np.around(np.add(
         region_x.ravel()[:, np.newaxis].T, vectors[:][0][:, np.newaxis]
-    ).astype(np.int)
-    integration_y = np.add(
+    )).astype(np.int)
+    integration_y = np.around(np.add(
         region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
-    ).astype(np.int)
+    )).astype(np.int)
 
     shape = np.shape(images)
 
@@ -83,9 +83,13 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
             | (integration_y >= shape[-2])
         )
 
-        # Clip these indices to prevent errors.
-        np.clip(integration_x, 0, shape[-1] - 1, out=integration_x)
-        np.clip(integration_y, 0, shape[-2] - 1, out=integration_y)
+        if np.any(mask):
+            # Clip these indices to prevent errors.
+            np.clip(integration_x, 0, shape[-1] - 1, out=integration_x)
+            np.clip(integration_y, 0, shape[-2] - 1, out=integration_y)
+        else:
+            # No clipping needed.
+            clip = False
     else:
         pass  # Don't prevent out-of-range errors.
 
@@ -951,6 +955,7 @@ def blob_array_detect(
          - ``"b"`` : ``numpy.ndarray`` (2, 1).
     """
     img_8it = _make_8bit(img)
+    start_orientation = orientation
 
     if orientation is None:
         # FFT to find array pitch and orientation
@@ -975,7 +980,7 @@ def blob_array_detect(
         dft_fit_failed = len(blobs) < 5
 
         if plot:
-            _, axs = plt.subplots(1, 2, figsize=(12, 6))
+            fig, axs = plt.subplots(1, 2, figsize=(12, 6), facecolor='white')
 
             plt_img = _make_8bit(dft_amp.copy())
 
@@ -994,20 +999,20 @@ def blob_array_detect(
                 np.clip(np.amax(y) + zoom_pad, 0, dft_amp.shape[0]),
             ]
 
-            # Plot the unzoomed DFT.
+            # Plot the unzoomed figure
             axs[0].imshow(plt_img)
+
             # Plot a red rectangle to show the extents of the zoom region
             rect = plt.Rectangle(
                 [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
             )
             axs[0].add_patch(rect)
-            axs[0].set_title("shifted DFT - Full")
+            axs[0].set_title("DFT Result - Full")
+            axs[0].set_xticks([])
+            axs[0].set_yticks([])
 
-            # Plot the zoomed DFT.
+            # Plot the zoomed figure
             axs[1].imshow(plt_img)
-            axs[1].set_title("shifted DFT - Zoom")
-            axs[1].set_xlim(xl)
-            axs[1].set_ylim(np.flip(yl))
             axs[1].scatter(
                 x,
                 y,
@@ -1017,6 +1022,20 @@ def blob_array_detect(
                 s=1000,
                 linewidths=1,
             )
+            for spine in ["top", "bottom", "right", "left"]:
+                axs[1].spines[spine].set_color("r")
+                axs[1].spines[spine].set_linewidth(1.5)
+            axs[1].set_title("DFT Result - Zoom")
+            axs[1].set_xticks([])
+            axs[1].set_yticks([])
+            axs[1].set_xlim(xl)
+            axs[1].set_ylim(np.flip(yl))
+
+            for ax in axs:
+                ax.set_xlabel("Image Reciprocal $x$ [1/pix]")
+                ax.set_ylabel("Image Reciprocal $y$ [1/pix]")
+            fig.tight_layout(pad=4.0)
+
             plt.show()
 
         if dft_fit_failed:
@@ -1243,71 +1262,6 @@ def blob_array_detect(
 
     orientation = {"M": results[index][2], "b": results[index][1]}
 
-    if plot:
-        array_center = orientation["b"]
-        true_centers = np.matmul(orientation["M"], centers) + orientation["b"]
-
-        if start_orientation is None:
-            fig, axs = plt.subplots(1, 2, figsize=(12, 12), facecolor='white')
-
-            plt_img = _make_8bit(dft_amp.copy())
-
-            # Determine the bounds of the zoom region, padded by zoom_pad
-            zoom_pad = 50
-
-            x = np.array([blob.pt[0] for blob in blobs])
-            xl = [
-                np.clip(np.amin(x) - zoom_pad, 0, dft_amp.shape[1]),
-                np.clip(np.amax(x) + zoom_pad, 0, dft_amp.shape[1]),
-            ]
-
-            y = np.array([blob.pt[1] for blob in blobs])
-            yl = [
-                np.clip(np.amin(y) - zoom_pad, 0, dft_amp.shape[0]),
-                np.clip(np.amax(y) + zoom_pad, 0, dft_amp.shape[0]),
-            ]
-
-            # Plot the unzoomed figure
-            axs[0].imshow(plt_img)
-
-            # Plot a red rectangle to show the extents of the zoom region
-            rect = plt.Rectangle(
-                [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
-            )
-            axs[0].add_patch(rect)
-            axs[0].set_title("DFT Result - Full")
-            axs[0].set_xticks([])
-            axs[0].set_yticks([])
-
-            # Plot the zoomed figure
-            axs[1].imshow(plt_img)
-            axs[1].scatter(
-                x,
-                y,
-                facecolors="none",
-                edgecolors="r",
-                marker="o",
-                s=1000,
-                linewidths=1,
-            )
-            for spine in ["top", "bottom", "right", "left"]:
-                axs[1].spines[spine].set_color("r")
-                axs[1].spines[spine].set_linewidth(1.5)
-            axs[1].set_title("DFT Result - Zoom")
-            axs[1].set_xticks([])
-            axs[1].set_yticks([])
-            axs[1].set_xlim(xl)
-            axs[1].set_ylim(np.flip(yl))
-
-            # fig.supxlabel("Image Reciprocal $x$ [1/pix]")
-            # fig.supylabel("Image Reciprocal $y$ [1/pix]")
-            for ax in axs:
-                ax.set_xlabel("Image Reciprocal $x$ [1/pix]")
-                ax.set_ylabel("Image Reciprocal $y$ [1/pix]")
-            fig.tight_layout(pad=4.0)
-
-            plt.show()
-
     # Hone the center of our fit by averaging the positional deviations of spots.
     hone_count = 3
     for _ in range(hone_count):
@@ -1321,26 +1275,10 @@ def blob_array_detect(
             img, guess_positions, psf, centered=True, integrate=False, clip=True
         )
 
-        # take_plot(regions)
-
-        # TODO: Update with take and take moments.
-        shift = image_positions(regions)
+        # Get the first order moment around each of the guess windows.
+        shift = image_positions(regions) - (guess_positions - np.around(guess_positions))
         shift_x = shift[0, :]
         shift_y = shift[1, :]
-
-        # # Filter the images, but not in the direction of the stack.
-        # sp_gaussian_filter1d(regions, blur, axis=1, output=regions)
-        # sp_gaussian_filter1d(regions, blur, axis=2, output=regions)
-
-        # # Future: fit gaussians instead of taking the (integer) max point for floating accuracy.
-        # shift_x = (
-        #     np.argmax(np.amax(regions, axis=1, keepdims=True), axis=2) - (psf - 1) / 2
-        # )
-        # shift_y = (
-        #     np.argmax(np.amax(regions, axis=2, keepdims=True), axis=1) - (psf - 1) / 2
-        # )
-
-        # take_plot(regions)
 
         # Remove outliers
         shift_error = np.sqrt(np.square(shift_x) + np.square(shift_y))

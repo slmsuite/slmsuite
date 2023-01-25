@@ -222,7 +222,7 @@ def imprint(
     matrix,
     window,
     function,
-    grid,
+    grid=None,
     imprint_operation="replace",
     centered=False,
     clip=True,
@@ -252,14 +252,16 @@ def imprint(
         The data to imprint a ``function`` onto.
     window
         See :meth:`~slmsuite.holography.toolbox.window_slice`.
-    function : function
+    function : function OR float
         A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
         which accept ``grid`` as the first argument.
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Also accepts floating point values, in which case this value is simply added.
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR None
         Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
+        ``None`` can only be passed if a float is passed as ``function``.
     imprint_operation : {"replace" OR "add"}
         Decides how the ``function`` is imparted to the ``matrix``.
 
@@ -286,21 +288,30 @@ def imprint(
         If invalid ``window`` or ``imprint_operation`` are provided.
     """
     # Format the grid.
-    (x_grid, y_grid) = _process_grid(grid)
+    if grid is not None:
+        (x_grid, y_grid) = _process_grid(grid)
 
     # Get slices for the window in the matrix.
     shape = matrix.shape if clip else None
     slice_ = window_slice(window, shape=shape, centered=centered)
 
+    # Decide whether to treat function as a float.
+    is_float = isinstance(function, REAL_TYPES)
+
+    if not is_float:
+        assert grid is not None, "grid cannot be None if a function is given."
+
     # Modify the matrix.
     if imprint_operation == "replace":
-        matrix[slice_] = function(
-            (x_grid[slice_], y_grid[slice_]), **kwargs
-        )
+        if is_float:
+            matrix[slice_] = function
+        else:
+            matrix[slice_] = function((x_grid[slice_], y_grid[slice_]), **kwargs)
     elif imprint_operation == "add":
-        matrix[slice_] += function(
-            (x_grid[slice_], y_grid[slice_]), **kwargs
-        )
+        if is_float:
+            matrix[slice_] += function
+        else:
+            matrix[slice_] += function((x_grid[slice_], y_grid[slice_]), **kwargs)
     else:
         raise ValueError("Unrecognized imprint operation {}.".format(imprint_operation))
 

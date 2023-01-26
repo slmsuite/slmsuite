@@ -67,12 +67,12 @@ def window_slice(window, shape=None, centered=False):
     elif np.ndim(window) == 2:
         slice_ = window
     else:
-        raise ValueError("Unrecognized format for ``window``.")
+        raise ValueError("Unrecognized format for `window`.")
 
     return slice_
 
 
-def window_square(window):
+def window_square(window, padding_frac=0, padding_pix=0):
     """
     Find a square that covers the active region of ``window``.
 
@@ -80,6 +80,10 @@ def window_square(window):
     ----------
     window : numpy.ndarray<bool> (height, width)
         Boolean mask.
+    padding : float
+        Fraction of the window width and height to pad these by on all sides.
+        For instance, 
+        This result is clipped to be within ``shape`` of the window.
 
     Returns
     -------
@@ -89,26 +93,33 @@ def window_square(window):
         (x, y) is the upper left coordinate, and (width2, height2) define
         the extent.
     """
-    # TODO: could extend input to handle second type of window
-    # described in :meth:`~slmsuite.holography.toolbox.window_slice`.
-    imins = np.zeros(window.shape[0])
-    imaxs = np.zeros(window.shape[0])
-    jmins = np.zeros(window.shape[1])
-    jmaxs = np.zeros(window.shape[1])
-    for j in range(window.shape[0]):
-        active_inds = np.argwhere(window[j, :])
-        imins[j] = np.inf if len(active_inds) == 0 else np.min(active_inds)
-        imaxs[j] = -np.inf if len(active_inds) == 0 else np.max(active_inds)
-    for i in range(window.shape[1]):
-        active_inds = np.argwhere(window[:, i])
-        jmins[i] = np.inf if len(active_inds) == 0 else np.min(active_inds)
-        jmaxs[i] = -np.inf if len(active_inds) == 0 else np.max(active_inds)
-    imin = np.min(imins)
-    imax = np.max(imaxs)
-    jmin = np.min(jmins)
-    jmax = np.max(jmaxs)
+    limits = []
 
-    return (imin, imax - imin, jmin, jmax - jmin)
+    # For each axis...
+    for a in [0, 1]:
+        if len(window) == 2:        # Handle two list case
+            limit = np.array([np.amin(window[a]), np.amax(window[a])+1])
+        elif np.ndim(window) == 2:  # Handle the boolean array case
+            collapsed = np.where(np.any(window, axis=a))  # Collapse the other axis
+            limit = np.array([np.amin(collapsed), np.amax(collapsed)+1])
+        else:
+            raise ValueError("Unrecognized format for `window`.")
+
+        # Add padding if desired.
+        padding_ = int(np.floor(np.diff(limit) * padding_frac) + padding_pix)
+        limit += np.array([-padding_, padding_])
+
+        # Clip the padding to shape.
+        if np.ndim(window) == 2:
+            limit = np.clip(limit, 0, window.shape[1-a])
+
+        limits.append(tuple(limit))
+
+    # Return desired format.
+    return (
+        limits[0][0], limits[0][1] - limits[0][0], 
+        limits[1][0], limits[1][1] - limits[1][0]
+    )
 
 
 def voronoi_windows(grid, vectors, radius=None, plot=False):

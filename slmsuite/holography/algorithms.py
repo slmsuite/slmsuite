@@ -306,7 +306,7 @@ class Hologram:
         if np.all(np.isnan(stack)):
             self.slm_shape = self.shape
         else:
-            self.slm_shape = np.nanmean(stack, axis=0).astype(np.int)
+            self.slm_shape = np.around(np.nanmean(stack, axis=0)).astype(int)
 
             if amp is not None:
                 assert np.all(self.slm_shape == np.array(amp_shape))
@@ -410,7 +410,7 @@ class Hologram:
         if padding_order > 0:
             padding_shape = np.power(
                 2, np.ceil(np.log2(slm_shape)) + padding_order - 1
-            ).astype(np.int)
+            ).astype(int)
         else:
             padding_shape = slm_shape
 
@@ -2017,8 +2017,7 @@ class SpotHologram(FeedbackHologram):
         # Erase previous target in-place. FUTURE: Optimize speed if positions haven't shifted?
         self.target.fill(0)
 
-        self.spot_knm_rounded = np.around(self.spot_knm.astype(np.float))
-        self.spot_knm_rounded = self.spot_knm_rounded.astype(np.int)
+        self.spot_knm_rounded = np.around(self.spot_knm).astype(int)
 
         if self.cameraslm is not None:
             self.spot_kxy_rounded = toolbox.convert_blaze_vector(

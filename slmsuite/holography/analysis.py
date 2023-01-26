@@ -68,10 +68,10 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
     # Get the lists for the integration regions.
     integration_x = np.around(np.add(
         region_x.ravel()[:, np.newaxis].T, vectors[:][0][:, np.newaxis]
-    )).astype(np.int)
+    )).astype(int)
     integration_y = np.around(np.add(
         region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
-    )).astype(np.int)
+    )).astype(int)
 
     shape = np.shape(images)
 
@@ -191,7 +191,7 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     out : numpy.ndarray
         Images with zeroed field.
     """
-    images = np.array(images.astype(np.float))  # Hack to make things work.
+    images = np.array(images, dtype=float)  # Hack to make things work.
     if len(images.shape) == 2:
         images = np.reshape(images, (1, images.shape[0], images.shape[1]))
     img_count = images.shape[0]
@@ -384,7 +384,7 @@ def image_normalize(images, nansum=False, remove_field=False):
     if remove_field:
         images = image_remove_field(images, ignore_nan=nansum)
     else:
-        images = np.array(images, dtype=np.float)
+        images = np.array(images, dtype=float)
         if len(images.shape) == 2:
             images = np.reshape(images, (1, images.shape[0], images.shape[1]))
 
@@ -1151,11 +1151,11 @@ def blob_array_detect(
         rotated_centers_larger += np.flip(mask.shape)[:, np.newaxis] / 2
 
         # Pixels to use for the kernel.
-        x_array = rotated_centers[0, :].astype(np.int)
-        y_array = rotated_centers[1, :].astype(np.int)
+        x_array = np.around(rotated_centers[0, :]).astype(int)
+        y_array = np.around(rotated_centers[1, :]).astype(int)
 
-        x_larger = rotated_centers_larger[0, :].astype(np.int)
-        y_larger = rotated_centers_larger[1, :].astype(np.int)
+        x_larger = np.around(rotated_centers_larger[0, :]).astype(int)
+        y_larger = np.around(rotated_centers_larger[1, :]).astype(int)
 
         # Make a mask with negative power at the border, positive
         # at the array, with integrated intensity of 0.
@@ -1194,14 +1194,14 @@ def blob_array_detect(
 
                 integration_x, integration_y = np.meshgrid(edge, edge)
 
-                rotated_integration_x = np.add(
+                rotated_integration_x = np.around(np.add(
                     integration_x.ravel()[:, np.newaxis].T,
                     rotated_centers[:][0][:, np.newaxis],
-                ).astype(np.int)
-                rotated_integration_y = np.add(
+                )).astype(int)
+                rotated_integration_y = np.around(np.add(
                     integration_y.ravel()[:, np.newaxis].T,
                     rotated_centers[:][1][:, np.newaxis],
-                ).astype(np.int)
+                )).astype(int)
 
                 spotpowers = np.reshape(
                     np.sum(match[rotated_integration_y, rotated_integration_x], 1),
@@ -1385,7 +1385,7 @@ def _make_8bit(img):
     ndarray
         img as an 8-bit image.
     """
-    img = img.astype(np.float)
+    img = img.astype(float)
 
     img -= np.amin(img)
     img = img / np.amax(img) * (2 ** 8 - 1)

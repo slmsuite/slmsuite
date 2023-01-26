@@ -623,8 +623,8 @@ class FourierSLM(CameraSLM):
         plot_everything = plot >= 2
 
         # Clean the points
-        base_point = self.kxyslm_to_ijcam([0, 0]).astype(np.int)
-        interference_point = format_2vectors(interference_point).astype(np.int)
+        base_point = np.around(self.kxyslm_to_ijcam([0, 0])).astype(int)
+        interference_point = np.around(format_2vectors(interference_point)).astype(int)
         field_point = format_2vectors(field_point)
 
         # Use the Fourier calibration to help find points/sizes in the imaging plane.
@@ -643,26 +643,26 @@ class FourierSLM(CameraSLM):
 
             field_point = self.kxyslm_to_ijcam(field_blaze)
 
-        field_point = format_2vectors(field_point).astype(np.int)
+        field_point = np.around(format_2vectors(field_point)).astype(int)
 
         # Determine how many rows and columns of superpixels we will use.
-        [NY, NX] = np.ceil(np.array(self.slm.shape) / superpixel_size).astype(np.int)
+        [NY, NX] = np.ceil(np.array(self.slm.shape) / superpixel_size).astype(int)
 
         if reference_superpixel is None:
             # Set the reference superpixel to be centered on the SLM.
             [nxref, nyref] = np.floor(  np.flip(self.slm.shape)
-                                        / superpixel_size / 2).astype(np.int)
+                                        / superpixel_size / 2).astype(int)
             
             reference_superpixel = [nxref, nyref]
         else:
             (nxref, nyref) = reference_superpixel
 
-        interference_size = np.array(
+        interference_size = np.around(np.array(
             self.get_farfield_spot_size(
                 (superpixel_size * self.slm.dx, superpixel_size * self.slm.dy),
                 basis="ij"
             )
-        ).astype(np.int)
+        )).astype(int)
 
         correction_dict = {
             "NX": NX,

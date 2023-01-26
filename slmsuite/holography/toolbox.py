@@ -413,7 +413,7 @@ def convert_blaze_vector(
         """
     assert from_units in BLAZE_UNITS and to_units in BLAZE_UNITS
 
-    vector = format_2vectors(vector).astype(np.float)
+    vector = format_2vectors(vector).astype(float)
 
     if from_units == "freq" or to_units == "freq":
         if slm is None:

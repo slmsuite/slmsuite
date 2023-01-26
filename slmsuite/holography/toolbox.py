@@ -965,8 +965,7 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
 
 def zernike(grid, n, m, aperture=None):
     r"""
-    Returns a single Zernike polynomial. To improve performance, especially for higher
-    order polynomials, we store a cached of Zernike coefficients to avoid regeneration.
+    Returns a single real Zernike polynomial. See :meth:`zernike_sum()`.
 
     Parameters
     ----------
@@ -990,8 +989,30 @@ def zernike(grid, n, m, aperture=None):
 
 def zernike_sum(grid, weights, aperture=None):
     r"""
-    Returns a summation of Zernike polynomials. To improve performance, especially for higher
+    Returns a summation of real Zernike polynomials. To improve performance, especially for higher
     order polynomials, we store a cached of Zernike coefficients to avoid regeneration.
+    See the below example to generate :math:`Z_{20} - Z_{21} + Z_{31}`.
+
+    .. highlight:: python
+    .. code-block:: python
+
+        zernike_sum_phase = toolbox.zernike_sum(
+            grid=slm,
+            weights=(   ((2, 0),  1),       # Z_20
+                        ((2, 1), -1),       # Z_21
+                        ((3, 1),  1)    ),  # Z_31
+            aperture="circular"
+        )
+
+
+    Note
+    ~~~~
+    There are different schemes to index Zernike polynomials.
+    We use the indexing defined in [0]_, along with the algorithm defined there.
+    Other packages use different schemes, sometimes defining
+    :math:`m' = l = n - 2m`. Take care to avoid confusion.
+
+    .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
 
     Important
     ~~~~~~~~~
@@ -1034,6 +1055,7 @@ def zernike_sum(grid, weights, aperture=None):
     numpy.ndarray
         The phase for this function.
     """
+    # Parse passed values
     (x_grid, y_grid) = _process_grid(grid)
 
     if aperture is None:
@@ -1055,6 +1077,8 @@ def zernike_sum(grid, weights, aperture=None):
     else:
         raise ValueError("Type {} not recognized.".format(type(aperture)))
 
+    # At the end, we're going to set the values outside the aperture to zero.
+    # Make a mask for this if it's necessary.
     mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
     use_mask = np.any(mask == 0)
 
@@ -1065,6 +1089,9 @@ def zernike_sum(grid, weights, aperture=None):
         x_grid_scaled = x_grid * x_scale
         y_grid_scaled = y_grid * y_scale
 
+    # Now find the coefficients for polynomial terms x^ay^b. We want to only compute
+    # x^ay^b once because this is an operation on a large array. In contrast, summing
+    # the coefficients of the same terms is simple and fast scalar operations.
     summed_coefficients = {}
 
     for (key, weight) in weights:
@@ -1077,6 +1104,7 @@ def zernike_sum(grid, weights, aperture=None):
             else:
                 summed_coefficients[power_key] = power_factor
 
+    # Finally, build the polynomial.
     canvas = np.zeros(x_grid.shape)
 
     for power_key, factor in summed_coefficients.items():
@@ -1098,9 +1126,9 @@ _zernike_cache = {}
 
 def _zernike_coefficients(n, m):
     """
-    Returns the coefficients for the :math:`x^ay^b` terms of the cartesian Zernike polynomial
+    Returns the coefficients for the :math:`x^ay^b` terms of the cartesian real Zernike polynomial
     of index `(`n, m)``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
-    Uses the algorithm given in [0]_.
+    Uses the algorithm and indexing given in [0]_.
 
     .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
     """
@@ -1109,11 +1137,12 @@ def _zernike_coefficients(n, m):
 
     assert 0 <= m <= n, "Invalid cartesian Zernike index."
 
+    # Generate coefficients only if we have not already generated.
     key = (n, m)
-
     if not key in _zernike_cache:
         zernike_this = {}
 
+        # Define helper variables.
         l = n - 2 * m
 
         if l % 2:   # If even
@@ -1132,9 +1161,13 @@ def _zernike_coefficients(n, m):
         l = abs(l)
         m = int((n-l)/2)
 
+        # Helper function
         def comb(n, k):
             return factorial(n) / (factorial(k) * factorial(n-k))
 
+        # Finding the coefficients is a summed combinatorial search.
+        # This is why we cache: so we don't have to do this many times,
+        # especially for higher order polynomials and the corresponding cubic scaling.
         for i in range(q+1):
             for j in range(m+1):
                 for k in range(m-j+1):
@@ -1146,11 +1179,14 @@ def _zernike_coefficients(n, m):
 
                     power_key = (n - 2*(i + j + k) - p, 2 * (i + k) + p)
 
+                    # Add this coefficient to the element in the dictionary
+                    # corresponding to the right power.
                     if power_key in zernike_this:
                         zernike_this[power_key] += factor
                     else:
                         zernike_this[power_key] = factor
 
+        # Update the cache. Remove all factors that have cancelled out.
         _zernike_cache[key] = {power_key: factor for power_key, factor in zernike_this.items() if factor != 0}
 
     return _zernike_cache[key]

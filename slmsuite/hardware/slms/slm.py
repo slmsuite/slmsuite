@@ -432,8 +432,8 @@ class SLM:
 
             # This part (along with the choice of type), implements modulo much faster than np.mod().
             if self.bitresolution != 8 and self.bitresolution != 16:
-                bw = int(self.bitresolution - 1)
-                np.bitwise_and(out, bw, out=out)
+                active_bits_mask = int(self.bitresolution - 1)
+                np.bitwise_and(out, active_bits_mask, out=out)
         else:
             # phase_scaling is not included in the scaling.
             factor = -(self.bitresolution * self.phase_scaling / 2 / np.pi)

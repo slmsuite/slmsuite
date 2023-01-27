@@ -1864,7 +1864,7 @@ class SpotHologram(FeedbackHologram):
             np.any(self.spot_knm[1] > shape[0]-1)
         ):
             raise ValueError(
-                "Spots outside SLM computational space bounds!\nSpots: {}\nBounds: {}".format(
+                "Spots outside SLM computational space bounds!\nSpots:\n{}\nBounds: {}".format(
                     self.spot_knm, shape
                 )
             )
@@ -1889,7 +1889,7 @@ class SpotHologram(FeedbackHologram):
                 or np.any(self.spot_ij[1] >= cam_shape[0] - psf / 2)
             ):
                 raise ValueError(
-                    "Spots outside camera bounds!\nSpots: {}\nBounds: {}".format(
+                    "Spots outside camera bounds!\nSpots:\n{}\nBounds: {}".format(
                         self.spot_ij, cam_shape
                     )
                 )

@@ -356,16 +356,17 @@ class ThorCam(Camera):
         numpy.ndarray or None
             Array of shape :attr:`shape` if ``grab=True``, else ``None``.
         """
+        should_trigger = trigger and self.profile == "single"
+        
         for _ in range(attempts):
-            if trigger:
-                if self.profile == "single":
-                    t = time.time()
-                    self.cam.issue_software_trigger()
+            if should_trigger:
+                t = time.time()
+                self.cam.issue_software_trigger()
 
             ret = None
             if grab:
                 # Start the timer.
-                if not trigger:
+                if not should_trigger:
                     t = time.time()
 
                 frame = None

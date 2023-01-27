@@ -80,16 +80,17 @@ from slmsuite.holography import analysis, toolbox
 # Tip: In general, decreasing the feedback exponent (from 1) improves
 #      stability at the cost of slower convergence. The default (0.9)
 #      is an empirically derived value for a reasonable tradeoff.
-ALGORITHM_DEFAULTS = {"GS":             {"feedback" : ""}, # No feedback for bare GS
-                      "WGS-Leonardo" :  {"feedback" : "computational",
-                                         "feedback_exponent" : 0.9},
-                      "WGS-Kim" :       {"feedback" : "computational",
-                                         "fix_phase_efficiency" : None,
-                                         "fix_phase_iteration" : 5,
-                                         "feedback_exponent" : 0.9},
-                      "WGS-Nogrette" :  {"feedback" : "computational",
-                                         "factor":0.1}
-                     }
+ALGORITHM_DEFAULTS = {
+    "GS":             {"feedback" : ""},    # No feedback for bare GS
+    "WGS-Leonardo" :  {"feedback" : "computational",
+                        "feedback_exponent" : 0.9},
+    "WGS-Kim" :       {"feedback" : "computational",
+                        "fix_phase_efficiency" : None,
+                        "fix_phase_iteration" : 5,
+                        "feedback_exponent" : 0.9},
+    "WGS-Nogrette" :  {"feedback" : "computational",
+                        "factor":0.1}
+}
 
 class Hologram:
     r"""
@@ -294,7 +295,7 @@ class Hologram:
 
         # Option c
         if slm_shape is None:
-            slm_shape = (np.nan, np.nan) 
+            slm_shape = (np.nan, np.nan)
         else:
             try:        # Check if slm_shape is a CameraSLM.
                 if amp is None:
@@ -543,9 +544,10 @@ class Hologram:
             Optimization method to use. See the list of optimization methods above.
         maxiter : int
             Number of iterations to optimize before terminating.
-        verbose : bool
+        verbose : bool OR int
             Whether to display :mod:`tqdm` progress bars.
             These bars are also not displayed for ``maxiter <= 1``.
+            If ``verbose`` is greater than 1, then flags are printed as a preamble.
         callback : callable OR None
             Same functionality as the equivalently-named parameter in
             :meth:`scipy.optimize.minimize()`. ``callback`` must accept a Hologram
@@ -575,7 +577,7 @@ class Hologram:
         methods = list(ALGORITHM_DEFAULTS.keys())
         assert (
             method in methods
-        ), "Unrecognized method {}. Valid methods include [{}]".format(method, methods)
+        ), "Unrecognized method '{}'. Valid methods include [{}]".format(method, methods)
         self.method = method
 
         # Parse flags: empty old, load defaults, then update
@@ -588,19 +590,23 @@ class Hologram:
             if flag in list(ALGORITHM_DEFAULTS[method].keys()):
                 self.flags[flag] = kwargs[flag]
             else:
-                warnings.warn("Warning: unexpected flag %s supplied to %s!"%(flag,method))
+                warnings.warn("Warning: unexpected flag '{}' supplied to '{}'!".format(flag, method))
 
         # Add in non-defaulted flags
         self.flags["stat_groups"] = stat_groups
         self.flags["fixed_phase"] = False
 
+        # Print the optimization flags
+        if verbose > 1:
+            print("Optimizing with '{}' using the following method-specific flags:".format(self.method))
+            pprint.pprint({
+                key:value for (key, value) in self.flags.items()
+                if key in ALGORITHM_DEFAULTS[method]
+            })
+            print("", end="", flush=True)   # Prevent tqdm conflicts.
+
         # Iterations to process.
         iterations = range(maxiter)
-
-        # Print the optimization flags
-        if verbose:
-            print("Optimizing with %s using the following flags:"%(self.method))
-            pprint.pprint(self.flags)
 
         # Decide whether to use a tqdm progress bar. Don't use a bar for maxiter == 1.
         if verbose and maxiter > 1:
@@ -1334,7 +1340,7 @@ class Hologram:
         _, ax = plt.subplots(1, 1, figsize=(6,4))
 
         stats = ["efficiency", "uniformity", "pkpk_err", "std_err"]
-        markers = [">", "o", "D", "P"]
+        markers = ["o", "o", "s", "D"]
         legendstats = ["inefficiency", "nonuniformity", "pkpk_err", "std_err"]
 
         niter = np.arange(0, len(stats_dict["method"]))
@@ -1351,12 +1357,13 @@ class Hologram:
                 if i < 2:
                     y = 1 - np.array(y)
 
-                line = ax.scatter(niter, y, marker=markers[i], ec="C%d"%ls_num,
-                                  fc="None" if i<1 else "C%d"%ls_num)
-                ax.plot(niter, y, c="C%d"%ls_num, lw=0.5)
+                color = "C%d"%ls_num
+                line = ax.scatter(niter, y, marker=markers[i], ec=color,
+                                  fc="None" if i >= 1 else color)
+                ax.plot(niter, y, c=color, lw=0.5)
 
                 if i == 0:  # Remember the solid lines for the legend.
-                    line = ax.plot([],[], c="C%d"%ls_num)[0]
+                    line = ax.plot([],[], c=color)[0]
                     dummylines_modes.append(line)
 
         # Make the linestyle legend.
@@ -1364,7 +1371,7 @@ class Hologram:
         dummylines_keys = []
         for i in range(len(stats)):
             dummylines_keys.append(ax.scatter([], [], marker=markers[i], ec="k",
-                                              fc = "None" if i<1 else "k"))
+                                              fc = "None" if i >= 1 else "k"))
 
         ax.set_xlabel('Iteration')
         ax.set_ylabel('Relative Metrics')
@@ -2178,7 +2185,7 @@ class SpotHologram(FeedbackHologram):
                     np.square(self.amp_ff.get()), self.spot_knm_rounded, self.psf,
                     centered=True, integrate=True,
                 )
-                
+
                 feedback = np.sqrt(np.array(feedback, dtype=self.dtype))
 
                 self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (
@@ -2229,7 +2236,7 @@ class SpotHologram(FeedbackHologram):
                 )
                 feedback = np.sqrt(np.array(feedback, dtype=self.dtype))
                 total = np.sum(self.dtype(pwr_ff))
-                
+
                 stats["computational_spot"] = self._calculate_stats(
                     np.sqrt(np.array(feedback, dtype=self.dtype)),
                     self.spot_amp,

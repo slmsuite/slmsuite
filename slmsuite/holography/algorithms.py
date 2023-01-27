@@ -596,7 +596,8 @@ class Hologram:
 
         # Add in non-defaulted flags
         self.flags["stat_groups"] = stat_groups
-        self.flags["fixed_phase"] = False
+        if not "fixed_phase" in self.flags:
+            self.flags["fixed_phase"] = False
 
         # Print the optimization flags
         if verbose > 1:

@@ -161,7 +161,7 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     Consider, for example, a small spot on a field with strong background.
     Moment calculations in this situation will dominantly measure the moments
     of the rectangular field. This function zeros the fields below some threshold.
-    This thresold is set to either the mean plus ``deviations`` standard deviations,
+    This threshold is set to either the mean plus ``deviations`` standard deviations,
     computed uniquely for each image, or the median of each image if ``deviations``
     is ``None``.
 

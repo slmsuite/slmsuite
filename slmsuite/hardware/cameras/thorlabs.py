@@ -349,7 +349,7 @@ class ThorCam(Camera):
         trigger : bool
             Whether or not to issue a software trigger.
         grab : bool
-            Whehter or not to grab the frame (blocking).
+            Whether or not to grab the frame (blocking).
 
         Returns
         -------

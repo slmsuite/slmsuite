@@ -145,7 +145,7 @@ class Camera:
 
     def get_exposure(self):
         """
-        Abstract method to get the integration time in seconds. 
+        Abstract method to get the integration time in seconds.
         Used in :meth:`.autoexposure()`.
 
         Returns
@@ -157,7 +157,7 @@ class Camera:
 
     def set_exposure(self, exposure_s):
         """
-        Abstract method to set the integration time in seconds. 
+        Abstract method to set the integration time in seconds.
         Used in :meth:`.autoexposure()`.
 
         Parameters
@@ -169,7 +169,7 @@ class Camera:
 
     def set_woi(self, woi=None):
         """
-        Abstract method to narrow the imaging region to a 'window of interest' 
+        Abstract method to narrow the imaging region to a 'window of interest'
         for faster framerates.
 
         Parameters
@@ -188,7 +188,7 @@ class Camera:
 
     def flush(self, timeout_s=1):
         """
-        Abstract method to cycle the image buffer (if any) 
+        Abstract method to cycle the image buffer (if any)
         such that all new :meth:`.get_image()`
         calls yield fresh frames.
 
@@ -218,7 +218,7 @@ class Camera:
     def get_images(self, image_count, flush=False):
         """
         Grab ``image_count`` images in succession. Overwrite this
-        impelementation if a camera supports faster batch acquisition.
+        implementation if a camera supports faster batch acquisition.
 
         Parameters
         ----------

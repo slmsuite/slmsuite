@@ -1939,7 +1939,7 @@ class SpotHologram(FeedbackHologram):
         # Determine array_center default.
         if array_center is None:
             if basis == "knm":
-                array_center = (shape[0] / 2.0, shape[1] / 2.0)
+                array_center = (shape[1] / 2.0, shape[0] / 2.0)
             elif basis == "kxy":
                 array_center = (0, 0)
             elif basis == "ij":

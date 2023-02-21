@@ -642,7 +642,7 @@ class FourierSLM(CameraSLM):
             # Set the reference superpixel to be centered on the SLM.
             [nxref, nyref] = np.floor(  np.flip(self.slm.shape)
                                         / superpixel_size / 2).astype(np.int)
-            
+
             reference_superpixel = [nxref, nyref]
         else:
             (nxref, nyref) = reference_superpixel
@@ -981,7 +981,7 @@ class FourierSLM(CameraSLM):
                 prange = tqdm(phases, position=0, leave=False, desc=description)
             else:
                 prange = phases
-            
+
             if return_movie: frames = []
 
             # Step 3: Measure phase
@@ -996,11 +996,11 @@ class FourierSLM(CameraSLM):
                     ]
                 )
 
-                if return_movie: 
+                if return_movie:
                     frames.append(
                         plot_labeled(
                             interference_image,
-                            plot=plot, 
+                            plot=plot,
                             title="Phase = ${:1.2f}\pi$".format(phase / np.pi),
                             plot_zoom=True
                         )
@@ -1023,7 +1023,7 @@ class FourierSLM(CameraSLM):
                 self.wavefront_calibration = wavefront_calibration
 
             if return_movie: return frames
-                
+
             return {
                 "power": pwr,
                 "normalization": norm,
@@ -1078,11 +1078,11 @@ class FourierSLM(CameraSLM):
             # Exclude margin superpixels, if desired.
             if nx < exclude_superpixels[0]:
                 continue
-            if nx > self.slm.shape[1] - exclude_superpixels[0]:
+            if nx > NX - exclude_superpixels[0]:
                 continue
             if ny < exclude_superpixels[1]:
                 continue
-            if ny > self.slm.shape[0] - exclude_superpixels[1]:
+            if ny > NY - exclude_superpixels[1]:
                 continue
 
             # Measure!
@@ -1231,7 +1231,7 @@ class FourierSLM(CameraSLM):
                             2 * np.pi * (nx - nxref) * superpixel_size * self.slm.dx,
                             2 * np.pi * (ny - nyref) * superpixel_size * self.slm.dy)
 
-                        # Make sure our adjacent pixel under test is within range and 
+                        # Make sure our adjacent pixel under test is within range and
                         if (tx >= 0 and tx < NX and ty >= 0 and ty < NY and
                             (r2s[ty, tx] >= r2_threshold)): # or pathing[ty, tx] == ny)):
 

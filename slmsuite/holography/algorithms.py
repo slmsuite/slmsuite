@@ -77,18 +77,19 @@ from slmsuite.holography import analysis, toolbox
 class Hologram:
     r"""
     Phase retrieval methods applied to holography.
-    See :meth:`.optimize()` for available methods for hologram optimization.
+    See :meth:`.optimize()` to learn about the methods implemented for hologram optimization.
 
     Tip
     ~~~
     The Fourier domain (kxy) of an SLM with shape :attr:`slm_shape` also has the shape
-    :attr:`slm_shape` under FFT. However, the extents of this domain correspond to the edges
-    of the farfield (:math:`\pm\frac{\lambda}{2\Delta x}` radians, where :math:`\Delta x`
+    :attr:`slm_shape` under discrete Fourier transform. However, the extents of this
+    domain correspond to the edges of the farfield
+    (:math:`\pm\frac{\lambda}{2\Delta x}` radians, where :math:`\Delta x`
     is the SLM pixel pitch). This means that resolution of the farfield
     :math:`\pm\frac{\lambda}{2N_x\Delta x}` can be quite poor with small :math:`N_x`.
-    The solution is to zero-pad the SLM shape
+    The solution is to zero-pad the SLM nearfield
     --- artificially increasing the width :math:`N_x` and height
-    :math:`N_y` even though the extent of the non-zero data remains the same ---
+    :math:`N_y` even though the extent of the non-zero nearfield data remains the same ---
     and thus enhance the resolution of the farfield.
     In practice, padding is accomplished by passing a :attr:`shape` or
     :attr:`target` of appropriate shape (see constructor :meth:`.__init__()` and subclasses),
@@ -100,11 +101,12 @@ class Hologram:
     matrices of shape :attr:`shape`. To save memory, the matrices :attr:`phase` and :attr:`amp`
     are stored with the (smaller, but not strictly smaller) shape :attr:`slm_shape`.
     Also to save memory, :attr:`phase_ff` and :attr:`amp_ff` are set to ``None`` on construction,
-    and only initialized if they need to be used. Any additions should check for ``None``.
+    and only initialized if they need to be used. Any code additions should check for ``None``.
 
     Tip
     ~~~
-    Due to SLM inefficiency, undiffracted light will be present at the center of the :attr:`target`.
+    Due to imperfect SLM diffraction efficiency, undiffracted light will
+    be present at the center of the :attr:`target`.
     This is called the zeroth order diffraction peak. To avoid this peak, consider shifting
     the data contained in :attr:`target` away from the center.
 
@@ -257,7 +259,7 @@ class Hologram:
         self.stats = {"method": [], "flags": {}, "stats": {}}
 
         # Determine the shape of the SLM. We have three sources of this shape, which are
-        # optional to pass, but must be self-consistant if passed:
+        # optional to pass, but must be self-consistent if passed:
         # 1) The shape of the nearfield amplitude
         # 2) The shape of the seed nearfield phase
         # 3) slm_shape itself (which is set to the shape of a passed SLM, if given).
@@ -353,9 +355,13 @@ class Hologram:
         For a given base ``slm_shape``, pads to the user's requirements.
         If the user chooses multiple requirements, the largest
         dimensions for the shape are selected.
-        By default, pads to the smallest square power of two.
+        By default, pads to the smallest square power of two that
+        encapsulates the original ``slm_shape``.
 
-        Future: Add a setting to make pad based on available memory.
+        See also the tip in the constructor of :class:`Hologram` for more information
+        about the importance of padding.
+
+        Future: Add a setting to pad based on available memory.
 
         Parameters
         ----------
@@ -364,8 +370,12 @@ class Hologram:
             :class:`slmsuite.hardware.FourierSLM` instead, and should pass this
             when using the ``precision`` parameter.
         padding_order : int
-            Scales to the ``padding_order``th closest greater power of 2.
-            A ``padding_order`` of zero does nothing.
+            Scales to the ``padding_order`` th larger power of 2.
+            A ``padding_order`` of zero does nothing. For instance, an SLM
+            with shape ``(720, 1280)`` would yield
+            ``(2048, 4096)`` for two,
+            ``(1024, 2048)`` for one, and
+            ``(720, 1280)`` for zero.
         square_padding : bool
             If ``True``, sets both shape dimensions to the largest of the two
             dimensions that would otherwise be returned.

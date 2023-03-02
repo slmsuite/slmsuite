@@ -19,8 +19,8 @@ Important
 :mod:`slmsuite` follows the ``shape = (h, w)`` and ``vector = (x, y)`` formalism adopted by
 the :mod:`numpy` ecosystem. :mod:`numpy`, :mod:`scipy`, :mod:`matplotlib`, etc generally follow this
 formalism. The ``shape`` and indexing of an array is always inverted ``(h, w)``,
-but other functions such as `numpy.meshgrid(x, y)` (default), `scipy.odr.Data(x,y)`, or
-`matplotlib.pyplot.scatter(x, y)` use standard cartesian `(x,y)` that is more familiar
+but other functions such as `numpy.meshgrid(x, y)` (default), `scipy.odr.Data(x, y)`, or
+`matplotlib.pyplot.scatter(x, y)` use standard cartesian `(x, y)` that is more familiar
 to users. This is not ideal and causes confusion, but this is the formalism generally
 adopted by the community.
 

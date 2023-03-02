@@ -17,7 +17,7 @@ class SLM:
     name : str
         Name of the SLM.
     shape : (int, int)
-        Stores ``(height, width)`` of the SLM in pixels, same form as :attr:`numpy.ndarray.shape`.
+        Stores ``(height, width)`` of the SLM in pixels, the same convention as :attr:`numpy.ndarray.shape`.
     wav_um : float
         Operating wavelength targeted by the SLM in microns. Defaults to 780 nm.
     wav_design_um : float

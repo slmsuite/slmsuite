@@ -198,10 +198,10 @@ def imprint(
 
 # Unit helper functions
 BLAZE_LABELS = {
-    "norm" : (r"$k_x/k$", r"$k_y/k$"), 
+    "norm" : (r"$k_x/k$", r"$k_y/k$"),
     "kxy" : (r"$k_x/k$", r"$k_y/k$"),
     "rad" : (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
-    "knm" : (r"$n$ [pix]", r"$m$ [pix]"), 
+    "knm" : (r"$n$ [pix]", r"$m$ [pix]"),
     "freq" : (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
     "lpmm" : (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
     "mrad" : (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
@@ -258,8 +258,8 @@ def convert_blaze_vector(
             Relevant SLM to pull data from in the case of
             ``"freq"``, ``"knm"``, or ``"lpmm"``.
         shape : (int, int) OR None
-            Shape of the computational SLM space. Defaults to ``slm.shape`` if ``slm``
-            is not ``None``.
+            Shape of the computational SLM space in :mod:`numpy` ``(h, w)`` form.
+            Defaults to ``slm.shape`` if ``slm`` is not ``None``.
 
         Returns
         --------
@@ -1360,7 +1360,7 @@ def pad(matrix, shape):
     matrix : numpy.ndarray
         Data to pad.
     shape : (int, int)
-        The desired shape of the ``matrix``.
+        The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
 
     Returns
     -------
@@ -1398,15 +1398,15 @@ def unpad(matrix, shape):
     Parameters
     ----------
     matrix : numpy.ndarray OR (int, int)
-        Data to unpad. If this is a shape, return the slicing integers used to unpad that shape
-        ``[padB:padT, padL:padR]``.
+        Data to unpad. If this is a shape in :mod:`numpy` ``(h, w)`` form,
+        returns the four slicing integers used to unpad that shape ``[padB:padT, padL:padR]``.
     shape : (int, int)
-        The desired shape of the ``matrix``.
+        The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
 
     Returns
     ----------
     numpy.ndarray OR (int, int, int, int)
-        Either the unpadded ``matrix`` or the integers used to unpad such a matrix,
+        Either the unpadded ``matrix`` or the four slicing integers used to unpad such a matrix,
         depending what is passed as ``matrix``.
     """
     mshape = np.shape(matrix)

@@ -9,6 +9,7 @@ from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
 from math import factorial
+import warnings
 
 # Phase pattern collation and manipulation
 def imprint(
@@ -19,6 +20,8 @@ def imprint(
     imprint_operation="replace",
     centered=False,
     clip=True,
+    transform=0,
+    shift=(0,0),
     **kwargs
 ):
     r"""
@@ -75,6 +78,16 @@ def imprint(
         If ``False``, then an error is raised when the size is exceeded.
         If ``True``, then the out-of-range pixels are instead filled with ``numpy.nan``.
         Defaults to ``True``.
+    transform : float or ((float, float), (float, float))
+       Passed to :meth:`shift_grid`, operating on the cropped imprint grid.
+       This is left as an option such that the user does not have to transform the
+       entire ``grid`` to satisfy a tiny imprinted patch.
+       See :meth:`shift_grid`.
+    shift : (float, float)
+       Passed to :meth:`shift_grid`, operating on the cropped imprint grid.
+       This is left as an option such that the user does not have to transform the
+       entire ``grid`` to satisfy a tiny imprinted patch.
+       See :meth:`shift_grid`.
     **kwargs :
         For passing additional arguments accepted by ``function``.
 
@@ -143,11 +156,13 @@ def imprint(
         # Modify the matrix
         if imprint_operation == "replace":
             matrix[yi:yf, xi:xf] = function(
-                (x_grid[yi:yf, xi:xf], y_grid[yi:yf, xi:xf]), **kwargs
+                shift_grid((x_grid[yi:yf, xi:xf], y_grid[yi:yf, xi:xf]), transform, shift),
+                **kwargs
             )
         elif imprint_operation == "add":
             matrix[yi:yf, xi:xf] += function(
-                (x_grid[yi:yf, xi:xf], y_grid[yi:yf, xi:xf]), **kwargs
+                shift_grid((x_grid[yi:yf, xi:xf], y_grid[yi:yf, xi:xf]), transform, shift),
+                **kwargs
             )
         else:
             raise ValueError()
@@ -171,11 +186,13 @@ def imprint(
         # Modify the matrix
         if imprint_operation == "replace":
             matrix[y_ind, x_ind] = function(
-                (x_grid[y_ind, x_ind], y_grid[y_ind, x_ind]), **kwargs
+                shift_grid((x_grid[y_ind, x_ind], y_grid[y_ind, x_ind]), transform, shift),
+                **kwargs
             )
         elif imprint_operation == "add":
             matrix[y_ind, x_ind] += function(
-                (x_grid[y_ind, x_ind], y_grid[y_ind, x_ind]), **kwargs
+                shift_grid((x_grid[y_ind, x_ind], y_grid[y_ind, x_ind]), transform, shift),
+                **kwargs
             )
         else:
             raise ValueError()
@@ -185,9 +202,15 @@ def imprint(
 
         # Modify the matrix
         if imprint_operation == "replace":
-            matrix[window] = function((x_grid[window], y_grid[window]), **kwargs)
+            matrix[window] = function(
+                shift_grid((x_grid[window], y_grid[window]), transform, shift),
+                **kwargs
+            )
         elif imprint_operation == "add":
-            matrix[window] += function((x_grid[window], y_grid[window]), **kwargs)
+            matrix[window] += function(
+                shift_grid((x_grid[window], y_grid[window]), transform, shift),
+                **kwargs
+            )
         else:
             raise ValueError()
     else:
@@ -820,6 +843,53 @@ def _process_grid(grid):
     return grid
 
 
+def shift_grid(grid, transform=0, shift=(0, 0)):
+    """
+    Shifts and transforms an SLM grid.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    transform : float OR ((float, float), (float, float))
+        If a scalar is passed, angle to rotate the basis of the lens by. Defaults to zero.
+        If a 2x2 matrix is passed, transforms the :math:`x` and :math:`y` grids
+        according to :math:`x' = M_{00}x + M_{01}y`,  :math:`y' = M_{10}y + M_{11}y`.
+    shift : (float, float)
+        Center of the grid in normalized :math:`\frac{x}{\lambda}` coordinates.
+        Defaults to no shift.
+
+    Returns
+    -------
+    grid : (array_like, array_like)
+        The shifted grid
+    """
+    (x_grid, y_grid) = _process_grid(grid)
+
+    if transform == 0:
+        return (
+            x_grid if shift[0] == 0 else (x_grid - shift[0]),
+            y_grid if shift[1] == 0 else (y_grid - shift[1])
+        )
+    else:
+        if np.isscalar(transform):
+            s = np.sin(transform)
+            c = np.cos(transform)
+            transform = np.array([[c, -s], [s, c]])
+        else:
+            transform = np.squeeze(transform)
+
+        assert np.shape(transform) == 2
+
+        return (
+            transform[0,0] * x_grid - transform[0,0] * y_grid if shift[0] == 0 else (c * x_grid - s * y_grid - shift[0]),
+            transform[0,0] * x_grid + transform[1,1] * y_grid if shift[1] == 0 else (c * y_grid + s * x_grid - shift[1])
+        )
+
+
 def blaze(grid, vector=(0, 0), offset=0):
     r"""
     Returns a simple blaze (phase ramp).
@@ -846,10 +916,18 @@ def blaze(grid, vector=(0, 0), offset=0):
     """
     (x_grid, y_grid) = _process_grid(grid)
 
-    return 2 * np.pi * (vector[0] * x_grid + vector[1] * y_grid) + offset
+    # Optimize phase construction based on context.
+    if vector[0] == 0 and vector[1] == 0:
+        return np.zeros_like(x_grid) + offset
+    elif vector[0] == 0:
+        return 2 * np.pi * (vector[1] * y_grid) + offset
+    elif vector[1] == 0:
+        return 2 * np.pi * (vector[0] * x_grid) + offset
+    else:
+        return 2 * np.pi * (vector[0] * x_grid + vector[1] * y_grid) + offset
 
 
-def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
+def lens(grid, f=(np.inf, np.inf), center=None, angle=None):
     r"""
     Returns a simple thin lens (parabolic). When ``f`` is isotropic and ``angle`` :math:`\theta` is zero,
 
@@ -893,9 +971,11 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
         :meth:`.convert_blaze_vector()`
         Defaults to infinity (no lens).
     center : (float, float)
+        **(Deprecated, use :meth:`shift_grid` instead.)**
         Center of the lens in normalized :math:`\frac{x}{\lambda}` coordinates.
         Defaults to no shift.
     angle : float
+        **(Deprecated, use :meth:`shift_grid` instead.)**
         Angle to rotate the basis of the lens by. Defaults to zero.
 
     Returns
@@ -905,9 +985,23 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
     """
     (x_grid, y_grid) = _process_grid(grid)
 
-    # Parse center
-    center = np.squeeze(center)
+    # Parse angle
+    if angle is not None:
+        warnings.warn(
+            "angle is deprecated, use shift_grid(transform=) instead", DeprecationWarning
+        )
+    else:
+        angle = 0
 
+    # Parse center
+    if center is not None:
+        warnings.warn(
+            "center is deprecated, use shift_grid(shift=) instead", DeprecationWarning
+        )
+    else:
+        center = (0, 0)
+
+    center = np.squeeze(center)
     assert center.shape == (2,)
 
     # Parse focal length.
@@ -934,7 +1028,7 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
             "Expected f to be a scalar, a vector of length 2, or a 2x2 matrix."
         )
 
-    # Only add a component if necessary (for speed)
+    # Optimize phase construction based on context (for speed, to avoid square, etc).
     out = None
 
     if g[0][0] != 0:
@@ -961,6 +1055,59 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
         out = 0 * x_grid
 
     return out
+
+
+def axicon(grid, f=(np.inf, np.inf), w=None):
+    r"""
+    An `axicon <https://en.wikipedia.org/wiki/Axicon>`_
+    blazes according to :math:`\vec{k}_g = w / \vec{f} / 2` where
+    :math:`w` is the radius of the axicon. With a flat input amplitude over
+    :math:`[-w, w]`, this will produce an axicon beam centered at :math:`z = \vec{f}`.
+
+    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k}_g \cdot |\vec{x}|
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    f : float OR (float, float)
+        Focal length (center of the axicon diamond) in normalized :math:`\frac{x}{\lambda}` units.
+        Scalars are interpreted as a non-cylindrical isotropic axicon.
+        Defaults to infinity (no axicon).
+    w : float OR None
+        See :meth:`~slmsuite.holography.toolbox._determine_source_radius()`.
+
+    Returns
+    -------
+    numpy.ndarray
+        The phase for this function.
+    """
+    (x_grid, y_grid) = _process_grid(grid)
+
+    w = _determine_source_radius(grid, w)
+
+    if isinstance(f, (int, float)):
+        f = [f, f]
+    if isinstance(f, (list, tuple, np.ndarray)):
+        f = np.squeeze(f)
+
+        assert f.shape == (2,)
+        assert not np.any(f == 0), "Cannot interpret a focal length of zero."
+
+    angle = [w / f[0] / 2, w / f[1] / 2]    # Notice that this fraction is unitless radians.
+
+    # Optimize phase construction based on context (for speed, to avoid sqrt, etc).
+    if angle[0] == 0 and angle[1] == 0:
+        return np.zeros_like(x_grid)
+    elif angle[0] == 0:
+        return 2 * np.pi * np.abs(y_grid) * angle[1]
+    elif angle[1] == 0:
+        return 2 * np.pi * np.abs(x_grid) * angle[0]
+    else:
+        return 2 * np.pi * np.sqrt(np.square(x_grid * angle[0]) + np.square(y_grid * angle[1]))
 
 
 def zernike(grid, n, m, aperture=None):
@@ -1183,7 +1330,7 @@ def _determine_source_radius(grid, w=None):
     Returns
     -------
     float
-        Determined radius.
+        Determined radius. In normalized units.
     """
     (x_grid, y_grid) = _process_grid(grid)
 

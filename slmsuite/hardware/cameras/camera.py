@@ -19,7 +19,7 @@ class Camera:
     name : str
         Camera identifier.
     shape : (int, int)
-        Stores ``(height, width)`` of the camera in pixels, same form as :meth:`numpy.shape`.
+        Stores ``(height, width)`` of the camera in pixels, the same convention as :meth:`numpy.shape`.
     bitdepth : int
         Depth of a camera pixel well in bits.
     bitresolution : int

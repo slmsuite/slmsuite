@@ -3,18 +3,18 @@ Helper functions for manipulating phase patterns.
 """
 
 import numpy as np
-from scipy import special
-from scipy.spatial.distance import euclidean, chebyshev
+from scipy.spatial.distance import chebyshev
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
-from math import factorial
+import warnings
 
 from slmsuite.misc.math import (
     INTEGER_TYPES, REAL_TYPES, iseven
 )
 
-# Windows are views into 2D arrays
+# Windows creation functions. Windows are views into 2D arrays.
+
 def window_slice(window, shape=None, centered=False, circular=False):
     """
     Get the slices that describe the window's view into the larger array.
@@ -142,9 +142,9 @@ def window_square(window, padding_frac=0, padding_pix=0):
 
 def voronoi_windows(grid, vectors, radius=None, plot=False):
     r"""
-    Gets boolean array windows for an array of vectors in the style of
-    :meth:`~slmsuite.holography.toolbox.imprint()`,
-    such that the ith window corresponds to the Voronoi cell centered around the ith vector.
+    Returns boolean array windows corresponding to the Voronoi cells for a set of vectors.
+    These boolean array windows are in the style of :meth:`~slmsuite.holography.toolbox.imprint()`.
+    The ith window corresponds to the Voronoi cell centered around the ith vector.
 
     Note
     ~~~~
@@ -257,7 +257,8 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
     return filled_regions
 
 
-# Phase pattern collation and manipulation.
+# Phase pattern collation and manipulation. Uses windows.
+
 def imprint(
     matrix,
     window,
@@ -265,15 +266,19 @@ def imprint(
     grid=None,
     imprint_operation="replace",
     centered=False,
+    circular=False,
     clip=True,
+    transform=0,
+    shift=(0,0),
     **kwargs
 ):
     r"""
     Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
-    This ``function`` must be in the style of :mod:`~slmsuite.holography.toolbox`
-    phase helper functions, which attempts a ``grid`` parameter
-    (see :mod:`~slmsuite.holography.toolbox.blaze()` or
-    :mod:`~slmsuite.holography.toolbox.lens()`).
+    This ``function`` must be in the style of :mod:`~slmsuite.holography.toolbox.phase`
+    phase helper functions, which expect a ``grid`` parameter to define the coordinate basis
+    (see :meth:`~slmsuite.holography.toolbox.phase.blaze()` or
+    :meth:`~slmsuite.holography.toolbox.phase.lens()`).
+
     For instance, we can imprint a blaze on a 200 by 200 pixel region
     of the SLM with:
 
@@ -282,7 +287,7 @@ def imprint(
 
         canvas = np.zeros(shape=slm.shape)  # Matrix to imprint onto.
         window = [200, 200, 200, 200]       # Region of the matrix to imprint.
-        toolbox.imprint(canvas, window=window, function=toolbox.blaze, grid=slm, vector=(.001, .001))
+        toolbox.imprint(canvas, window=window, function=toolbox.phase.blaze, grid=slm, vector=(.001, .001))
 
     See also :ref:`examples`.
 
@@ -291,7 +296,7 @@ def imprint(
     matrix : numpy.ndarray
         The data to imprint a ``function`` onto.
     window
-        See :meth:`~slmsuite.holography.toolbox.window_slice`.
+        See :meth:`~slmsuite.holography.toolbox.window_slice()`.
     function : function OR float
         A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
         which accept ``grid`` as the first argument.
@@ -308,11 +313,23 @@ def imprint(
         - If ``"replace"``, then the values of ``matrix`` inside ``window`` are replaced with ``function``.
         - If ``"add"``, then these are instead added together (useful, for instance, for global blazes).
     centered
-        See :meth:`~slmsuite.holography.toolbox.window_slice`.
+        See :meth:`~slmsuite.holography.toolbox.window_slice()`.
+    circular
+        See :meth:`~slmsuite.holography.toolbox.window_slice()`.
     clip : bool
         Whether to clip the imprint region if it exceeds the size of ``matrix``.
         If ``False``, then an error is raised when the size is exceeded.
         If ``True``, then the out-of-range pixels are instead filled with ``numpy.nan``.
+    transform : float or ((float, float), (float, float))
+       Passed to :meth:`shift_grid`, operating on the cropped imprint grid.
+       This is left as an option such that the user does not have to transform the
+       entire ``grid`` to satisfy a tiny imprinted patch.
+       See :meth:`shift_grid`.
+    shift : (float, float)
+       Passed to :meth:`shift_grid`, operating on the cropped imprint grid.
+       This is left as an option such that the user does not have to transform the
+       entire ``grid`` to satisfy a tiny imprinted patch.
+       See :meth:`shift_grid`.
     **kwargs :
         For passing additional arguments accepted by ``function``.
 
@@ -333,25 +350,31 @@ def imprint(
 
     # Get slices for the window in the matrix.
     shape = matrix.shape if clip else None
-    slice_ = window_slice(window, shape=shape, centered=centered)
+    slice_ = window_slice(window, shape=shape, centered=centered, circular=circular)
 
     # Decide whether to treat function as a float.
     is_float = isinstance(function, REAL_TYPES)
 
     if not is_float:
-        assert grid is not None, "grid cannot be None if a function is given."
+        assert grid is not None, "toolbox.py: imprint grid cannot be None if a function is given."
 
     # Modify the matrix.
     if imprint_operation == "replace":
         if is_float:
             matrix[slice_] = function
         else:
-            matrix[slice_] = function((x_grid[slice_], y_grid[slice_]), **kwargs)
+            matrix[slice_] = function(
+                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift), 
+                **kwargs
+            )
     elif imprint_operation == "add":
         if is_float:
             matrix[slice_] += function
         else:
-            matrix[slice_] += function((x_grid[slice_], y_grid[slice_]), **kwargs)
+            matrix[slice_] += function(
+                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift), 
+                **kwargs
+            )
     else:
         raise ValueError("Unrecognized imprint operation {}.".format(imprint_operation))
 
@@ -359,7 +382,7 @@ def imprint(
 
 
 # Unit helper functions
-# TODO: @tpr0p thinks knm should be kij and ij should be xij
+
 BLAZE_LABELS = {
     "norm" : (r"$k_x/k$", r"$k_y/k$"),
     "kxy" : (r"$k_x/k$", r"$k_y/k$"),
@@ -384,6 +407,7 @@ def convert_blaze_radius(radius, from_units="norm", to_units="norm", slm=None, s
     )
     return np.mean([np.linalg.norm(vx - v0), np.linalg.norm(vy - v0)])
 
+
 def convert_blaze_vector(
     vector, from_units="norm", to_units="norm", slm=None, shape=None
 ):
@@ -402,8 +426,6 @@ def convert_blaze_vector(
             (potentially padded) SLM's Fourier transform.
             See :class:`~slmsuite.holography.Hologram`.
 
-            Important
-            ~~~~~~~~~
             The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
 
           ``"freq"``
@@ -522,35 +544,7 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
         print("'{}' : {}".format(unit, tuple(result.T[0])))
 
 
-# Vector and window helper functions
-def _process_grid(grid):
-    r"""
-    Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
-    coordinate of each corresponding pixel. This helper function interprets what the user passes.
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-
-    Returns
-    --------
-    (array_like, array_like)
-        The grids in ``(x_grid, y_grid)`` form.
-    """
-
-    # See if grid has x_grid or y_grid (==> SLM class)
-    if hasattr(grid, "x_grid") and hasattr(grid, "y_grid"):
-        return (grid.x_grid, grid.y_grid)
-
-    # Otherwise, assume it's a tuple
-    assert len(grid) == 2, "Expected a 2-tuple with x and y meshgrids."
-
-    return grid
-
+# Vector helper functions
 
 def format_2vectors(vectors):
     """
@@ -825,11 +819,13 @@ def smallest_distance(vectors, metric=chebyshev):
 
 def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
     r"""
-    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`
+    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
     on a set of ``vectors`` using the helper function
     :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
-    This iteratively forces a set of ``vectors` away from each other until
+    This iteratively forces a set of ``vectors`` away from each other until
     they become more evenly distributed over a space.
+    This function could be made much more computationally efficient by using analytic
+    methods to compute Voronoi cell area, rather than the current numerical approach.
 
     Parameters
     ----------
@@ -877,8 +873,8 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
 
 def lloyds_points(grid, n_points, iterations=10, plot=False):
     r"""
-    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`
-    without seed ``vectors``. Instead, autogenerates the seed ``vectors`` randomly.
+    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
+    without seed ``vectors``; instead, autogenerates the seed ``vectors`` randomly.
     See :meth:`~slmsuite.holography.toolbox.lloyds_algorithm()`.
 
     Parameters
@@ -929,7 +925,8 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
         return np.vstack((x_grid[result], y_grid[result]))
 
 
-# Basic functions
+# Grid functions
+
 def _process_grid(grid):
     r"""
     Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
@@ -950,10 +947,8 @@ def _process_grid(grid):
     """
 
     # See if grid has x_grid or y_grid (==> SLM class)
-    try:
+    if hasattr(grid, "x_grid") and hasattr(grid, "y_grid"):
         return (grid.x_grid, grid.y_grid)
-    except:
-        pass
 
     # Otherwise, assume it's a tuple
     assert len(grid) == 2, "Expected a 2-tuple with x and y meshgrids."
@@ -961,65 +956,14 @@ def _process_grid(grid):
     return grid
 
 
-def blaze(grid, vector=(0, 0), offset=0):
+import slmsuite.holography.toolbox.phase as toolbox_phase
+
+
+def shift_grid(grid, transform=None, shift=None):
     r"""
-    Returns a simple blaze (phase ramp).
-
-    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k}_{norm} \cdot \vec{x}_{norm} + o
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        :math:`\vec{x}_{norm}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-    vector : (float, float)
-        :math:`\vec{k}_{norm}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
-        See :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`
-    offset :
-        Phase offset for this blaze.
-
-    Returns
-    -------
-    numpy.ndarray
-        The phase for this function.
-    """
-    (x_grid, y_grid) = _process_grid(grid)
-
-    return 2 * np.pi * (vector[0] * x_grid + vector[1] * y_grid) + offset
-
-
-def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
-    r"""
-    Returns a simple thin lens (parabolic). When ``f`` is isotropic and ``angle`` :math:`\theta` is zero,
-
-    .. math:: \phi(\vec{x}) = \frac{\pi}{f}(|\vec{x} - \vec{c}|^2)
-
-    Otherwise,
-
-    .. math:: \phi(x, y) = \pi \left[ G_{00}(x - c_x)^2 + 2G_{10}(x - c_x)(y - c_y) + G_{11}(y - c_y)^2 \right]
-
-    Using the rotation of the lens power:
-
-    .. math::   \begin{bmatrix}
-                    G_{00} & G_{10} \\
-                    G_{10} & G_{11} \\
-                \end{bmatrix}
-                =
-                R(-\theta)
-                \begin{bmatrix}
-                    1/f_x & 0 \\
-                    0 & 1/f_y \\
-                \end{bmatrix}
-                R(\theta).
-
-    Note
-    ~~~~
-    In the future, we should add shear variance in the style of
-    :meth:`~slmsuite.hardware.analysis.image_variance()`.
-    Perhaps if the user passes in a 3-tuple for ``f``?
-
+    Returns a copy of a coordinate basis ``grid`` with a given ``shift`` and ``transformation``.
+    Such grids are used as arguments for phase patterns, such as those in
+    :mod:`slmsuite.holography.toolbox.phase`.
     Parameters
     ----------
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
@@ -1027,530 +971,65 @@ def lens(grid, f=(np.inf, np.inf), center=(0, 0), angle=0):
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    f : float OR (float, float)
-        Focus in normalized :math:`\frac{x}{\lambda}` units.
-        Scalars are interpreted as a non-cylindrical isotropic lens.
-        Future: add a ``convert_focal_length`` method to parallel
-        :meth:`.convert_blaze_vector()`
-        Defaults to infinity (no lens).
-    center : (float, float)
-        Center of the lens in normalized :math:`\frac{x}{\lambda}` coordinates.
-        Defaults to no shift.
-    angle : float
-        Angle to rotate the basis of the lens by. Defaults to zero.
-
+    transform : float OR ((float, float), (float, float)) OR None
+        If a scalar is passed, angle to rotate the basis of the lens by.
+        Defaults to zero if `None`.
+        If a 2x2 matrix is passed, transforms the :math:`x` and :math:`y` grids
+        according to :math:`x' = M_{00}x + M_{01}y`,  :math:`y' = M_{10}y + M_{11}y`.
+    shift : (float, float) OR None
+        Center of the grid in normalized :math:`\frac{x}{\lambda}` coordinates.
+        Defaults to no shift if `None`.
     Returns
     -------
-    numpy.ndarray
-        The phase for this function.
+    grid : (array_like, array_like)
+        The shifted grid
     """
     (x_grid, y_grid) = _process_grid(grid)
 
-    # Parse center
-    center = np.squeeze(center)
+    if transform is None:
+        transform = 0
 
-    assert center.shape == (2,)
+    if shift is None:
+        shift = (0, 0)
 
-    # Parse focal length.
-    if isinstance(f, REAL_TYPES):
-        f = [f, f]
-    if isinstance(f, (list, tuple, np.ndarray)):
-        f = np.squeeze(f)
-
-        assert f.shape == (2,)
-        assert not np.any(f == 0), "Cannot interpret a focal length of zero."
-
-        # Optical power of lens
-        g = [[1 / f[0], 0], [0, 1 / f[1]]]
-
-        # Rotate if necessary
-        if angle != 0:
-            s = np.sin(angle)
-            c = np.cos(angle)
-            rot = np.array([[c, -s], [s, c]])
-
-            g = np.matmul(np.linalg.inv(rot), np.matmul(g, rot))
-    else:
-        raise ValueError(
-            "Expected f to be a scalar, a vector of length 2, or a 2x2 matrix."
+    if transform == 0:
+        return (
+            x_grid if shift[0] == 0 else (x_grid - shift[0]),
+            y_grid if shift[1] == 0 else (y_grid - shift[1])
         )
-
-    # Only add a component if necessary (for speed)
-    out = None
-
-    if g[0][0] != 0:
-        if out is None:
-            out = np.square(x_grid - center[0]) * (g[0][0] * np.pi)
+    else:
+        if np.isscalar(transform):
+            s = np.sin(transform)
+            c = np.cos(transform)
+            transform = np.array([[c, -s], [s, c]])
         else:
-            out += np.square(x_grid - center[0]) * (g[0][0] * np.pi)
+            transform = np.squeeze(transform)
 
-    if g[1][1] != 0:
-        if out is None:
-            out = np.square(y_grid - center[1]) * (g[1][1] * np.pi)
-        else:
-            out += np.square(y_grid - center[1]) * (g[1][1] * np.pi)
+        assert np.shape(transform) == 2
 
-    shear = (g[1][0] + g[0][1]) * np.pi
-
-    if shear != 0:
-        if out is None:
-            out = (x_grid - center[0]) * (y_grid - center[1]) * shear
-        else:
-            out += (x_grid - center[0]) * (y_grid - center[1]) * shear
-
-    if out is None:
-        out = 0 * x_grid
-
-    return out
-
-
-def zernike(grid, n, m, aperture=None):
-    r"""
-    Returns a single real Zernike polynomial. See :meth:`zernike_sum()`.
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-    n, m : int
-        Cartesian Zernike index defining the polynomial.
-    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
-        See :meth:`.zernike_sum()`.
-
-    Returns
-    -------
-    numpy.ndarray
-        The phase for this function.
-    """
-    return zernike_sum(grid, (((n, m), 1), ), aperture=aperture)
-
-
-def zernike_sum(grid, weights, aperture=None):
-    r"""
-    Returns a summation of real Zernike polynomials. To improve performance, especially for higher
-    order polynomials, we store a cached of Zernike coefficients to avoid regeneration.
-    See the below example to generate :math:`Z_{20} - Z_{21} + Z_{31}`.
-
-    .. highlight:: python
-    .. code-block:: python
-
-        zernike_sum_phase = toolbox.zernike_sum(
-            grid=slm,
-            weights=(   ((2, 0),  1),       # Z_20
-                        ((2, 1), -1),       # Z_21
-                        ((3, 1),  1)    ),  # Z_31
-            aperture="circular"
+        return (
+            transform[0,0] * x_grid - transform[0,0] * y_grid if shift[0] == 0 else (c * x_grid - s * y_grid - shift[0]),
+            transform[0,0] * x_grid + transform[1,1] * y_grid if shift[1] == 0 else (c * y_grid + s * x_grid - shift[1])
         )
-
-
-    Note
-    ~~~~
-    There are different schemes to index Zernike polynomials.
-    We use the indexing defined in [0]_, along with the algorithm defined there.
-    Other packages use different schemes, sometimes defining
-    :math:`m' = l = n - 2m`. Take care to avoid confusion.
-
-    .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
-
-    Important
-    ~~~~~~~~~
-    Zernike polynomials are canonically defined on a circular aperture. However, we may
-    want to use these polynomials on other apertures (e.g. a rectangular SLM).
-    Cropping this aperture breaks the orthogonality and normalization of the set, but
-    this is fine for many applications. While it is possible to orthonormalize the
-    cropped set, we do not do so in :mod:`slmsuite`, as this is not critical for target
-    applications such as aberration correction.
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-    weights : list of ((int, int), float)
-        Which Zernike polynomials to sum. The ``(int, int)`` is the cartesian index
-        ``(n, m)``. The float is the weight for the given index.
-    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
-        How to scale the polynomials relative to the grid shape. This is relative
-        to the :math:`R = 1` edge of a standard Zernike pupil.
-
-        ``"circular"``, ``None``
-          The circle is scaled isotropically until the pupil edge touches the grid edge.
-        ``"elliptical"``
-          The circle is scaled anisotropically until each cartesian pupil edge touches a grid
-          edge. Generally produces and ellipse.
-        ``"cropped"``
-          The circle is scaled isotropically until the rectangle of the grid is
-          circumscribed by the circle.
-        ``(float, float)``
-          Custom scaling. These values are multiplied to the ``x_grid`` and ``y_grid``
-          directly, respectively. The edge of the pupil corresponds to where
-          ``x_grid**2 + y_grid**2 = 1``.
-
-    Returns
-    -------
-    numpy.ndarray
-        The phase for this function.
-    """
-    # Parse passed values
-    (x_grid, y_grid) = _process_grid(grid)
-
-    if aperture is None:
-        aperture = "circular"
-
-    if isinstance(aperture, str):
-        if aperture == "elliptical":
-            x_scale = 1 / np.nanmax(x_grid)
-            y_scale = 1 / np.nanmax(y_grid)
-        elif aperture == "circular":
-            x_scale = y_scale = 1 / np.amin([np.nanmax(x_grid), np.nanmax(y_grid)])
-        elif aperture == "cropped":
-            x_scale = y_scale = 1 / np.sqrt(np.nanmax(np.square(x_grid) + np.square(y_grid)))
-        else:
-            raise ValueError("NotImplemented")
-    elif isinstance(aperture, (list, tuple)) and len(aperture) == 2:
-        x_scale = aperture[0]
-        y_scale = aperture[1]
-    else:
-        raise ValueError("Type {} not recognized.".format(type(aperture)))
-
-    # At the end, we're going to set the values outside the aperture to zero.
-    # Make a mask for this if it's necessary.
-    mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
-    use_mask = np.any(mask == 0)
-
-    if use_mask:
-        x_grid_scaled = x_grid[mask] * x_scale
-        y_grid_scaled = y_grid[mask] * y_scale
-    else:
-        x_grid_scaled = x_grid * x_scale
-        y_grid_scaled = y_grid * y_scale
-
-    # Now find the coefficients for polynomial terms x^ay^b. We want to only compute
-    # x^ay^b once because this is an operation on a large array. In contrast, summing
-    # the coefficients of the same terms is simple and fast scalar operations.
-    summed_coefficients = {}
-
-    for (key, weight) in weights:
-        coefficients = _zernike_coefficients(key[0], key[1])
-
-        for power_key, factor in coefficients.items():
-            power_factor = factor * weight
-            if power_key in summed_coefficients:
-                summed_coefficients[power_key] += power_factor
-            else:
-                summed_coefficients[power_key] = power_factor
-
-    # Finally, build the polynomial.
-    canvas = np.zeros(x_grid.shape)
-
-    for power_key, factor in summed_coefficients.items():
-        if factor != 0:
-            if power_key == (0,0):
-                if use_mask:
-                    canvas[mask] += factor
-                else:
-                    canvas += factor
-            else:
-                if use_mask:
-                    canvas[mask] += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
-                else:
-                    canvas += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
-
-    return canvas
-
-
-_zernike_cache = {}
-
-
-def _zernike_coefficients(n, m):
-    """
-    Returns the coefficients for the :math:`x^ay^b` terms of the cartesian real Zernike polynomial
-    of index `(`n, m)``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
-    Uses the algorithm and indexing given in [0]_.
-
-    .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
-    """
-    n = int(n)
-    m = int(m)
-
-    assert 0 <= m <= n, "Invalid cartesian Zernike index."
-
-    # Generate coefficients only if we have not already generated.
-    key = (n, m)
-    if not key in _zernike_cache:
-        zernike_this = {}
-
-        # Define helper variables.
-        l = n - 2 * m
-
-        if l % 2:   # If even
-            q = int((abs(l) - 1) / 2)
-        else:
-            if l > 0:
-                q = int(abs(l)/2 - 1)
-            else:
-                q = int(abs(l)/2)
-
-        if l <= 0:
-            p = 0
-        else:
-            p = 1
-
-        l = abs(l)
-        m = int((n-l)/2)
-
-        # Helper function
-        def comb(n, k):
-            return factorial(n) / (factorial(k) * factorial(n-k))
-
-        # Finding the coefficients is a summed combinatorial search.
-        # This is why we cache: so we don't have to do this many times,
-        # especially for higher order polynomials and the corresponding cubic scaling.
-        for i in range(q+1):
-            for j in range(m+1):
-                for k in range(m-j+1):
-                    factor = -1 if (i + j) % 2 else 1
-                    factor *= comb(l, 2 * i + p)
-                    factor *= comb(m - j, k)
-                    factor *= (float(factorial(n - j))
-                        / (factorial(j) * factorial(m - j) * factorial(n - m - j)))
-
-                    power_key = (n - 2*(i + j + k) - p, 2 * (i + k) + p)
-
-                    # Add this coefficient to the element in the dictionary
-                    # corresponding to the right power.
-                    if power_key in zernike_this:
-                        zernike_this[power_key] += factor
-                    else:
-                        zernike_this[power_key] = factor
-
-        # Update the cache. Remove all factors that have cancelled out.
-        _zernike_cache[key] = {power_key: factor for power_key, factor in zernike_this.items() if factor != 0}
-
-    return _zernike_cache[key]
-
-
-# Structured light phase patterns.
-def _determine_source_radius(grid, w=None):
-    r"""
-    Helper function to determine the assumed Gaussian source radius for various
-    structured light conversion functions.  For instance, see the ``w`` parameter in
-    :meth:`~slmsuite.holography.toolbox.laguerre_gaussian()`.
-
-    Note
-    ~~~~
-    Future work: when ``grid`` is a :class:`~slmsuite.hardware.slms.slm.SLM` which has completed
-    :meth:`~slmsuite.hardware.cameraslm.FourierSLM.fourier_calibration()`, this function should fit
-    (and cache?) :attr:`~slmsuite.hardware.slms.slm.amplitude_measured` to a Gaussian
-    and use the resulting width (and center?).
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-    w : float OR None
-        The radius of the phase pattern in normalized :math:`\frac{x}{\lambda}` units.
-        To produce perfect structured beams, this radius is equal to the radius of
-        the gaussian profile of the source (ideally not clipped by the SLM).
-        If ``w`` is left as ``None``, ``w`` is set to a quarter of the smallest normalized screen dimension.
-
-    Returns
-    -------
-    float
-        Determined radius.
-    """
-    (x_grid, y_grid) = _process_grid(grid)
-
-    if w is None:
-        return np.min([np.amax(x_grid), np.amax(y_grid)]) / 4
-    else:
-        return w
-
-
-def laguerre_gaussian(grid, l, p, w=None):
-    r"""
-    Returns the phase farfield for a Laguerre-Gaussian beam.
-    This function is especially useful to hone and validate SLM alignment. Perfect alignment will
-    result in concentric and uniform fringes for higher order beams. Focusing issues, aberration,
-    or pointing misalignment will mitigate this.
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-    l : int
-        The azimuthal wavenumber, or orbital angular momentum. Can be negative.
-    p : int
-        The radial wavenumber. Should be non-negative.
-    w : float OR None
-        See :meth:`~slmsuite.holography.toolbox._determine_source_radius()`.
-
-    Returns
-    -------
-    numpy.ndarray
-        The phase for this function.
-    """
-    (x_grid, y_grid) = _process_grid(grid)
-
-    w = _determine_source_radius(grid, w)
-
-    theta_grid = np.arctan2(x_grid, y_grid)
-    radius_grid = y_grid * y_grid + x_grid * x_grid
-
-    return np.mod(
-        l * theta_grid
-        + np.pi
-        * np.heaviside(-special.genlaguerre(p, np.abs(l))(2 * radius_grid / w / w), 0)
-        + np.pi,
-        2 * np.pi,
-    )
-
-
-def hermite_gaussian(grid, n, m, w=None):
-    r"""
-    Returns the phase farfield for a Hermite-Gaussian beam.
-
-    Ref: https://doi.org/10.1364/AO.54.008444
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-    n, m : int
-        The horizontal (``n``) and vertical (``m``) wavenumbers. ``n = m = 0`` yields a flat
-        phase or a standard Gaussian beam.
-    w : float
-        See :meth:`~slmsuite.holography.toolbox._determine_source_radius()`.
-
-    Returns
-    -------
-    numpy.ndarray
-        The phase for this function.
-    """
-    (x_grid, y_grid) = _process_grid(grid)
-    w = _determine_source_radius(grid, w)
-
-    factor = np.sqrt(2) / w
-
-    # Generate the amplitude of a Hermite-Gaussian mode.
-    phase = special.hermite(n)(factor * x_grid) * special.hermite(m)(factor * y_grid)
-
-    # This is real, so the phase is just the sign of the mode. This produces a
-    # checkerboard pattern. Probably could make this faster by bitflipping rows and columns.
-    phase[phase < 0] = 0
-    phase[phase > 0] = np.pi
-
-    return phase
-
-
-def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
-    r"""
-    **(NotImplemented)** Returns the phase farfield for an Ince-Gaussian beam.
-
-    Ref: https://doi.org/10.1364/OL.29.000144
-
-    Ref: https://doi.org/10.1364/AO.54.008444
-
-    Ref: https://doi.org/10.3390/jimaging8050144
-
-    Ref: https://en.wikipedia.org/wiki/Elliptic_coordinate_system
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-    p : int
-        Ince polynomial order.
-    m : int
-        Ince polynomial degree.
-    parity : {1, -1, 0}
-        Whether to produce an even (1), odd (-1), or helical (0) Ince polynomial. A helical
-        polynomial is the linear combination of even and odd polynomials.
-
-        .. math:: IG^h_{p,m} = IG^e_{p,m} + iIG^o_{p,m}
-
-    ellipticity : float
-        Ellipticity of the beam. The semifocal distance is equal to ``ellipticity * w``,
-        where the foci are the points which define the elliptical coordinate system.
-    w : float
-        See :meth:`~slmsuite.holography.toolbox._determine_source_radius()`.
-
-    Returns
-    -------
-    numpy.ndarray
-        The phase for this function.
-    """
-    (x_grid, y_grid) = _process_grid(grid)
-    w = _determine_source_radius(grid, w)
-
-    if parity == 1:
-        assert 0 <= m <= p
-    else:
-        assert 1 <= m <= p
-
-    complex_grid = x_grid + 1j * y_grid
-
-    factor = 1 / (w * np.sqrt(ellipticity / 2))
-
-    elliptic_grid = np.arccosh(complex_grid * factor)
-
-    raise NotImplementedError()
-
-
-def matheui_gaussian(grid, r, q, w=None):
-    """
-    **(NotImplemented)** Returns the phase farfield for a Matheui-Gaussian beam.
-
-    Ref: https://doi.org/10.1364/AO.49.006903
-
-    Returns
-    -------
-    numpy.ndarray
-        The phase for this function.
-    """
-    (x_grid, y_grid) = _process_grid(grid)
-    raise NotImplementedError()
 
 
 # Padding
+
 def pad(matrix, shape):
     """
     Helper function to pad data with zeros. The padding is centered.
     This is used to get higher resolution upon Fourier transform.
-
     Parameters
     ----------
     matrix : numpy.ndarray
         Data to pad.
-    shape : (int, int) OR None
-        The desired shape of the ``matrix``.
-        If ``None``, do not pad.
-
+    shape : (int, int)
+        The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
     Returns
     -------
     numpy.ndarray
         Padded ``matrix``.
     """
-    if shape is None:
-        return matrix
-
     deltashape = (
         (shape[0] - matrix.shape[0]) / 2.0,
         (shape[1] - matrix.shape[1]) / 2.0,
@@ -1565,13 +1044,13 @@ def pad(matrix, shape):
     padL = int(np.floor(deltashape[1]))
     padR = int(np.ceil(deltashape[1]))
 
-    result = np.pad(
+    toReturn = np.pad(
         matrix, [(padB, padT), (padL, padR)], mode="constant", constant_values=0
     )
 
-    assert np.all(result.shape == shape)
+    assert np.all(toReturn.shape == shape)
 
-    return result
+    return toReturn
 
 
 def unpad(matrix, shape):
@@ -1582,16 +1061,15 @@ def unpad(matrix, shape):
     Parameters
     ----------
     matrix : numpy.ndarray OR (int, int)
-        Data to unpad. If this is a shape, return the slicing integers used to unpad that shape
-        ``[padB:padT, padL:padR]``.
-    shape : (int, int) OR None
-        The desired shape of the ``matrix``.
-        If ``None``, do not unpad.
+        Data to unpad. If this is a shape in :mod:`numpy` ``(h, w)`` form,
+        returns the four slicing integers used to unpad that shape ``[padB:padT, padL:padR]``.
+    shape : (int, int)
+        The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
 
     Returns
     ----------
     numpy.ndarray OR (int, int, int, int)
-        Either the unpadded ``matrix`` or the integers used to unpad such a matrix,
+        Either the unpadded ``matrix`` or the four slicing integers used to unpad such a matrix,
         depending what is passed as ``matrix``.
     """
     mshape = np.shape(matrix)
@@ -1626,3 +1104,107 @@ def unpad(matrix, shape):
     assert np.all(toReturn.shape == shape)
 
     return toReturn
+
+
+# Deprecated functions
+
+def blaze(grid, vector=(0, 0), offset=0):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.blaze` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.blaze is deprecated."
+        "Use slmsuite.toolbox.phase.blaze instead"
+    )
+    return toolbox_phase.blaze(grid, vector, offset)
+
+
+def lens(grid, f=(np.inf, np.inf), center=None, angle=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.lens` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.lens is deprecated."
+        "Use slmsuite.toolbox.phase.lens instead"
+    )
+    if center is not None or angle is not None:
+        grid = shift_grid(grid, transform=angle, shift=center)
+
+    return toolbox_phase.blaze(grid, f)
+
+
+def axicon(grid, f=(np.inf, np.inf), w=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.axicon` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.axicon is deprecated."
+        "Use slmsuite.toolbox.phase.axicon instead"
+    )
+    return toolbox_phase.axicon(grid, f, w)
+
+
+def zernike(grid, n, m, aperture=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.zernike` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.zernike is deprecated."
+        "Use slmsuite.toolbox.phase.zernike instead"
+    )
+    return toolbox_phase.zernike(grid, n, m, aperture)
+
+
+def zernike_sum(grid, weights, aperture=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.zernike_sum` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.zernike_sum is deprecated."
+        "Use slmsuite.toolbox.phase.zernike_sum instead"
+    )
+    return toolbox_phase.zernike_sum(grid, weights, aperture)
+
+
+def laguerre_gaussian(grid, l, p, w=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.laguerre_gaussian` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.laguerre_gaussian is deprecated."
+        "Use slmsuite.toolbox.phase.laguerre_gaussian instead"
+    )
+    return toolbox_phase.laguerre_gaussian(grid, l, p, w)
+
+
+def hermite_gaussian(grid, n, m, w=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.hermite_gaussian` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.hermite_gaussian is deprecated."
+        "Use slmsuite.toolbox.phase.hermite_gaussian instead"
+    )
+    return toolbox_phase.hermite_gaussian(grid, n, m, w)
+
+
+def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.ince_gaussian` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.ince_gaussian is deprecated."
+        "Use slmsuite.toolbox.phase.ince_gaussian instead"
+    )
+    return ince_gaussian(grid, p, m, parity, ellipticity, w)
+
+
+def matheui_gaussian(grid, r, q, w=None):
+    """
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.matheui_gaussian` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.matheui_gaussian is deprecated."
+        "Use slmsuite.toolbox.phase.matheui_gaussian instead"
+    )
+    return matheui_gaussian(grid, r, q, w)

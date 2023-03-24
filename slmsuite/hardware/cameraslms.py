@@ -13,8 +13,8 @@ from tqdm import tqdm
 from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import SpotHologram
-from slmsuite.holography.toolbox import blaze, imprint, format_2vectors
-from slmsuite.misc.math import REAL_TYPES
+from slmsuite.holography.toolbox import imprint, format_2vectors
+from slmsuite.holography.toolbox.phase import blaze
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
 from slmsuite.misc.fitfunctions import cos
 
@@ -930,6 +930,7 @@ class FourierSLM(CameraSLM):
                 plt.imshow(masked_pic_mode)
                 plt.show()
 
+            # Future: use the below
             # found_center = analysis.image_positions([masked_pic_mode]) + interference_point
 
             # Blur a lot and assume the maximum corresponds to the center.
@@ -1088,11 +1089,11 @@ class FourierSLM(CameraSLM):
             # Exclude margin superpixels, if desired.
             if nx < exclude_superpixels[0]:
                 continue
-            if nx > self.slm.shape[1] - exclude_superpixels[0]:
+            if nx > NX - exclude_superpixels[0]:
                 continue
             if ny < exclude_superpixels[1]:
                 continue
-            if ny > self.slm.shape[0] - exclude_superpixels[1]:
+            if ny > NY - exclude_superpixels[1]:
                 continue
 
             # Measure!
@@ -1241,8 +1242,7 @@ class FourierSLM(CameraSLM):
                             2 * np.pi * (nx - nxref) * superpixel_size * self.slm.dx,
                             2 * np.pi * (ny - nyref) * superpixel_size * self.slm.dy)
 
-                        # Make sure our adjacent pixel under test is within range and
-                        # above threshold.
+                        # Make sure our adjacent pixel under test is within range and above threshold.
                         if (tx >= 0 and tx < NX and ty >= 0 and ty < NY and
                             (r2s[ty, tx] >= r2_threshold)): # or pathing[ty, tx] == ny)):
 

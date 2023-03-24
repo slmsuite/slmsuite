@@ -15,6 +15,16 @@ If :mod:`cupy` is not supported, then :mod:`numpy` is used as a fallback, though
 CPU alone is significantly slower. Using :mod:`cupy` is highly encouraged.
 
 Important
+---------
+:mod:`slmsuite` follows the ``shape = (h, w)`` and ``vector = (x, y)`` formalism adopted by
+the :mod:`numpy` ecosystem. :mod:`numpy`, :mod:`scipy`, :mod:`matplotlib`, etc generally follow this
+formalism. The ``shape`` and indexing of an array is always inverted ``(h, w)``,
+but other functions such as `numpy.meshgrid(x, y)` (default), `scipy.odr.Data(x, y)`, or
+`matplotlib.pyplot.scatter(x, y)` use standard cartesian `(x, y)` that is more familiar
+to users. This is not ideal and causes confusion, but this is the formalism generally
+adopted by the community.
+
+Important
 ~~~~~~~~~
 This package uses a number of bases or coordinate spaces. Some coordinate spaces are
 directly used by the user (most often the camera basis ``"ij"`` used for feedback).
@@ -22,17 +32,32 @@ Other bases are less often used directly, but are important to how holograms are
 optimized under the hood (esp. ``"knm"``, the coordinate space of optimization).
 
 .. list-table:: Bases used in :mod:`slmsuite`.
-   :widths: 25 75
+   :widths: 20 80
    :header-rows: 1
 
    * - Basis
      - Meaning
    * - ``"ij"``
-     - Pixel basis of the camera. Centered at ``cam.shape/2``.
+     - Pixel basis of the camera. Centered at ``(i, j) = (cam.shape[1],
+       cam.shape[0])/2``. Is in the image space of the camera.
    * - ``"kxy"``
-     - Normalized (floating point) basis of the SLM's k-space. Centered at ``(0,0)``.
+     - Normalized (floating point) basis of the SLM's :math:`k`-space in normalized units.
+       Centered at ``(kx, ky) = (0, 0)``. This basis is what the SLM projects in angular
+       space (which maps to the camera's image space via the Fourier transform implemented by free
+       space and solidified by a lens).
    * - ``"knm"``
-     - Pixel basis of the SLM's computational k-space.
+     - Pixel basis of the SLM's computational :math:`k`-space.  Centered at ``(kn, km) =
+       (0, 0)``. ``"knm"`` is a discrete version of the continuous ``"kxy"``. This is
+       important because holograms need to be stored in computer memory, a discrete
+       medium with pixels, rather than being purely continuous. For instance, in
+       :class:`SpotHologram`, spots targeting specific continuous angles are rounded to
+       the nearest discrete pixels of ``"knm"`` space in practice.
+       Then, this ``"knm"`` space image is handled as a
+       standard image/array, and operations such as the discrete Fourier transform
+       (instrumental for numerical hologram optimization) can be applied.
+
+See the first tip in :class:`Hologram` to learn more about ``"kxy"`` and ``"knm"``
+space.
 
 References
 ----------
@@ -96,18 +121,19 @@ ALGORITHM_DEFAULTS = {
 class Hologram:
     r"""
     Phase retrieval methods applied to holography.
-    See :meth:`.optimize()` for available methods for hologram optimization.
+    See :meth:`.optimize()` to learn about the methods implemented for hologram optimization.
 
     Tip
     ~~~
-    The Fourier domain (kxy) of an SLM with shape :attr:`slm_shape` also has the shape
-    :attr:`slm_shape` under FFT. However, the extents of this domain correspond to the edges
-    of the farfield (:math:`\pm\frac{\lambda}{2\Delta x}` radians, where :math:`\Delta x`
+    The Fourier domain (``"kxy"``) of an SLM with shape :attr:`slm_shape` also has the shape
+    :attr:`slm_shape` under discrete Fourier transform. However, the extents of this
+    domain correspond to the edges of the farfield
+    (:math:`\pm\frac{\lambda}{2\Delta x}` radians, where :math:`\Delta x`
     is the SLM pixel pitch). This means that resolution of the farfield
     :math:`\pm\frac{\lambda}{2N_x\Delta x}` can be quite poor with small :math:`N_x`.
-    The solution is to zero-pad the SLM shape
+    The solution is to zero-pad the SLM nearfield
     --- artificially increasing the width :math:`N_x` and height
-    :math:`N_y` even though the extent of the non-zero data remains the same ---
+    :math:`N_y` even though the extent of the non-zero nearfield data remains the same ---
     and thus enhance the resolution of the farfield.
     In practice, padding is accomplished by passing a :attr:`shape` or
     :attr:`target` of appropriate shape (see constructor :meth:`.__init__()` and subclasses),
@@ -119,22 +145,23 @@ class Hologram:
     matrices of shape :attr:`shape`. To save memory, the matrices :attr:`phase` and :attr:`amp`
     are stored with the (smaller, but not strictly smaller) shape :attr:`slm_shape`.
     Also to save memory, :attr:`phase_ff` and :attr:`amp_ff` are set to ``None`` on construction,
-    and only initialized if they need to be used. Any additions should check for ``None``.
+    and only initialized if they need to be used. Any code additions should check for ``None``.
 
     Tip
     ~~~
-    Due to SLM inefficiency, undiffracted light will be present at the center of the :attr:`target`.
+    Due to imperfect SLM diffraction efficiency, undiffracted light will
+    be present at the center of the :attr:`target`.
     This is called the zeroth order diffraction peak. To avoid this peak, consider shifting
     the data contained in :attr:`target` away from the center.
 
     Attributes
     ----------
     slm_shape : (int, int)
-        The shape of the **near-field** device producing the hologram in the **far-field**.
-        This is important to record because
+        The shape of the **near-field** device producing the hologram in the **far-field**
+        in :mod:`numpy` ``(h, w)`` form. This is important to record because
         certain optimizations and calibrations depend on it. If multiple of :attr:`slm_shape`,
-        :attr:`phase`, or :attr:`amp` are not ``None``, the shapes must agree. If all are
-        ``None``, then the shape of the :attr:`target` is used instead
+        :attr:`phase`, or :attr:`amp` are not ``None`` in the construtor, the shapes must agree. 
+        If all are ``None``, then the shape of the :attr:`target` is used instead
         (:attr:`slm_shape` == :attr:`shape`).
     phase : numpy.ndarray OR cupy.ndarray
         **Near-field** phase pattern to optimize.
@@ -147,7 +174,8 @@ class Hologram:
         This is of shape :attr:`slm_shape`
         and (during optimization) padded to shape :attr:`shape`.
     shape : (int, int)
-        The shape of the computational space in the **near-field** and **far-field**.
+        The shape of the computational space in the **near-field** and **far-field**
+        in :mod:`numpy` ``(h, w)`` form.
         Corresponds to the the ``"knm"`` basis in the **far-field**.
         This often differs from :attr:`slm_shape` due to padding of the **near-field**.
     target : numpy.ndarray OR cupy.ndarray
@@ -157,8 +185,9 @@ class Hologram:
         The mutable **far-field** amplitude in the ``"knm"`` basis used in GS.
         Starts as :attr:`target` but may be modified by weighted feedback in WGS.
         This is of shape :attr:`shape`.
-    phase_ff : numpy.ndarray OR cupy.ndarray OR None
-        Algorithm-constrained **far-field** phase in the ``"knm"`` basis. Stored for certain computational algorithms.
+    phase_ff : numpy.ndarray OR cupy.ndarray
+        Algorithm-constrained **far-field** phase in the ``"knm"`` basis.
+        Stored for certain computational algorithms.
         (see :meth:`~slmsuite.holography.algorithms.Hologram.GS`).
         This is of shape :attr:`shape`.
     amp_ff : numpy.ndarray OR cupy.ndarray OR None
@@ -236,9 +265,9 @@ class Hologram:
 
         Parameters
         ----------
-        target : array_like OR (int, int)
-            Target to optimize to. The user can also pass a shape, and this constructor
-            will create an empty target of all zeros.
+        target : numpy.ndarray OR cupy.ndarray OR (int, int)
+            Target to optimize to. The user can also pass a shape in :mod:`numpy` ``(h,
+            w)`` form, and this constructor will create an empty target of all zeros.
             :meth:`.calculate_padded_shape()` can be of particular help for calculating the
             shape that will produce desired results (in terms of precision, etc).
         amp : array_like OR None
@@ -248,7 +277,7 @@ class Hologram:
             See :attr:`phase`. :attr:`phase` should only be passed if the user wants to
             precondition the optimization. Of shape :attr:`slm_shape`.
         slm_shape : (int, int) OR slmsuite.hardware.FourierSLM OR slmsuite.hardware.slms.SLM OR None
-            The shape of the near-field of the SLM.
+            The shape of the near-field of the SLM in :mod:`numpy` `(h, w)` form.
             Optionally, as a quality of life feature, the user can pass a
             :class:`slmsuite.hardware.FourierSLM` or
             :class:`slmsuite.hardware.slms.SLM` instead,
@@ -406,17 +435,29 @@ class Hologram:
         For a given base ``slm_shape``, pads to the user's requirements.
         If the user chooses multiple requirements, the largest
         dimensions for the shape are selected.
-        By default, pads to the smallest square power of two.
+        By default, pads to the smallest square power of two that
+        encapsulates the original ``slm_shape``.
+
+        Tip
+        ~~~
+        See also the first tip in the constructor of :class:`Hologram` for more information
+        about the importance of padding.
+
+        Future: Add a setting to pad based on available memory.
 
         Parameters
         ----------
         slm_shape : (int, int) OR slmsuite.hardware.FourierSLM
-            The original shape of the SLM. The user can pass a
+            The original shape of the SLM in :mod:`numpy` `(h, w)` form. The user can pass a
             :class:`slmsuite.hardware.FourierSLM` instead, and should pass this
             when using the ``precision`` parameter.
         padding_order : int
-            Scales to the ``padding_order``th closest greater power of 2.
-            A ``padding_order`` of zero does nothing.
+            Scales to the ``padding_order`` th larger power of 2.
+            A ``padding_order`` of zero does nothing. For instance, an SLM
+            with shape ``(720, 1280)`` would yield
+            ``(2048, 4096)`` for two,
+            ``(1024, 2048)`` for one, and
+            ``(720, 1280)`` for zero.
         square_padding : bool
             If ``True``, sets both shape dimensions to the largest of the two
             dimensions that would otherwise be returned.
@@ -1606,7 +1647,7 @@ class FeedbackHologram(Hologram):
         Parameters
         ----------
         shape : (int, int)
-            Computational shape of the SLM. See :meth:`.Hologram.__init__()`.
+            Computational shape of the SLM in :mod:`numpy` `(h, w)` form. See :meth:`.Hologram.__init__()`.
         target_ij : array_like OR None
             See :attr:`target_ij`. Should only be ``None`` if the :attr:`target`
             will be generated by other means (see :class:`SpotHologram`), so the
@@ -2242,22 +2283,23 @@ class SpotHologram(FeedbackHologram):
         Parameters
         ----------
         shape : (int, int)
-            Computational shape of the SLM. See :meth:`.SpotHologram.__init__()`.
+            Computational shape of the SLM in :mod:`numpy` `(h, w)` form. See :meth:`.SpotHologram.__init__()`.
         array_shape : (int, int) OR int
             The size of the rectangular array in number of spots ``(NX, NY)``.
-            If a single N is given, assume ``(N, N)``.
+            If a scalar N is given, assume ``(N, N)``.
         array_pitch : (float, float) OR float
-            The spacing between spots in the x and y directions in kxy coordinates.
+            The spacing between spots in the x and y directions ``(pitchx, pitchy)``.
             If a single pitch is given, assume ``(pitch, pitch)``.
         array_center : (float, float) OR None
             The shift of the center of the spot array from the zeroth order.
-            ``(kx, ky)`` form.
-            Always defaults to the position of the zeroth order, converted into the
+            Uses ``(x, y)`` form in the chosen basis.
+            If ``None``, defaults to the position of the zeroth order, converted into the
             relevant basis:
 
-             - If ``"knm"``, this is ``shape/2``.
+             - If ``"knm"``, this is ``(shape[1], shape[0])/2``.
              - If ``"kxy"``, this is ``(0,0)``.
-             - If ``"ij"``, this is the pixel position of the zeroth order on the camera.
+             - If ``"ij"``, this is the pixel position of the zeroth order on the
+               camera (calculated via Fourier calibraiton).
 
         basis : str
             See :meth:`__init__()`.
@@ -2275,7 +2317,7 @@ class SpotHologram(FeedbackHologram):
         # Determine array_center default.
         if array_center is None:
             if basis == "knm":
-                array_center = (shape[0] / 2.0, shape[1] / 2.0)
+                array_center = (shape[1] / 2.0, shape[0] / 2.0)
             elif basis == "kxy":
                 array_center = (0, 0)
             elif basis == "ij":

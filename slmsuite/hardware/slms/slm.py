@@ -17,7 +17,7 @@ class SLM:
     name : str
         Name of the SLM.
     shape : (int, int)
-        Stores ``(height, width)`` of the SLM in pixels, same form as :attr:`numpy.ndarray.shape`.
+        Stores ``(height, width)`` of the SLM in pixels, the same convention as :attr:`numpy.ndarray.shape`.
     wav_um : float
         Operating wavelength targeted by the SLM in microns. Defaults to 780 nm.
     wav_design_um : float
@@ -245,7 +245,7 @@ class SLM:
         The user does not need to wrap (e.g. :mod:`numpy.mod(data, 2*numpy.pi)`) the passed phase data,
         unless they are pre-caching data for speed (see below).
         :meth:`.write()` uses optimized routines to wrap the phase (see the
-        private method :meth:`_phase2gray`).
+        private method :meth:`_phase2gray()`).
         Which routine is used depends on :attr:`phase_scaling`:
 
          - :attr:`phase_scaling` is one.
@@ -266,6 +266,16 @@ class SLM:
             Processed the same way as the :attr:`phase_scaling` is less than one case, with the
             important exception that phases (after wrapping) between ``2*pi/phase_scaling`` and
             ``2*pi`` are set to zero. For instance, a sawtooth blaze would be truncated at the tips.
+
+        Caution
+        ~~~~~~~
+        After scale conversion, data is `floor()`ed to integers with `np.copyto`, rather than
+        rounded to the nearest integer (`np.around()` equivalent). While this is
+        irrelevant for the average user, it may be significant in some cases.
+        If this behavior is undesired consider either: :meth:`write()` integer data
+        directly or modifying the behavior of the private method :meth:`_phase2gray()` in
+        a pull request. We have not been able to find an example of `np.copyto`
+        producing undesired behavior, but will change this if such behavior is found.
 
         Parameters
         ----------
@@ -415,8 +425,9 @@ class SLM:
             out -= 1
 
             # This part (along with the choice of type), implements modulo much faster than np.mod().
-            bw = int(self.bitresolution - 1)
-            np.bitwise_and(out, bw, out=out)
+            if self.bitresolution != 8 and self.bitresolution != 16:
+                active_bits_mask = int(self.bitresolution - 1)
+                np.bitwise_and(out, active_bits_mask, out=out)
         else:
             # phase_scaling is not included in the scaling.
             factor = -(self.bitresolution * self.phase_scaling / 2 / np.pi)
@@ -429,7 +440,7 @@ class SLM:
                 # np.mod is the slowest step. It could maybe be faster if phase is converted to
                 # an integer beforehand, but there is an amount of risk for overflow.
                 # For instance, a standard double can represent numbers far larger than
-                # even a 64 bit integer. If this optimization is implement, take care to
+                # even a 64 bit integer. If this optimization is implemented, take care to
                 # generate checks for the conversion to long integer / etc before the final
                 # conversion to dtype of uint8 or uint16.
                 np.mod(phase, self.bitresolution * self.phase_scaling, out=phase)

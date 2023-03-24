@@ -3,15 +3,14 @@ Helper functions for manipulating phase patterns.
 """
 
 import numpy as np
-from scipy import special
-from scipy.spatial.distance import euclidean, chebyshev
+from scipy.spatial.distance import chebyshev
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
-from math import factorial
 import warnings
 
 # Phase pattern collation and manipulation
+
 def imprint(
     matrix,
     window,
@@ -26,10 +25,10 @@ def imprint(
 ):
     r"""
     Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
-    This ``function`` must be in the style of :mod:`~slmsuite.holography.toolbox`
-    phase helper functions, which attempts a ``grid`` parameter
-    (see :mod:`~slmsuite.holography.toolbox.blaze()` or
-    :mod:`~slmsuite.holography.toolbox.lens()`).
+    This ``function`` must be in the style of :mod:`~slmsuite.holography.toolbox.phase`
+    phase helper functions, which expect a ``grid`` parameter to define the coordinate basis
+    (see :mod:`~slmsuite.holography.toolbox.phase.blaze()` or
+    :mod:`~slmsuite.holography.toolbox.phase.lens()`).
     For instance, we can imprint a blaze on a 200 by 200 pixel region
     of the SLM with:
 
@@ -38,7 +37,7 @@ def imprint(
 
         canvas = np.zeros(shape=slm.shape)  # Matrix to imprint onto.
         window = [200, 200, 200, 200]       # Region of the matrix to imprint.
-        toolbox.imprint(canvas, window=window, function=toolbox.blaze, grid=slm, vector=(.001, .001))
+        toolbox.imprint(canvas, window=window, function=toolbox.phase.blaze, grid=slm, vector=(.001, .001))
 
     See also :ref:`examples`.
 
@@ -58,7 +57,7 @@ def imprint(
           ``centered`` is ignored.
 
     function : function
-        A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
+        A function in the style of :mod:`~slmsuite.holography.toolbox.phase` helper functions,
         which accept ``grid`` as the first argument.
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
         Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
@@ -220,6 +219,7 @@ def imprint(
 
 
 # Unit helper functions
+
 BLAZE_LABELS = {
     "norm" : (r"$k_x/k$", r"$k_y/k$"),
     "kxy" : (r"$k_x/k$", r"$k_y/k$"),
@@ -249,9 +249,6 @@ def convert_blaze_vector(
             This corresponds to integer points on the grid of this
             (potentially padded) SLM's Fourier transform.
             See :class:`~slmsuite.holography.Hologram`.
-
-            Important
-            ~~~~~~~~~
             The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
 
           ``"freq"``
@@ -371,6 +368,7 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
 
 
 # Vector and window helper functions
+
 def format_2vectors(vectors):
     """
     Validates that an array of 2D vectors is a ``numpy.ndarray`` of shape ``(2, N)``.
@@ -601,9 +599,9 @@ def smallest_distance(vectors, metric=chebyshev):
 
 def voronoi_windows(grid, vectors, radius=None, plot=False):
     r"""
-    Gets boolean array windows for an array of vectors in the style of
-    :meth:`~slmsuite.holography.toolbox.imprint()`,
-    such that the ith window corresponds to the Voronoi cell centered around the ith vector.
+    Returns boolean array windows corresponding to the Voronoi cells for a set of vectors.
+    These boolean array windows are in the style of :meth:`~slmsuite.holography.toolbox.imprint()`.
+    The ith window corresponds to the Voronoi cell centered around the ith vector.
 
     Parameters
     ----------
@@ -707,11 +705,13 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
 def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
     r"""
-    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`
+    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
     on a set of ``vectors`` using the helper function
     :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
-    This iteratively forces a set of ``vectors` away from each other until
+    This iteratively forces a set of ``vectors`` away from each other until
     they become more evenly distributed over a space.
+    This function could be made much more computationally efficient by using analytic
+    methods to compute Voronoi cell area, rather than the current numerical approach.
 
     Parameters
     ----------
@@ -759,8 +759,8 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
 
 def lloyds_points(grid, n_points, iterations=10, plot=False):
     r"""
-    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`
-    without seed ``vectors``. Instead, autogenerates the seed ``vectors`` randomly.
+    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
+    without seed ``vectors``; instead, autogenerates the seed ``vectors`` randomly.
     See :meth:`~slmsuite.holography.toolbox.lloyds_algorithm()`.
 
     Parameters
@@ -811,7 +811,8 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
         return np.vstack((x_grid[result], y_grid[result]))
 
 
-# Basic functions
+# Grid functions
+
 def _process_grid(grid):
     r"""
     Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
@@ -843,12 +844,14 @@ def _process_grid(grid):
     return grid
 
 
-import slmsuite.toolbox.phase as toolbox_phase
+import slmsuite.holography.toolbox.phase as toolbox_phase
 
 
 def shift_grid(grid, transform=None, shift=None):
-    """
-    Shifts and transforms an SLM grid.
+    r"""
+    Returns a copy of a coordinate basis ``grid`` with a given ``shift`` and ``transformation``.
+    Such grids are used as arguments for phase patterns, such as those in
+    :mod:`slmsuite.holography.toolbox.phase`.
 
     Parameters
     ----------
@@ -900,74 +903,8 @@ def shift_grid(grid, transform=None, shift=None):
         )
 
 
-def blaze(grid, vector=(0, 0), offset=0):
-    r"""
-    **(Deprecated; use :meth:`slmsuite.toolbox.phase.blaze` instead)**
-    """
-    return toolbox_phase.blaze(grid, vector, offset)
-
-
-def lens(grid, f=(np.inf, np.inf), center=None, angle=None):
-    r"""
-    **(Deprecated; use :meth:`slmsuite.toolbox.phase.lens` instead)**
-    """
-    if center is not None or angle is not None:
-        grid = shift_grid(grid, transform=angle, shift=center)
-
-    return toolbox_phase.blaze(grid, f)
-
-
-def axicon(grid, f=(np.inf, np.inf), w=None):
-    r"""
-    **(Deprecated; use :meth:`slmsuite.toolbox.phase.axicon` instead)**
-    """
-    return toolbox_phase.axicon(grid, f, w)
-
-
-def zernike(grid, n, m, aperture=None):
-    r"""
-    **(Deprecated; use :meth:`slmsuite.toolbox.phase.zernike` instead)**
-    """
-    return toolbox_phase.zernike(grid, n, m, aperture)
-
-
-def zernike_sum(grid, weights, aperture=None):
-    r"""
-    **(Deprecated; use :meth:`slmsuite.toolbox.phase.zernike_sum` instead)**
-    """
-    return toolbox_phase.zernike_sum(grid, weights, aperture)
-
-
-# Structured light
-def laguerre_gaussian(grid, l, p, w=None):
-    r"""
-    **(Deprecated; use :meth:`slmsuite.toolbox.phase.laguerre_gaussian` instead)**
-    """
-    return toolbox_phase.laguerre_gaussian(grid, l, p, w)
-
-
-def hermite_gaussian(grid, n, m, w=None):
-    r"""
-    **(Deprecated; use :meth:`slmsuite.toolbox.phase.hermite_gaussian` instead)**
-    """
-    return toolbox_phase.hermite_gaussian(grid, n, m, w)
-
-
-def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
-    r"""
-    **(NotImplemented; Deprecated; use :meth:`slmsuite.toolbox.phase.ince_gaussian` instead)**
-    """
-    return ince_gaussian(grid, p, m, parity, ellipticity, w)
-
-
-def matheui_gaussian(grid, r, q, w=None):
-    """
-    **(NotImplemented; Deprecated; use :meth:`slmsuite.toolbox.phase.matheui_gaussian` instead)**
-    """
-    return matheui_gaussian(grid, r, q, w)
-
-
 # Padding
+
 def pad(matrix, shape):
     """
     Helper function to pad data with zeros. The padding is centered.
@@ -1053,3 +990,107 @@ def unpad(matrix, shape):
     assert np.all(toReturn.shape == shape)
 
     return toReturn
+
+
+# Deprecated functions
+
+def blaze(grid, vector=(0, 0), offset=0):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.blaze` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.blaze is deprecated."
+        "Use slmsuite.toolbox.phase.blaze instead"
+    )
+    return toolbox_phase.blaze(grid, vector, offset)
+
+
+def lens(grid, f=(np.inf, np.inf), center=None, angle=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.lens` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.lens is deprecated."
+        "Use slmsuite.toolbox.phase.lens instead"
+    )
+    if center is not None or angle is not None:
+        grid = shift_grid(grid, transform=angle, shift=center)
+
+    return toolbox_phase.blaze(grid, f)
+
+
+def axicon(grid, f=(np.inf, np.inf), w=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.axicon` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.axicon is deprecated."
+        "Use slmsuite.toolbox.phase.axicon instead"
+    )
+    return toolbox_phase.axicon(grid, f, w)
+
+
+def zernike(grid, n, m, aperture=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.zernike` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.zernike is deprecated."
+        "Use slmsuite.toolbox.phase.zernike instead"
+    )
+    return toolbox_phase.zernike(grid, n, m, aperture)
+
+
+def zernike_sum(grid, weights, aperture=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.zernike_sum` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.zernike_sum is deprecated."
+        "Use slmsuite.toolbox.phase.zernike_sum instead"
+    )
+    return toolbox_phase.zernike_sum(grid, weights, aperture)
+
+
+def laguerre_gaussian(grid, l, p, w=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.laguerre_gaussian` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.laguerre_gaussian is deprecated."
+        "Use slmsuite.toolbox.phase.laguerre_gaussian instead"
+    )
+    return toolbox_phase.laguerre_gaussian(grid, l, p, w)
+
+
+def hermite_gaussian(grid, n, m, w=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.hermite_gaussian` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.hermite_gaussian is deprecated."
+        "Use slmsuite.toolbox.phase.hermite_gaussian instead"
+    )
+    return toolbox_phase.hermite_gaussian(grid, n, m, w)
+
+
+def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
+    r"""
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.ince_gaussian` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.ince_gaussian is deprecated."
+        "Use slmsuite.toolbox.phase.ince_gaussian instead"
+    )
+    return ince_gaussian(grid, p, m, parity, ellipticity, w)
+
+
+def matheui_gaussian(grid, r, q, w=None):
+    """
+    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.matheui_gaussian` **instead)**
+    """
+    warnings.warn(
+        "slmsuite.toolbox.matheui_gaussian is deprecated."
+        "Use slmsuite.toolbox.phase.matheui_gaussian instead"
+    )
+    return matheui_gaussian(grid, r, q, w)

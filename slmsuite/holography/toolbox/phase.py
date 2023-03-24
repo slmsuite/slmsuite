@@ -6,11 +6,12 @@ import numpy as np
 from scipy import special
 from math import factorial
 
-from toolbox import _process_grid
+from slmsuite.holography.toolbox import _process_grid
 
 def blaze(grid, vector=(0, 0), offset=0):
     r"""
-    Returns a simple blaze (phase ramp).
+    Returns a simple `blaze <https://en.wikipedia.org/wiki/Blazed_grating>`_,
+    a linear phase ramp, toward a given vector in :math:`k`-space.
 
     .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k}_g \cdot \vec{x} + o
 
@@ -47,7 +48,9 @@ def blaze(grid, vector=(0, 0), offset=0):
 
 def lens(grid, f=(np.inf, np.inf)):
     r"""
-    Returns a simple thin lens (parabolic). When ``f`` is isotropic,
+    Returns a simple
+    `thin parabolic lens <https://en.wikipedia.org/wiki/Thin_lens#Physical_optics>`_.
+    When ``f`` is isotropic,
 
     .. math:: \phi(\vec{x}) = \frac{\pi}{f}|\vec{x}|^2
 
@@ -98,10 +101,10 @@ def lens(grid, f=(np.inf, np.inf)):
 
 def axicon(grid, f=(np.inf, np.inf), w=None):
     r"""
-    An `axicon <https://en.wikipedia.org/wiki/Axicon>`_
-    blazes according to :math:`\vec{k}_g = w / \vec{f} / 2` where
+    Returns the phase of an `axicon <https://en.wikipedia.org/wiki/Axicon>`_ lens to produce a Bessel beam.
+    A (elliptically)-cylindrical axicon blazes according to :math:`\vec{k}_g = w / \vec{f} / 2` where
     :math:`w` is the radius of the axicon. With a flat input amplitude over
-    :math:`[-w, w]`, this will produce an axicon beam centered at :math:`z = \vec{f}`.
+    :math:`[-w, w]`, this will produce a Bessel beam centered at :math:`z = \vec{f}`.
 
     .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k}_g \cdot |\vec{x}|
 
@@ -136,7 +139,7 @@ def axicon(grid, f=(np.inf, np.inf), w=None):
         assert f.shape == (2,)
         assert not np.any(f == 0), "Cannot interpret a focal length of zero."
 
-    angle = [w / f[0] / 2, w / f[1] / 2]    # Notice that this fraction is unitless radians.
+    angle = [w / f[0] / 2, w / f[1] / 2]    # Notice that this fraction is in radians.
 
     # Optimize phase construction based on context (for speed, to avoid sqrt, etc).
     if angle[0] == 0 and angle[1] == 0:
@@ -151,7 +154,7 @@ def axicon(grid, f=(np.inf, np.inf), w=None):
 
 def zernike(grid, n, m, aperture=None):
     r"""
-    Returns a single Zernike polynomial.
+    Returns a single `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
 
     Parameters
     ----------
@@ -175,7 +178,9 @@ def zernike(grid, n, m, aperture=None):
 
 def zernike_sum(grid, weights, aperture=None):
     r"""
-    Returns a summation of Zernike polynomials.
+    Returns a summation of
+    `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
+    in a computationally-efficient manner.
 
     Important
     ~~~~~~~~~
@@ -381,7 +386,10 @@ def _determine_source_radius(grid, w=None):
 
 def laguerre_gaussian(grid, l, p, w=None):
     r"""
-    Returns the phase farfield for a Laguerre-Gaussian beam.
+    Returns the phase farfield for a
+    `Laguerre-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Laguerre-Gaussian_modes>`_
+    beam.
+
     This function is especially useful to hone and validate SLM alignment. Perfect alignment will
     result in concentric and uniform fringes for higher order beams. Focusing issues, aberration,
     or pointing misalignment will mitigate this.
@@ -423,7 +431,9 @@ def laguerre_gaussian(grid, l, p, w=None):
 
 def hermite_gaussian(grid, n, m, w=None):
     r"""
-    Returns the phase farfield for a Hermite-Gaussian beam.
+    Returns the phase farfield for a
+    `Hermite-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Hermite-Gaussian_modes>`_
+    beam.
 
     Ref: https://doi.org/10.1364/AO.54.008444
 
@@ -463,7 +473,9 @@ def hermite_gaussian(grid, n, m, w=None):
 
 def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
     r"""
-    **(NotImplemented)** Returns the phase farfield for an Ince-Gaussian beam.
+    **(NotImplemented)** Returns the phase farfield for an
+    `Ince-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Ince-Gaussian_modes>`_
+    beam.
 
     Ref: https://doi.org/10.1364/OL.29.000144
 

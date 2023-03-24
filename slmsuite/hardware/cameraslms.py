@@ -13,7 +13,8 @@ from tqdm import tqdm
 from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import SpotHologram
-from slmsuite.holography.toolbox import blaze, imprint, format_2vectors
+from slmsuite.holography.toolbox import imprint, format_2vectors
+from slmsuite.holography.toolbox.phase import blaze
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
 from slmsuite.misc.fitfunctions import cos
 

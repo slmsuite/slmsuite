@@ -73,6 +73,7 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
         region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
     )).astype(int)
 
+    images = np.array(images)
     shape = np.shape(images)
 
     if clip:  # Prevent out-of-range errors by clipping.
@@ -160,7 +161,7 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     Zeros the field of a stack of images such that moment calculations will succeed.
     Consider, for example, a small spot on a field with strong background.
     Moment calculations in this situation will dominantly measure the moments
-    of the rectangular field. This function zeros the fields below some threshold.
+    of the rectangular field. This function zeros the image below some threshold.
     This threshold is set to either the mean plus ``deviations`` standard deviations,
     computed uniquely for each image, or the median of each image if ``deviations``
     is ``None``.
@@ -175,11 +176,6 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     deviations : int OR None
         Number of standard deviations above the mean to set the threshold.
         If ``None``, uses the median as the threshold instead.
-    ignore_nan : bool
-        Whether to use :meth:`numpy.nanmean()` and others in place of :meth:`numpy.mean()`.
-        :meth:`numpy.nanmedian()` treats ``nan`` values as zeros.
-        This is useful in the case where ``clip=True`` is passed to :meth:`take()`
-        (out of range is set to ``nan``).
     out : numpy.ndarray or None
         The array to place the output data into.
         Should be the same shape as ``images``,
@@ -191,27 +187,18 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     out : numpy.ndarray
         Images with zeroed field.
     """
-    images = np.array(images, dtype=float)  # Hack to make things work.
+    images = np.array(images, dtype=float)  # Hack to prevent integer underflow.
     if len(images.shape) == 2:
         images = np.reshape(images, (1, images.shape[0], images.shape[1]))
     img_count = images.shape[0]
 
     if deviations is None:  # Median case
-        if ignore_nan:
-            threshold = np.nanmedian(images, axis=(1, 2))
-        else:
-            threshold = np.median(images, axis=(1, 2))
+        threshold = np.nanmedian(images, axis=(1, 2))
     else:   # Mean + deviations * std case
-        if ignore_nan:
-            threshold = (
-                np.nanmean(images, axis=(1, 2))
-                + deviations*np.nanstd(images, axis=(1, 2))
-            )
-        else:
-            threshold = (
-                np.mean(images, axis=(1, 2))
-                + deviations*np.std(images, axis=(1, 2))
-            )
+        threshold = (
+            np.nanmean(images, axis=(1, 2))
+            + deviations*np.nanstd(images, axis=(1, 2))
+        )
 
     threshold = np.reshape(threshold, (img_count, 1, 1))
 
@@ -220,7 +207,7 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     elif out is not images:
         out = np.copyto(out, images)
 
-    # This needs float. Unsigned int would overflow.
+    # This needs float. Unsigned int would unflow.
     out -= threshold
     out[out < 0] = 0
 
@@ -628,6 +615,8 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
         If the provided ``function`` does not have a guess implemented.
     """
     # Setup.
+    if images.ndim == 2:
+        images = images.reshape((1, *images.shape))
     (image_count, w_y, w_x) = images.shape
     img_shape = (w_y, w_x)
 

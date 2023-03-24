@@ -251,7 +251,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
         constant offset.
     wx, wy : float
         The standard deviation of the normal distribution.
-        Equivalent to the :math:`1/e^2` radius.
+        Equivalent to half of the :math:`1/e^2` radius.
         This is related to the full width at half maximum (FWHM) 
         by a factor of :math:`2\sqrt{2\ln{2}}`.
     wxy : float

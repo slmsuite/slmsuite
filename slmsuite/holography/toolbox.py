@@ -15,7 +15,7 @@ from slmsuite.misc.math import (
 )
 
 # Windows are views into 2D arrays
-def window_slice(window, shape=None, centered=False):
+def window_slice(window, shape=None, centered=False, circular=False):
     """
     Get the slices that describe the window's view into the larger array.
 
@@ -24,16 +24,19 @@ def window_slice(window, shape=None, centered=False):
     window : (int, int, int, int) OR (array_like, array_like) OR array_like
         A number of formats are accepted:
         - List in ``(x, w, y, h)`` format, where ``w`` and ``h`` are the width and height of
-          the region and  ``(x,y)`` is the upper-left coordinate. If ``centered``, then ``(x,y)`` is
-          instead the center of the region to imprint.
+          the region and  ``(x,y)`` is the upper-left coordinate.
+          If ``centered``, then ``(x,y)`` is instead the center of the region to imprint.
+          If ``circular``, then an elliptical region circumscribed by the rectanglular region is returned.
         - Tuple containing arrays of identical length corresponding to y and x indices.
-          ``centered`` is ignored.
+          ``centered`` and ``circular`` are ignored.
         - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
-          ``centered`` is ignored.
+          ``centered`` and ``circular`` are ignored.
     shape : (int, int)
         The (height, width) of the array that the window is a view into.
         If passed, indices beyond those allowed by ``shape`` will be clipped.
     centered : bool
+        See ``window``.
+    circular : bool
         See ``window``.
 
     Returns
@@ -48,12 +51,27 @@ def window_slice(window, shape=None, centered=False):
         xf = int(xi + window[1])
         yi = int(window[2] - (window[3] / 2 if centered else 0))
         yf = int(yi + window[3])
-        if shape is not None:
-            xi = np.clip(xi, 0, shape[1] - 1)
-            xf = np.clip(xf, 0, shape[1] - 1)
-            yi = np.clip(yi, 0, shape[0] - 1)
-            yf = np.clip(yf, 0, shape[0] - 1)
-        slice_ = (slice(yi, yf), slice(xi, xf))
+
+        if circular:    # If a circular window is desired, compute this.
+            x_list = np.arange(xi, xf)
+            y_list = np.arange(yi, yf)
+            x_grid, y_grid = np.meshgrid(x_list, y_list)
+
+            rr_grid = (
+                (window[3] ** 2) * np.square(x_grid - window[1] / 2.) +
+                (window[1] ** 2) * np.square(y_grid - window[3] / 2.)
+            )
+
+            mask_grid = rr_grid <= (window[1] ** 2) * (window[3] ** 2) / 4.
+
+            return window_slice((y_grid[mask_grid], x_grid[mask_grid]), shape=shape)
+        else:           # Otherwise, return square slices
+            if shape is not None:
+                xi = np.clip(xi, 0, shape[1] - 1)
+                xf = np.clip(xf, 0, shape[1] - 1)
+                yi = np.clip(yi, 0, shape[0] - 1)
+                yf = np.clip(yf, 0, shape[0] - 1)
+            slice_ = (slice(yi, yf), slice(xi, xf))
     # (y_ind, x_ind) format
     elif len(window) == 2:
         # Prepare the lists
@@ -82,7 +100,7 @@ def window_square(window, padding_frac=0, padding_pix=0):
         Boolean mask.
     padding : float
         Fraction of the window width and height to pad these by on all sides.
-        For instance, 
+        For instance,
         This result is clipped to be within ``shape`` of the window.
 
     Returns
@@ -117,7 +135,7 @@ def window_square(window, padding_frac=0, padding_pix=0):
 
     # Return desired format.
     return (
-        limits[0][0], limits[0][1] - limits[0][0], 
+        limits[0][0], limits[0][1] - limits[0][0],
         limits[1][0], limits[1][1] - limits[1][0]
     )
 
@@ -130,10 +148,10 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     Note
     ~~~~
-    The :meth:`cv2.fillConvexPoly()` function used to fill each window dilates 
+    The :meth:`cv2.fillConvexPoly()` function used to fill each window dilates
     slightly outside the window bounds. To avoid pixels belonging to multiple windows
-    simutaneously, we crop away previously-assigned pixels from new windows while these are 
-    being iteratively generated. As a result, windows earlier in the list will be slightly 
+    simutaneously, we crop away previously-assigned pixels from new windows while these are
+    being iteratively generated. As a result, windows earlier in the list will be slightly
     larger than windows later in the list.
 
     Parameters
@@ -353,6 +371,18 @@ BLAZE_LABELS = {
     "deg" : (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]")
 }
 BLAZE_UNITS = BLAZE_LABELS.keys()
+
+def convert_blaze_radius(radius, from_units="norm", to_units="norm", slm=None, shape=None):
+    v0 = convert_blaze_vector(
+        (0, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
+    )
+    vx = convert_blaze_vector(
+        (radius, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
+    )
+    vy = convert_blaze_vector(
+        (0, radius), from_units=from_units, to_units=to_units, slm=slm, shape=shape
+    )
+    return np.mean([np.linalg.norm(vx - v0), np.linalg.norm(vy - v0)])
 
 def convert_blaze_vector(
     vector, from_units="norm", to_units="norm", slm=None, shape=None
@@ -1509,14 +1539,18 @@ def pad(matrix, shape):
     ----------
     matrix : numpy.ndarray
         Data to pad.
-    shape : (int, int)
+    shape : (int, int) OR None
         The desired shape of the ``matrix``.
+        If ``None``, do not pad.
 
     Returns
     -------
     numpy.ndarray
         Padded ``matrix``.
     """
+    if shape is None:
+        return matrix
+
     deltashape = (
         (shape[0] - matrix.shape[0]) / 2.0,
         (shape[1] - matrix.shape[1]) / 2.0,
@@ -1531,13 +1565,13 @@ def pad(matrix, shape):
     padL = int(np.floor(deltashape[1]))
     padR = int(np.ceil(deltashape[1]))
 
-    toReturn = np.pad(
+    result = np.pad(
         matrix, [(padB, padT), (padL, padR)], mode="constant", constant_values=0
     )
 
-    assert np.all(toReturn.shape == shape)
+    assert np.all(result.shape == shape)
 
-    return toReturn
+    return result
 
 
 def unpad(matrix, shape):
@@ -1550,8 +1584,9 @@ def unpad(matrix, shape):
     matrix : numpy.ndarray OR (int, int)
         Data to unpad. If this is a shape, return the slicing integers used to unpad that shape
         ``[padB:padT, padL:padR]``.
-    shape : (int, int)
+    shape : (int, int) OR None
         The desired shape of the ``matrix``.
+        If ``None``, do not unpad.
 
     Returns
     ----------
@@ -1565,6 +1600,12 @@ def unpad(matrix, shape):
         # Assume as tuple was provided.
         mshape = np.squeeze(matrix)
         return_args = True
+
+    if shape is None:
+        if return_args:
+            return (0, mshape[0], 0, mshape[1])
+        else:
+            return matrix
 
     deltashape = ((shape[0] - mshape[0]) / 2.0, (shape[1] - mshape[1]) / 2.0)
 

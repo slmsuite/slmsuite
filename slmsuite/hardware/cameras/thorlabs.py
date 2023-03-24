@@ -97,6 +97,7 @@ class ThorCam(Camera):
         if ThorCam.sdk is None:
             if verbose:
                 print("TLCameraSDK initializing... ", end="")
+            # TODO: handle case when TLCameraSDK is closed and there is no reference to it.
             ThorCam.sdk = TLCameraSDK()
             if verbose:
                 print("success")
@@ -357,7 +358,7 @@ class ThorCam(Camera):
             Array of shape :attr:`shape` if ``grab=True``, else ``None``.
         """
         should_trigger = trigger and self.profile == "single"
-        
+
         for _ in range(attempts):
             if should_trigger:
                 t = time.time()

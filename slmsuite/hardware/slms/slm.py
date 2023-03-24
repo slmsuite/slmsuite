@@ -78,6 +78,7 @@ class SLM:
     display : numpy.ndarray
         Displayed data in SLM units (integers).
     """
+    # TODO: @tpr0p dislikes that FourierSLM.wavefront_calibration and FourierSLM.slm both have "measured_amplitude" fields that are different
 
     def __init__(
         self,

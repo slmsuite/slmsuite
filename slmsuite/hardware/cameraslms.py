@@ -268,7 +268,7 @@ class FourierSLM(CameraSLM):
             else:
                 self.cam.autoexposure()
 
-        self.cam.flush()
+        #self.cam.flush()
         img = self.cam.get_image()
 
         # 2) Get orientation of projected array
@@ -652,7 +652,7 @@ class FourierSLM(CameraSLM):
             # Set the reference superpixel to be centered on the SLM.
             [nxref, nyref] = np.floor(  np.flip(self.slm.shape)
                                         / superpixel_size / 2).astype(int)
-            
+
             reference_superpixel = [nxref, nyref]
         else:
             (nxref, nyref) = reference_superpixel
@@ -991,7 +991,7 @@ class FourierSLM(CameraSLM):
                 prange = tqdm(phases, position=0, leave=False, desc=description)
             else:
                 prange = phases
-            
+
             if return_movie: frames = []
 
             # Step 3: Measure phase
@@ -1006,11 +1006,11 @@ class FourierSLM(CameraSLM):
                     ]
                 )
 
-                if return_movie: 
+                if return_movie:
                     frames.append(
                         plot_labeled(
                             interference_image,
-                            plot=plot, 
+                            plot=plot,
                             title="Phase = ${:1.2f}\pi$".format(phase / np.pi),
                             plot_zoom=True
                         )
@@ -1033,7 +1033,7 @@ class FourierSLM(CameraSLM):
                 self.wavefront_calibration = wavefront_calibration
 
             if return_movie: return frames
-                
+
             return {
                 "power": pwr,
                 "normalization": norm,
@@ -1222,18 +1222,18 @@ class FourierSLM(CameraSLM):
 
         # For each row
         for ny in range(NY):
-            # Go forward and then back (TODO)
+            # Go forward and then back along each row.
             for nx in list(range(NX)) + list(range(NX-1, -1, -1)):
                 if r2s[ny, nx] >= r2_threshold:
                     # Superpixels exceeding the threshold need no correction.
                     pass
                 else:
-                    # Otherwise, do a majority-vote with adjacent superpixels
+                    # Otherwise, do a majority-vote with adjacent superpixels.
                     kx2 = []
                     ky2 = []
                     offset2 = []
 
-                    # Loop through the adjacent superpixels (including diagonals)
+                    # Loop through the adjacent superpixels (including diagonals).
                     for (ax, ay) in [(1,  0), (-1,  0), (0, 1), (0, -1),
                                      (1, -1), (-1, -1), (1, 1), (-1, 1)]:
                         (tx, ty) = (nx + ax, ny + ay)
@@ -1241,7 +1241,8 @@ class FourierSLM(CameraSLM):
                             2 * np.pi * (nx - nxref) * superpixel_size * self.slm.dx,
                             2 * np.pi * (ny - nyref) * superpixel_size * self.slm.dy)
 
-                        # Make sure our adjacent pixel under test is within range and 
+                        # Make sure our adjacent pixel under test is within range and
+                        # above threshold.
                         if (tx >= 0 and tx < NX and ty >= 0 and ty < NY and
                             (r2s[ty, tx] >= r2_threshold)): # or pathing[ty, tx] == ny)):
 
@@ -1252,7 +1253,7 @@ class FourierSLM(CameraSLM):
                             ky2.append(ky3)
                             offset2.append(offset[ty, tx] + dx * kx3 + dy * ky3)
 
-                    # Do a majority vote (within std) for the phase
+                    # Do a majority vote (within std) for the phase.
                     if len(kx2) > 0:
                         kx[ny, nx] = 0 #np.mean(kx2)
                         ky[ny, nx] = 0 #np.mean(ky2)
@@ -1269,6 +1270,7 @@ class FourierSLM(CameraSLM):
 
                         pathing[ny, nx] = ny
 
+        # Make the SLM-sized correction using the compressed data from each superpixel.
         phase = np.zeros(self.slm.shape)
         for nx in range(NX):
             for ny in range(NY):
@@ -1436,3 +1438,89 @@ class FourierSLM(CameraSLM):
             self.process_wavefront_calibration(**kwargs)
 
         return file_path
+
+    ### Measured Amplitude Helpers ###
+
+    def measured_amplitude_fit_gaussian(self, reset=False):
+        """
+        Fits the wavefront calibration's measured amplitude to a Gaussian.
+        Stores the result in the ``"measured_amplitude_fit_gaussian"`` field of
+        :attr:`wavefront_calibration`.
+
+        Parameters
+        ----------
+        reset : bool
+            Whether to overwrite the previously-computed fit, or return the cached fit.
+
+        Returns
+        -------
+        numpy.ndarray
+            The result of the fit in the form of arguments to
+            :meth:`~~slmsuite.misc.fitfunctions.gaussian2d()`.
+        """
+        assert "measured_amplitude" in self.wavefront_calibration, \
+            "measured_amplitude must be defined to fit it."
+
+        if reset or not "measured_amplitude_fit_gaussian" in self.wavefront_calibration:
+            fit = analysis.image_fit(self.wavefront_calibration["measured_amplitude"])
+            self.wavefront_calibration["measured_amplitude_fit_gaussian"] = fit
+
+        return self.wavefront_calibration["measured_amplitude_fit_gaussian"]
+
+    def point_spread_function_knm(self, padded_shape=None):
+        """
+        Fourier transforms the wavefront calibration's measured amplitude to find
+        the expected diffraction-limited perfomance of the system in ``"knm"`` space.
+
+        Parameters
+        ----------
+        padded_shape : (int, int) OR None
+            The point spread function changes in resolution depending on the padding.
+            Use this variable to provide this padding.
+            If ``None``, do not pad.
+
+        Returns
+        -------
+        numpy.ndarray
+            The point spread function of shape ``padded_shape``.
+        """
+        assert "measured_amplitude" in self.wavefront_calibration, \
+            "measured_amplitude must be defined to process it."
+
+        nearfield = toolbox.pad(self.wavefront_calibration["measured_amplitude"], padded_shape)
+        farfield = np.fft.fftshift(np.fft.fft2(np.fft.fftshift(nearfield), norm="ortho"))
+
+        return farfield
+
+    def spot_radius_kxy(self, padded_shape=None):
+        """
+        Measures the (average) radius of the farfield spot in the ``"kxy"`` basis.
+
+        Parameters
+        ----------
+        padded_shape : (int, int) OR None
+            The point spread function changes in resolution depending on the padding.
+            Use this variable to provide this padding.
+            If ``None``, do not pad.
+
+        Returns
+        -------
+        numpy.ndarray
+            Average radius of the farfield spot.
+        """
+        fit = analysis.image_fit(self.point_spread_function_knm(padded_shape))
+        psf_knm = (fit[5], fit[4])
+
+        # farfield = np.abs(self.point_spread_function_knm(padded_shape))
+        # area = np.sum(farfield >= np.max(farfield) / 7.389)
+        # psf_knm = (np.sqrt(area / np.pi), np.sqrt(area / np.pi))
+
+        psf_kxy = np.mean(toolbox.convert_blaze_vector(
+            psf_knm,
+            from_units="knm",
+            to_units="kxy",
+            slm=self.slm,
+            shape=padded_shape
+        ))
+
+        return psf_kxy

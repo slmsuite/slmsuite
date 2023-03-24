@@ -6,6 +6,7 @@ import numpy as np
 from scipy import special
 from math import factorial
 
+from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography.toolbox import _process_grid
 
 def blaze(grid, vector=(0, 0), offset=0):
@@ -13,17 +14,17 @@ def blaze(grid, vector=(0, 0), offset=0):
     Returns a simple `blaze <https://en.wikipedia.org/wiki/Blazed_grating>`_,
     a linear phase ramp, toward a given vector in :math:`k`-space.
 
-    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k}_g \cdot \vec{x} + o
+    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k}_{norm} \cdot \vec{x}_{norm} + o
 
     Parameters
     ----------
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        :math:`\vec{x}_{norm}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     vector : (float, float)
-        Blaze vector in normalized :math:`\frac{k_x}{k}` units.
+        :math:`\vec{k}_{norm}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
         See :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`
     offset :
         Phase offset for this blaze.
@@ -80,7 +81,7 @@ def lens(grid, f=(np.inf, np.inf)):
     (x_grid, y_grid) = _process_grid(grid)
 
     # Parse focal length.
-    if isinstance(f, (int, float)):
+    if isinstance(f, REAL_TYPES):
         f = [f, f]
     if isinstance(f, (list, tuple, np.ndarray)):
         f = np.squeeze(f)
@@ -131,7 +132,7 @@ def axicon(grid, f=(np.inf, np.inf), w=None):
 
     w = _determine_source_radius(grid, w)
 
-    if isinstance(f, (int, float)):
+    if isinstance(f, REAL_TYPES):
         f = [f, f]
     if isinstance(f, (list, tuple, np.ndarray)):
         f = np.squeeze(f)
@@ -154,7 +155,7 @@ def axicon(grid, f=(np.inf, np.inf), w=None):
 
 def zernike(grid, n, m, aperture=None):
     r"""
-    Returns a single `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
+    Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
 
     Parameters
     ----------
@@ -180,7 +181,30 @@ def zernike_sum(grid, weights, aperture=None):
     r"""
     Returns a summation of
     `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
-    in a computationally-efficient manner.
+    in a computationally-efficient manner. To improve performance, especially for higher
+    order polynomials, we store a cached of Zernike coefficients to avoid regeneration.
+    See the below example to generate :math:`Z_{20} - Z_{21} + Z_{31}`.
+
+    .. highlight:: python
+    .. code-block:: python
+
+        zernike_sum_phase = toolbox.zernike_sum(
+            grid=slm,
+            weights=(   ((2, 0),  1),       # Z_20
+                        ((2, 1), -1),       # Z_21
+                        ((3, 1),  1)    ),  # Z_31
+            aperture="circular"
+        )
+
+
+    Note
+    ~~~~
+    There are different schemes to index Zernike polynomials.
+    We use the indexing defined in [0]_, along with the algorithm defined there.
+    Other packages use different schemes, sometimes defining
+    :math:`m' = l = n - 2m`. Take care to avoid confusion.
+
+    .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
 
     Important
     ~~~~~~~~~
@@ -223,6 +247,7 @@ def zernike_sum(grid, weights, aperture=None):
     numpy.ndarray
         The phase for this function.
     """
+    # Parse passed values
     (x_grid, y_grid) = _process_grid(grid)
 
     if aperture is None:
@@ -244,6 +269,8 @@ def zernike_sum(grid, weights, aperture=None):
     else:
         raise ValueError("Type {} not recognized.".format(type(aperture)))
 
+    # At the end, we're going to set the values outside the aperture to zero.
+    # Make a mask for this if it's necessary.
     mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
     use_mask = np.any(mask == 0)
 
@@ -254,6 +281,9 @@ def zernike_sum(grid, weights, aperture=None):
         x_grid_scaled = x_grid * x_scale
         y_grid_scaled = y_grid * y_scale
 
+    # Now find the coefficients for polynomial terms x^ay^b. We want to only compute
+    # x^ay^b once because this is an operation on a large array. In contrast, summing
+    # the coefficients of the same terms is simple and fast scalar operations.
     summed_coefficients = {}
 
     for (key, weight) in weights:
@@ -266,6 +296,7 @@ def zernike_sum(grid, weights, aperture=None):
             else:
                 summed_coefficients[power_key] = power_factor
 
+    # Finally, build the polynomial.
     canvas = np.zeros(x_grid.shape)
 
     for power_key, factor in summed_coefficients.items():
@@ -287,9 +318,9 @@ _zernike_cache = {}
 
 def _zernike_coefficients(n, m):
     """
-    Returns the coefficients for the :math:`x^ay^b` terms of the cartesian Zernike polynomial
+    Returns the coefficients for the :math:`x^ay^b` terms of the real cartesian Zernike polynomial
     of index `(`n, m)``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
-    Uses the algorithm given in [0]_.
+    Uses the algorithm and indexing given in [0]_.
 
     .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
     """
@@ -298,11 +329,13 @@ def _zernike_coefficients(n, m):
 
     assert 0 <= m <= n, "Invalid cartesian Zernike index."
 
+    # Generate coefficients only if we have not already generated.
     key = (n, m)
 
     if not key in _zernike_cache:
         zernike_this = {}
 
+        # Define helper variables.
         l = n - 2 * m
 
         if l % 2:   # If even
@@ -321,9 +354,13 @@ def _zernike_coefficients(n, m):
         l = abs(l)
         m = int((n-l)/2)
 
+        # Helper function
         def comb(n, k):
             return factorial(n) / (factorial(k) * factorial(n-k))
 
+        # Finding the coefficients is a summed combinatorial search.
+        # This is why we cache: so we don't have to do this many times,
+        # especially for higher order polynomials and the corresponding cubic scaling.
         for i in range(q+1):
             for j in range(m+1):
                 for k in range(m-j+1):
@@ -335,16 +372,20 @@ def _zernike_coefficients(n, m):
 
                     power_key = (n - 2*(i + j + k) - p, 2 * (i + k) + p)
 
+                    # Add this coefficient to the element in the dictionary
+                    # corresponding to the right power.
                     if power_key in zernike_this:
                         zernike_this[power_key] += factor
                     else:
                         zernike_this[power_key] = factor
 
+        # Update the cache. Remove all factors that have cancelled out (== 0).
         _zernike_cache[key] = {power_key: factor for power_key, factor in zernike_this.items() if factor != 0}
 
     return _zernike_cache[key]
 
 # Structured light
+
 def _determine_source_radius(grid, w=None):
     r"""
     Helper function to determine the assumed Gaussian source radius for various

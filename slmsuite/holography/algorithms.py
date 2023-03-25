@@ -160,7 +160,7 @@ class Hologram:
         The shape of the **near-field** device producing the hologram in the **far-field**
         in :mod:`numpy` ``(h, w)`` form. This is important to record because
         certain optimizations and calibrations depend on it. If multiple of :attr:`slm_shape`,
-        :attr:`phase`, or :attr:`amp` are not ``None`` in the construtor, the shapes must agree. 
+        :attr:`phase`, or :attr:`amp` are not ``None`` in the construtor, the shapes must agree.
         If all are ``None``, then the shape of the :attr:`target` is used instead
         (:attr:`slm_shape` == :attr:`shape`).
     phase : numpy.ndarray OR cupy.ndarray
@@ -511,6 +511,17 @@ class Hologram:
             shape = (largest, largest)
 
         return shape
+
+    @staticmethod
+    def _calculate_memory_constrained_shape(device=0, dtype=np.float32):
+        memory = Hologram.get_mempool_limit(device=device)
+
+        num_values = memory / np.dtype(dtype).itemsize
+
+        # (4 real stored arrays, 2 complex runtime arrays [twice memory])
+        num_values_per_array = num_values / 8
+
+        return np.sqrt(num_values_per_array)
 
     # Core optimization function.
     def optimize(
@@ -1358,7 +1369,10 @@ class Hologram:
             npsource = np.abs(source)
 
         # Check units:
-        assert units in toolbox.BLAZE_UNITS
+        assert units in toolbox.BLAZE_UNITS, \
+            "algorithms.py: Unit {} is not recognized as a valid blaze unit.".format(units)
+        assert units != "ij", \
+            "algorithms.py: 'ij' is not a valid unit for plot_farfield() because of the associated rotation."
 
         # Parse limits with limit_padding
         if limits == None:
@@ -1453,7 +1467,6 @@ class Hologram:
 
         # If cam_points is defined (i.e. is a FeedbackHologram),
         # plot a yellow rectangle for the extents of the camera
-        # TODO: needs to be implemented if plotting in bases other than knm..
         try:
             axs[0].plot(
                 self.cam_points[0],
@@ -1559,7 +1572,7 @@ class Hologram:
 
     # Other helper functions
     @staticmethod
-    def set_mempool(device=0, size=None, fraction=None):
+    def set_mempool_limit(device=0, size=None, fraction=None):
         """
         Helper function to set the cupy memory pool size. See [8]_.
 
@@ -1577,16 +1590,48 @@ class Hologram:
         fraction : float
             Fraction of availible memory to use. Passed to :meth:`cupy.cuda.MemoryPool.set_limit()`.
         """
+        if cp == np:
+            raise ValueError("algorithms.py: Cannot set mempool for numpy. Need cupy.")
+
         mempool = cp.get_default_memory_pool()
 
         with cp.cuda.Device(device):
             mempool.set_limit(size=size, fraction=fraction)
 
             print(
-                "cupy memory pool limit set to {} GB...".format(
+                "cupy memory pool limit set to {:.2f} GB...".format(
                     mempool.get_limit() / (1024.0 ** 3)
                 )
             )
+
+    @staticmethod
+    def get_mempool_limit(device=0):
+        """
+        Helper function to get the cupy memory pool size. See [8]_.
+
+        References
+        ----------
+
+        .. [8] https://docs.cupy.dev/en/stable/reference/generated/cupy.cuda.MemoryPool.html#cupy.cuda.MemoryPool
+
+        Parameters
+        ----------
+        device : int
+            Which GPU to set the limit on. Passed to :meth:`cupy.cuda.Device()`.
+
+        Returns
+        -------
+        int
+            Current memory pool limit in bytes
+        """
+
+        if cp == np:
+            raise ValueError("algorithms.py: Cannot get mempool for numpy. Need cupy.")
+
+        mempool = cp.get_default_memory_pool()
+
+        with cp.cuda.Device(device):
+            return mempool.get_limit()
 
     @staticmethod
     def _norm(matrix, mp=cp):
@@ -2170,24 +2215,30 @@ class SpotHologram(FeedbackHologram):
 
         # Generate point spread functions for the knm and ij bases
         if cameraslm is not None:
-            psf_kxy = cameraslm.spot_radius_kxy(shape)
+            psf_kxy = cameraslm.slm.spot_radius_kxy(shape)
             psf_knm = toolbox.convert_blaze_radius(psf_kxy, "kxy", "knm", cameraslm.slm, shape)
-            psf_ij =  toolbox.convert_blaze_radius(psf_kxy, "kxy", "ij",  cameraslm.slm, shape)
+            psf_ij = toolbox.convert_blaze_radius(psf_kxy, "kxy", "ij", cameraslm, shape)
+            # psf_ij = cameraslm.kxyslm_to_ijcam(psf_kxy) - cameraslm.kxyslm_to_ijcam((0, 0))
+            print(psf_kxy, psf_knm, psf_ij)
         else:
             psf_knm = 0
             psf_ij = np.nan
 
-        dist_knm = toolbox.smallest_distance(self.spot_knm)
-        self.spot_integration_width_knm = np.clip(6 * psf_knm, 3, dist_knm)
+        if np.isnan(psf_knm):   psf_knm = 0
+        if np.isnan(psf_ij):    psf_ij = 0
+
+        min_psf = 3
+
+        dist_knm = np.max([toolbox.smallest_distance(self.spot_knm), min_psf])
+        self.spot_integration_width_knm = np.clip(6 * psf_knm, min_psf, dist_knm)
+        self.spot_integration_width_knm = int(2 * np.floor(self.spot_integration_width_knm / 2) + 1)
 
         if self.spot_ij is not None:
-            dist_ij = toolbox.smallest_distance(self.spot_ij)
+            dist_ij = np.max([toolbox.smallest_distance(self.spot_ij), min_psf])
             self.spot_integration_width_ij = np.clip(6 * psf_ij, 3, dist_ij)
+            self.spot_integration_width_ij =  int(2 * np.floor(self.spot_integration_width_ij / 2) + 1)
         else:
             self.spot_integration_width_ij = None
-
-        self.spot_integration_width_knm = int(2 * np.floor(self.spot_integration_width_knm / 2) + 1)
-        self.spot_integration_width_ij =  int(2 * np.floor(self.spot_integration_width_ij / 2) + 1)
 
         # Check to make sure spots are within relevant camera and SLM shapes.
         if (

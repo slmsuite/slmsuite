@@ -6,6 +6,7 @@ import time
 import numpy as np
 from slmsuite.holography.toolbox import blaze
 from slmsuite.holography import toolbox
+from slmsuite.holography import analysis
 
 
 class SLM:
@@ -512,3 +513,65 @@ class SLM:
         self.measured_amplitude = np.exp(-r2_grid * (1 / radius ** 2))
 
         return self.measured_amplitude
+
+    def _get_measured_amplitude(self):
+        """Deals with the None case of measured_amplitude"""
+        if self.measured_amplitude is None:
+            return np.ones_like(self.shape)
+        else:
+            return self.measured_amplitude
+
+    def point_spread_function_knm(self, padded_shape=None):
+        """
+        Fourier transforms the wavefront calibration's measured amplitude to find
+        the expected diffraction-limited perfomance of the system in ``"knm"`` space.
+
+        Parameters
+        ----------
+        padded_shape : (int, int) OR None
+            The point spread function changes in resolution depending on the padding.
+            Use this variable to provide this padding.
+            If ``None``, do not pad.
+
+        Returns
+        -------
+        numpy.ndarray
+            The point spread function of shape ``padded_shape``.
+        """
+        nearfield = toolbox.pad(self._get_measured_amplitude(), padded_shape)
+        farfield = np.abs(np.fft.fftshift(np.fft.fft2(np.fft.fftshift(nearfield), norm="ortho")))
+
+        return farfield
+
+    def spot_radius_kxy(self, padded_shape=None):
+        """
+        Measures the (average) radius of the farfield spot in the ``"kxy"`` basis.
+
+        Parameters
+        ----------
+        padded_shape : (int, int) OR None
+            The point spread function changes in resolution depending on the padding.
+            Use this variable to provide this padding.
+            If ``None``, do not pad.
+
+        Returns
+        -------
+        float
+            Average radius of the farfield spot.
+        """
+        try:
+            nearfield = toolbox.pad(self._get_measured_amplitude(), padded_shape)
+
+            psf_nm = np.sqrt(analysis.image_variances(nearfield)[:2])
+
+            psf_kxy = np.mean(toolbox.convert_blaze_vector(
+                np.reciprocal(psf_nm),
+                from_units="freq",
+                to_units="kxy",
+                slm=self,
+                shape=padded_shape
+            ))
+        except:
+            psf_kxy = np.mean([1 / self.dx / padded_shape[1], 1 / self.dy / padded_shape[0]])
+
+        return psf_kxy

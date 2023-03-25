@@ -17,6 +17,7 @@ from slmsuite.holography.toolbox import imprint, format_2vectors
 from slmsuite.holography.toolbox.phase import blaze
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
 from slmsuite.misc.fitfunctions import cos
+from slmsuite.misc.math import REAL_TYPES
 
 
 class CameraSLM:
@@ -443,9 +444,12 @@ class FourierSLM(CameraSLM):
             If the fourier plane calibration does not exist.
         """
         assert self.fourier_calibration is not None
-        return (np.matmul(   self.fourier_calibration["M"],
-                            format_2vectors(kxy) - self.fourier_calibration["a"] )
-                    + self.fourier_calibration["b"])
+        return (
+            np.matmul(
+                self.fourier_calibration["M"],
+                format_2vectors(kxy) - self.fourier_calibration["a"]
+            ) + self.fourier_calibration["b"]
+        )
 
     def ijcam_to_kxyslm(self, ij):
         r"""
@@ -474,9 +478,12 @@ class FourierSLM(CameraSLM):
             If the fourier plane calibration does not exist.
         """
         assert self.fourier_calibration is not None
-        return (np.matmul(   np.linalg.inv(self.fourier_calibration["M"]),
-                            format_2vectors(ij) - self.fourier_calibration["b"]  )
-                    + self.fourier_calibration["a"])
+        return (
+            np.matmul(
+                np.linalg.inv(self.fourier_calibration["M"]),
+                format_2vectors(ij) - self.fourier_calibration["b"]
+            ) + self.fourier_calibration["a"]
+        )
 
     def get_farfield_spot_size(self, slm_size=None, basis="kxy"):
         """
@@ -1466,61 +1473,3 @@ class FourierSLM(CameraSLM):
             self.wavefront_calibration["measured_amplitude_fit_gaussian"] = fit
 
         return self.wavefront_calibration["measured_amplitude_fit_gaussian"]
-
-    def point_spread_function_knm(self, padded_shape=None):
-        """
-        Fourier transforms the wavefront calibration's measured amplitude to find
-        the expected diffraction-limited perfomance of the system in ``"knm"`` space.
-
-        Parameters
-        ----------
-        padded_shape : (int, int) OR None
-            The point spread function changes in resolution depending on the padding.
-            Use this variable to provide this padding.
-            If ``None``, do not pad.
-
-        Returns
-        -------
-        numpy.ndarray
-            The point spread function of shape ``padded_shape``.
-        """
-        assert "measured_amplitude" in self.wavefront_calibration, \
-            "measured_amplitude must be defined to process it."
-
-        nearfield = toolbox.pad(self.wavefront_calibration["measured_amplitude"], padded_shape)
-        farfield = np.fft.fftshift(np.fft.fft2(np.fft.fftshift(nearfield), norm="ortho"))
-
-        return farfield
-
-    def spot_radius_kxy(self, padded_shape=None):
-        """
-        Measures the (average) radius of the farfield spot in the ``"kxy"`` basis.
-
-        Parameters
-        ----------
-        padded_shape : (int, int) OR None
-            The point spread function changes in resolution depending on the padding.
-            Use this variable to provide this padding.
-            If ``None``, do not pad.
-
-        Returns
-        -------
-        numpy.ndarray
-            Average radius of the farfield spot.
-        """
-        fit = analysis.image_fit(self.point_spread_function_knm(padded_shape))
-        psf_knm = (fit[5], fit[4])
-
-        # farfield = np.abs(self.point_spread_function_knm(padded_shape))
-        # area = np.sum(farfield >= np.max(farfield) / 7.389)
-        # psf_knm = (np.sqrt(area / np.pi), np.sqrt(area / np.pi))
-
-        psf_kxy = np.mean(toolbox.convert_blaze_vector(
-            psf_knm,
-            from_units="knm",
-            to_units="kxy",
-            slm=self.slm,
-            shape=padded_shape
-        ))
-
-        return psf_kxy

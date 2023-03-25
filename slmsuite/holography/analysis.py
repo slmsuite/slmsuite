@@ -6,7 +6,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from functools import reduce
 from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
-from scipy.optimize import curve_fit
+from scipy.optimize import curve_fit, minimize
 
 from slmsuite.holography.toolbox import format_2vectors
 from slmsuite.misc.math import REAL_TYPES
@@ -386,7 +386,8 @@ def image_normalize(images, nansum=False, remove_field=False):
 
 def image_positions(images, normalize=True, nansum=False):
     """
-    Computes the two first order moments, equivalent to spot position, for a stack of images.
+    Computes the two first order moments, equivalent to spot position relative to image center,
+    for a stack of images.
     Specifically, returns :math:`M_{10}` and :math:`M_{01}`.
 
     Parameters
@@ -722,6 +723,94 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
             plt.show()
 
     return result
+
+
+def fit_affine(x, y, plot=False):
+    r"""
+    For two sets of points with equal length, find the best-fit affine
+    transformation that transfoms from the first basis to the second.
+    Best fit is defined as minimization on the least squares euclidean norm.
+
+    .. math:: \vec{y} = M \cdot \vec{x} + \vec{b}
+
+    Parameters
+    ----------
+    x, y : array_like
+        Array of vectors of shape ``(2, N)`` in the style of :meth:`format_2vectors()`.
+    plot : bool
+        Whether to produce a debug plot.
+
+    Returns
+    -------
+    dict
+        A dictionary with fields ``"M"`` and ``"b"``.
+    """
+    x = format_2vectors(x)
+    y = format_2vectors(y)
+    assert x.shape == y.shape
+    assert x.shape[1] >= 3
+
+    # Calculate the centroids and the centered coordinates.
+    xc = np.mean(x, axis=1)[:, np.newaxis]
+    yc = np.mean(y, axis=1)[:, np.newaxis]
+
+    x_ = x - xc
+    y_ = y - yc
+
+    # Generate a guess transformation.
+    nan_list = np.full_like(y_[0,:], np.nan)
+
+    # This could probably be vectorized more.
+    M_guess = np.array([
+        [
+            np.nanmean(np.divide(y_[0,:], x_[0,:], where=x_[0,:] != 0, out=nan_list.copy())),
+            np.nanmean(np.divide(y_[0,:], x_[1,:], where=x_[1,:] != 0, out=nan_list.copy()))
+        ],
+        [
+            np.nanmean(np.divide(y_[1,:], x_[0,:], where=x_[0,:] != 0, out=nan_list.copy())),
+            np.nanmean(np.divide(y_[1,:], x_[1,:], where=x_[1,:] != 0, out=nan_list.copy()))
+        ]
+    ])
+
+    # Back compute the offset.
+    b_guess = yc - np.matmul(M_guess, xc)
+
+    # Least squares fit.
+    def err(p):
+        M = np.array([[p[0], p[1]], [p[2], p[3]]])
+        b = format_2vectors([p[4], p[5]])
+
+        y_ = np.matmul(M, x) + b
+
+        return np.sum(np.square(y_ - y))
+
+    guess = (M_guess[0,0], M_guess[0,1], M_guess[1,0], M_guess[1,1], b_guess[0,0], b_guess[1,0])
+
+    try:        # Try with default scipy minimization.
+        m = minimize(err, x0=guess)
+        p = [float(pp) for pp in m.x]
+
+        M = np.array([[p[0], p[1]], [p[2], p[3]]])
+        b = format_2vectors([p[4], p[5]])
+    except:     # Fail elegantly (warn the user?).
+        M = M_guess
+        b = b_guess
+
+    # Debug plot if desired.
+    if plot and x.shape[0] == 2:
+        plt.scatter(y[0,:], y[1,:])
+
+        result_guess = np.matmul(M_guess, x) + b_guess
+        plt.scatter(result_guess[0,:], result_guess[1,:])
+
+        result = np.matmul(M, x) + b
+        plt.scatter(result[0,:], result[1,:])
+
+        plt.gca().set_aspect("equal")
+        plt.show()
+
+    # Return as a dictionary
+    return {"M":M, "b":b}
 
 
 def blob_detect(

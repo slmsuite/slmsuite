@@ -9,6 +9,7 @@ import cv2
 import matplotlib.pyplot as plt
 import warnings
 
+from slmsuite.hardware.cameraslms import CameraSLM
 from slmsuite.misc.math import (
     INTEGER_TYPES, REAL_TYPES, iseven
 )
@@ -52,25 +53,29 @@ def window_slice(window, shape=None, centered=False, circular=False):
         yi = int(window[2] - (window[3] / 2 if centered else 0))
         yf = int(yi + window[3])
 
+        if shape is not None:
+            xi = np.clip(xi, 0, shape[1] - 1)
+            xf = np.clip(xf, 0, shape[1] - 1)
+            yi = np.clip(yi, 0, shape[0] - 1)
+            yf = np.clip(yf, 0, shape[0] - 1)
+
         if circular:    # If a circular window is desired, compute this.
             x_list = np.arange(xi, xf)
             y_list = np.arange(yi, yf)
             x_grid, y_grid = np.meshgrid(x_list, y_list)
 
+            xc = window[0] + (0 if centered else window[1] / 2)
+            yc = window[2] + (0 if centered else window[3] / 2)
+
             rr_grid = (
-                (window[3] ** 2) * np.square(x_grid - window[1] / 2.) +
-                (window[1] ** 2) * np.square(y_grid - window[3] / 2.)
+                (window[3] ** 2) * np.square(x_grid.astype(float) - xc) +
+                (window[1] ** 2) * np.square(y_grid.astype(float) - yc)
             )
 
             mask_grid = rr_grid <= (window[1] ** 2) * (window[3] ** 2) / 4.
 
             return window_slice((y_grid[mask_grid], x_grid[mask_grid]), shape=shape)
         else:           # Otherwise, return square slices
-            if shape is not None:
-                xi = np.clip(xi, 0, shape[1] - 1)
-                xf = np.clip(xf, 0, shape[1] - 1)
-                yi = np.clip(yi, 0, shape[0] - 1)
-                yf = np.clip(yf, 0, shape[0] - 1)
             slice_ = (slice(yi, yf), slice(xi, xf))
     # (y_ind, x_ind) format
     elif len(window) == 2:
@@ -364,7 +369,7 @@ def imprint(
             matrix[slice_] = function
         else:
             matrix[slice_] = function(
-                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift), 
+                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift),
                 **kwargs
             )
     elif imprint_operation == "add":
@@ -372,7 +377,7 @@ def imprint(
             matrix[slice_] += function
         else:
             matrix[slice_] += function(
-                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift), 
+                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift),
                 **kwargs
             )
     else:
@@ -381,13 +386,14 @@ def imprint(
     return matrix
 
 
-# Unit helper functions
+# Unit helper functions.
 
 BLAZE_LABELS = {
     "norm" : (r"$k_x/k$", r"$k_y/k$"),
     "kxy" : (r"$k_x/k$", r"$k_y/k$"),
     "rad" : (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
     "knm" : (r"$n$ [pix]", r"$m$ [pix]"),
+    "ij" : (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
     "freq" : (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
     "lpmm" : (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
     "mrad" : (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
@@ -440,7 +446,9 @@ def convert_blaze_vector(
         ~~~~~~~
         The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
         so a ``slm`` should be passed (otherwise returns an array of ``nan`` values).
-        ``"knm"`` additionally requires the ``shape`` of the computational space.
+        The unit ``"ij"``, camera pixels, requires information stored in a CameraSLM, so
+        this must be passed in place of ``slm``.
+        The unit ``"knm"`` additionally requires the ``shape`` of the computational space.
         If not included when an slm is passed, ``shape=slm.shape`` is assumed.
 
         Parameters
@@ -451,9 +459,11 @@ def convert_blaze_vector(
         from_units, to_units : str
             Units which we are converting between. See the listed units above for options.
             Defaults to ``"norm"``.
-        slm : :class:`~slmsuite.hardware.slms.slm.SLM` OR None
+        slm : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.CameraSLM` OR None
             Relevant SLM to pull data from in the case of
             ``"freq"``, ``"knm"``, or ``"lpmm"``.
+            If :class:`~slmsuite.hardware.cameraslms.CameraSLM`, the unit ``"ij"`` can be
+            processed too.
         shape : (int, int) OR None
             Shape of the computational SLM space. Defaults to ``slm.shape`` if ``slm``
             is not ``None``.
@@ -463,9 +473,18 @@ def convert_blaze_vector(
         numpy.ndarray
             Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
         """
-    assert from_units in BLAZE_UNITS and to_units in BLAZE_UNITS
+    assert from_units in BLAZE_UNITS, \
+        "toolbox.py: Unit '{}' not recognized as a valid unit for convert_blaze_vector().".format(from_units)
+    assert to_units in BLAZE_UNITS, \
+        "toolbox.py: Unit '{}' not recognized as a valid unit for convert_blaze_vector().".format(to_units)
 
     vector = format_2vectors(vector).astype(float)
+
+    if isinstance(slm, CameraSLM):
+        cameraslm = slm
+        slm = cameraslm.slm
+    else:
+        cameraslm = None
 
     if from_units == "freq" or to_units == "freq":
         if slm is None:
@@ -494,10 +513,16 @@ def convert_blaze_vector(
 
         knm_conv = pitch * shape
 
+    if from_units == "ij" or to_units == "ij":
+        if cameraslm is None or cameraslm.fourier_calibration is None:
+            return vector * np.nan
+
     if from_units == "norm" or from_units == "kxy" or from_units == "rad":
         rad = vector
     elif from_units == "knm":
         rad = (vector - shape / 2.0) / knm_conv
+    elif from_units == "ij":
+        rad = cameraslm.ijcam_to_kxyslm(vector)
     elif from_units == "freq":
         rad = vector * wav_um / pitch_um
     elif from_units == "lpmm":
@@ -511,6 +536,8 @@ def convert_blaze_vector(
         return rad
     elif to_units == "knm":
         return rad * knm_conv + shape / 2.0
+    elif to_units == "ij":
+        return cameraslm.kxyslm_to_ijcam(vector)
     elif to_units == "freq":
         return rad * pitch_um / wav_um
     elif to_units == "lpmm":
@@ -544,7 +571,7 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
         print("'{}' : {}".format(unit, tuple(result.T[0])))
 
 
-# Vector helper functions
+# Vector helper functions.
 
 def format_2vectors(vectors):
     """
@@ -583,7 +610,17 @@ def format_2vectors(vectors):
     return vectors
 
 
-def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_check=False):
+def fit_affine(**kwargs):
+    """**(Deprecated; this function has been renamed to**
+    :meth:`slmsuite.holography.toolbox.fit_3pt()` **)**"""
+    warnings.warn(
+        "slmsuite.toolbox.fit_affine is deprecated."
+        "Use slmsuite.toolbox.fit_3pt instead"
+    )
+    return fit_3pt(**kwargs)
+
+
+def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_check=False):
     r"""
     Fits three points to an affine transformation. This transformation is given by:
 
@@ -595,16 +632,16 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_
     .. code-block:: python
 
         y0 = (1.,1.)    # Origin
-        y1 = (2.,1.)    # First point in x direction
+        y1 = (2.,2.)    # First point in x direction
         y2 = (1.,2.)    # first point in y direction
 
         # Dict with keys "M", and "b":
-        affine_dict =   fit_affine(y0, y1, y2, N=None)
+        affine_dict =   fit_3pt(y0, y1, y2, N=None)
 
         # Array with shape (2,25) corresponding to a 5x5 evaluation of the above:
-        vector_array =  fit_affine(y0, y1, y2, N=(5,5))
+        vector_array =  fit_3pt(y0, y1, y2, N=(5,5))
 
-    However, ``fit_affine`` is more powerful that this, and can fit an affine
+    However, ``fit_3pt`` is more powerful that this, and can fit an affine
     transformation to semi-arbitrary sets of points with known indices
     in the coordinate  system of the dependent variable :math:`\vec{x}`,
     as long as the passed indices ``x0``, ``x1``, ``x2`` are not colinear.
@@ -613,10 +650,10 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_
     .. code-block:: python
 
         # y11 is at x index (1,1), etc
-        fit_affine(y11, y34, y78, (5,5), (1,1), (3,4), (7,8))
+        fit_3pt(y11, y34, y78, (5,5), (1,1), (3,4), (7,8))
 
         # These indices don't have to be integers
-        fit_affine(a, b, c, (5,5), (np.pi,1.5), (20.5,np.sqrt(2)), (7.7,42.0))
+        fit_3pt(a, b, c, (5,5), (np.pi,1.5), (20.5,np.sqrt(2)), (7.7,42.0))
 
     Optionally, basis vectors can be passed directly instead of adding these
     vectors to the origin, by making use of passing ``None`` for ``x1`` or ``x2``:
@@ -629,8 +666,8 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_
         dv2 =       (1.,0.)     # Basis vector in y direction
 
         # The following are equivalent:
-        option1 = fit_affine(origin, origin+dv1, origin+dv2, (5,5))
-        option2 = fit_affine(origin, dv1, dv2, (5,5), x1=None, x2=None)
+        option1 = fit_3pt(origin, origin+dv1, origin+dv2, (5,5))
+        option2 = fit_3pt(origin, dv1, dv2, (5,5), x1=None, x2=None)
 
         assert option1 == option2
 
@@ -720,7 +757,10 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_
             affine_return = True
         else:
             N = (N, N)
-    elif len(N) == 2 and isinstance(N[0], INTEGER_TYPES) and isinstance(N[1], INTEGER_TYPES):
+    elif (
+        not np.isscalar(N) and len(N) == 2 and
+        isinstance(N[0], INTEGER_TYPES) and isinstance(N[1], INTEGER_TYPES)
+    ):
         if N[0] <= 0 or N[1] <= 0:
             affine_return = True
     elif isinstance(N, np.ndarray):
@@ -741,46 +781,6 @@ def fit_affine(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_
             indices = indices[:, 0:-2]
 
         return np.matmul(M, indices) + b
-
-
-def fit_lattice2d(p0, a1, a2, N, orientation_check=False):
-    """
-    Parameters
-    ----------
-    p0 : array_like of reals (2, 1)
-        The center coordinate of the lattice.
-    a1 : array_like of reals (2, 1)
-        The first lattice vector.
-    a2 : array_like of reals (2, 1)
-        The second lattice vector.
-    N : (int, int)
-        The number of points in the ``a1`` and ``a2`` directions of the lattice.
-    orientaiton_check : bool
-        See :meth:`fit_affine`.
-
-    Returns
-    -------
-    lattice_coordinates : (2, point_count)
-        The lattice coordinates.
-    """
-    p1 = p0 + a1
-    p2 = p0 + a2
-    i0 = N[0] / 2 - 1 if iseven(N[0]) else (N[0] - 1) / 2
-    j0 = N[1] / 2 - 1 if iseven(N[1]) else (N[1] - 1) / 2
-    i1 = i0 + 1
-    j1 = j0
-    i2 = i0
-    j2 = j0 + 1
-    return fit_affine(
-        p0,
-        p1,
-        p2,
-        N=N,
-        x0=(i0, j0),
-        x1=(i1, j1),
-        x2=(i2, j2),
-        orientation_check=orientation_check
-    )
 
 
 def smallest_distance(vectors, metric=chebyshev):
@@ -925,7 +925,7 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
         return np.vstack((x_grid[result], y_grid[result]))
 
 
-# Grid functions
+# Grid functions.
 
 def _process_grid(grid):
     r"""
@@ -1013,7 +1013,7 @@ def shift_grid(grid, transform=None, shift=None):
         )
 
 
-# Padding
+# Padding functions.
 
 def pad(matrix, shape):
     """
@@ -1106,7 +1106,7 @@ def unpad(matrix, shape):
     return toReturn
 
 
-# Deprecated functions
+# Deprecated phase functions (moved to toolbox.phase).
 
 def blaze(grid, vector=(0, 0), offset=0):
     r"""

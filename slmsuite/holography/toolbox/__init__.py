@@ -9,7 +9,6 @@ import cv2
 import matplotlib.pyplot as plt
 import warnings
 
-from slmsuite.hardware.cameraslms import CameraSLM
 from slmsuite.misc.math import (
     INTEGER_TYPES, REAL_TYPES, iseven
 )
@@ -86,7 +85,7 @@ def window_slice(window, shape=None, centered=False, circular=False):
             x_ind = np.clip(x_ind, 0, shape[1] - 1)
             y_ind = np.clip(y_ind, 0, shape[0] - 1)
         slice_ = (y_ind, x_ind)
-    # Boolean numpy array. TODO: extra checks?
+    # Boolean numpy array.
     elif np.ndim(window) == 2:
         slice_ = window
     else:
@@ -480,12 +479,18 @@ def convert_blaze_vector(
 
     vector = format_2vectors(vector).astype(float)
 
-    if isinstance(slm, CameraSLM):
+    # Determine whether a CameraSLM was passed (to enable "ij" units)
+    if hasattr(slm, "slm"):
         cameraslm = slm
         slm = cameraslm.slm
     else:
         cameraslm = None
 
+    if from_units == "ij" or to_units == "ij":
+        if cameraslm is None or cameraslm.fourier_calibration is None:
+            return vector * np.nan
+
+    # Generate conversion factors for various units
     if from_units == "freq" or to_units == "freq":
         if slm is None:
             pitch_um = np.nan
@@ -513,10 +518,7 @@ def convert_blaze_vector(
 
         knm_conv = pitch * shape
 
-    if from_units == "ij" or to_units == "ij":
-        if cameraslm is None or cameraslm.fourier_calibration is None:
-            return vector * np.nan
-
+    # Convert the input to normalized "kxy" units.
     if from_units == "norm" or from_units == "kxy" or from_units == "rad":
         rad = vector
     elif from_units == "knm":
@@ -532,6 +534,7 @@ def convert_blaze_vector(
     elif from_units == "deg":
         rad = vector * np.pi / 180
 
+    # Convert from normalized "kxy" units to the desired output units.
     if to_units == "norm" or to_units == "kxy" or to_units == "rad":
         return rad
     elif to_units == "knm":

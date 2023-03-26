@@ -102,7 +102,7 @@ def lens(grid, f=(np.inf, np.inf)):
 
 def axicon(grid, f=(np.inf, np.inf), w=None):
     r"""
-    Returns the phase of an `axicon <https://en.wikipedia.org/wiki/Axicon>`_ lens to produce a Bessel beam.
+    Returns an `axicon <https://en.wikipedia.org/wiki/Axicon>`_ lens, the phase farfield for a Bessel beam.
     A (elliptically)-cylindrical axicon blazes according to :math:`\vec{k}_g = w / \vec{f} / 2` where
     :math:`w` is the radius of the axicon. With a flat input amplitude over
     :math:`[-w, w]`, this will produce a Bessel beam centered at :math:`z = \vec{f}`.

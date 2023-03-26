@@ -97,7 +97,6 @@ class ThorCam(Camera):
         if ThorCam.sdk is None:
             if verbose:
                 print("TLCameraSDK initializing... ", end="")
-            # TODO: handle case when TLCameraSDK is closed and there is no reference to it.
             ThorCam.sdk = TLCameraSDK()
             if verbose:
                 print("success")

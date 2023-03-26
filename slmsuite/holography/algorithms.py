@@ -18,9 +18,9 @@ Important
 ---------
 :mod:`slmsuite` follows the ``shape = (h, w)`` and ``vector = (x, y)`` formalism adopted by
 the :mod:`numpy` ecosystem. :mod:`numpy`, :mod:`scipy`, :mod:`matplotlib`, etc generally follow this
-formalism. The ``shape`` and indexing of an array is always inverted ``(h, w)``,
-but other functions such as `numpy.meshgrid(x, y)` (default), `scipy.odr.Data(x, y)`, or
-`matplotlib.pyplot.scatter(x, y)` use standard cartesian `(x, y)` that is more familiar
+formalism. The ``shape`` and indexing of an array or image always uses the inverted ``(h, w)`` form,
+but other functions such as ``numpy.meshgrid(x, y)`` (default), ``scipy.odr.Data(x, y)``, or
+``matplotlib.pyplot.scatter(x, y)`` use the standard cartesian ``(x, y)`` form that is more familiar
 to users. This is not ideal and causes confusion, but this is the formalism generally
 adopted by the community.
 
@@ -154,6 +154,12 @@ class Hologram:
     This is called the zeroth order diffraction peak. To avoid this peak, consider shifting
     the data contained in :attr:`target` away from the center.
 
+    Tip
+    ~~~
+    For mixed region amplitude freedom capabilities, set part of the target desired as a
+    noise region to ``nan``. See :meth:`optimize()` for more details.
+    :class:`SpotHologram` has spot-specific methods for generated noise region pattern.
+
     Attributes
     ----------
     slm_shape : (int, int)
@@ -227,6 +233,8 @@ class Hologram:
          - ``"stat_groups"`` : ``list of str``
             Stores the values passed to
             :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
+         - ``"raw_stats"`` : bool
+            Whether to store raw stats.
          - ``"blur_ij"`` : ``float``
             See :meth:`~slmsuite.holography.algorithms.FeedbackHologram.ijcam_to_knmslm()`.
          - Other user-defined flags.
@@ -438,12 +446,13 @@ class Hologram:
         By default, pads to the smallest square power of two that
         encapsulates the original ``slm_shape``.
 
+        Future: Add a setting to pad based on available memory
+        (see :meth:`_calculate_memory_constrained_shape()`).
+
         Tip
         ~~~
         See also the first tip in the constructor of :class:`Hologram` for more information
         about the importance of padding.
-
-        Future: Add a setting to pad based on available memory.
 
         Parameters
         ----------
@@ -455,12 +464,11 @@ class Hologram:
             Scales to the ``padding_order`` th larger power of 2.
             A ``padding_order`` of zero does nothing. For instance, an SLM
             with shape ``(720, 1280)`` would yield
-            ``(2048, 4096)`` for two,
-            ``(1024, 2048)`` for one, and
-            ``(720, 1280)`` for zero.
+            ``(720, 1280)`` for ``padding_order=0``,
+            ``(1024, 2048)`` for ``padding_order=1``, and
+            ``(2048, 4096)`` for ``padding_order=2``.
         square_padding : bool
-            If ``True``, sets both shape dimensions to the largest of the two
-            dimensions that would otherwise be returned.
+            If ``True``, sets the smaller shape dimension to that of the larger, yielding a square.
         precision : float
             Returns the shape that produces a computational k-space with resolution smaller
             than ``precision``. The default, infinity, requests a padded shape larger
@@ -473,13 +481,17 @@ class Hologram:
         (int, int)
             Shape of the computational space which satisfies the above requirements.
         """
-        # TODO: Add a setting to pad based on available memory.
         cameraslm = None
         if hasattr(slm_shape, "slm"):
             cameraslm = slm_shape
             slm_shape = cameraslm.slm.shape
 
+        # Handle precision
         if np.isfinite(precision) and cameraslm is not None:
+            if precision <= 0:
+                raise ValueError(
+                    "algorithms.py: Precision passed to calculate_padded_shape() must be positive."
+                )
             dpixel = np.amin([cameraslm.slm.dx, cameraslm.slm.dy])
             fs = 1 / dpixel  # Sampling frequency
 
@@ -493,10 +505,14 @@ class Hologram:
             pixels = np.power(2, int(np.ceil(np.log2(pixels))))
             precision_shape = (pixels, pixels)
         elif np.isfinite(precision):
-            raise Exception("Must pass a CameraSLM object to slm_shape to implement precision calculations!")
+            raise ValueError(
+                "algorithms.py: Must pass a CameraSLM object under slm_shape "
+                "to implement calculate_padded_shape() precision calculations!"
+            )
         else:
             precision_shape = slm_shape
 
+        # Handle padding_order
         if padding_order > 0:
             padding_shape = np.power(
                 2, np.ceil(np.log2(slm_shape)) + padding_order - 1
@@ -504,6 +520,7 @@ class Hologram:
         else:
             padding_shape = slm_shape
 
+        # Take the largest and square if desired.
         shape = tuple(np.amax(np.vstack((precision_shape, padding_shape)), axis=0))
 
         if square_padding:
@@ -608,16 +625,16 @@ class Hologram:
 
             - **Sloping a top hat.** Suppose we want very flat amplitude on a beam.
               Requesting a sharp edge to this beam can lead to fringing effects at the
-              boundary. If instead a noise region is defined in a band surrounding the
-              beam, the noise region will be filled with whatever slope best enables the
-              desired flat beam.
+              boundary which mitigate flatness. If instead a noise region is defined in
+              a band surrounding the beam, the noise region will be filled with whatever
+              slope best enables the desired flat beam.
 
             - **Mitigating diffractive orders.** Without MRAF, spot patterns with high
               crystallinity often have "ghost" diffractive orders which continue the
-              pattern past the requested spots. Even though these orders are attenuated
+              pattern past the edges of requested spots. Even though these orders are attenuated
               during each phase retreival iteration, they remain part of the best
               solution for the recovered phase. With MRAF, a noise region can help solve
-              for phase which does not generate these undesired orders.
+              for retreived phase which does not generate these undesired orders.
 
         Note
         ~~~~
@@ -739,30 +756,7 @@ class Hologram:
         # Proxy to initialize nearfield with the correct shape and (complex) type.
         complex_type = 1j * self.dtype(1)
         nearfield = cp.zeros(self.shape, dtype=type(complex_type))
-
-        # MRAF helper variables
-        noise_region = cp.isnan(self.target)
-        signal_region = cp.logical_not(noise_region)
-        has_noise_region = not cp.all(signal_region)
-        mraf_factor = self.flags.get("mraf_factor", None)
-        if isinstance(mraf_factor, INTEGER_TYPES) and mraf_factor < 0 : mraf_factor = None
-
-        # `where=` functionality is needed for MRAF, but this is a undocumented/new cupy feature.
-        # We test whether it is availible https://github.com/cupy/cupy/pull/7281
-        try:
-            test = cp.arange(10)
-            cp.multiply(test, test, where=test > 5)
-            where_working = True
-        except:
-            try:
-                test = cp.arange(10)
-                cp.multiply(test, test, _where=test > 5)
-                where_working = False
-            except:
-                raise Exception(
-                    "MRAF not supported on this system. Arithmetic `where=` is needed. "
-                    "See https://github.com/cupy/cupy/pull/7281."
-                )
+        mraf_variables = self._mraf_helper_routines()
 
         # Helper variables for speeding up source phase and amplitude fixing.
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
@@ -771,14 +765,14 @@ class Hologram:
             # Fix the relevant part of the nearfield amplitude to the source amplitude.
             # Everything else is zero because power outside the SLM is assumed unreflected.
             # This is optimized for when shape is much larger than slm_shape.
-            nearfield.fill(0)
-            # TODO: @tpr0p suspects that indexing GPU arrays like this is slow.
+            # Comment: @tpr0p suspects that indexing GPU arrays like this is slow.
             #  It will probably be faster to keep the phase padded throughout
             #  computation and elt-wise multiply the phase with a bitmask
             #  to zero the padded region here.
             # Comment: @ichr says: Profiling shows that this is negligible.
+            nearfield.fill(0)
             nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
-            # TODO: @tpr0p suggests fftshifting the weights rather than the
+            # Comment: @tpr0p suggests fftshifting the weights rather than the
             #  farfield profile since the weights are never modified in optimization.
             # Comment: @ichr says: Agreed; see the note in the docstring of this function.
             #  However, fftshifting the weights means that these might be confusing or
@@ -800,39 +794,7 @@ class Hologram:
 
             # Evaluate method-specific routines, stats, etc.
             # If you want to add new functionality to GS, do so here to keep the main loop clean.
-            self._GS_farfield_routines(farfield)
-
-            # Fix amplitude, potentially also fixing the phase. Also applies MRAF if enabled.
-            # FUTURE: check optimized versions in git history.
-            if ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
-                # Set the farfield to the stored phase and updated weights.
-                if not has_noise_region:
-                    cp.exp(1j * self.phase_ff, out=farfield)
-                    cp.multiply(farfield, self.weights, out=farfield)
-                else:   # If MRAF is enabled, only do this in the signal region.
-                    if where_working:
-                        cp.exp(1j * self.phase_ff, where=signal_region, out=farfield)
-                        cp.multiply(farfield, self.weights, where=signal_region, out=farfield)
-                        if mraf_factor is not None: cp.multiply(farfield, mraf_factor, where=noise_region, out=farfield)
-                    else:
-                        cp.exp(1j * self.phase_ff, _where=signal_region, out=farfield)
-                        cp.multiply(farfield, self.weights, _where=signal_region, out=farfield)
-                        if mraf_factor is not None: cp.multiply(farfield, mraf_factor, _where=noise_region, out=farfield)
-            else:
-                # Set the farfield amplitude to the updated weights.
-                if not has_noise_region:
-                    cp.divide(farfield, cp.abs(farfield), out=farfield)
-                    cp.multiply(farfield, self.weights, out=farfield)
-                else:   # If MRAF is enabled, only do this in the signal region.
-                    if where_working:
-                        cp.divide(farfield, cp.abs(farfield), where=signal_region, out=farfield)
-                        cp.multiply(farfield, self.weights, where=signal_region, out=farfield)
-                        if mraf_factor is not None: cp.multiply(farfield, mraf_factor, where=noise_region, out=farfield)
-                    else:
-                        cp.divide(farfield, cp.abs(farfield), _where=signal_region, out=farfield)
-                        cp.multiply(farfield, self.weights, _where=signal_region, out=farfield)
-                        if mraf_factor is not None: cp.multiply(farfield, mraf_factor, _where=noise_region, out=farfield)
-                cp.nan_to_num(farfield, copy=False, nan=0)
+            self._GS_farfield_routines(farfield, mraf_variables)
 
             # Move to nearfield.
             nearfield = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho"))
@@ -855,7 +817,40 @@ class Hologram:
         self.amp_ff = cp.abs(farfield)
         self.phase_ff = cp.angle(farfield)
 
-    def _GS_farfield_routines(self, farfield):
+    def _mraf_helper_routines(self):
+        # MRAF helper variables
+        noise_region = cp.isnan(self.target)
+        signal_region = cp.logical_not(noise_region)
+        mraf_enabled = not cp.all(signal_region)
+        mraf_factor = self.flags.get("mraf_factor", None)
+        if isinstance(mraf_factor, INTEGER_TYPES) and mraf_factor < 0 : mraf_factor = None
+
+        # `where=` functionality is needed for MRAF, but this is a undocumented/new cupy feature.
+        # We test whether it is availible https://github.com/cupy/cupy/pull/7281
+        try:
+            test = cp.arange(10)
+            cp.multiply(test, test, where=test > 5)
+            where_working = True
+        except:
+            try:
+                test = cp.arange(10)
+                cp.multiply(test, test, _where=test > 5)
+                where_working = False
+            except:
+                raise Exception(
+                    "MRAF not supported on this system. Arithmetic `where=` is needed. "
+                    "See https://github.com/cupy/cupy/pull/7281."
+                )
+
+        return {
+            "noise_region":noise_region,
+            "signal_region":signal_region,
+            "mraf_enabled":mraf_enabled,
+            "mraf_factor":mraf_factor,
+            "where_working":where_working
+        }
+
+    def _GS_farfield_routines(self, farfield, mraf_variables):
         # Update statistics
         self.update_stats(self.flags["stat_groups"])
 
@@ -867,6 +862,7 @@ class Hologram:
             if "Kim" in self.method:
                 was_not_fixed = not self.flags["fixed_phase"]
 
+                # Enable based on efficiency.
                 if self.flags["fix_phase_efficiency"] is not None:
                     stats = self.stats["stats"]
                     groups = tuple(stats.keys())
@@ -876,13 +872,62 @@ class Hologram:
                     eff = stats[groups[-1]]["efficiency"][self.iter]
                     if eff > self.flags["fix_phase_efficiency"]:
                         self.flags["fixed_phase"] = True
-                if self.iter > self.flags["fix_phase_iteration"]:
-                    self.flags["fixed_phase"] = True
 
+                # Enable based on iterations.
+                if was_not_fixed:
+                    if self.iter >= self.flags["fix_phase_iteration"] - 1:
+                        previous = self.stats["flags"]["fixed_phase"]
+                        contiguous_falses = all(
+                            [not previous[-1-i] for i in range(self.flags["fix_phase_iteration"])]
+                        )
+                        if contiguous_falses:
+                            self.flags["fixed_phase"] = True
+
+                # Save the phase if we are going from unfixed to fixed.
                 if self.flags["fixed_phase"] and self.phase_ff is None or was_not_fixed:
                     self.phase_ff = cp.angle(farfield)
             else:
                 self.flags["fixed_phase"] = False
+
+        mraf_enabled = mraf_variables["mraf_enabled"]
+
+        # Fix amplitude, potentially also fixing the phase.
+        if not mraf_enabled:
+            if ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
+                # Set the farfield to the stored phase and updated weights.
+                cp.exp(1j * self.phase_ff, out=farfield)
+                cp.multiply(farfield, self.weights, out=farfield)
+            else:
+                # Set the farfield amplitude to the updated weights.
+                cp.divide(farfield, cp.abs(farfield), out=farfield)
+                cp.multiply(farfield, self.weights, out=farfield)
+        else:
+            noise_region =  mraf_variables["noise_region"]
+            signal_region = mraf_variables["signal_region"]
+            mraf_factor =   mraf_variables["mraf_factor"]
+            where_working = mraf_variables["where_working"]
+
+            if ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
+                # Set the farfield to the stored phase and updated weights, in the signal region.
+                if where_working:
+                    cp.exp(1j * self.phase_ff, where=signal_region, out=farfield)
+                    cp.multiply(farfield, self.weights, where=signal_region, out=farfield)
+                    if mraf_factor is not None: cp.multiply(farfield, mraf_factor, where=noise_region, out=farfield)
+                else:
+                    cp.exp(1j * self.phase_ff, _where=signal_region, out=farfield)
+                    cp.multiply(farfield, self.weights, _where=signal_region, out=farfield)
+                    if mraf_factor is not None: cp.multiply(farfield, mraf_factor, _where=noise_region, out=farfield)
+            else:
+                # Set the farfield to the stored phase and updated weights, in the signal region.
+                if where_working:
+                    cp.divide(farfield, cp.abs(farfield), where=signal_region, out=farfield)
+                    cp.multiply(farfield, self.weights, where=signal_region, out=farfield)
+                    if mraf_factor is not None: cp.multiply(farfield, mraf_factor, where=noise_region, out=farfield)
+                else:
+                    cp.divide(farfield, cp.abs(farfield), _where=signal_region, out=farfield)
+                    cp.multiply(farfield, self.weights, _where=signal_region, out=farfield)
+                    if mraf_factor is not None: cp.multiply(farfield, mraf_factor, _where=noise_region, out=farfield)
+                cp.nan_to_num(farfield, copy=False, nan=0)
 
     # User interactions: Changing the target and recovering the nearfield phase and complex farfield.
     def _update_target(self, new_target, reset_weights=False, plot=False):
@@ -1036,13 +1081,6 @@ class Hologram:
 
         cp.nan_to_num(weight_amp, copy=False, nan=0)
 
-        # weight_amp = cp.clip(
-        #     weight_amp,
-        #     0,
-        #     2*np.mean(weight_amp[weight_amp != 0]),
-        #     out=weight_amp
-        # )
-
         # Normalize amp, as methods may have broken conservation.
         norm = Hologram._norm(weight_amp)
         weight_amp *= 1 / norm
@@ -1062,7 +1100,12 @@ class Hologram:
     # Statistics handling
     @staticmethod
     def _calculate_stats(
-        feedback_amp, target_amp, mp=cp, efficiency_compensation=True, total=None
+        feedback_amp,
+        target_amp,
+        mp=cp,
+        efficiency_compensation=True,
+        total=None,
+        raw=False
     ):
         """
         Helper function to analyze how close the feedback is to the target.
@@ -1084,6 +1127,9 @@ class Hologram:
             power concentrated in ``feedback_amp ** 2`` because, for instance, power
             might exist outside spot integration regions.
             If ``None``, uses an overlap integral method to compute efficiency.
+        raw : bool
+            Passes the ``"raw_stats"`` flag which, if ``True``, enables storing of the
+            raw feedback and raw feedback-target ratio for each pixel or spot.
         """
         # Downgrade to numpy if necessary
         if isinstance(feedback_amp, np.ndarray) or isinstance(target_amp, np.ndarray):
@@ -1136,12 +1182,26 @@ class Hologram:
         pkpk_err = pwr_err.size * float(mp.amax(pwr_err) - mp.amin(pwr_err))
         std_err = pwr_err.size * float(mp.std(pwr_err))
 
-        return {
+        final_stats = {
             "efficiency": efficiency,
             "uniformity": uniformity,
             "pkpk_err": pkpk_err,
             "std_err": std_err,
         }
+
+        if raw:
+            ratio_pwr_full = np.full_like(target_pwr, np.nan)
+
+            if mp == np:
+                final_stats["raw_pwr"] = np.square(feedback_amp)
+                ratio_pwr_full[mask] = ratio_pwr
+            else:
+                final_stats["raw_pwr"] = np.square(feedback_amp).get()
+                ratio_pwr_full[mask] = ratio_pwr.get()
+
+            final_stats["raw_pwr_ratio"] = ratio_pwr_full
+
+        return final_stats
 
     def _calculate_stats_computational(self, stats, stat_groups=[]):
         """
@@ -1149,7 +1209,10 @@ class Hologram:
         """
         if "computational" in stat_groups:
             stats["computational"] = self._calculate_stats(
-                self.amp_ff, self.target, efficiency_compensation=False
+                self.amp_ff,
+                self.target,
+                efficiency_compensation=False,
+                raw="raw_stats" in self.flags and self.flags["raw_stats"]
             )
 
     def _update_stats_dictionary(self, stats):
@@ -1235,6 +1298,28 @@ class Hologram:
         self._update_stats_dictionary(stats)
 
     # Visualization
+    @staticmethod
+    def _compute_limits(source, epsilon=0, limit_padding=0.1):
+        """
+        Returns the retangular region which crops around non-zero pixels in the
+        ``source`` image. See :meth:`plot_farfield()`.
+        """
+        limits = []
+        binary = (source > epsilon) & np.logical_not(np.isnan(source))
+
+        for a in [0, 1]:
+            collapsed = np.where(np.any(binary, axis=a))  # Collapse the other axis
+            limit = np.array([np.amin(collapsed), np.amax(collapsed)])
+
+            padding = int(np.diff(limit) * limit_padding)+1
+            limit += np.array([-padding, padding+1])
+
+            limit = np.clip(limit, 0, source.shape[a])
+
+            limits.append(tuple(limit))
+
+        return limits
+
     def plot_nearfield(self, title="", padded=False,
                        figsize=(8,4), cbar=False):
         """
@@ -1327,13 +1412,14 @@ class Hologram:
         title : str
             Title of the plots.
         limits : ((float, float), (float, float)) OR None
-            :math:`x` and :math:`y` limits for the zoom plot.
+            :math:`x` and :math:`y` limits for the zoom plot in ``"knm"`` space.
             If None, ``limits`` are autocomputed as the smallest bounds
             that show all non-zero values (plus ``limit_padding``).
             Note that autocomputing on :attr:`target` will perform well,
             as zero values are set to actually be zero. However, doing so on
             computational or experimental outputs (e.g. :attr:`amp_ff`) will likely perform
-            poorly, as values deviate slightly from zero and artificially expand the ``limits``.
+            poorly, as values in the field deviate slightly from zero and
+            artificially expand the ``limits``.
         units : str
             Far-field units for plots (see
             :func:`~slmsuite.holography.toolbox.convert_blaze_vector` for options).
@@ -1350,8 +1436,8 @@ class Hologram:
         Returns
         -------
         ((float, float), (float, float))
-            Used ``limits``, which may be autocomputed. If autocomputed, the result will
-            be integers.
+            Used ``limits``, which may be autocomputed. Autocomputed limits are returned
+            as integers.
         """
         # Parse source
         if source is None:
@@ -1359,6 +1445,12 @@ class Hologram:
 
             if source is None:
                 source = self.extract_farfield()
+
+            if limits is None:
+                if np == cp:
+                    limits = self._compute_limits(self.target)
+                else:
+                    limits = self._compute_limits(self.target.get())
 
             if len(title) == 0:
                 title = "FF Amp"
@@ -1374,22 +1466,9 @@ class Hologram:
         assert units != "ij", \
             "algorithms.py: 'ij' is not a valid unit for plot_farfield() because of the associated rotation."
 
-        # Parse limits with limit_padding
-        if limits == None:
-            # Determine the bounds of the zoom region, padded by limit_padding
-            limits = []
-            binary = (npsource > 0) & np.logical_not(np.isnan(npsource))
-
-            for a in [0, 1]:
-                collapsed = np.where(np.any(binary, axis=a))  # Collapse the other axis
-                limit = np.array([np.amin(collapsed), np.amax(collapsed)])
-
-                padding = int(np.diff(limit) * limit_padding)+1
-                limit += np.array([-padding, padding+1])
-
-                limit = np.clip(limit, 0, self.shape[a])
-
-                limits.append(tuple(limit))
+        # Determine the bounds of the zoom region, padded by limit_padding
+        if limits is None:
+            limits = self._compute_limits(npsource)
 
         # Start making the plot
         fig, axs = plt.subplots(1, 2, figsize=figsize)
@@ -1409,11 +1488,9 @@ class Hologram:
         b = 2*int(np.diff(limits[0])/500) + 1  # FUTURE: fix arbitrary
         zoom_data = npsource[np.ix_(np.arange(limits[1][0], limits[1][1]),
                                     np.arange(limits[0][0], limits[0][1]))]
-        # zoom = axs[1].imshow(cv2.GaussianBlur(zoom_data, (b, b), 0), vmin=0, vmax=npsource.max(),
-        #                      extent=[limits[0][0], limits[0][1],
-        #                              limits[1][1],limits[1][0]])
         zoom = axs[1].imshow(
-            zoom_data, vmin=0, #, vmax=npsource.max(),
+            zoom_data,
+            vmin=0, vmax=zoom_data.max(),
             extent=[limits[0][0], limits[0][1],
                     limits[1][1],limits[1][0]],
             interpolation="none",
@@ -1425,7 +1502,7 @@ class Hologram:
             axs[1].spines[spine].set_color("r")
             axs[1].spines[spine].set_linewidth(1.5)
 
-        # Helper fxn: calculate extent for the given units
+        # Helper function: calculate extent for the given units
         try:
             slm = self.cameraslm.slm
         except:
@@ -1446,8 +1523,7 @@ class Hologram:
         # Scale and label plots depending on units
         rebase(full, units)
         rebase(zoom, units)
-        # fig.supxlabel(toolbox.BLAZE_LABELS[units][0])
-        # fig.supylabel(toolbox.BLAZE_LABELS[units][1])
+
         for i,ax in enumerate(axs):
             ax.set_xlabel(toolbox.BLAZE_LABELS[units][0])
             if i==0: ax.set_ylabel(toolbox.BLAZE_LABELS[units][1])
@@ -1494,7 +1570,7 @@ class Hologram:
 
         return limits
 
-    def plot_stats(self, stats_dict=None):
+    def plot_stats(self, stats_dict=None, ylim=None):
         """
         Plots the statistics contained in the given dictionary.
 
@@ -1548,11 +1624,18 @@ class Hologram:
         ax.set_yscale("log")
         plt.grid()
         plt.tight_layout()
+        if ylim is not None:
+            ax.set_ylim(ylim)
 
         # Shade fixed_phase. FUTURE: A more general method could be written
         if "fixed_phase" in stats_dict["flags"] and any(stats_dict["flags"]["fixed_phase"]):
-            fp = np.concatenate((stats_dict["flags"]["fixed_phase"],
-                                [stats_dict["flags"]["fixed_phase"][-1]]))
+            fp = np.concatenate((
+                stats_dict["flags"]["fixed_phase"],
+                [stats_dict["flags"]["fixed_phase"][-1]]
+            )) | np.concatenate((
+                [stats_dict["flags"]["fixed_phase"][0]],
+                stats_dict["flags"]["fixed_phase"]
+            ))
             niter_fp = np.arange(0, len(stats_dict["method"]) + 1)
 
             ylim = ax.get_ylim()
@@ -1955,16 +2038,22 @@ class FeedbackHologram(Hologram):
         """
         if "experimental_knm" in stat_groups:
             self.measure("knm")  # Make sure data is there.
+
             stats["experimental_knm"] = self._calculate_stats(
-                self.img_knm, self.target, efficiency_compensation=True
+                self.img_knm,
+                self.target,
+                efficiency_compensation=True,
+                raw="raw_stats" in self.flags and self.flags["raw_stats"]
             )
         if "experimental_ij" in stat_groups or "experimental" in stat_groups:
             self.measure("ij")  # Make sure data is there.
+
             stats["experimental_ij"] = self._calculate_stats(
                 self.img_ij.astype(self.dtype),
                 self.target_ij,
                 mp=np,
                 efficiency_compensation=True,
+                raw="raw_stats" in self.flags and self.flags["raw_stats"]
             )
 
     def update_stats(self, stat_groups=[]):
@@ -1993,7 +2082,9 @@ class SpotHologram(FeedbackHologram):
 
     Tip
     ~~~
-    Mixed region amplitude freedom (MRAF) algorithms are supported
+    Qualtiy of life features to generate noise regions for mixed region amplitude
+    freedom (MRAF) algorithms are supported. Specifically, set ``null_region``
+    parameters to help specify where the noise region is not.
 
     Attributes
     ----------
@@ -2038,11 +2129,14 @@ class SpotHologram(FeedbackHologram):
         In addition to points where power is desired, :class:`SpotHologram` is equipped
         with quality of life features to select points where power is undesired. These
         points are stored in :attr:`null_knm` with shape ``(2, M)`` in the style of
-        :meth:`~slmsuite.holography.toolbox.format_2vectors()`. In practice, a
+        :meth:`~slmsuite.holography.toolbox.format_2vectors()`. A region around these
+        points is set to zero (null) and not allowed to paritipate in the noise region.
     null_radius_knm : float
-        TODO
+        The radius in ``"knm"`` space around the points :attr:`null_knm` to zero or null
+        (prevent from participating in the ``nan`` noise region).
     null_region_knm : array_like of bool
-        TODO
+        Array of shape :attr:`shape`. Where ``True``, sets the background to zero
+        instead of nan. If None,
     """
 
     def __init__(
@@ -2218,8 +2312,6 @@ class SpotHologram(FeedbackHologram):
             psf_kxy = cameraslm.slm.spot_radius_kxy(shape)
             psf_knm = toolbox.convert_blaze_radius(psf_kxy, "kxy", "knm", cameraslm.slm, shape)
             psf_ij = toolbox.convert_blaze_radius(psf_kxy, "kxy", "ij", cameraslm, shape)
-            # psf_ij = cameraslm.kxyslm_to_ijcam(psf_kxy) - cameraslm.kxyslm_to_ijcam((0, 0))
-            print(psf_kxy, psf_knm, psf_ij)
         else:
             psf_knm = 0
             psf_ij = np.nan
@@ -2382,7 +2474,7 @@ class SpotHologram(FeedbackHologram):
                 )
 
                 array_center = toolbox.convert_blaze_vector(
-                    (0, 0), "kxy", "ij", cameraslm.slm
+                    (0, 0), "kxy", "ij", cameraslm
                 )
 
         # Make the grid edges.
@@ -2580,6 +2672,7 @@ class SpotHologram(FeedbackHologram):
                     amp_ff = self.amp_ff.get()
                 else:
                     amp_ff = self.amp_ff
+
                 pwr_feedback = analysis.take(
                     np.square(amp_ff),
                     self.spot_knm_rounded,
@@ -2591,7 +2684,9 @@ class SpotHologram(FeedbackHologram):
                 self.measure(basis="ij")
 
                 pwr_feedback = analysis.take(
-                    np.square(np.array(self.img_ij, copy=False, dtype=self.dtype)),
+                    analysis.image_remove_field(
+                        np.square(np.array(self.img_ij, copy=False, dtype=self.dtype))
+                    ),
                     self.spot_ij,
                     self.spot_integration_width_ij,
                     centered=True,
@@ -2621,6 +2716,7 @@ class SpotHologram(FeedbackHologram):
                     self.spot_amp,
                     efficiency_compensation=False,
                     total=cp.sum(cp.square(self.amp_ff)),
+                    raw="raw_stats" in self.flags and self.flags["raw_stats"]
                 )
             else:
                 # Spot size is wider than a pixel: integrate a window around each spot
@@ -2644,12 +2740,14 @@ class SpotHologram(FeedbackHologram):
                     mp=np,
                     efficiency_compensation=False,
                     total=np.sum(pwr_ff),
+                    raw="raw_stats" in self.flags and self.flags["raw_stats"]
                 )
 
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
 
             pwr_img = np.square(np.array(self.img_ij, copy=False, dtype=self.dtype))
+            pwr_img = analysis.image_remove_field(pwr_img)
             pwr_feedback = analysis.take(
                 pwr_img,
                 self.spot_ij,
@@ -2658,12 +2756,19 @@ class SpotHologram(FeedbackHologram):
                 integrate=True
             )
 
+            # print(self.iter)
+            # print(pwr_feedback)
+            # print(np.sum(pwr_feedback))
+            # print(np.sum(pwr_img))
+            # print(np.sum(pwr_feedback) / np.sum(pwr_img))
+
             stats["experimental_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
                 mp=np,
                 efficiency_compensation=False,
                 total=np.sum(pwr_img),
+                raw="raw_stats" in self.flags and self.flags["raw_stats"]
             )
 
         if "external_spot" in stat_groups:
@@ -2674,6 +2779,7 @@ class SpotHologram(FeedbackHologram):
                 mp=np,
                 efficiency_compensation=False,
                 total=np.sum(pwr_feedback),
+                raw="raw_stats" in self.flags and self.flags["raw_stats"]
             )
 
     def update_stats(self, stat_groups=[]):

@@ -176,6 +176,7 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     deviations : int OR None
         Number of standard deviations above the mean to set the threshold.
         If ``None``, uses the median as the threshold instead.
+        Defaults to ``None``.
     out : numpy.ndarray or None
         The array to place the output data into.
         Should be the same shape as ``images``,
@@ -187,7 +188,10 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     out : numpy.ndarray
         Images with zeroed field.
     """
-    images = np.array(images, dtype=float)  # Hack to prevent integer underflow.
+    images = np.array(images)
+    if not isinstance(images.dtype, np.floating):
+        images = np.array(images, dtype=float)  # Hack to prevent integer underflow.
+
     if len(images.shape) == 2:
         images = np.reshape(images, (1, images.shape[0], images.shape[1]))
     img_count = images.shape[0]
@@ -725,7 +729,7 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
     return result
 
 
-def fit_affine(x, y, plot=False):
+def fit_affine(x, y, guess_affine=None, plot=False):
     r"""
     For two sets of points with equal length, find the best-fit affine
     transformation that transfoms from the first basis to the second.
@@ -737,6 +741,7 @@ def fit_affine(x, y, plot=False):
     ----------
     x, y : array_like
         Array of vectors of shape ``(2, N)`` in the style of :meth:`format_2vectors()`.
+        Is
     plot : bool
         Whether to produce a debug plot.
 
@@ -748,32 +753,49 @@ def fit_affine(x, y, plot=False):
     x = format_2vectors(x)
     y = format_2vectors(y)
     assert x.shape == y.shape
-    assert x.shape[1] >= 3
 
-    # Calculate the centroids and the centered coordinates.
-    xc = np.mean(x, axis=1)[:, np.newaxis]
-    yc = np.mean(y, axis=1)[:, np.newaxis]
+    if guess_affine is None:
+        # Calculate the centroids and the centered coordinates.
+        xc = np.nanmean(x, axis=1)[:, np.newaxis]
+        yc = np.nanmean(y, axis=1)[:, np.newaxis]
 
-    x_ = x - xc
-    y_ = y - yc
+        if np.all(np.isnan(xc)) or np.all(np.isnan(yc)):
+            raise ValueError("analysis.py: vectors cannot contain a row of all-nan values")
 
-    # Generate a guess transformation.
-    nan_list = np.full_like(y_[0,:], np.nan)
+        x_ = x - xc
+        y_ = y - yc
 
-    # This could probably be vectorized more.
-    M_guess = np.array([
-        [
-            np.nanmean(np.divide(y_[0,:], x_[0,:], where=x_[0,:] != 0, out=nan_list.copy())),
-            np.nanmean(np.divide(y_[0,:], x_[1,:], where=x_[1,:] != 0, out=nan_list.copy()))
-        ],
-        [
-            np.nanmean(np.divide(y_[1,:], x_[0,:], where=x_[0,:] != 0, out=nan_list.copy())),
-            np.nanmean(np.divide(y_[1,:], x_[1,:], where=x_[1,:] != 0, out=nan_list.copy()))
-        ]
-    ])
+        # Points very close to the centroid have disproporte influence on the guess.
+        # Ignore the points which are closer than a median-dependent threshold.
+        threshold = np.median(np.sqrt(np.sum(np.square(x_), axis=0))) / 2
 
-    # Back compute the offset.
-    b_guess = yc - np.matmul(M_guess, xc)
+        # Generate a guess transformation.
+        nan_list = np.full_like(y_[0,:], np.nan)
+
+        # This could probably be vectorized more.
+        M_guess = np.array([
+            [
+                np.nanmean(np.divide(y_[0,:], x_[0,:], where=x_[0,:] > threshold, out=nan_list.copy())),
+                np.nanmean(np.divide(y_[0,:], x_[1,:], where=x_[1,:] > threshold, out=nan_list.copy()))
+            ],
+            [
+                np.nanmean(np.divide(y_[1,:], x_[0,:], where=x_[0,:] > threshold, out=nan_list.copy())),
+                np.nanmean(np.divide(y_[1,:], x_[1,:], where=x_[1,:] > threshold, out=nan_list.copy()))
+            ]
+        ])
+
+        # Fix nan instances. This means the matrix is no longer unique, so we choose the
+        # case where the nans are mapped to zero.
+        M_guess[np.isnan(M_guess)] = 0
+
+        # Back compute the offset.
+        b_guess = yc - np.matmul(M_guess, xc)
+    else:
+        if isinstance(guess_affine, dict) and "M" in guess_affine and "b" in guess_affine:
+            M_guess = guess_affine["M"]
+            b_guess = guess_affine["b"]
+        else:
+            raise ValueError("analysis.py: guess_affine must be a dictionary with 'M' and 'b' fields.")
 
     # Least squares fit.
     def err(p):
@@ -782,7 +804,9 @@ def fit_affine(x, y, plot=False):
 
         y_ = np.matmul(M, x) + b
 
-        return np.sum(np.square(y_ - y))
+        # print(np.nansum(np.square(y_ - y)))
+
+        return np.nansum(np.square(y_ - y))
 
     guess = (M_guess[0,0], M_guess[0,1], M_guess[1,0], M_guess[1,1], b_guess[0,0], b_guess[1,0])
 
@@ -1125,14 +1149,14 @@ def blob_array_detect(
             )
 
         # Future: improve this part of the algorithm. It sometimes makes mistakes.
-        # TODO: @tpr0p thinks we should just blob detect `img` and then
+        # Future: @tpr0p thinks we should just blob detect `img` and then
         # fit a Bravais lattice to it with least squares. this will also
         # make it more obvious to the user how to set the threshold value.
         # it's not clear on first inspection which blobs in the DFT you're
         # supposed to detect.
 
         # 2.1) Get the max point (DTF center) and its next four neighbors.
-        # TODO: using np.fft.fftfreq and np.fft.fftshift
+        # Future: using np.fft.fftfreq and np.fft.fftshift
         # might be more straightforward and rely less on custom equations
         blob_dist = np.zeros(len(blobs))
         k = np.zeros((len(blobs), 2))
@@ -1144,7 +1168,7 @@ def blob_array_detect(
                 np.array([k[i, 0], k[i, 1]])
             )
 
-        # TODO: this sorting isn't used. also blobs are already
+        # Future: this sorting isn't used. also blobs are already
         # sorted by dist to center, see :meth:`blob_detect` with
         # default `filter` argument.
         sort_ind = np.argsort(blob_dist)[:5]
@@ -1152,7 +1176,7 @@ def blob_array_detect(
         blob_dist = blob_dist[sort_ind]
         k = k[sort_ind]
 
-        # TODO: doesn't this assume that we don't get more
+        # Future: doesn't this assume that we don't get more
         # blobs outside of the first 5? w.r.t. center distance.
         # this depends on the user picking a high `dft_threshold`.
         # 2.2) Calculate array metrics
@@ -1162,7 +1186,7 @@ def blob_array_detect(
         top = np.argmax([k[:, 1]])  # Largest y
 
         # 2.3) Calculate the vectors in the imaging domain
-        # TODO: @tpr0p is wondering where this formula comes from.
+        # Future: @tpr0p is wondering where this formula comes from.
         x = 2 * (k[right, :] - k[left, :]) / (blob_dist[right] + blob_dist[left]) ** 2
         y = 2 * (k[top, :] - k[bottom, :]) / (blob_dist[top] + blob_dist[bottom]) ** 2
 
@@ -1341,12 +1365,14 @@ def blob_array_detect(
     orientation = {"M": results[index][2], "b": results[index][1]}
 
     # Hone the center of our fit by averaging the positional deviations of spots.
+    # We do this multiple times to allow outliers (1 std error above) to stabilize.
     hone_count = 3
     for _ in range(hone_count):
         guess_positions = np.matmul(orientation["M"], centers) + orientation["b"]
 
         # Odd helper parameters.
         psf = 2 * int(np.floor(np.amin(np.amax(np.abs(orientation["M"]), axis=0))) / 2) + 1
+        psf = np.max([3, psf])
         blur = 2 * int(psf / 16) + 1
 
         regions = take(
@@ -1355,30 +1381,15 @@ def blob_array_detect(
 
         # Get the first order moment around each of the guess windows.
         shift = image_positions(regions) - (guess_positions - np.around(guess_positions))
-        shift_x = shift[0, :]
-        shift_y = shift[1, :]
 
         # Remove outliers
-        shift_error = np.sqrt(np.square(shift_x) + np.square(shift_y))
-        thresh = np.mean(shift_error)
+        shift_error = np.sqrt(np.square(shift[0, :]) + np.square(shift[1, :]))
+        thresh = np.mean(shift_error) + np.std(shift_error)
+        shift[:, shift_error > thresh] = np.nan
 
-        shift_x[shift_error > thresh] = np.nan
-        shift_y[shift_error > thresh] = np.nan
-
-        if False:
-            fig, axs = plt.subplots(2, 2, figsize=(12, 12))
-            im = axs[0, 0].imshow(shift_x.reshape(np.flip(size)))
-            plt.colorbar(im, ax=axs[0, 0])
-            im = axs[1, 0].imshow(shift_y.reshape(np.flip(size)))
-            plt.colorbar(im, ax=axs[1, 0])
-
-            axs[0, 1].hist(shift_x.ravel(), bins=30)
-            axs[1, 1].hist(shift_y.ravel(), bins=30)
-
-            plt.show()
-
-        # Correct the fit.
-        orientation["b"] += format_2vectors([np.nanmean(shift_x), np.nanmean(shift_y)])
+        # Locally fit an affine based on the measured positions.
+        true_positions = guess_positions + shift
+        orientation = fit_affine(centers, true_positions, orientation)
 
     if plot:
         array_center = orientation["b"]

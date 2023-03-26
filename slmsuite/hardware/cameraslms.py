@@ -203,7 +203,10 @@ class FourierSLM(CameraSLM):
         Parameters
         ----------
         array_shape, array_pitch, array_center
-            See :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`.
+            Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
+            **in the** ``"knm"`` **basis.**  ``array_center`` is not passed directly, and is
+            processed as being relative to the center of ``"knm"`` space, the position
+            of the 0th order.
         plot : bool
             Enables debug plots.
         autofocus : bool OR dict
@@ -367,8 +370,7 @@ class FourierSLM(CameraSLM):
 
         return file_path
 
-    def project_fourier_grid(self, array_shape=10, array_pitch=10, array_center=None,
-                                **kwargs):
+    def project_fourier_grid(self, array_shape=10, array_pitch=10, array_center=None, **kwargs):
         """
         Projects a Fourier space grid (``"knm"``) onto pixel space (``"ij"``).
         The chosen computational k-space ``"knm"`` uses a computational shape
@@ -380,7 +382,9 @@ class FourierSLM(CameraSLM):
         ----------
         array_shape, array_pitch, array_center
             Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
-            in the ``"knm"`` basis.
+            **in the** ``"knm"`` **basis.**  ``array_center`` is not passed directly, and is
+            processed as being relative to the center of ``"knm"`` space, the position
+            of the 0th order.
         **kwargs
             Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.optimize()`.
 
@@ -398,7 +402,10 @@ class FourierSLM(CameraSLM):
             shape,
             array_shape=array_shape,
             array_pitch=array_pitch,
-            array_center=array_center,
+            array_center=(
+                format_2vectors(array_center) +
+                format_2vectors((shape[1] / 2.0, shape[0] / 2.0))
+            ),
             basis="knm",
             orientation_check=True,
             cameraslm=self,

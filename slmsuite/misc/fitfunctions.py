@@ -170,7 +170,7 @@ def gaussian(x, x0, a, c, w):
     w : float
         The standard deviation of the normal distribution.
         Equivalent to the :math:`1/e^2` radius.
-        This is related to the full width at half maximum (FWHM) 
+        This is related to the full width at half maximum (FWHM)
         by a factor of :math:`2\sqrt{2\ln{2}}`.
 
     Returns
@@ -252,7 +252,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     wx, wy : float
         The standard deviation of the normal distribution.
         Equivalent to half of the :math:`1/e^2` radius.
-        This is related to the full width at half maximum (FWHM) 
+        This is related to the full width at half maximum (FWHM)
         by a factor of :math:`2\sqrt{2\ln{2}}`.
     wxy : float
         Shear variance. See above.
@@ -266,7 +266,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     y = xy[1] - y0
 
     wxy = np.sign(wxy) * np.min([np.abs(wxy), wx*wy])
-    
+
     try:
         M = np.linalg.inv([[wx*wx, wxy], [wxy, wy*wy]])
     except np.linalg.LinAlgError:
@@ -291,7 +291,7 @@ def tophat2d(xy, x0, y0, r, a=1):
         Active radius of the tophat.
     a : real
         Amplitude.
-    
+
     Returns
     -------
     z : numpy.ndarray
@@ -300,44 +300,3 @@ def tophat2d(xy, x0, y0, r, a=1):
     y = xy[1] - y0
     return np.where(x ** 2 + y ** 2 <= r ** 2, a, 0)
 
-
-def lattice2d(
-    xy, x0, y0, a1x, a1y, a2x, a2y, N,
-    spot=gaussian2d, orientation_check=False, **kwargs
-    ):
-    """
-    Parameters
-    ----------
-    xy : numpy.ndarray
-        Points to fit upon. ``(x, y)`` form.
-    x0, y0 : float
-        Center of the lattice.
-    a1x, a1y : float
-        First lattice vector.
-    a2x, a2y : float
-        Second lattice vector.
-    N : (int, int)
-        Number of lattice points in the `a1` and `a2` directions.
-    spot : function(xy, x0, y0, **kwargs) -> array_like
-        The distribution to put at each affine point.
-    orientation_check : bool
-        See `~slmsuite.holography.toolbox.fit_lattice`.
-    kwargs : dict
-        Passed to ``spot``.
-    """
-    # Generate the center coordinates of the affine points.
-    p0 = np.array(((x0,), (y0,)))
-    a1 = np.array(((a1x,), (a1y,)))
-    a2 = np.array(((a2x,), (a2y,)))
-    lattice_coordinates = toolbox.fit_lattice2d(
-        p0, a1, a2, N, orientation_check=orientation_check
-    )
-
-    # Create image with the `spot` distribution at the affine points.
-    img = np.zeros(xy[0].shape[0])
-    coord_count = lattice_coordinates.shape[1]
-    for coord_idx in range(coord_count):
-        x0_, y0_ = lattice_coordinates[:, coord_idx]
-        img += spot(xy, x0_, y0_, **kwargs)
-
-    return img

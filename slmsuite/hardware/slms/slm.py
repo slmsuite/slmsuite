@@ -544,16 +544,9 @@ class SLM:
 
         return farfield
 
-    def spot_radius_kxy(self, padded_shape=None):
+    def spot_radius_kxy(self):
         """
         Measures the (average) radius of the farfield spot in the ``"kxy"`` basis.
-
-        Parameters
-        ----------
-        padded_shape : (int, int) OR None
-            The point spread function changes in resolution depending on the padding.
-            Use this variable to provide this padding.
-            If ``None``, do not pad.
 
         Returns
         -------
@@ -561,18 +554,16 @@ class SLM:
             Average radius of the farfield spot.
         """
         try:
-            nearfield = toolbox.pad(self._get_measured_amplitude(), padded_shape)
-
-            psf_nm = np.sqrt(analysis.image_variances(nearfield)[:2])
+            psf_nm = np.sqrt(analysis.image_variances(self._get_measured_amplitude())[:2])
 
             psf_kxy = np.mean(toolbox.convert_blaze_vector(
-                np.reciprocal(psf_nm),
+                np.reciprocal(8 * psf_nm),
                 from_units="freq",
                 to_units="kxy",
                 slm=self,
-                shape=padded_shape
+                shape=self.shape
             ))
         except:
-            psf_kxy = np.mean([1 / self.dx / padded_shape[1], 1 / self.dy / padded_shape[0]])
+            psf_kxy = np.mean([1 / self.dx / self.shape[1], 1 / self.dy / self.shape[0]])
 
         return psf_kxy

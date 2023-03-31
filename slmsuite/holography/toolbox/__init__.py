@@ -31,9 +31,9 @@ def window_slice(window, shape=None, centered=False, circular=False):
           ``centered`` and ``circular`` are ignored.
         - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
           ``centered`` and ``circular`` are ignored.
-    shape : (int, int)
+    shape : (int, int) OR None
         The (height, width) of the array that the window is a view into.
-        If passed, indices beyond those allowed by ``shape`` will be clipped.
+        If not ``None``, indices beyond those allowed by ``shape`` will be clipped.
     centered : bool
         See ``window``.
     circular : bool
@@ -47,10 +47,10 @@ def window_slice(window, shape=None, centered=False, circular=False):
     # (v.x, w, v.y, h) format
     if len(window) == 4:
         # Prepare helper vars
-        xi = int(window[0] - (window[1] / 2 if centered else 0))
-        xf = int(xi + window[1])
-        yi = int(window[2] - (window[3] / 2 if centered else 0))
-        yf = int(yi + window[3])
+        xi = int(window[0] - ((window[1] - 2) / 2 if centered else 0))
+        xf = xi + int(window[1])
+        yi = int(window[2] - ((window[3] - 2) / 2 if centered else 0))
+        yf = yi + int(window[3])
 
         if shape is not None:
             xi = np.clip(xi, 0, shape[1] - 1)
@@ -63,8 +63,8 @@ def window_slice(window, shape=None, centered=False, circular=False):
             y_list = np.arange(yi, yf)
             x_grid, y_grid = np.meshgrid(x_list, y_list)
 
-            xc = window[0] + (0 if centered else window[1] / 2)
-            yc = window[2] + (0 if centered else window[3] / 2)
+            xc = xi + int((window[1] - 1) / 2)
+            yc = yi + int((window[3] - 1) / 2)
 
             rr_grid = (
                 (window[3] ** 2) * np.square(x_grid.astype(float) - xc) +
@@ -388,15 +388,15 @@ def imprint(
 # Unit helper functions.
 
 BLAZE_LABELS = {
-    "norm" : (r"$k_x/k$", r"$k_y/k$"),
-    "kxy" : (r"$k_x/k$", r"$k_y/k$"),
-    "rad" : (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
-    "knm" : (r"$n$ [pix]", r"$m$ [pix]"),
-    "ij" : (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
-    "freq" : (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
-    "lpmm" : (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
-    "mrad" : (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
-    "deg" : (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]")
+    "norm" : (r"$k_x/k$",               r"$k_y/k$"),
+    "kxy" :  (r"$k_x/k$",               r"$k_y/k$"),
+    "rad" :  (r"$\theta_x$ [rad]",      r"$\theta_y$ [rad]"),
+    "knm" :  (r"$n$ [pix]",             r"$m$ [pix]"),
+    "ij" :   (r"Camera $x$ [pix]",      r"Camera $y$ [pix]"),
+    "freq" : (r"$f_x$ [1/pix]",         r"$f_y$ [1/pix]"),
+    "lpmm" : (r"$k_x/2\pi$ [1/mm]",     r"$k_y/2\pi$ [1/mm]"),
+    "mrad" : (r"$\theta_x$ [mrad]",     r"$\theta_y$ [mrad]"),
+    "deg" :  (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]")
 }
 BLAZE_UNITS = BLAZE_LABELS.keys()
 

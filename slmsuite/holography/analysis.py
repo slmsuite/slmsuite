@@ -13,7 +13,11 @@ from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.fitfunctions import gaussian2d
 
 
-def take(images, vectors, size, centered=True, integrate=False, clip=False, plot=False):
+def take(
+        images, vectors, size,
+        centered=True, integrate=False, clip=False,
+        return_mask=False, plot=False, mp=np
+    ):
     """
     Crop integration regions around an array of ``vectors``, yielding an array of images.
 
@@ -42,6 +46,9 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
         the valid area, setting the invalid region to ``np.nan``
         (or zero if the array datatype does not support ``np.nan``).
         ``False`` throws an error upon out of range.
+    return_mask : bool
+        If ``True``, returns a boolean mask coresponding to the regions which are taken
+        from. Defaults to ``False``. The average user will ignore this.
     plot : bool
         Calls :meth:`take_plot()` to visualize the images regions.
 
@@ -78,10 +85,8 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
 
     if clip:  # Prevent out-of-range errors by clipping.
         mask = (
-            (integration_x < 0)
-            | (integration_x >= shape[-1])
-            | (integration_y < 0)
-            | (integration_y >= shape[-2])
+            (integration_x < 0) | (integration_x >= shape[-1]) |
+            (integration_y < 0) | (integration_y >= shape[-2])
         )
 
         if np.any(mask):
@@ -94,29 +99,39 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
     else:
         pass  # Don't prevent out-of-range errors.
 
-    # Take the data, depending on the
-    if len(shape) == 2:
-        result = images[np.newaxis, integration_y, integration_x]
-    elif len(shape) == 3:
-        result = images[:, integration_y, integration_x]
+    if return_mask:
+        canvas = np.zeros(shape[:2], dtype=bool)
+        canvas[integration_y, integration_x] = True
+
+        if plot:
+            plt.imshow(canvas)
+            plt.show()
+
+        return canvas
     else:
-        raise RuntimeError("Unexpected shape for images: {}".format(shape))
+        # Take the data, depending on the
+        if len(shape) == 2:
+            result = images[np.newaxis, integration_y, integration_x]
+        elif len(shape) == 3:
+            result = images[:, integration_y, integration_x]
+        else:
+            raise RuntimeError("Unexpected shape for images: {}".format(shape))
 
-    if clip:  # Set values that were out of range to nan instead of erroring.
-        try:  # If the datatype of result is incompatible with nan, set to zero instead.
-            result[:, mask] = np.nan
-        except:
-            result[:, mask] = 0
-    else:
-        pass
+        if clip:  # Set values that were out of range to nan instead of erroring.
+            try:  # If the datatype of result is incompatible with nan, set to zero instead.
+                result[:, mask] = np.nan
+            except:
+                result[:, mask] = 0
+        else:
+            pass
 
-    if plot:
-        take_plot(np.reshape(result, (vectors.shape[1], size[1], size[0])))
+        if plot:
+            take_plot(np.reshape(result, (vectors.shape[1], size[1], size[0])))
 
-    if integrate:  # Sum over the integration axis
-        return np.squeeze(np.sum(result, axis=-1))
-    else:  # Reshape the integration axis
-        return np.reshape(result, (vectors.shape[1], size[1], size[0]))
+        if integrate:  # Sum over the integration axis
+            return np.squeeze(np.sum(result, axis=-1))
+        else:  # Reshape the integration axis
+            return np.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
 def take_plot(images):
@@ -822,13 +837,13 @@ def fit_affine(x, y, guess_affine=None, plot=False):
 
     # Debug plot if desired.
     if plot and x.shape[0] == 2:
-        plt.scatter(y[0,:], y[1,:])
+        plt.scatter(y[0,:], y[1,:], s=20, fc="b", ec="b")
 
         result_guess = np.matmul(M_guess, x) + b_guess
-        plt.scatter(result_guess[0,:], result_guess[1,:])
+        plt.scatter(result_guess[0,:], result_guess[1,:], s=40, fc="none", ec="r")
 
         result = np.matmul(M, x) + b
-        plt.scatter(result[0,:], result[1,:])
+        plt.scatter(result[0,:], result[1,:], s=60, fc="none", ec="g")
 
         plt.gca().set_aspect("equal")
         plt.show()
@@ -1381,6 +1396,8 @@ def blob_array_detect(
 
         # Get the first order moment around each of the guess windows.
         shift = image_positions(regions) - (guess_positions - np.around(guess_positions))
+        # fit = image_fit(regions)
+        # shift = np.vstack((fit[1, :], fit[2, :])) - (guess_positions - np.around(guess_positions))
 
         # Remove outliers
         shift_error = np.sqrt(np.square(shift[0, :]) + np.square(shift[1, :]))

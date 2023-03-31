@@ -36,6 +36,8 @@ The following packages are optional acceleration or hardware requirements, which
 the user can install selectively.
 
 - `cupy <https://cupy.dev/>`_ (highly recommended for GPU-accelerated holography)
+    - Install via ``conda`` is `recommended <https://docs.cupy.dev/en/stable/install.html>`:
+    ``conda install -c conda-forgge cupy``
 - Cameras
     - `VimbaPython <https://github.com/alliedvision/VimbaPython>`_ (non-PyPi)
     - `Xenics SDK <https://www.xenics.com/software/>`_ (non-PyPi)

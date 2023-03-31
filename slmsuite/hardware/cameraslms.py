@@ -402,7 +402,7 @@ class FourierSLM(CameraSLM):
             shape,
             array_shape=array_shape,
             array_pitch=array_pitch,
-            array_center=(
+            array_center=None if array_center is None else (
                 format_2vectors(array_center) +
                 format_2vectors((shape[1] / 2.0, shape[0] / 2.0))
             ),

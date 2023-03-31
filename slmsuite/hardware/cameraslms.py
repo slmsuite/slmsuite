@@ -895,8 +895,11 @@ class FourierSLM(CameraSLM):
                     if label == "Interference\nPoint":
                         wh *= 2
                         hh *= 2
-                    rect = plt.Rectangle(   [point[0] - wh, point[1] - hh],
-                                            2 * wh, 2 * hh, ec=color, fc="none")
+                    rect = plt.Rectangle(
+                        (float(point[0] - wh), float(point[1] - hh)),
+                        float(2 * wh), float(2 * hh), 
+                        ec=color, fc="none"
+                    )
                     axs[1].add_patch(rect)
                     axs[1].annotate(label,
                         (point[0], point[1] + 2 * interference_size[1] + hh),

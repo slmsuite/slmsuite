@@ -13,7 +13,7 @@ from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.fitfunctions import gaussian2d
 
 
-def take(images, vectors, size, centered=True, integrate=False, clip=False, plot=False):
+def take(images, vectors, size, centered=True, integrate=False, clip=False, plot=False, mp=np):
     """
     Crop integration regions around an array of ``vectors``, yielding an array of images.
 
@@ -44,6 +44,9 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
         ``False`` throws an error upon out of range.
     plot : bool
         Calls :meth:`take_plot()` to visualize the images regions.
+    mp : module
+        If ``images`` are :mod:`cupy` objects, then :mod:`cupy` must be passed as ``mp``.
+        Defaults to :mod:`numpy`.
 
     Returns
     -------
@@ -73,8 +76,8 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
         region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
     )).astype(int)
 
-    images = np.array(images)
-    shape = np.shape(images)
+    images = mp.array(images, copy=False)
+    shape = mp.shape(images)
 
     if clip:  # Prevent out-of-range errors by clipping.
         mask = (
@@ -94,7 +97,7 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
     else:
         pass  # Don't prevent out-of-range errors.
 
-    # Take the data, depending on the
+    # Take the data, depending on the dimension
     if len(shape) == 2:
         result = images[np.newaxis, integration_y, integration_x]
     elif len(shape) == 3:
@@ -111,12 +114,14 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, plot
         pass
 
     if plot:
+        if mp != np:    # Handle cupy
+            result = result.get()
         take_plot(np.reshape(result, (vectors.shape[1], size[1], size[0])))
 
     if integrate:  # Sum over the integration axis
-        return np.squeeze(np.sum(result, axis=-1))
+        return mp.squeeze(mp.sum(result, axis=-1))
     else:  # Reshape the integration axis
-        return np.reshape(result, (vectors.shape[1], size[1], size[0]))
+        return mp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
 def take_plot(images):
@@ -992,8 +997,8 @@ def blob_detect(
         # Blob patches
         for blob_idx in range(blob_count):
                 patch = matplotlib.patches.Circle(
-                    (blob_centers[0, blob_idx], blob_centers[1, blob_idx]),
-                    radius=blob_diameters[blob_idx] / 2,
+                    (float(blob_centers[0, blob_idx]), float(blob_centers[1, blob_idx])),
+                    radius=float(blob_diameters[blob_idx] / 2),
                     color="red",
                     linewidth=1,
                     fill=None
@@ -1106,7 +1111,9 @@ def blob_array_detect(
 
             # Plot a red rectangle to show the extents of the zoom region
             rect = plt.Rectangle(
-                [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
+                (float(xl[0]), float(yl[0])), 
+                float(np.diff(xl)), float(np.diff(yl)), 
+                ec="r", fc="none"
             )
             axs[0].add_patch(rect)
             axs[0].set_title("DFT Result - Full")
@@ -1436,7 +1443,9 @@ def blob_array_detect(
 
         # Plot a red rectangle to show the extents of the zoom region
         rect = plt.Rectangle(
-            [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
+            (float(xl[0]), float(yl[0])), 
+            float(np.diff(xl)), float(np.diff(yl)), 
+            ec="r", fc="none"
         )
         axs[0].add_patch(rect)
         axs[0].set_title("Result - Full")

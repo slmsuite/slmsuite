@@ -820,9 +820,20 @@ class Hologram:
     def _mraf_helper_routines(self):
         # MRAF helper variables
         noise_region = cp.isnan(self.target)
+        mraf_enabled = bool(cp.any(noise_region))
+
+        if not mraf_enabled:
+            return {
+                "noise_region":None,
+                "signal_region":None,
+                "mraf_enabled":False,
+                "mraf_factor":None,
+                "where_working":None
+            }
+
         signal_region = cp.logical_not(noise_region)
-        mraf_enabled = not cp.all(signal_region)
         mraf_factor = self.flags.get("mraf_factor", None)
+
         if isinstance(mraf_factor, INTEGER_TYPES) and mraf_factor < 0 : mraf_factor = None
 
         # `where=` functionality is needed for MRAF, but this is a undocumented/new cupy feature.
@@ -1052,12 +1063,9 @@ class Hologram:
             feedback_corrected = cp.array(feedback_amp, copy=True, dtype=self.dtype)
             feedback_corrected *= 1 / Hologram._norm(feedback_corrected)
 
-            cp.divide(feedback_corrected, cp.array(target_amp), out=feedback_corrected)
+            cp_target_amp = cp.array(target_amp, copy=False)
 
-            feedback_corrected[feedback_corrected == np.inf] = 0
-            feedback_corrected[cp.array(target_amp) == 0] = 0
-
-            cp.nan_to_num(feedback_corrected, copy=False, nan=1)
+            cp.divide(feedback_corrected, cp_target_amp, out=feedback_corrected)
 
         # Apply weighting
         if method == "Leonardo" or method == "Kim":
@@ -1065,7 +1073,7 @@ class Hologram:
             weight_amp *= feedback_corrected
         elif method == "Nogrette":
             # Taylor expand 1/(1-g(1-x)) -> 1 + g(1-x) + (g(1-x))^2 ~ 1 + g(1-x)
-            feedback_corrected *= -(1 / cp.mean(feedback_corrected))
+            feedback_corrected *= -(1 / cp.nanmean(feedback_corrected))
             feedback_corrected += 1
             feedback_corrected *= -self.flags["feedback_factor"]
             feedback_corrected += 1
@@ -1078,8 +1086,6 @@ class Hologram:
                 "{}"
                 " not recognized by Hologram.optimize()".format(self.method)
             )
-
-        cp.nan_to_num(weight_amp, copy=False, nan=0)
 
         # Normalize amp, as methods may have broken conservation.
         norm = Hologram._norm(weight_amp)
@@ -1533,9 +1539,9 @@ class Hologram:
             extent = zoom.get_extent()
             pix_width = (np.diff(extent[0:2])[0]) / np.diff(limits[0])
             rect = plt.Rectangle(
-                np.array(extent[::2]) - pix_width/2,
-                np.diff(extent[0:2])[0],
-                np.diff(extent[2:])[0],
+                tuple((np.array(extent[::2]) - pix_width/2).astype(float)),
+                float(np.diff(extent[0:2])[0]),
+                float(np.diff(extent[2:])[0]),
                 ec="r",
                 fc="none",
             )
@@ -2148,7 +2154,7 @@ class SpotHologram(FeedbackHologram):
         null_vectors=None,
         null_radius=None,
         null_region=None,
-        null_region_radius_frac=.5,
+        null_region_radius_frac=None,
         cameraslm=None,
         **kwargs
     ):
@@ -2188,7 +2194,7 @@ class SpotHologram(FeedbackHologram):
         null_region : array_like OR None
             Array of shape :attr:`shape`. Where ``True``, sets the background to zero
             instead of nan. If None,
-        null_region_radius_frac : float
+        null_region_radius_frac : float OR None
             Helper function to set the ``null_region`` to zero for Fourier space radius fractions above
             ``null_region_radius_frac``. This is useful to prevent power being deflected
             to very high orders, which are unlikely to be properly represented in
@@ -2668,22 +2674,18 @@ class SpotHologram(FeedbackHologram):
         else:
             # Integrate a window around each spot
             if feedback == "computational_spot":
-                if cp != np:
-                    amp_ff = self.amp_ff.get()
-                else:
-                    amp_ff = self.amp_ff
-
-                pwr_feedback = analysis.take(
-                    np.square(amp_ff),
+                amp_feedback = cp.sqrt(analysis.take(
+                    cp.square(self.amp_ff),
                     self.spot_knm_rounded,
                     self.spot_integration_width_knm,
                     centered=True,
                     integrate=True,
-                )
+                    mp=cp
+                ))
             elif feedback == "experimental_spot":
                 self.measure(basis="ij")
 
-                pwr_feedback = analysis.take(
+                amp_feedback = cp.sqrt(cp.array(analysis.take(
                     analysis.image_remove_field(
                         np.square(np.array(self.img_ij, copy=False, dtype=self.dtype))
                     ),
@@ -2691,14 +2693,14 @@ class SpotHologram(FeedbackHologram):
                     self.spot_integration_width_ij,
                     centered=True,
                     integrate=True
-                )
+                )))
             elif feedback == "external_spot":
-                pwr_feedback = np.square(np.array(self.external_spot_amp, copy=False, dtype=self.dtype))
+                amp_feedback = cp.array(self.external_spot_amp, copy=False, dtype=self.dtype)
 
             self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (
                 self._update_weights_generic(
                     self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
-                    cp.array(np.sqrt(pwr_feedback)),
+                    amp_feedback,
                     self.spot_amp,
                 )
             )

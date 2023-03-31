@@ -51,6 +51,9 @@ def take(
         from. Defaults to ``False``. The average user will ignore this.
     plot : bool
         Calls :meth:`take_plot()` to visualize the images regions.
+    mp : module
+        If ``images`` are :mod:`cupy` objects, then :mod:`cupy` must be passed as ``mp``.
+        Defaults to :mod:`numpy`.
 
     Returns
     -------
@@ -80,8 +83,8 @@ def take(
         region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
     )).astype(int)
 
-    images = np.array(images)
-    shape = np.shape(images)
+    images = mp.array(images, copy=False)
+    shape = mp.shape(images)
 
     if clip:  # Prevent out-of-range errors by clipping.
         mask = (
@@ -125,13 +128,10 @@ def take(
         else:
             pass
 
-        if plot:
-            take_plot(np.reshape(result, (vectors.shape[1], size[1], size[0])))
-
         if integrate:  # Sum over the integration axis
-            return np.squeeze(np.sum(result, axis=-1))
+            return mp.squeeze(mp.sum(result, axis=-1))
         else:  # Reshape the integration axis
-            return np.reshape(result, (vectors.shape[1], size[1], size[0]))
+            return mp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
 def take_plot(images):
@@ -1007,8 +1007,8 @@ def blob_detect(
         # Blob patches
         for blob_idx in range(blob_count):
                 patch = matplotlib.patches.Circle(
-                    (blob_centers[0, blob_idx], blob_centers[1, blob_idx]),
-                    radius=blob_diameters[blob_idx] / 2,
+                    (float(blob_centers[0, blob_idx]), float(blob_centers[1, blob_idx])),
+                    radius=float(blob_diameters[blob_idx] / 2),
                     color="red",
                     linewidth=1,
                     fill=None
@@ -1121,7 +1121,9 @@ def blob_array_detect(
 
             # Plot a red rectangle to show the extents of the zoom region
             rect = plt.Rectangle(
-                [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
+                (float(xl[0]), float(yl[0])), 
+                float(np.diff(xl)), float(np.diff(yl)), 
+                ec="r", fc="none"
             )
             axs[0].add_patch(rect)
             axs[0].set_title("DFT Result - Full")
@@ -1453,7 +1455,9 @@ def blob_array_detect(
 
         # Plot a red rectangle to show the extents of the zoom region
         rect = plt.Rectangle(
-            [xl[0], yl[0]], np.diff(xl), np.diff(yl), ec="r", fc="none"
+            (float(xl[0]), float(yl[0])), 
+            float(np.diff(xl)), float(np.diff(yl)), 
+            ec="r", fc="none"
         )
         axs[0].add_patch(rect)
         axs[0].set_title("Result - Full")

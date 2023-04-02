@@ -747,7 +747,7 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
 def fit_affine(x, y, guess_affine=None, plot=False):
     r"""
     For two sets of points with equal length, find the best-fit affine
-    transformation that transfoms from the first basis to the second.
+    transformation that transforms from the first basis to the second.
     Best fit is defined as minimization on the least squares euclidean norm.
 
     .. math:: \vec{y} = M \cdot \vec{x} + \vec{b}
@@ -1121,8 +1121,8 @@ def blob_array_detect(
 
             # Plot a red rectangle to show the extents of the zoom region
             rect = plt.Rectangle(
-                (float(xl[0]), float(yl[0])), 
-                float(np.diff(xl)), float(np.diff(yl)), 
+                (float(xl[0]), float(yl[0])),
+                float(np.diff(xl)), float(np.diff(yl)),
                 ec="r", fc="none"
             )
             axs[0].add_patch(rect)
@@ -1455,8 +1455,8 @@ def blob_array_detect(
 
         # Plot a red rectangle to show the extents of the zoom region
         rect = plt.Rectangle(
-            (float(xl[0]), float(yl[0])), 
-            float(np.diff(xl)), float(np.diff(yl)), 
+            (float(xl[0]), float(yl[0])),
+            float(np.diff(xl)), float(np.diff(yl)),
             ec="r", fc="none"
         )
         axs[0].add_patch(rect)

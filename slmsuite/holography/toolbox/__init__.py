@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import warnings
 
 from slmsuite.misc.math import (
-    INTEGER_TYPES, REAL_TYPES, iseven
+    INTEGER_TYPES, REAL_TYPES
 )
 
 # Windows creation functions. Windows are views into 2D arrays.
@@ -26,7 +26,7 @@ def window_slice(window, shape=None, centered=False, circular=False):
         - List in ``(x, w, y, h)`` format, where ``w`` and ``h`` are the width and height of
           the region and  ``(x,y)`` is the upper-left coordinate.
           If ``centered``, then ``(x,y)`` is instead the center of the region to imprint.
-          If ``circular``, then an elliptical region circumscribed by the rectanglular region is returned.
+          If ``circular``, then an elliptical region circumscribed by the rectangular region is returned.
         - Tuple containing arrays of identical length corresponding to y and x indices.
           ``centered`` and ``circular`` are ignored.
         - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
@@ -970,6 +970,7 @@ def shift_grid(grid, transform=None, shift=None):
     Returns a copy of a coordinate basis ``grid`` with a given ``shift`` and ``transformation``.
     Such grids are used as arguments for phase patterns, such as those in
     :mod:`slmsuite.holography.toolbox.phase`.
+
     Parameters
     ----------
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
@@ -978,13 +979,14 @@ def shift_grid(grid, transform=None, shift=None):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     transform : float OR ((float, float), (float, float)) OR None
-        If a scalar is passed, angle to rotate the basis of the lens by.
+        If a scalar is passed, this is the angle to rotate the basis of the lens by.
         Defaults to zero if `None`.
         If a 2x2 matrix is passed, transforms the :math:`x` and :math:`y` grids
         according to :math:`x' = M_{00}x + M_{01}y`,  :math:`y' = M_{10}y + M_{11}y`.
     shift : (float, float) OR None
         Center of the grid in normalized :math:`\frac{x}{\lambda}` coordinates.
         Defaults to no shift if `None`.
+
     Returns
     -------
     grid : (array_like, array_like)
@@ -1136,7 +1138,7 @@ def lens(grid, f=(np.inf, np.inf), center=None, angle=None):
     if center is not None or angle is not None:
         grid = shift_grid(grid, transform=angle, shift=center)
 
-    return toolbox_phase.blaze(grid, f)
+    return toolbox_phase.lens(grid, f)
 
 
 def axicon(grid, f=(np.inf, np.inf), w=None):

@@ -119,9 +119,9 @@ class FourierSLM(CameraSLM):
         Parameters
         ----------
         vector : array_like
-            Point to
+            Point to TODO
         basis : {"ij", "kxy"}
-            Basis of vector. This is the vector
+            Basis of vector. This is the vector TODO
         size : int
             Size in pixels of the integration region. If ``None``, sets to sixteen
             times the approximate size of a diffraction limited spot.
@@ -897,7 +897,7 @@ class FourierSLM(CameraSLM):
                         hh *= 2
                     rect = plt.Rectangle(
                         (float(point[0] - wh), float(point[1] - hh)),
-                        float(2 * wh), float(2 * hh), 
+                        float(2 * wh), float(2 * hh),
                         ec=color, fc="none"
                     )
                     axs[1].add_patch(rect)

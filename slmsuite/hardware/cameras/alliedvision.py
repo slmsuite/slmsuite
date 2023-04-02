@@ -204,7 +204,6 @@ class AlliedVision(Camera):
             try:
                 print(prop.get_name(), end="\t")
             except BaseException as e:
-                # print(prop)
                 print("Error accessing property dictionary, '{}':{}".format(key, e))
                 continue
 

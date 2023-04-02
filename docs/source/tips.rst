@@ -28,7 +28,7 @@ project data onto the SLM in the virtual display, causing most power to
 return to the zeroth order, and in some cases burning holes through devices
 (this happened several times before we realized what was happening).
 We suggest `disabling Aero Peek
-<https://superuser.com/questions/1056921/how-can-i-completely-disable-aero-peek>`_.
+<https://answers.microsoft.com/en-us/windows/forum/all/how-to-completely-disable-aero-peek-in-windows-11/ec65a8de-6401-4be2-a0b3-ba0d29c6cfe4>`_.
 
 Disable "Windows Update"
 ~~~~~~~~~~~~~~~~~~~~~~~~

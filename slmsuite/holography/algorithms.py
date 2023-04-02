@@ -110,11 +110,11 @@ from slmsuite.misc.fitfunctions import gaussian2d
 ALGORITHM_DEFAULTS = {
     "GS":             {"feedback" : ""},    # No feedback for bare GS
     "WGS-Leonardo" :  {"feedback" : "computational",
-                        "feedback_exponent" : 0.9},
+                        "feedback_exponent" : 0.8},
     "WGS-Kim" :       {"feedback" : "computational",
                         "fix_phase_efficiency" : None,
-                        "fix_phase_iteration" : 5,
-                        "feedback_exponent" : 0.9},
+                        "fix_phase_iteration" : 10,
+                        "feedback_exponent" : 0.8},
     "WGS-Nogrette" :  {"feedback" : "computational",
                         "factor":0.1}
 }
@@ -168,7 +168,7 @@ class Hologram:
         The shape of the **near-field** device producing the hologram in the **far-field**
         in :mod:`numpy` ``(h, w)`` form. This is important to record because
         certain optimizations and calibrations depend on it. If multiple of :attr:`slm_shape`,
-        :attr:`phase`, or :attr:`amp` are not ``None`` in the construtor, the shapes must agree.
+        :attr:`phase`, or :attr:`amp` are not ``None`` in the constructor, the shapes must agree.
         If all are ``None``, then the shape of the :attr:`target` is used instead
         (:attr:`slm_shape` == :attr:`shape`).
     phase : numpy.ndarray OR cupy.ndarray
@@ -398,22 +398,10 @@ class Hologram:
         self._update_target(target, reset_weights=False)
 
         # Initialize everything else inside reset.
-        self.reset(reset_phase=False)
+        self.reset(reset_phase=False, reset_flags=True)
 
-    def reset_phase(self):
-        r"""
-        Resets the hologram to a random state.
-        """
-        # Reset phase to random.
-        if cp == np:  # numpy does not support `dtype=`
-            rng = np.random.default_rng()
-            self.phase = rng.uniform(-np.pi, np.pi, self.slm_shape).astype(self.dtype)
-        else:
-            self.phase = cp.random.uniform(
-                -np.pi, np.pi, self.slm_shape, dtype=self.dtype
-            )
-
-    def reset(self, reset_phase=True):
+    # Initialization helper functions.
+    def reset(self, reset_phase=True, reset_flags=False):
         r"""
         Resets the hologram to an initial state. Does not restore the preconditioned ``phase``
         that may have been passed to the constructor. Also uses the current ``target``
@@ -430,20 +418,39 @@ class Hologram:
             self.reset_phase()
 
         # Reset weights.
-        self.weights = cp.copy(self.target)
-        cp.nan_to_num(self.weights, copy=False, nan=0)
+        self.reset_weights()
 
         # Reset vars.
         self.iter = 0
         self.method = ""
-        self.flags = {}
+        if reset_flags:
+            self.flags = {}
         self.stats = {"method": [], "flags": {}, "stats": {}}
 
         # Reset farfield storage.
         self.amp_ff = None
         self.phase_ff = None
 
-    # Initialization helper
+    def reset_phase(self):
+        r"""
+        Resets the hologram to a random state.
+        """
+        # Reset phase to random.
+        if cp == np:  # numpy does not support `dtype=`
+            rng = np.random.default_rng()
+            self.phase = rng.uniform(-np.pi, np.pi, self.slm_shape).astype(self.dtype)
+        else:
+            self.phase = cp.random.uniform(
+                -np.pi, np.pi, self.slm_shape, dtype=self.dtype
+            )
+
+    def reset_weights(self):
+        """
+        TODO
+        """
+        self.weights = self.target.copy()
+        cp.nan_to_num(self.weights, copy=False, nan=0)
+
     @staticmethod
     def calculate_padded_shape(
         slm_shape,
@@ -574,7 +581,11 @@ class Hologram:
         - Gerchberg-Saxton (GS) phase retrieval.
 
             ``'GS'`` [1]_
-              Implemented using fast Fourier transforms, potentially GPU-accelerated.
+
+              An iterative algorithm for phase retrieval, accomplished by moving back
+              and forth between the imaging and Fourier domains, with amplitude
+              corrections applied to each.
+              This is implemented using fast Fourier transforms, potentially GPU-accelerated.
 
         - Weighted Gerchberg-Saxton (WGS) phase retrieval algorithms of various flavors.
           Improves the uniformity of GS-computed focus arrays using weighting methods and
@@ -582,7 +593,7 @@ class Hologram:
 
             ``'WGS-Leonardo'`` [6]_
 
-              Original WGS algorithm. Weights the target
+              The original WGS algorithm. Weights the target
               amplitudes by the ratio of mean amplitude to computed amplitude, which
               amplifies weak spots while attenuating strong spots. Uses the following
               weighting function:
@@ -622,7 +633,7 @@ class Hologram:
 
         - The option for Mixed Region Amplitude Freedom (MRAF) feedback. In standard
           iterative algorithms, the entire Fourier-domain unpatterned field is replaced with zeros.
-          This is disadvantagous because a desired farfield pattern might not be especially
+          This is disadvantageous because a desired farfield pattern might not be especially
           compatible with a given nearfield amplitude, or otherwise. MRAF enables
           "noise regions" where the field is **not** replaced with zeros and is instead
           left with the farfield of a given iteration. In practice, MRAF is
@@ -630,8 +641,8 @@ class Hologram:
           as the noise regions. The ``"mraf_factor"`` flag in
           :attr:`~slmsuite.holography.algorithms.Hologram.flags`
           allows the user to partially attenuate the noise regions.
-          A factor of 0 fully attentuates the noise region. A factor of 1 does not
-          attentuate (the default). Middle ground is recommended, but is
+          A factor of 0 fully attenuates the noise region. A factor of 1 does not
+          attenuate (the default). Middle ground is recommended, but is
           application-dependent as a tradeoff between improving pattern fidelity and
           maintaining pattern efficiency.
 
@@ -646,12 +657,21 @@ class Hologram:
             - **Mitigating diffractive orders.** Without MRAF, spot patterns with high
               crystallinity often have "ghost" diffractive orders which continue the
               pattern past the edges of requested spots. Even though these orders are attenuated
-              during each phase retreival iteration, they remain part of the best
+              during each phase retrieval iteration, they remain part of the best
               solution for the recovered phase. With MRAF, a noise region can help solve
-              for retreived phase which does not generate these undesired orders.
+              for retrieved phase which does not generate these undesired orders.
 
-        Note
-        ~~~~
+        Caution
+        ~~~~~~~
+        Requesting ``stat_groups`` will slow the speed of optimization due to the
+        overhead of processing and saving statistics, especially in the case of
+        GPU-accelerated optimization where significant time cost is incurred by
+        moving these statistics to the CPU. This is especially apparent in the case
+        of fully-computational holography, where this effect can slow what is otherwise
+        a fully-GPU-contained loop by an order magnitude.
+
+        Tip
+        ~~~
         This function uses a parameter naming convention borrowed from
         :meth:`scipy.optimize.minimize()` and other functions in
         :mod:`scipy.optimize`. The parameters ``method``, ``maxiter``, and ``callback``
@@ -692,30 +712,31 @@ class Hologram:
         .. [7] F. Nogrette et al., "Single-Atom Trapping in Holographic 2D Arrays
                of Microtraps with Arbitrary Geometries" Phys. Rev. X 4, (2014).
         """
-
-        # Check and record method.
+        # 0) Check and record method.
         methods = list(ALGORITHM_DEFAULTS.keys())
         assert (
             method in methods
         ), "Unrecognized method '{}'. Valid methods include [{}]".format(method, methods)
         self.method = method
 
-        # Parse flags: empty old, load defaults, then update
-        if feedback is not None:
-            kwargs["feedback"] = feedback
-
+        # 1) Parse flags:
+        # 1.1) Set defaults if not already set.
         for flag, value in ALGORITHM_DEFAULTS[method].items():
-            self.flags[flag] = value
-
-        for flag in kwargs:
-            self.flags[flag] = kwargs[flag]
-
-        # Add in non-defaulted flags
-        self.flags["stat_groups"] = stat_groups
+            if not flag in self.flags:
+                self.flags[flag] = value
         if not "fixed_phase" in self.flags:
             self.flags["fixed_phase"] = False
 
-        # Print the optimization flags
+        # 1.2) Parse kwargs as flags.
+        for flag in kwargs:
+            self.flags[flag] = kwargs[flag]
+
+        # 1.3) Add in non-defaulted flags.
+        self.flags["stat_groups"] = stat_groups
+        if feedback is not None:
+            self.flags["feedback"] = feedback
+
+        # 1.4) Print the flags if verbose.
         if verbose > 1:
             print("Optimizing with '{}' using the following method-specific flags:".format(self.method))
             pprint.pprint({
@@ -724,18 +745,18 @@ class Hologram:
             })
             print("", end="", flush=True)   # Prevent tqdm conflicts.
 
-        # Iterations to process.
+        # 2) Prepare the iterations iterable.
         iterations = range(maxiter)
 
-        # Decide whether to use a tqdm progress bar. Don't use a bar for maxiter == 1.
+        # 2.1) Decide whether to use a tqdm progress bar. Don't use a bar for maxiter == 1.
         if verbose and maxiter > 1:
             iterations = tqdm(iterations)
 
-        # Switch between methods
+        # 3) Switch between optimization methods.
         if "GS" in method:
             self.GS(iterations, callback)
 
-    # Optimization methods (currently only GS-type is supported)
+    # Optimization methods (currently only GS-type is supported).
     def GS(self, iterations, callback):
         """
         GPU-accelerated Gerchberg-Saxton (GS) iterative phase retrieval.
@@ -755,7 +776,7 @@ class Hologram:
         operations.  However, :mod:`scipy.fft` does in both. In the future, we may move to the scipy
         implementation. However, neither :mod:`numpy` or :mod:`scipy` ``fftshift`` support
         in-place movement (for obvious reasons). For even faster computation, algorithms should
-        consider **not shifting** the FTT result, and instead shifting measurement data / etc to
+        consider **not shifting** the FFT result, and instead shifting measurement data / etc to
         this unshifted basis.
 
         Parameters
@@ -765,10 +786,7 @@ class Hologram:
         callback : callable OR None
             See :meth:`.optimize()`.
         """
-        # FUTURE: in-place FFT
-        # FUTURE: rename nearfield and farfield to use the same array to avoid hogging memory.
-
-        # Proxy to initialize nearfield with the correct shape and (complex) type.
+        # Proxy to initialize nearfield with the correct shape and correct (complex) type.
         complex_type = 1j * self.dtype(1)
         nearfield = cp.zeros(self.shape, dtype=type(complex_type))
         mraf_variables = self._mraf_helper_routines()
@@ -777,44 +795,34 @@ class Hologram:
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
         for _ in iterations:
-            # Fix the relevant part of the nearfield amplitude to the source amplitude.
+            # 1) Fix the relevant part of the nearfield amplitude to the source amplitude.
             # Everything else is zero because power outside the SLM is assumed unreflected.
             # This is optimized for when shape is much larger than slm_shape.
-            # Comment: @tpr0p suspects that indexing GPU arrays like this is slow.
-            #  It will probably be faster to keep the phase padded throughout
-            #  computation and elt-wise multiply the phase with a bitmask
-            #  to zero the padded region here.
-            # Comment: @ichr says: Profiling shows that this is negligible.
             nearfield.fill(0)
             nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
-            # Comment: @tpr0p suggests fftshifting the weights rather than the
-            #  farfield profile since the weights are never modified in optimization.
-            # Comment: @ichr says: Agreed; see the note in the docstring of this function.
-            #  However, fftshifting the weights means that these might be confusing or
-            #  inaccessible to the user (esp. during a callback() function). Moreso for
-            #  image feedback. I think this is a hard problem and needs more thought.
-            #  That said, it does currently limit algorithmic performance.
             farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
 
-            # Cache amp_ff for weighting (if None, will init; otherwise in-place).
+            # 2) Midloop: caching, prep
+            # 2.1) Cache amp_ff for weighting (if None, will init; otherwise in-place).
             self.amp_ff = cp.abs(farfield, out=self.amp_ff)
 
-            # Erase images from the past loop. FUTURE: Make faster.
+            # 2.2) Erase images from the past loop. FUTURE: Make better and faster.
             if hasattr(self, "img_ij"):     self.img_ij = None
             if hasattr(self, "img_knm"):    self.img_knm = None
 
-            # Midloop: Run step function and check termination conditions.
-            if callback is not None and callback(self):
-                break
+            # 2.3) Run step function if present and check termination conditions.
+            if callback is not None:
+                if callback(self):
+                    break
 
-            # Evaluate method-specific routines, stats, etc.
+            # 2.4) Evaluate method-specific routines, stats, etc.
             # If you want to add new functionality to GS, do so here to keep the main loop clean.
             self._GS_farfield_routines(farfield, mraf_variables)
 
-            # Move to nearfield.
+            # 3) Move to nearfield.
             nearfield = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho"))
 
-            # Grab the phase from the complex nearfield.
+            # 3.1) Grab the phase from the complex nearfield.
             # Use arctan2() directly instead of angle() for in-place operations (out=).
             self.phase = cp.arctan2(
                 nearfield.imag[i0:i1, i2:i3],
@@ -822,7 +830,7 @@ class Hologram:
                 out=self.phase,
             )
 
-            # Increment iteration.
+            # 3.2) Increment iteration.
             self.iter += 1
 
         # Update the final far-field
@@ -853,7 +861,7 @@ class Hologram:
                 mraf_factor = None
 
         # `where=` functionality is needed for MRAF, but this is a undocumented/new cupy feature.
-        # We test whether it is availible https://github.com/cupy/cupy/pull/7281
+        # We test whether it is available https://github.com/cupy/cupy/pull/7281
         try:
             test = cp.arange(10)
             cp.multiply(test, test, where=test > 5)
@@ -986,8 +994,7 @@ class Hologram:
             self.target *= 1 / Hologram._norm(self.target)
 
         if reset_weights:
-            self.weights = cp.copy(self.target)
-            cp.nan_to_num(self.weights, copy=False, nan=0)
+            self.reset_weights()
 
         if plot:
             self.plot_farfield(self.target)
@@ -1040,8 +1047,10 @@ class Hologram:
             return farfield.get()
         return farfield
 
-    # Weighting
-    def _update_weights_generic(self, weight_amp, feedback_amp, target_amp=None, mp=cp):
+    # Weighting functions.
+    def _update_weights_generic(
+            self, weight_amp, feedback_amp, target_amp=None, mp=cp, nan_checks=True
+        ):
         """
         Helper function to process weight feedback according to the chosen weighting method.
 
@@ -1064,6 +1073,8 @@ class Hologram:
         mp : module
             This function is used by both :mod:`cupy` and :mod:`numpy`, so we have the option
             for either. Defaults to :mod:`cupy`.
+        nan_checks : bool
+            Whether to enable checks to avoid division by zero or ``nan`` infiltration.
 
         Returns
         -------
@@ -1072,6 +1083,10 @@ class Hologram:
         """
         assert self.method[:4] == "WGS-", "For now, assume weighting is for WGS."
         method = self.method[4:]
+
+        if "debug" in self.flags and self.flags["debug"]:
+            print(weight_amp)
+            print(feedback_amp)
 
         # Parse feedback_amp
         if target_amp is None:  # Uniform
@@ -1082,24 +1097,28 @@ class Hologram:
 
             mp.divide(feedback_corrected, mp.array(target_amp, copy=False), out=feedback_corrected)
 
-            feedback_corrected[feedback_corrected == np.inf] = 0
-            feedback_corrected[mp.array(target_amp) == 0] = 0
+            if nan_checks:
+                feedback_corrected[feedback_corrected == np.inf] = 0
+                feedback_corrected[mp.array(target_amp) == 0] = 0
 
-            mp.nan_to_num(feedback_corrected, copy=False, nan=1)
+                mp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
-        # Apply weighting
-        if method == "Leonardo" or method == "Kim":
+        if "debug" in self.flags and self.flags["debug"]:
+            print(feedback_corrected)
+
+        # Fix feedback according to the desired method.
+        if "leonardo" in method.lower() or "kim" in method.lower():
+            # 1/(x^p)
+            if "debug" in self.flags and self.flags["debug"]:
+                print(self.flags["feedback_exponent"])
             mp.power(feedback_corrected, -self.flags["feedback_exponent"], out=feedback_corrected)
-            weight_amp *= feedback_corrected
-        elif method == "Nogrette":
+        elif "nogrette" in method.lower():
             # Taylor expand 1/(1-g(1-x)) -> 1 + g(1-x) + (g(1-x))^2 ~ 1 + g(1-x)
             feedback_corrected *= -(1 / mp.nanmean(feedback_corrected))
             feedback_corrected += 1
             feedback_corrected *= -self.flags["feedback_factor"]
             feedback_corrected += 1
             mp.reciprocal(feedback_corrected, out=feedback_corrected)
-
-            weight_amp *= feedback_corrected
         else:
             raise RuntimeError(
                 "Method "
@@ -1107,11 +1126,22 @@ class Hologram:
                 " not recognized by Hologram.optimize()".format(self.method)
             )
 
-        mp.nan_to_num(weight_amp, copy=False, nan=0)
+        # Update the weights.
+        weight_amp *= feedback_corrected
+
+        if "debug" in self.flags and self.flags["debug"]:
+            print(feedback_corrected)
+            print(weight_amp)
+
+        if nan_checks:
+            mp.nan_to_num(weight_amp, copy=False, nan=0)
 
         # Normalize amp, as methods may have broken conservation.
         norm = Hologram._norm(weight_amp, mp=mp)
         weight_amp *= 1 / norm
+
+        if "debug" in self.flags and self.flags["debug"]:
+            print(weight_amp)
 
         return weight_amp
 
@@ -1125,7 +1155,7 @@ class Hologram:
         if feedback == "computational":
             self._update_weights_generic(self.weights, self.amp_ff, self.target)
 
-    # Statistics handling
+    # Statistics handling.
     @staticmethod
     def _calculate_stats(
         feedback_amp,
@@ -1325,7 +1355,7 @@ class Hologram:
 
         self._update_stats_dictionary(stats)
 
-    # Visualization
+    # Visualization helper functions.
     @staticmethod
     def _compute_limits(source, epsilon=0, limit_padding=0.1):
         """
@@ -1643,8 +1673,8 @@ class Hologram:
                 max(ext[1], np.max(cam_points[0]) + dx/10)
             ])
             axs[0].set_ylim([
-                max(ext[3], np.max(cam_points[1]) + dy/10),
-                min(ext[2], np.min(cam_points[1]) - dy/10)
+                max(ext[2], np.max(cam_points[1]) + dy/10),
+                min(ext[3], np.min(cam_points[1]) - dy/10)
             ])
 
         # Bonus: Plot a red rectangle to show the extents of the zoom region
@@ -1729,10 +1759,13 @@ class Hologram:
 
         ax.set_xlabel('Iteration')
         ax.set_ylabel('Relative Metrics')
-        ax.set_title('SpotHologram Statistics')
+        ax.set_title(self.__class__.__name__ + ' Statistics')
         ax.set_yscale("log")
         plt.grid()
-        plt.tight_layout()
+        try:    # This fails under all nan or other conditions. Fail elegantly.
+            plt.tight_layout()
+        except:
+            pass
         if ylim is not None:
             ax.set_ylim(ylim)
 
@@ -1760,9 +1793,11 @@ class Hologram:
 
         ax.set_xlim([-.75, len(stats_dict["method"]) - .25])
 
+        plt.show()
+
         return ax
 
-    # Other helper functions
+    # Other helper functions.
     @staticmethod
     def set_mempool_limit(device=0, size=None, fraction=None):
         """
@@ -2062,7 +2097,7 @@ class FeedbackHologram(Hologram):
         self.ijcam_to_knmslm(new_target, out=self.target, order=0)
 
         if reset_weights:
-            cp.copyto(self.weights, self.target)
+            self.reset_weights()
 
         if plot:
             self.plot_farfield(self.target)
@@ -2088,7 +2123,10 @@ class FeedbackHologram(Hologram):
         if self.img_ij is None:
             self.cameraslm.slm.write(self.extract_phase(), settle=True)
             self.cameraslm.cam.flush()
-            self.img_ij = self.cameraslm.cam.get_image()
+            self.img_ij = analysis.image_remove_field(
+                np.array(self.cameraslm.cam.get_image(), copy=False, dtype=self.dtype)
+            )
+            # self.img_ij = np.array(self.cameraslm.cam.get_image(), copy=False, dtype=self.dtype)
 
             if basis == "knm":  # Compute the knm basis image.
                 self.img_knm = self.ijcam_to_knmslm(self.img_ij, out=self.img_knm)
@@ -2737,8 +2775,10 @@ class SpotHologram(FeedbackHologram):
 
         self.target /= Hologram._norm(self.target)
 
+        print(np.nanmax(self.target))
+
         if reset_weights:
-            cp.copyto(self.weights, self.target)
+            self.reset_weights()
 
         if plot:
             self.plot_farfield(self.target)
@@ -2785,20 +2825,24 @@ class SpotHologram(FeedbackHologram):
             Image measured by the camera. If ``None``, defaults to :attr:`img_ij` via :meth:`measure()`.
         basis : str
             The correction can be in any of the following bases:
+
             - ``"ij"`` changes the pixel that the spot is expected at,
             - ``"kxy"``, ``"knm"`` changes the k-vector which the SLM targets.
-            Defaults to ``"kxy"`` if ``None``.
+
+            Defaults to ``"kxy"``. If basis is set to ``None``, no correction is applied
+            to the data in the :class:`SpotHologram`.
         force_affine : bool
             Whether to force the offset refinement to behave as an affine transformation
             between the original and refined coordinate system. This helps to tame
             outliers. Defaults to ``True``.
+
         plot : bool
             Enables debug plots.
 
         Returns
         -------
         numpy.ndarray
-            Euclidian pixel error in the ``"ij"`` basis for each spot.
+            Spot shift in the ``"ij"`` basis for each spot.
         """
         # If no image was provided, get one from cache.
         if img is None:
@@ -2806,7 +2850,7 @@ class SpotHologram(FeedbackHologram):
 
         # Take regions around each point from the given image.
         regions = analysis.take(
-            img, self.spot_ij_rounded, self.spot_integration_width_ij, centered=True, integrate=False
+            img, self.spot_ij, self.spot_integration_width_ij, centered=True, integrate=False
         )
 
         # Fast version; have to iterate for accuracy.
@@ -2817,15 +2861,15 @@ class SpotHologram(FeedbackHologram):
             self.spot_integration_width_ij/4
         )
 
-        sv1 = self.spot_ij_rounded + shift_vector
+        sv1 = self.spot_ij + shift_vector
 
         if force_affine:
-            affine = analysis.fit_affine(self.spot_ij, self.spot_ij_rounded + shift_vector, plot=plot)
-            shift_vector = (np.matmul(affine["M"], self.spot_ij) + affine["b"]) - self.spot_ij_rounded
+            affine = analysis.fit_affine(self.spot_ij, self.spot_ij + shift_vector, plot=plot)
+            shift_vector = (np.matmul(affine["M"], self.spot_ij) + affine["b"]) - self.spot_ij
 
-        shift_error = np.sqrt(np.sum(np.square(shift_vector), axis=0))
+        # shift_error = np.sqrt(np.sum(np.square(shift_vector), axis=0))
 
-        sv2 = self.spot_ij_rounded + shift_vector
+        sv2 = self.spot_ij + shift_vector
 
         if plot:
             mask = analysis.take(
@@ -2839,24 +2883,25 @@ class SpotHologram(FeedbackHologram):
             plt.scatter(sv2[0,:], sv2[1,:], s=300, fc="none", ec="b")
             plt.show()
 
-        if (basis is None or basis == "kxy" or basis == "knm"):
-            # Modify k-space targets. Don't modify any camera spots.
-            self.spot_kxy = self.spot_kxy_rounded - (
-                self.cameraslm.ijcam_to_kxyslm(shift_vector) -
-                self.cameraslm.ijcam_to_kxyslm((0,0))
-            )
-            self.spot_knm = toolbox.convert_blaze_vector(
-                self.spot_kxy, "kxy", "knm", self.cameraslm.slm, self.shape
-            )
-            self.update_target(reset_weights=True)
-            self.reset_phase()
-        elif basis == "ij":
-            # Modify camera targets. Don't modify any k-vectors.
-            self.spot_ij = self.spot_ij - shift_vector
-        else:
-            raise Exception("Unrecognized basis '{}'.".format(basis))
+        if basis is not None:
+            if (basis == "kxy" or basis == "knm"):
+                # Modify k-space targets. Don't modify any camera spots.
+                self.spot_kxy = self.spot_kxy - (
+                    self.cameraslm.ijcam_to_kxyslm(shift_vector) -
+                    self.cameraslm.ijcam_to_kxyslm((0,0))
+                )
+                self.spot_knm = toolbox.convert_blaze_vector(
+                    self.spot_kxy, "kxy", "knm", self.cameraslm.slm, self.shape
+                )
+                self.update_target(reset_weights=True)
+                self.reset_phase()
+            elif basis == "ij":
+                # Modify camera targets. Don't modify any k-vectors.
+                self.spot_ij = self.spot_ij - shift_vector
+            else:
+                raise Exception("Unrecognized basis '{}'.".format(basis))
 
-        return shift_error
+        return shift_vector
 
     def _update_weights(self):
         """
@@ -2872,9 +2917,9 @@ class SpotHologram(FeedbackHologram):
         # Weighting strategy depends on the chosen feedback method.
         if feedback == "computational":
             # Pixel-by-pixel weighting
-            self._update_weights_generic(self.weights, self.amp_ff, self.target)
+            self._update_weights_generic(self.weights, self.amp_ff, self.target, nan_checks=False)
         else:
-            # Integrate a window around each spot
+            # Integrate a window around each spot, with feedback from respective sources.
             if feedback == "computational_spot":
                 amp_feedback = cp.sqrt(analysis.take(
                     cp.square(self.amp_ff),
@@ -2887,36 +2932,42 @@ class SpotHologram(FeedbackHologram):
             elif feedback == "experimental_spot":
                 self.measure(basis="ij")
 
-                amp_feedback = cp.sqrt(cp.array(analysis.take(
-                    analysis.image_remove_field(
-                        np.square(np.array(self.img_ij, copy=False, dtype=self.dtype))
-                    ),
+                amp_feedback = np.sqrt(analysis.take(
+                    np.square(np.array(self.img_ij, copy=False, dtype=self.dtype)),
                     self.spot_ij,
                     self.spot_integration_width_ij,
                     centered=True,
                     integrate=True
-                )))
+                ))
             elif feedback == "external_spot":
-                amp_feedback = cp.array(self.external_spot_amp, copy=False, dtype=self.dtype)
+                amp_feedback = self.external_spot_amp
 
             if self.subpixel_beamradius_knm is None:
+                # Default mode: no subpixel stuff. We update single pixels.
                 self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (
                     self._update_weights_generic(
                         self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
-                        amp_feedback,
+                        cp.array(amp_feedback, copy=False, dtype=self.dtype),
                         self.spot_amp,
+                        nan_checks=False
                     )
                 )
             else:
+                # Complex mode with subpixel stuff. Update Gaussian patterns.
+                if hasattr(amp_feedback, "get"):
+                    amp_feedback = amp_feedback.get()
+
+                # Figure out the multiplication factors on a dummy array.
                 dummy_weights = (
                     self._update_weights_generic(
                         np.ones(len(self)),
-                        np.sqrt(pwr_feedback),
+                        amp_feedback,
                         self.spot_amp,
                         mp=np
                     )
                 )
 
+                # Update each Gaussian with each respective multiplication factor.
                 for spot_idx in range(len(self)):
                     window = toolbox.window_slice(
                         window=(
@@ -2972,8 +3023,8 @@ class SpotHologram(FeedbackHologram):
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
 
-            pwr_img = np.square(np.array(self.img_ij, copy=False, dtype=self.dtype))
-            pwr_img = analysis.image_remove_field(pwr_img)
+            pwr_img = np.square(self.img_ij)
+
             pwr_feedback = analysis.take(
                 pwr_img,
                 self.spot_ij,

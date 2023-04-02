@@ -47,7 +47,7 @@ def take(
         (or zero if the array datatype does not support ``np.nan``).
         ``False`` throws an error upon out of range.
     return_mask : bool
-        If ``True``, returns a boolean mask coresponding to the regions which are taken
+        If ``True``, returns a boolean mask corresponding to the regions which are taken
         from. Defaults to ``False``. The average user will ignore this.
     plot : bool
         Calls :meth:`take_plot()` to visualize the images regions.
@@ -226,7 +226,7 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     elif out is not images:
         out = np.copyto(out, images)
 
-    # This needs float. Unsigned int would unflow.
+    # This needs float. Unsigned int would underflow.
     out -= threshold
     out[out < 0] = 0
 
@@ -252,7 +252,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
 
     Warning
     ~~~~~~~
-    This function does not check (or correct for) passed ``images`` with negative
+    This function does not check for or correct for passed ``images`` with negative
     values. Negative values may produce unusual results.
 
     Warning
@@ -747,7 +747,7 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
 def fit_affine(x, y, guess_affine=None, plot=False):
     r"""
     For two sets of points with equal length, find the best-fit affine
-    transformation that transfoms from the first basis to the second.
+    transformation that transforms from the first basis to the second.
     Best fit is defined as minimization on the least squares euclidean norm.
 
     .. math:: \vec{y} = M \cdot \vec{x} + \vec{b}
@@ -818,8 +818,6 @@ def fit_affine(x, y, guess_affine=None, plot=False):
         b = format_2vectors([p[4], p[5]])
 
         y_ = np.matmul(M, x) + b
-
-        # print(np.nansum(np.square(y_ - y)))
 
         return np.nansum(np.square(y_ - y))
 
@@ -1121,8 +1119,8 @@ def blob_array_detect(
 
             # Plot a red rectangle to show the extents of the zoom region
             rect = plt.Rectangle(
-                (float(xl[0]), float(yl[0])), 
-                float(np.diff(xl)), float(np.diff(yl)), 
+                (float(xl[0]), float(yl[0])),
+                float(np.diff(xl)), float(np.diff(yl)),
                 ec="r", fc="none"
             )
             axs[0].add_patch(rect)
@@ -1455,8 +1453,8 @@ def blob_array_detect(
 
         # Plot a red rectangle to show the extents of the zoom region
         rect = plt.Rectangle(
-            (float(xl[0]), float(yl[0])), 
-            float(np.diff(xl)), float(np.diff(yl)), 
+            (float(xl[0]), float(yl[0])),
+            float(np.diff(xl)), float(np.diff(yl)),
             ec="r", fc="none"
         )
         axs[0].add_patch(rect)

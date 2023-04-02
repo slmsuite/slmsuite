@@ -53,10 +53,13 @@ def window_slice(window, shape=None, centered=False, circular=False):
         yf = yi + int(window[3])
 
         if shape is not None:
-            xi = np.clip(xi, 0, shape[1] - 1)
-            xf = np.clip(xf, 0, shape[1] - 1)
-            yi = np.clip(yi, 0, shape[0] - 1)
-            yf = np.clip(yf, 0, shape[0] - 1)
+            # xi = np.clip(xi, 0, shape[1] - 1)
+            # xf = np.clip(xf, 0, shape[1] - 1)
+            # yi = np.clip(yi, 0, shape[0] - 1)
+            # yf = np.clip(yf, 0, shape[0] - 1)
+
+            [xi, xf] = np.clip([xi, xf], 0, shape[1] - 1)
+            [yi, yf] = np.clip([yi, yf], 0, shape[0] - 1)
 
         if circular:    # If a circular window is desired, compute this.
             x_list = np.arange(xi, xf)

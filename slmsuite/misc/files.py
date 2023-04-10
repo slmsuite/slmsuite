@@ -1,7 +1,7 @@
 """
 Utilities for interfacing with files.
 This includes helper functions for naming directories without conflicts, and convenience
-wrappers for file writing. :mod:`slmsuite` uses the HDF5 [1]_ (.h5) filetype by default, 
+wrappers for file writing. :mod:`slmsuite` uses the HDF5 [1]_ (.h5) filetype by default,
 as it is fast, compact, and widely supported by programming languages for scientific
 computing [2]_ . This uses the :mod:`h5py` module [3]_ .
 
@@ -162,7 +162,7 @@ def latest_path(path, name, extension=None, kind="file", digit_count=5):
         if extension is not None and kind == "file":
             name_augmented = "{}.{}".format(name_augmented, extension)
         ret = os.path.join(path, name_augmented)
-        
+
     return ret
 
 

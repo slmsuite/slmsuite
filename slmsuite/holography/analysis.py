@@ -22,7 +22,8 @@ def take(
     Crop integration regions around an array of ``vectors``, yielding an array of images.
 
     Each integration region is a rectangle of the same ``size``. Similar to but more
-    general than :meth:`numpy.take`; useful for gathering data from spots in spot arrays.
+    general than :meth:`numpy.take`. Useful for gathering data from spots in spot
+    arrays. Operates with some speed due to the vectorized nature of implemented slicing.
 
     Parameters
     ----------
@@ -171,7 +172,7 @@ def take_plot(images):
     plt.show()
 
 
-def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
+def image_remove_field(images, deviations=1, out=None):
     r"""
     Zeros the field of a stack of images such that moment calculations will succeed.
     Consider, for example, a small spot on a field with strong background.
@@ -179,7 +180,7 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
     of the rectangular field. This function zeros the image below some threshold.
     This threshold is set to either the mean plus ``deviations`` standard deviations,
     computed uniquely for each image, or the median of each image if ``deviations``
-    is ``None``.
+    is ``None``. This is equivalent to background subtraction.
 
     Parameters
     ----------
@@ -187,46 +188,51 @@ def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
         ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
-        ``(h, w)`` is passed.
+        ``(h, w)`` is passed, though the returned image remains shape ``(h, w)`` in that case.
     deviations : int OR None
         Number of standard deviations above the mean to set the threshold.
         If ``None``, uses the median as the threshold instead.
         Defaults to ``None``.
     out : numpy.ndarray or None
-        The array to place the output data into.
-        Should be the same shape as ``images``,
-        according to the format of :meth:`image_moment()`.
-        In-place if ``out`` equals ``images``.
+        The array to place the output data into. Should be the same shape as ``images``.
+        This function operates in-place if ``out`` equals ``images``.
 
     Returns
     -------
     out : numpy.ndarray
-        Images with zeroed field.
+        ``images`` or a copy of ``images``, with each image background-subtracted.
     """
-    images = np.array(images)
+    # Parse images. Convert to float.
+    images = np.array(images, copy=False)
     if not isinstance(images.dtype, np.floating):
-        images = np.array(images, dtype=float)  # Hack to prevent integer underflow.
+        images = np.array(images, copy=False, dtype=float)  # Hack to prevent integer underflow.
 
-    if len(images.shape) == 2:
-        images = np.reshape(images, (1, images.shape[0], images.shape[1]))
-    img_count = images.shape[0]
-
-    if deviations is None:  # Median case
-        threshold = np.nanmedian(images, axis=(1, 2))
-    else:   # Mean + deviations * std case
-        threshold = (
-            np.nanmean(images, axis=(1, 2))
-            + deviations*np.nanstd(images, axis=(1, 2))
-        )
-
-    threshold = np.reshape(threshold, (img_count, 1, 1))
-
+    # Pasrse out.
     if out is None:
         out = np.copy(images)
     elif out is not images:
         out = np.copyto(out, images)
 
-    # This needs float. Unsigned int would underflow.
+    # Make sure that we're testing 3D images.
+    single_image = len(images.shape) == 2
+    if single_image:
+        images_ = np.reshape(images, (1, images.shape[0], images.shape[1]))
+    else:
+        images_ = images
+    img_count = images_.shape[0]
+
+    # Generate the threshold.
+    if deviations is None:  # Median case
+        threshold = np.nanmedian(images_, axis=(1, 2))
+    else:   # Mean + deviations * std case
+        threshold = (
+            np.nanmean(images_, axis=(1, 2))
+            + deviations*np.nanstd(images_, axis=(1, 2))
+        )
+    if not single_image:
+        threshold = np.reshape(threshold, (img_count, 1, 1))
+
+    # Remove the field. This needs the float from before. Unsigned integer could underflow.
     out -= threshold
     out[out < 0] = 0
 
@@ -252,15 +258,15 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
 
     Warning
     ~~~~~~~
-    This function does not check for or correct for passed ``images`` with negative
-    values. Negative values may produce unusual results.
+    This function does not check for or correct for negative values in ``images``.
+    Negative values may produce unusual results.
 
     Warning
     ~~~~~~~
     Higher order even moments (e.g. 2) will potentially yield unexpected results if
     the images are not background-subtracted. For instance, a calculation on an image
     with large background will yield the moment of the window, rather than say anything
-    about the image.
+    about the image. Consider using :meth:`image_remove_field()` to background-subtract.
 
     Parameters
     ----------
@@ -296,7 +302,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
         The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size ``(image_count,)``
         for provided ``images`` data of shape ``(image_count, h, w)``.
     """
-    images = np.array(images)
+    images = np.array(images, copy=False)
     if len(images.shape) == 2:
         images = np.reshape(images, (1, images.shape[0], images.shape[1]))
     (img_count, w_y, w_x) = images.shape
@@ -374,13 +380,12 @@ def image_normalize(images, nansum=False, remove_field=False):
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
         ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
-        ``(h, w)`` is passed.
+        ``(h, w)`` is passed, though the returned image remains shape ``(h, w)`` in that case.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
     remove_field : bool
         Whether to apply :meth:`.image_remove_field()` to avoid dominating the moments by
-        the field. ``nansum`` is passed as ``ignore_nan``.
-
+        the field.
 
     Returns
     -------
@@ -388,19 +393,25 @@ def image_normalize(images, nansum=False, remove_field=False):
         A copy of ``images``, with each image normalized.
     """
     if remove_field:
-        images = image_remove_field(images, ignore_nan=nansum)
+        images = image_remove_field(images)
     else:
-        images = np.array(images, dtype=float)
-        if len(images.shape) == 2:
-            images = np.reshape(images, (1, images.shape[0], images.shape[1]))
+        images = np.array(images, copy=False, dtype=float)
 
-    img_count = images.shape[0]
+    single_image = len(images.shape) == 2
 
     normalization = image_normalization(images, nansum=nansum)
-    reciprical = np.reciprocal(
-        normalization, where=normalization != 0, out=np.zeros(img_count,)
-    )
-    return images * np.reshape(reciprical, (img_count, 1, 1))
+
+    if single_image:
+        normalization = np.asscalar(normalization)
+        if normalization == 0:
+            return np.zeros_like(images)
+        else:
+            return images / normalization
+    else:
+        reciprical = np.reciprocal(
+            normalization, where=normalization != 0, out=np.zeros(len(normalization))
+        )
+        return images * np.reshape(reciprical, (len(normalization), 1, 1))
 
 
 def image_positions(images, normalize=True, nansum=False):
@@ -572,7 +583,7 @@ def image_ellipticity_angle(variances):
     m02 = variances[1, :]
     m11 = variances[2, :]
 
-    # Some quick math (see image_variances_circularity).
+    # Some quick math (see image_ellipticity).
     # half_trace = (m20 + m02) / 2
     # determinant = m20 * m02 - m11 * m11
 

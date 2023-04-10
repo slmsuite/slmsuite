@@ -253,7 +253,7 @@ class Hologram:
             keep track of all this).
          - ``"stats"`` : ``dict of dicts of lists``
             Same format as ``"flags"``, except with another layer of hierarchy corresponding
-            to the source of the given stats. This is to differentiate standard deviations
+            to the source (group) of the given stats. This is to differentiate standard deviations
             computed computationally and experimentally.
 
         See :meth:`.update_stats()` and :meth:`.plot_stats()`.
@@ -412,6 +412,8 @@ class Hologram:
         ----------
         reset_phase : bool
             Whether to additionally call :meth:`reset_phase()`.
+        reset_flags : bool:
+            Whether to erase the information (including passed ``kwargs``) stored in :attr:`flags`.
         """
         # Reset phase to random if needed.
         if self.phase is None or reset_phase:
@@ -446,7 +448,7 @@ class Hologram:
 
     def reset_weights(self):
         """
-        TODO
+        Resets the hologram weights to the :attr:`target` defaults.
         """
         self.weights = self.target.copy()
         cp.nan_to_num(self.weights, copy=False, nan=0)
@@ -636,23 +638,24 @@ class Hologram:
           This is disadvantageous because a desired farfield pattern might not be especially
           compatible with a given nearfield amplitude, or otherwise. MRAF enables
           "noise regions" where the field is **not** replaced with zeros and is instead
-          left with the farfield of a given iteration. In practice, MRAF is
+          maintains the some fraction of the given farfield. In practice, MRAF is
           enabled by setting parts of the :attr:`target` to ``nan``; these regions act
           as the noise regions. The ``"mraf_factor"`` flag in
           :attr:`~slmsuite.holography.algorithms.Hologram.flags`
           allows the user to partially attenuate the noise regions.
-          A factor of 0 fully attenuates the noise region. A factor of 1 does not
-          attenuate (the default). Middle ground is recommended, but is
-          application-dependent as a tradeoff between improving pattern fidelity and
-          maintaining pattern efficiency.
+          A factor of 0 fully attenuates the noise region (normal WGS behavior)
+          A factor of 1 does not attenuate (the default).
+          Middle ground is recommended, but is application-dependent as a
+          tradeoff between improving pattern fidelity and maintaining pattern efficiency.
 
           As examples, consider two cases where MRAF can be useful:
 
             - **Sloping a top hat.** Suppose we want very flat amplitude on a beam.
               Requesting a sharp edge to this beam can lead to fringing effects at the
-              boundary which mitigate flatness. If instead a noise region is defined in
-              a band surrounding the beam, the noise region will be filled with whatever
-              slope best enables the desired flat beam.
+              boundary which mitigate flatness both inside and outside the beam.
+              If instead a noise region is defined in a band surrounding the beam,
+              the noise region will be filled with whatever slope best enables the
+              desired flat beam.
 
             - **Mitigating diffractive orders.** Without MRAF, spot patterns with high
               crystallinity often have "ghost" diffractive orders which continue the
@@ -693,10 +696,35 @@ class Hologram:
             :meth:`scipy.optimize.minimize()`. ``callback`` must accept a Hologram
             or Hologram subclass as the single argument. If ``callback`` returns
             ``True``, then the optimization exits. Ignored if ``None``.
-        feedback : str or None
-            Type of feedback requested. For non-subclasses of :class:`Hologram`, this can only
-            be ``"computational"`` feedback.
-            When using WGS, defaults to ``"computational"`` if empty.
+        feedback : str OR None
+            Type of feedback to use during optimization, for instance when weighting in ``"WGS"``.
+            For direct instances of :class:`Hologram`, this can only
+            be ``"computational"`` feedback. Subclasses support more types of feedback.
+            The full list of supported feedback is the following:
+
+            - ``"computational"`` Uses the the projected farfield pattern (transform of
+              the complex nearfield) as feedback.
+            - ``"experimental"`` Uses a camera contained in a passed ``cameraslm`` as feedback.
+              Specific to subclasses of :class:`FeedbackHologram`.
+            - ``"computational_spot"`` Takes the computational result (the projected
+              farfield pattern) and integrates regions around the expected positions of
+              spots in an optical focus array. More stable than ``"computational"`` for spots.
+              Specific to subclasses of :class:`SpotHologram`.
+            - ``"experimental_spot"`` Takes the experimental result (the image from a
+              camera) and integrates regions around the expected positions of
+              spots in an optical focus array. More stable than ``"experimental"`` for spots.
+              Specific to subclasses of :class:`SpotHologram`.
+            - ``"external_spot"`` Uses some external user-provided metric for spot
+              feedback. See :attr:`external_spot_amp`.
+              Specific to subclasses of :class:`SpotHologram`.
+
+        stat_groups : list of str OR None
+            Strings representing types of feedback (data gathering) upon which
+            statistics should be derived. These strings correspond to valid types of
+            feedback (see above). For instance, if ``"experimental"`` is passed as a
+            stat group, statistics on the pixels in the experimental feedback image will
+            automatically be computed and stored for each iteration of optimization.
+            However, this comes with overhead (see above warning).
         **kwargs : dict, optional
             Various weight keywords and values to pass depending on the weight method.
             These are passed into :attr:`flags`. See options documented in the constructor.
@@ -767,7 +795,9 @@ class Hologram:
 
         Caution
         ~~~~~~~
-        This function should be called through :meth:`.optimize()` and not called directly.
+        This function should be called through :meth:`.optimize()` and not called
+        directly. It is left as a public function exposed in documentation to clarify
+        how the internals of :meth:`.optimize()` work.
 
         Note
         ~~~~
@@ -777,7 +807,9 @@ class Hologram:
         implementation. However, neither :mod:`numpy` or :mod:`scipy` ``fftshift`` support
         in-place movement (for obvious reasons). For even faster computation, algorithms should
         consider **not shifting** the FFT result, and instead shifting measurement data / etc to
-        this unshifted basis.
+        this unshifted basis. We might also implement `get_fft_plan
+        <https://docs.cupy.dev/en/stable/reference/generated/cupyx.scipy.fftpack.get_fft_plan.html>`_
+        for even faster FFTing.
 
         Parameters
         ----------
@@ -1098,8 +1130,8 @@ class Hologram:
             mp.divide(feedback_corrected, mp.array(target_amp, copy=False), out=feedback_corrected)
 
             if nan_checks:
-                feedback_corrected[feedback_corrected == np.inf] = 0
-                feedback_corrected[mp.array(target_amp) == 0] = 0
+                feedback_corrected[feedback_corrected == np.inf] = 1
+                feedback_corrected[mp.array(target_amp) == 0] = 1
 
                 mp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
@@ -1126,6 +1158,9 @@ class Hologram:
                 " not recognized by Hologram.optimize()".format(self.method)
             )
 
+        if nan_checks:
+            feedback_corrected[feedback_corrected == np.inf] = 1
+
         # Update the weights.
         weight_amp *= feedback_corrected
 
@@ -1134,7 +1169,8 @@ class Hologram:
             print(weight_amp)
 
         if nan_checks:
-            mp.nan_to_num(weight_amp, copy=False, nan=0)
+            mp.nan_to_num(weight_amp, copy=False, nan=.0001)
+            weight_amp[weight_amp == np.inf] = 1
 
         # Normalize amp, as methods may have broken conservation.
         norm = Hologram._norm(weight_amp, mp=mp)
@@ -1367,7 +1403,7 @@ class Hologram:
 
         for a in [0, 1]:
             if np.sum(binary) == 0:
-                limits.append((0, source.shape[a]-1))
+                limits.append((0, source.shape[1-a]-1))
             else:
                 collapsed = np.where(np.any(binary, axis=a))  # Collapse the other axis
                 limit = np.array([np.amin(collapsed), np.amax(collapsed)])
@@ -1375,7 +1411,7 @@ class Hologram:
                 padding = int(np.diff(limit) * limit_padding)+1
                 limit += np.array([-padding, padding+1])
 
-                limit = np.clip(limit, 0, source.shape[a]-1)
+                limit = np.clip(limit, 0, source.shape[1-a]-1)
 
                 limits.append(tuple(limit))
 
@@ -1542,8 +1578,9 @@ class Hologram:
         # Determine the bounds of the zoom region, padded by limit_padding
         if limits is None:
             limits = self._compute_limits(npsource, limit_padding=limit_padding)
+        # Check the limits in case the user provided them.
         for a in [0, 1]:
-            limits[a] = np.clip(limits[a], 0, npsource.shape[a]-1)
+            limits[a] = np.clip(limits[a], 0, npsource.shape[1-a]-1)
             if np.diff(limits[a]) == 0:
                 raise ValueError("algorithms.py: clipped limit has zero length.")
 
@@ -1612,10 +1649,10 @@ class Hologram:
             ax.set_xlabel(toolbox.BLAZE_LABELS[units][0])
             if i == 0: ax.set_ylabel(toolbox.BLAZE_LABELS[units][1])
 
-
-        # If cam_points is defined (i.e. is a FeedbackHologram),
+        # If cam_points is defined (i.e. is a FeedbackHologram or subclass),
         # plot a yellow rectangle for the extents of the camera
-        if self.cam_points is not None:
+        if hasattr(self, "cam_points") and self.cam_points is not None:
+            # Check to see if the camera extends outside of knm space.
             plot_slm_fov = (
                 np.any(self.cam_points[0, :4] < 0) or
                 np.any(self.cam_points[1, :4] < 0) or
@@ -1623,7 +1660,7 @@ class Hologram:
                 np.any(self.cam_points[1, :4] >= npsource.shape[1])
             )
 
-            # Also plot a green rectangle to show the extents of knm space
+            # If so, plot a labeled green rectangle to show the extents of knm space.
             if plot_slm_fov:
                 extent = full.get_extent()
                 pix_width = (np.diff(extent[0:2])[0]) / npsource.shape[1]
@@ -1641,6 +1678,7 @@ class Hologram:
                     c="g", size="small", ha="center", va="top"
                 )
 
+            # Convert cam_points to knm.
             if units == "knm":
                 cam_points = self.cam_points
             else:
@@ -1650,6 +1688,7 @@ class Hologram:
                     slm=slm, shape=npsource.shape
                 )
 
+            # Plot the labeled yellow rectangle representing the camera.
             axs[0].plot(
                 cam_points[0],
                 cam_points[1],
@@ -1661,6 +1700,7 @@ class Hologram:
                 c="y", size="small", ha="center", va="top"
             )
 
+            # Determine sensible limits of the field of view.
             if plot_slm_fov:
                 dx = np.max(cam_points[0]) - np.min(cam_points[0])
                 dy = np.max(cam_points[1]) - np.min(cam_points[1])
@@ -1714,6 +1754,10 @@ class Hologram:
         stats_dict : dict OR None
             Stats to plot in dictionary form. If ``None``, defaults to :attr:`stats`.
         stat_groups : list of str OR None
+            Which
+        ylim : (int, int) OR None
+            Allows the user to pass in desired y limits.
+            If ``None``, the default y limits are used.
         """
         if stats_dict is None:
             stats_dict = self.stats
@@ -2268,8 +2312,6 @@ class SpotHologram(FeedbackHologram):
         attribute. For iterative feedback, have the ``callback()`` function set
         :attr:`external_spot_amp` dynamically. By default, this variable is set to even
         distrubution of amplitude.
-    subpixel_beamradius_knm : float
-        TODO
     spot_integration_width_knm : int
         For spot-specific feedback methods, better SNR is achieved when integrating over
         many farfield pixels. This variable stores the width of the integration region
@@ -2287,9 +2329,17 @@ class SpotHologram(FeedbackHologram):
     null_radius_knm : float
         The radius in ``"knm"`` space around the points :attr:`null_knm` to zero or null
         (prevent from participating in the ``nan`` noise region).
-    null_region_knm : array_like of bool
+        This is useful to prevent power being deflected to very high orders,
+        which are unlikely to be properly represented in practice on a physical SLM.
+    null_region_knm : array_like of bool OR ``None``
         Array of shape :attr:`shape`. Where ``True``, sets the background to zero
-        instead of nan. If None,
+        instead of nan. If ``None``, has no effect.
+    subpixel_beamradius_knm : float
+        The radius in knm space corresponding to the beamradius of the Gaussian spot
+        which is targeted when ``subpixel`` features are enabled.
+        In the future, a non-Gaussian kernel might be used instead.
+        This radius is computed based upon the stored amplitude in the SLM (if passed).
+        This is an experimental feature and should be used with caution.
     """
 
     def __init__(
@@ -2298,12 +2348,12 @@ class SpotHologram(FeedbackHologram):
         spot_vectors,
         basis="knm",
         spot_amp=None,
-        subpixel=False,
+        cameraslm=None,
         null_vectors=None,
         null_radius=None,
         null_region=None,
         null_region_radius_frac=None,
-        cameraslm=None,
+        subpixel=False,
         **kwargs
     ):
         """
@@ -2330,15 +2380,9 @@ class SpotHologram(FeedbackHologram):
             If ``None``, all spots are assumed to have the same amplitude.
             Normalization is performed automatically; the user is not required to
             normalize.
-        subpixel : bool
-            If enabled, the :attr:`target` is set to
-            This has two major benefits:
-
-            - TODO
-            - TODO
-
-            Defaults to ``False``. This is an experimental feature and should be used
-            with caution.
+        cameraslm : slmsuite.hardware.cameraslms.FourierSLM OR None
+            If the ``"ij"`` basis is chosen, and/or if the user wants to make use of camera
+            feedback, a cameraslm must be provided.
         null_vectors : array_like OR None
             Null position vectors with shape ``(2, N)`` in the style of
             :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
@@ -2351,15 +2395,26 @@ class SpotHologram(FeedbackHologram):
             to the (potentially elliptical) projection into ``"knm"`` from the given ``basis``.
         null_region : array_like OR None
             Array of shape :attr:`shape`. Where ``True``, sets the background to zero
-            instead of nan. If None,
+            instead of nan. If ``None``, has no effect.
         null_region_radius_frac : float OR None
             Helper function to set the ``null_region`` to zero for Fourier space radius fractions above
             ``null_region_radius_frac``. This is useful to prevent power being deflected
             to very high orders, which are unlikely to be properly represented in
-            practive on a physical SLM.
-        cameraslm : slmsuite.hardware.cameraslms.FourierSLM OR None
-            If the ``"ij"`` basis is chosen, and/or if the user wants to make use of camera
-            feedback, a cameraslm must be provided.
+            practice on a physical SLM.
+        subpixel : bool
+            If enabled, the :attr:`target` is set to a series of Gaussian spots with
+            radius :attr:`subpixel_beamradius_knm` instead of a series of single pixel
+            spots (the default for :class:`SpotHologram`). The major benefit here is:
+
+            - **Greater resolution with limited padding.** With 2-3 orders of padding,
+              the farfield has sufficient resolution to render a Gaussian positioned
+              **inbetween** farfield pixels, allowing for greater resolutions without
+              having to pad further. This is especially important when operating at the
+              memory limits of a system.
+
+            Defaults to ``False``. This is an experimental feature and should be used
+            with caution. Currently, there are issues with the initial phase causing
+            some spots to be perminantly attenuated.
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
@@ -2471,7 +2526,7 @@ class SpotHologram(FeedbackHologram):
         else:
             raise Exception("algorithms.py: Unrecognized basis for spots '{}'.".format(basis))
 
-        # Generate point spread functions for the knm and ij bases
+        # Generate point spread functions (psf) for the knm and ij bases
         if cameraslm is not None:
             psf_kxy = cameraslm.slm.spot_radius_kxy()
             psf_knm = toolbox.convert_blaze_radius(psf_kxy, "kxy", "knm", cameraslm.slm, shape)
@@ -2499,6 +2554,14 @@ class SpotHologram(FeedbackHologram):
         else:
             self.subpixel_beamradius_knm = None
 
+        # Use semi-arbitrary values to determine integration widths. The default width is:
+        #  - six times the psf,
+        #  - but then clipped to be:
+        #    + larger than 3 and
+        #    + smaller than the minimum inf-norm distance between spots divided by 1.5
+        #      (divided by 1 would correspond to the largest non-overlapping integration
+        #      regions; 1.5 gives comfortable padding)
+        #  - and finally forced to be an odd integer.
         min_psf = 3
 
         dist_knm = np.max([toolbox.smallest_distance(self.spot_knm) / 1.5, min_psf])
@@ -2917,7 +2980,7 @@ class SpotHologram(FeedbackHologram):
         # Weighting strategy depends on the chosen feedback method.
         if feedback == "computational":
             # Pixel-by-pixel weighting
-            self._update_weights_generic(self.weights, self.amp_ff, self.target, nan_checks=False)
+            self._update_weights_generic(self.weights, self.amp_ff, self.target, nan_checks=True)
         else:
             # Integrate a window around each spot, with feedback from respective sources.
             if feedback == "computational_spot":
@@ -2949,7 +3012,7 @@ class SpotHologram(FeedbackHologram):
                         self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
                         cp.array(amp_feedback, copy=False, dtype=self.dtype),
                         self.spot_amp,
-                        nan_checks=False
+                        nan_checks=True
                     )
                 )
             else:

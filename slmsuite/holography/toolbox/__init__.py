@@ -157,7 +157,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
     ~~~~
     The :meth:`cv2.fillConvexPoly()` function used to fill each window dilates
     slightly outside the window bounds. To avoid pixels belonging to multiple windows
-    simutaneously, we crop away previously-assigned pixels from new windows while these are
+    simultaneously, we crop away previously-assigned pixels from new windows while these are
     being iteratively generated. As a result, windows earlier in the list will be slightly
     larger than windows later in the list.
 

@@ -1414,7 +1414,7 @@ def blob_array_detect(
 
         # Locally fit an affine based on the measured positions.
         true_positions = guess_positions + shift
-        orientation = fit_affine(centers, true_positions, orientation, plot=True)
+        orientation = fit_affine(centers, true_positions, orientation)
 
     if plot:
         array_center = orientation["b"]

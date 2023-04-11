@@ -247,7 +247,7 @@ class FourierSLM(CameraSLM):
             **kwargs
         )
 
-        array_center = np.mean(hologram.spot_kxy_rounded, axis=1)
+        array_center = np.mean(hologram.spot_kxy_rounded[:, 2:], axis=1)
 
         if plot:
             hologram.plot_farfield()
@@ -404,7 +404,7 @@ class FourierSLM(CameraSLM):
             array_pitch=array_pitch,
             array_center=None if array_center is None else (
                 format_2vectors(array_center) +
-                format_2vectors((shape[1] / 2.0, shape[0] / 2.0))
+                format_2vectors(((shape[1]) / 2.0, (shape[0]) / 2.0))
             ),
             basis="knm",
             orientation_check=True,

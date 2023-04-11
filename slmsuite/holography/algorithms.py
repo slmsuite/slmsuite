@@ -105,7 +105,7 @@ from slmsuite.misc.fitfunctions import gaussian2d
 # List of algorithms and default parameters
 # See algorithm documentation for parameter definitions.
 # Tip: In general, decreasing the feedback exponent (from 1) improves
-#      stability at the cost of slower convergence. The default (0.9)
+#      stability at the cost of slower convergence. The default (0.8)
 #      is an empirically derived value for a reasonable tradeoff.
 ALGORITHM_DEFAULTS = {
     "GS":             {"feedback" : ""},    # No feedback for bare GS
@@ -118,6 +118,15 @@ ALGORITHM_DEFAULTS = {
     "WGS-Nogrette" :  {"feedback" : "computational",
                         "factor":0.1}
 }
+
+# List of feedback options. See the documentation for the feedback keyword in optimize().
+FEEDBACK_OPTIONS = [
+    "computational",
+    "computational_spot",
+    "experimental",
+    "experimental_spot",
+    "external_spot"
+]
 
 class Hologram:
     r"""
@@ -759,9 +768,21 @@ class Hologram:
         for flag in kwargs:
             self.flags[flag] = kwargs[flag]
 
-        # 1.3) Add in non-defaulted flags.
+        # 1.3) Add in non-defaulted flags, with error checks
+        for group in stat_groups:
+            if not (group in FEEDBACK_OPTIONS):
+                raise ValueError(
+                    "algorithms.py: statistics group '{}' not recognized as a feedback option.\n"
+                    "Valid options: {}".format(group, FEEDBACK_OPTIONS)
+                )
         self.flags["stat_groups"] = stat_groups
+
         if feedback is not None:
+            if not (feedback in FEEDBACK_OPTIONS):
+                raise ValueError(
+                    "algorithms.py: feedback '{}' not recognized as a feedback option.\n"
+                    "Valid options: {}".format(group, FEEDBACK_OPTIONS)
+                )
             self.flags["feedback"] = feedback
 
         # 1.4) Print the flags if verbose.
@@ -1226,7 +1247,7 @@ class Hologram:
             raw feedback and raw feedback-target ratio for each pixel or spot.
         """
         # Downgrade to numpy if necessary
-        if hasattr(feedback_amp, "get") or hasattr(target_amp, "get"):
+        if mp == np and (hasattr(feedback_amp, "get") or hasattr(target_amp, "get")):
             if hasattr(feedback_amp, "get"):
                 feedback_amp = feedback_amp.get()
 
@@ -1236,7 +1257,8 @@ class Hologram:
             if total is not None:
                 total = float(total)
 
-            mp = np
+        feedback_amp = mp.array(feedback_amp, copy=False)
+        target_amp = mp.array(target_amp, copy=False)
 
         feedback_pwr = mp.square(feedback_amp)
         target_pwr = mp.square(target_amp)
@@ -1277,10 +1299,10 @@ class Hologram:
         std_err = pwr_err.size * float(mp.std(pwr_err))
 
         final_stats = {
-            "efficiency": efficiency,
-            "uniformity": uniformity,
-            "pkpk_err": pkpk_err,
-            "std_err": std_err,
+            "efficiency": float(efficiency),
+            "uniformity": float(uniformity),
+            "pkpk_err": float(pkpk_err),
+            "std_err": float(std_err),
         }
 
         if raw:
@@ -1479,15 +1501,12 @@ class Hologram:
         axs[0].set_title(title + "Amplitude")
         axs[1].set_title(title + "Phase")
 
-        # fig.supxlabel("SLM $x$ [pix]")
-        # fig.supylabel("SLM $y$ [pix]")
         for i,ax in enumerate(axs):
             ax.set_xlabel("SLM $x$ [pix]")
             if i==0: ax.set_ylabel("SLM $y$ [pix]")
 
         # Add colorbars if desired
         if cbar:
-            # fig.tight_layout(pad=4.0)
             cax = make_axes_locatable(axs[0]).append_axes('right', size='5%', pad=0.05)
             fig.colorbar(im_amp, cax=cax, orientation='vertical')
             cax = make_axes_locatable(axs[1]).append_axes('right', size='5%', pad=0.05)
@@ -1526,8 +1545,8 @@ class Hologram:
             If units requiring a SLM are desired, the attribute :attr:`cameraslm` must be
             filled.
         limit_padding : float
-            Fraction of the width and height to expand the limits by, only if
-            the passed ``limits`` is ``None`` (autocompute).
+            Fraction of the width and height to expand the limits of the zoom plot by, 
+            only if the passed ``limits`` is ``None`` (autocompute).
         figsize : tuple
             Size of the plot.
         cbar : bool
@@ -1539,7 +1558,7 @@ class Hologram:
             Used ``limits``, which may be autocomputed. Autocomputed limits are returned
             as integers.
         """
-        # Parse source
+        # Parse source.
         if source is None:
             source = self.amp_ff
 
@@ -1591,10 +1610,11 @@ class Hologram:
             ax.set_facecolor("#FFEEEE")
 
         # Plot the full target, blurred so single pixels are visible in low res
-        b = 2 * int(max(self.shape) / 500) + 1  # Future: fix arbitrary
+        b = 2 * int(np.amax(self.shape) / 400) + 1  # FUTURE: fix arbitrary
+        npsource_blur = cv2.GaussianBlur(npsource, (b, b), 0)
         full = axs[0].imshow(
-            cv2.GaussianBlur(npsource, (b, b), 0),
-            vmin=0, vmax=np.nanmax(npsource),
+            npsource_blur,
+            vmin=0, vmax=np.nanmax(npsource_blur),
             cmap=("twilight" if "phase" in title.lower() else None)
         )
         if len(title) > 0:
@@ -1602,7 +1622,7 @@ class Hologram:
         axs[0].set_title(title + "Full")
 
         # Zoom in on our spots in a second plot
-        b = 2*int(np.diff(limits[0])/500) + 1  # FUTURE: fix arbitrary
+        b = 2 * int(np.diff(limits[0]) / 200) + 1  # FUTURE: fix arbitrary
         zoom_data = npsource[np.ix_(np.arange(limits[1][0], limits[1][1]),
                                     np.arange(limits[0][0], limits[0][1]))]
         zoom = axs[1].imshow(
@@ -1610,7 +1630,7 @@ class Hologram:
             vmin=0, vmax=np.nanmax(zoom_data),
             extent=[limits[0][0], limits[0][1],
                     limits[1][1],limits[1][0]],
-            interpolation="none",
+            interpolation="none" if b < 2 else "gaussian",
             cmap=("twilight" if "phase" in title.lower() else None)
         )
         axs[1].set_title(title + "Zoom", color="r")
@@ -2167,10 +2187,7 @@ class FeedbackHologram(Hologram):
         if self.img_ij is None:
             self.cameraslm.slm.write(self.extract_phase(), settle=True)
             self.cameraslm.cam.flush()
-            self.img_ij = analysis.image_remove_field(
-                np.array(self.cameraslm.cam.get_image(), copy=False, dtype=self.dtype)
-            )
-            # self.img_ij = np.array(self.cameraslm.cam.get_image(), copy=False, dtype=self.dtype)
+            self.img_ij = np.array(self.cameraslm.cam.get_image(), copy=False, dtype=self.dtype)
 
             if basis == "knm":  # Compute the knm basis image.
                 self.img_knm = self.ijcam_to_knmslm(self.img_ij, out=self.img_knm)
@@ -2732,9 +2749,9 @@ class SpotHologram(FeedbackHologram):
                 )
 
         # Make the grid edges.
-        x_edge = (np.arange(array_shape[0]) - (array_shape[0] - 1) / 2)
+        x_edge = (np.arange(array_shape[0]) - (array_shape[0] - 1) / 2.0)
         x_edge = x_edge * array_pitch[0] + array_center[0]
-        y_edge = (np.arange(array_shape[1]) - (array_shape[1] - 1) / 2)
+        y_edge = (np.arange(array_shape[1]) - (array_shape[1] - 1) / 2.0)
         y_edge = y_edge * array_pitch[1] + array_center[1]
 
         # Make the grid lists.
@@ -2837,8 +2854,6 @@ class SpotHologram(FeedbackHologram):
                 )
 
         self.target /= Hologram._norm(self.target)
-
-        print(np.nanmax(self.target))
 
         if reset_weights:
             self.reset_weights()
@@ -3061,27 +3076,42 @@ class SpotHologram(FeedbackHologram):
             else:
                 # Spot size is wider than a pixel: integrate a window around each spot
                 if cp != np:
-                    amp_ff = self.amp_ff.get()
+                    pwr_ff = cp.square(self.amp_ff)
+                    pwr_feedback = analysis.take(
+                        pwr_ff,
+                        self.spot_knm,
+                        self.spot_integration_width_knm,
+                        centered=True,
+                        integrate=True,
+                        mp=cp
+                    )
+
+                    stats["computational_spot"] = self._calculate_stats(
+                        cp.sqrt(pwr_feedback),
+                        self.spot_amp,
+                        mp=cp,
+                        efficiency_compensation=False,
+                        total=cp.sum(pwr_ff),
+                        raw="raw_stats" in self.flags and self.flags["raw_stats"]
+                    )
                 else:
-                    amp_ff = self.amp_ff
+                    pwr_ff = np.square(self.amp_ff)
+                    pwr_feedback = analysis.take(
+                        pwr_ff,
+                        self.spot_knm,
+                        self.spot_integration_width_knm,
+                        centered=True,
+                        integrate=True
+                    )
 
-                pwr_ff = np.square(amp_ff)
-                pwr_feedback = analysis.take(
-                    pwr_ff,
-                    self.spot_knm,
-                    self.spot_integration_width_knm,
-                    centered=True,
-                    integrate=True
-                )
-
-                stats["computational_spot"] = self._calculate_stats(
-                    np.sqrt(pwr_feedback),
-                    self.spot_amp,
-                    mp=np,
-                    efficiency_compensation=False,
-                    total=np.sum(pwr_ff),
-                    raw="raw_stats" in self.flags and self.flags["raw_stats"]
-                )
+                    stats["computational_spot"] = self._calculate_stats(
+                        np.sqrt(pwr_feedback),
+                        self.spot_amp,
+                        mp=np,
+                        efficiency_compensation=False,
+                        total=np.sum(pwr_ff),
+                        raw="raw_stats" in self.flags and self.flags["raw_stats"]
+                    )
 
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")

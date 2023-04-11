@@ -1081,9 +1081,10 @@ def blob_array_detect(
          - ``"b"`` : ``numpy.ndarray`` (2, 1).
     """
     img_8it = _make_8bit(img)
-    start_orientation = orientation
 
-    if orientation is None:
+    if orientation is not None:     # If an orientation was provided, use this as a guess.
+        M = orientation["M"]
+    else:                           # Otherwise, find a guess orientation.
         # FFT to find array pitch and orientation
         # Take the largest dimension rounded up to nearest power of 2.
         fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img))))) * 2 ** dft_pad_exponent
@@ -1206,10 +1207,10 @@ def blob_array_detect(
         # blobs outside of the first 5? w.r.t. center distance.
         # this depends on the user picking a high `dft_threshold`.
         # 2.2) Calculate array metrics
-        left = np.argmin([k[:, 0]])  # Smallest x
-        right = np.argmax([k[:, 0]])  # Largest x
+        left =   np.argmin([k[:, 0]])  # Smallest x
+        right =  np.argmax([k[:, 0]])  # Largest x
         bottom = np.argmin([k[:, 1]])  # Smallest y
-        top = np.argmax([k[:, 1]])  # Largest y
+        top =    np.argmax([k[:, 1]])  # Largest y
 
         # 2.3) Calculate the vectors in the imaging domain
         # Future: @tpr0p is wondering where this formula comes from.
@@ -1217,8 +1218,6 @@ def blob_array_detect(
         y = 2 * (k[top, :] - k[bottom, :]) / (blob_dist[top] + blob_dist[bottom]) ** 2
 
         M = np.array([[x[0], y[0]], [x[1], y[1]]])
-    else:
-        M = orientation["M"]
 
     # 3) Make the array kernel for convolutional detection of the array center.
     # Make lists that we will use to make the kernel: the array...
@@ -1396,28 +1395,26 @@ def blob_array_detect(
     for _ in range(hone_count):
         guess_positions = np.matmul(orientation["M"], centers) + orientation["b"]
 
-        # Odd helper parameters.
+        # Calculate a point spread function (psf) integration window size.
         psf = 2 * int(np.floor(np.amin(np.amax(np.abs(orientation["M"]), axis=0))) / 2) + 1
         psf = np.max([3, psf])
-        blur = 2 * int(psf / 16) + 1
 
+        # Grab windows (sized by psf) about the guess_positions.
         regions = take(
             img, guess_positions, psf, centered=True, integrate=False, clip=True
         )
 
         # Get the first order moment around each of the guess windows.
         shift = image_positions(regions) - (guess_positions - np.around(guess_positions))
-        # fit = image_fit(regions)
-        # shift = np.vstack((fit[1, :], fit[2, :])) - (guess_positions - np.around(guess_positions))
 
-        # Remove outliers
+        # Remove outliers.
         shift_error = np.sqrt(np.square(shift[0, :]) + np.square(shift[1, :]))
         thresh = np.mean(shift_error) + np.std(shift_error)
         shift[:, shift_error > thresh] = np.nan
 
         # Locally fit an affine based on the measured positions.
         true_positions = guess_positions + shift
-        orientation = fit_affine(centers, true_positions, orientation)
+        orientation = fit_affine(centers, true_positions, orientation, plot=True)
 
     if plot:
         array_center = orientation["b"]
@@ -1441,6 +1438,7 @@ def blob_array_detect(
             np.clip(np.amax(y) + max_pitch, 0, img.shape[0]),
         ]
 
+        # Plot the zoom window, with red axes.
         axs[1].imshow(img)
         axs[1].scatter(
             x, y, facecolors="none", edgecolors="r", marker="o", s=80, linewidths=0.5
@@ -1459,6 +1457,7 @@ def blob_array_detect(
             axs[1].spines[spine].set_color("r")
             axs[1].spines[spine].set_linewidth(1.5)
 
+        # Plot the non-zoom axes.
         axs[0].imshow(img_8it)
         axs[0].scatter(array_center[0], array_center[1], c="r", marker="x", s=10)
 
@@ -1475,8 +1474,7 @@ def blob_array_detect(
             axs[2].imshow(match)
             axs[2].set_title("Result - Match")
 
-        # fig.supxlabel("Image $x$ [pix]")
-        # fig.supylabel("Image $y$ [pix]")
+        # Handle xy labels.
         for ax in axs[:2]:
             ax.set_xlabel("Image $x$ [pix]")
             ax.set_ylabel("Image $y$ [pix]")

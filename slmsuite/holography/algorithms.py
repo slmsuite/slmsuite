@@ -108,7 +108,7 @@ from slmsuite.misc.fitfunctions import gaussian2d
 #      stability at the cost of slower convergence. The default (0.8)
 #      is an empirically derived value for a reasonable tradeoff.
 ALGORITHM_DEFAULTS = {
-    "GS":             {"feedback" : ""},    # No feedback for bare GS
+    "GS":             {"feedback" : "computational"},    # No feedback for bare GS, but initializes var.
     "WGS-Leonardo" :  {"feedback" : "computational",
                         "feedback_exponent" : 0.8},
     "WGS-Kim" :       {"feedback" : "computational",
@@ -751,9 +751,11 @@ class Hologram:
         """
         # 0) Check and record method.
         methods = list(ALGORITHM_DEFAULTS.keys())
-        assert (
-            method in methods
-        ), "Unrecognized method '{}'. Valid methods include [{}]".format(method, methods)
+        if not method in list(ALGORITHM_DEFAULTS.keys()):
+            raise ValueError(
+                "algorithms.py: unrecognized method '{}'.\n"
+                "Valid methods include {}".format(method, list(ALGORITHM_DEFAULTS.keys()))
+            )
         self.method = method
 
         # 1) Parse flags:
@@ -989,6 +991,7 @@ class Hologram:
                 # Set the farfield amplitude to the updated weights.
                 cp.divide(farfield, cp.abs(farfield), out=farfield)
                 cp.multiply(farfield, self.weights, out=farfield)
+                cp.nan_to_num(farfield, copy=False, nan=0)
         else:
             noise_region =  mraf_variables["noise_region"]
             signal_region = mraf_variables["signal_region"]
@@ -3019,6 +3022,8 @@ class SpotHologram(FeedbackHologram):
                 ))
             elif feedback == "external_spot":
                 amp_feedback = self.external_spot_amp
+            else:
+                raise ValueError("algorithms.py: Feedback '{}' not recognized.".format(feedback))
 
             if self.subpixel_beamradius_knm is None:
                 # Default mode: no subpixel stuff. We update single pixels.
@@ -3031,7 +3036,7 @@ class SpotHologram(FeedbackHologram):
                     )
                 )
             else:
-                # Complex mode with subpixel stuff. Update Gaussian patterns.
+                # Complex mode: subpixel stuff. Update Gaussian patterns.
                 if hasattr(amp_feedback, "get"):
                     amp_feedback = amp_feedback.get()
 

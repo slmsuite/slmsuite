@@ -271,7 +271,7 @@ class SLM:
 
         Caution
         ~~~~~~~
-        After scale conversion, data is ``floor()` ed to integers with ``np.copyto``, rather than
+        After scale conversion, data is ``floor()`` ed to integers with ``np.copyto``, rather than
         rounded to the nearest integer (``np.around()`` equivalent). While this is
         irrelevant for the average user, it may be significant in some cases.
         If this behavior is undesired consider either: :meth:`write()` integer data

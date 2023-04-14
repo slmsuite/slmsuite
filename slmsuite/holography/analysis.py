@@ -60,8 +60,8 @@ def take(
     -------
     numpy.ndarray
         If ``integrate`` is ``False``, returns an array containing the images cropped
-        from the regions of size `(image_count, h, w)`.
-        If ``integrate`` is ``True``, instead returns an array of floats of size `(image_count,)`
+        from the regions of size ``(image_count, h, w)``.
+        If ``integrate`` is ``True``, instead returns an array of floats of size ``(image_count,)``
         where each float corresponds to the :meth:`numpy.sum` of a cropped image.
     """
     # Clean variables.
@@ -186,7 +186,7 @@ def image_remove_field(images, deviations=1, out=None):
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed, though the returned image remains shape ``(h, w)`` in that case.
     deviations : int OR None
@@ -356,7 +356,7 @@ def image_normalization(images, nansum=False):
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     nansum : bool
@@ -378,7 +378,7 @@ def image_normalize(images, nansum=False, remove_field=False):
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed, though the returned image remains shape ``(h, w)`` in that case.
     nansum : bool
@@ -424,7 +424,7 @@ def image_positions(images, normalize=True, nansum=False):
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     normalize : bool
@@ -469,7 +469,7 @@ def image_variances(images, centers=None, normalize=True, nansum=False):
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     centers : numpy.ndarray OR None

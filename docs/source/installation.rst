@@ -38,7 +38,8 @@ The following packages are optional acceleration or hardware requirements, which
 the user can install selectively.
 
 - `cupy <https://cupy.dev/>`_ (highly recommended for GPU-accelerated holography)
-    - Install via ``conda install -c conda-forge cupy`` is `recommended <https://docs.cupy.dev/en/stable/install.html>`.
+    - Installation via ``conda install -c conda-forge cupy`` is
+    `recommended <https://docs.cupy.dev/en/stable/install.html>`_.
 - Cameras
     - `instrumental-lib <https://github.com/mabuchilab/Instrumental>`_
     - `pymmcore <https://github.com/micro-manager/pymmcore>`_

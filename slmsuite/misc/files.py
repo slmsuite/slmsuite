@@ -1,15 +1,12 @@
 """
 Utilities for interfacing with files.
 This includes helper functions for naming directories without conflicts, and convenience
-wrappers for file writing. :mod:`slmsuite` uses the HDF5 [1]_ (.h5) filetype by default,
-as it is fast, compact, and widely supported by programming languages for scientific
-computing [2]_ . This uses the :mod:`h5py` module [3]_ .
-
-References
-----------
-.. [1] https://hdfgroup.org/solutions/hdf5
-.. [2] https://en.wikipedia.org/wiki/Hierarchical_Data_Format#Interfaces
-.. [3] https://h5py.org
+wrappers for file writing. :mod:`slmsuite` uses the
+`HDF5 filetype <https://hdfgroup.org/solutions/hdf5>`_
+(.h5) by default, as it is fast, compact, and
+`widely supported by programming languages for scientific computing
+<https://en.wikipedia.org/wiki/Hierarchical_Data_Format#Interfaces>`_.
+This uses the :mod:`h5py` `module <https://h5py.org>`_.
 """
 
 import os
@@ -200,7 +197,8 @@ def read_h5(file_path, decode_bytes=True):
 
 def write_h5(file_path, data, mode="w"):
     """
-    Write data in a dictionary to an h5 file.
+    Write data in a dictionary to an `h5 file
+    <https://docs.h5py.org/en/stable/high/file.html#opening-creating-files>`_.
 
     Parameters
     ----------
@@ -209,11 +207,7 @@ def write_h5(file_path, data, mode="w"):
     data : dict
         Dictionary of data to save in the file.
     mode : str
-        The mode to open the file with [1]_.
-
-    References
-    ----------
-    .. [1] https://docs.h5py.org/en/stable/high/file.html#opening-creating-files
+        The mode to open the file with.
     """
     with h5py.File(file_path, mode) as file_:
         for key in data.keys():

@@ -200,7 +200,8 @@ def zernike_sum(grid, weights, aperture=None):
     Note
     ~~~~
     There are different schemes to index Zernike polynomials.
-    We use the indexing defined in [0]_, along with the algorithm defined there.
+    We use the indexing defined in `this paper <https://doi.org/10.1117/12.294412>`_,
+    along with the algorithm defined there.
     Other packages use different schemes, sometimes defining
     :math:`m' = l = n - 2m`. Take care to avoid confusion.
 
@@ -320,9 +321,7 @@ def _zernike_coefficients(n, m):
     """
     Returns the coefficients for the :math:`x^ay^b` terms of the real cartesian Zernike polynomial
     of index `(`n, m)``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
-    Uses the algorithm and indexing given in [0]_.
-
-    .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
+    Uses the algorithm and indexing given in `this paper <https://doi.org/10.1117/12.294412>`_.
     """
     n = int(n)
     m = int(m)

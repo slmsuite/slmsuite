@@ -1,15 +1,12 @@
 """
 **(NotImplemented)** Hardware control for FLIR cameras via the :mod:`PySpin` interface to the Spinnaker SDK.
-Install Spinnaker by following the instructions at [1]_. Inspired by [2]_.
+Install Spinnaker by following the
+`provided instructions <https://www.flir.com/products/spinnaker-sdk/>`_.
+Inspired by `this implementation <https://github.com/klecknerlab/simple_pyspin/>`_.
 
 Warning
 ~~~~~~~~
-Implementation unfinished and untested. Consider using [2]_ as a dependency.
-
-References
-----------
-.. [1] https://www.flir.com/products/spinnaker-sdk/
-.. [2] https://github.com/klecknerlab/simple_pyspin/
+Implementation unfinished and untested. Consider using ``simple_pyspin`` as a dependency instead.
 """
 
 from .camera import Camera

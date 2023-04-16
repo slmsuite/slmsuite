@@ -875,7 +875,9 @@ def blob_detect(
     """
     Detect blobs in an image.
 
-    Wraps :class:`cv2.SimpleBlobDetector` [1]_. See also [2]_.
+    Wraps :class:`cv2.SimpleBlobDetector` (see
+    `these <https://docs.opencv.org/3.4/d8/da7/structcv_1_1SimpleBlobDetector_1_1Params.html>`_
+    `links <https://learnopencv.com/blob-detection-using-opencv-python-c/>`_)
     Default parameters are optimized for bright spot detection on dark background,
     but can be changed with ``**kwargs``.
 
@@ -904,11 +906,6 @@ def blob_detect(
         List of blobs found by  ``detector``.
     detector : :class:`cv2.SimpleBlobDetector`
         A blob detector with customized parameters.
-
-    References
-    ~~~~~~~~~~
-    .. [1] https://docs.opencv.org/3.4/d8/da7/structcv_1_1SimpleBlobDetector_1_1Params.html
-    .. [2] https://learnopencv.com/blob-detection-using-opencv-python-c/
     """
     img_8it = _make_8bit(np.copy(img))
     params = cv2.SimpleBlobDetector_Params()

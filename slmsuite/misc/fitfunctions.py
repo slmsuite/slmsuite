@@ -4,8 +4,6 @@ Common fit functions.
 
 import numpy as np
 
-from slmsuite.holography import toolbox
-
 def linear(x, m, b):
     r"""
     For fitting a line.

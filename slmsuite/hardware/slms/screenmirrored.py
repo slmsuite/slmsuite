@@ -33,24 +33,33 @@ class ScreenMirrored(SLM):
     ~~~~
     There are a variety of python packages that support blitting images onto a fullscreen display.
 
-    - Simple DirectMedia Layer (SDL) [1]_ wrappers:
+    - `Simple DirectMedia Layer (SDL) <https://www.libsdl.org/>`_ wrappers:
 
-        - :mod:`pygame` [2]_, which also supports OpenGL. Only supports one screen.
-        - :mod:`sdl2` [3]_ through the ``PySDL2`` package. Requires additional libraries.
+        - :mod:`pygame` (`link <https://www.pygame.org/docs/>`_),
+          which also supports OpenGL. Only supports one screen.
+        - :mod:`sdl2` (`readthedocs <https://pysdl2.readthedocs.io/en/latest/>`_)
+          through the ``PySDL2`` package. Requires additional libraries.
 
-    - OpenGL [4]_ wrappers:
+    - `Open Graphics Library (OpenGL) <https://www.opengl.org/>`_ wrappers:
 
-        - :mod:`moderngl` [5]_, an OpenGL wrapper focusing on a pythonic interface for core OpenGL functions.
-        - :mod:`OpenGL` [6]_ through the ``PyOpenGL``/``PyOpenGL_accelerate`` package, a very light OpenGL wrapper.
-        - :mod:`pyglet` [7]_, a light OpenGL wrapper.
+        - :mod:`moderngl` (`readthedocs <https://moderngl.readthedocs.io/en/latest/>`_),
+          an OpenGL wrapper focusing on a pythonic interface for core OpenGL functions.
+        - :mod:`OpenGL` (`link <http://pyopengl.sourceforge.net/documentation/index.html>`_)
+          through the ``PyOpenGL``/``PyOpenGL_accelerate`` package, a very light OpenGL wrapper.
+        - :mod:`pyglet` (`readthedocs <https://pyglet.readthedocs.io/en/latest/>`_),
+          a light OpenGL wrapper.
 
     - GUI Library wrappers:
 
-        - :mod:`gi` [8]_ through the ``PyGObject`` package wrapping ``GTK`` and other GUI libraries.
-        - :mod:`pyqt6` [9]_ through the ``PyQt6`` package wrapping the version 6 ``Qt`` GUI library.
-        - :mod:`tkinter` [10]_, included in standard ``python``, wrapping the ``Tcl``/``Tk`` GUI library.
-        - :mod:`wx` [11]_ through the ``wxPython`` package wrapping the ``wxWidgets`` GUI library.
-          :mod:`slmpy` [12]_ uses :mod:`wx`.
+        - :mod:`gi` (`readthedocs <https://pygobject.readthedocs.io/en/latest/>`_),
+          through the ``PyGObject`` package wrapping ``GTK`` and other GUI libraries.
+        - :mod:`pyqt6` (`link <https://riverbankcomputing.com/software/pyqt/>`_),
+          through the ``PyQt6`` package wrapping the version 6 ``Qt`` GUI library.
+        - :mod:`tkinter` (`link <https://docs.python.org/3/library/tkinter.html>`_),
+          included in standard ``python``, wrapping the ``Tcl``/``Tk`` GUI library.
+        - :mod:`wx` (`link <https://docs.wxpython.org/>`_),
+          through the ``wxPython`` package wrapping the ``wxWidgets`` GUI library.
+          :mod:`slmpy` (`GitHub <https://github.com/wavefrontshaping/slmPy>`_) uses :mod:`wx`.
 
     :mod:`slmsuite` uses :mod:`pyglet` as the default display package.
     :mod:`pyglet` is generally more capable than the mentioned SDL wrappers while immediately supporting
@@ -63,16 +72,16 @@ class ScreenMirrored(SLM):
     are closer to the pixels than OpenGL textures, so greater speed might be achievable (even without
     loading data to the GPU as a texture). Another potential improvement could come from writing
     :mod:`cupy` datastructures to ``OpenGL`` textures directly, without using the CPU as an
-    intermediary. There is some precedent for transferring data from ``CUDA``
-    (on which :mod:`cupy` is based) to ``OpenGL`` [13]_, though :mod:`cupy` does not currently
-    directly support this.
+    intermediary. There is `some precedent <https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__OPENGL.html>`_
+    for transferring data from ``CUDA`` (on which :mod:`cupy` is based) to ``OpenGL``,
+    though :mod:`cupy` does not currently directly support this.
 
     Important
     ~~~~~~~~~
     :class:`ScreenMirrored` uses a double-buffered and vertically synchronized (vsync) ``OpenGL``
     context. This is to prevent "tearing" resulting from data being modified during a display write:
     rather, all monitor writes are synchronized such that clean frames are always displayed.
-    This feature is similar to the ``isImageLock`` flag in :mod:`slmpy` [12]_, but is implemented a bit
+    This feature is similar to the ``isImageLock`` flag in :mod:`slmpy`, but is implemented a bit
     closer to the hardware.
 
     Attributes
@@ -89,23 +98,6 @@ class ScreenMirrored(SLM):
         Used to load data to the texture.
     texture : pyglet.gl.GLuint
         Identifier for the texture loaded into ``OpenGL`` memory.
-
-
-    References
-    ----------
-    .. [1] https://www.libsdl.org/
-    .. [2] https://www.pygame.org/docs/
-    .. [3] https://pysdl2.readthedocs.io/en/latest/
-    .. [4] https://www.opengl.org/
-    .. [5] https://moderngl.readthedocs.io/en/latest/
-    .. [6] http://pyopengl.sourceforge.net/documentation/index.html
-    .. [7] https://pyglet.readthedocs.io/en/latest/
-    .. [8] https://pygobject.readthedocs.io/en/latest/
-    .. [9] https://riverbankcomputing.com/software/pyqt/
-    .. [10] https://docs.python.org/3/library/tkinter.html
-    .. [11] https://docs.wxpython.org/
-    .. [12] https://github.com/wavefrontshaping/slmPy
-    .. [13] https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__OPENGL.html
     """
 
     def __init__(self, display_number, bitdepth=8, verbose=True, **kwargs):
@@ -128,7 +120,8 @@ class ScreenMirrored(SLM):
 
         Caution
         ~~~~~~~
-        There is some subtlety to complex display setups with Linux [14]_.
+        There is some subtlety to
+        `complex display setups with Linux <https://pyglet.readthedocs.io/en/latest/modules/canvas.html>`_.
         Working outside the default display is currently not implemented.
 
         Parameters
@@ -142,7 +135,7 @@ class ScreenMirrored(SLM):
 
         References
         ----------
-        .. [14] https://pyglet.readthedocs.io/en/latest/modules/canvas.html
+        .. [14]
         """
         if verbose:
             print("Initializing pyglet... ", end="")

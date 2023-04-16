@@ -1027,17 +1027,23 @@ def pad(matrix, shape):
     """
     Helper function to pad data with zeros. The padding is centered.
     This is used to get higher resolution upon Fourier transform.
+
     Parameters
     ----------
     matrix : numpy.ndarray
         Data to pad.
-    shape : (int, int)
+    shape : (int, int) OR None
         The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
+        If ``None``, the ``matrix`` is returned unpadded.
+
     Returns
     -------
     numpy.ndarray
         Padded ``matrix``.
     """
+    if shape is None:
+        return matrix
+
     deltashape = (
         (shape[0] - matrix.shape[0]) / 2.0,
         (shape[1] - matrix.shape[1]) / 2.0,
@@ -1052,13 +1058,13 @@ def pad(matrix, shape):
     padL = int(np.floor(deltashape[1]))
     padR = int(np.ceil(deltashape[1]))
 
-    toReturn = np.pad(
+    padded = np.pad(
         matrix, [(padB, padT), (padL, padR)], mode="constant", constant_values=0
     )
 
-    assert np.all(toReturn.shape == shape)
+    assert np.all(padded.shape == shape)
 
-    return toReturn
+    return padded
 
 
 def unpad(matrix, shape):
@@ -1071,8 +1077,9 @@ def unpad(matrix, shape):
     matrix : numpy.ndarray OR (int, int)
         Data to unpad. If this is a shape in :mod:`numpy` ``(h, w)`` form,
         returns the four slicing integers used to unpad that shape ``[padB:padT, padL:padR]``.
-    shape : (int, int)
+    shape : (int, int) OR None
         The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
+        If ``None``, the ``matrix`` is returned unchanged.
 
     Returns
     ----------

@@ -4,7 +4,6 @@ Abstract functionality for SLMs.
 
 import time
 import numpy as np
-from slmsuite.holography.toolbox import blaze
 from slmsuite.holography import toolbox
 from slmsuite.holography import analysis
 

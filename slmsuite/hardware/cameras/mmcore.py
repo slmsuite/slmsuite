@@ -1,14 +1,10 @@
 """
 **(NotImplemented)** Hardware control for Micro-Manager cameras via the :mod:`pymmcore` interface.
-See :mod:`pymmcore` documentation [1]_.
+See :mod:`pymmcore` `documentation <https://github.com/micro-manager/pymmcore>`_.
 
 Warning
 ~~~~~~~~
 Implementation unfinished and untested.
-
-References
-----------
-.. [1] https://github.com/micro-manager/pymmcore
 """
 
 import os

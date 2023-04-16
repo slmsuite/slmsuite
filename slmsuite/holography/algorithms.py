@@ -1,16 +1,21 @@
 """
 GPU-accelerated holography algorithms.
 
-This module is currently focused on Gerchberg-Saxton (GS) iterative Fourier transform
-phase retrieval algorithms [1]_ via the :class:`~slmsuite.holography.algorithms.Hologram` class;
-however, support for complex holography and other algorithms (e.g. gradient descent algorithms [2]_)
+This module is currently focused on
+`Gerchberg-Saxton (GS) iterative Fourier transform phase retrieval algorithms
+<http://www.u.arizona.edu/~ppoon/GerchbergandSaxton1972.pdf>`_
+via the :class:`~slmsuite.holography.algorithms.Hologram` class;
+however, support for complex holography and other algorithms
+(e.g. `gradient descent algorithms <https://doi.org/10.1364/AO.21.002758>`_)
 is also planned. Additionally, so-called Weighted Gerchberg-Saxton (WGS) algorithms for hologram
 generation with or without closed-loop camera feedback are supported, especially for
-the generation of optical focus arrays [3]_, a subset of general image formation.
+the `generation of optical focus arrays <https://doi.org/10.1364/OL.44.003178>`_,
+a subset of general image formation.
 
 Tip
 ~~~
-This module makes use of the GPU-accelerated computing library :mod:`cupy` [4]_.
+This module makes use of the GPU-accelerated computing library :mod:`cupy`
+(`GitHub <https://docs.cupy.dev/en/stable/reference/index.html>`_)
 If :mod:`cupy` is not supported, then :mod:`numpy` is used as a fallback, though
 CPU alone is significantly slower. Using :mod:`cupy` is highly encouraged.
 
@@ -58,16 +63,8 @@ optimized under the hood (esp. ``"knm"``, the coordinate space of optimization).
 
 See the first tip in :class:`Hologram` to learn more about ``"kxy"`` and ``"knm"``
 space.
-
-References
-----------
-.. [1] R. W. Gerchberg and W. O. Saxton, "A Practical Algorithm for Determination
-       of Phase from Image and Diffraction Plane Pictures," Optik 35, (1972).
-.. [2] J. R. Fienup, "Phase retrieval algorithms: a comparison," Appl. Opt. 21, (1982).
-.. [3] D. Kim, et al., "Large-scale uniform optical focus array generation with a
-       phase spatial light modulator," Opt. Lett. 44, (2019).
-.. [4] https://github.com/cupy/cupy/
 """
+
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import cv2
@@ -213,8 +210,9 @@ class Hologram:
         This is of shape :attr:`shape`.
     dtype : type
         Datatype for stored **near-** and **far-field** arrays, which are **all real**.
-        Some internal variables are complex. The complex numbers
-        follow :mod:`numpy` type promotion [5]_. Complex datatypes are derived from ``dtype``:
+        Some internal variables are complex. The complex numbers follow :mod:`numpy`
+        `type promotion <https://numpy.org/doc/stable/reference/routines.fft.html#type-promotion>`_.
+        Complex datatypes are derived from ``dtype``:
 
          - ``float32`` -> ``complex64`` (assumed by default)
          - ``float64`` -> ``complex128``
@@ -266,10 +264,6 @@ class Hologram:
             computed computationally and experimentally.
 
         See :meth:`.update_stats()` and :meth:`.plot_stats()`.
-
-    References
-    ----------
-    .. [5] https://numpy.org/doc/stable/reference/routines.fft.html#type-promotion
     """
 
     def __init__(self, target, amp=None, phase=None, slm_shape=None, dtype=np.float32):
@@ -591,23 +585,24 @@ class Hologram:
 
         - Gerchberg-Saxton (GS) phase retrieval.
 
-            ``'GS'`` [1]_
+            ``'GS'``
 
-              An iterative algorithm for phase retrieval, accomplished by moving back
-              and forth between the imaging and Fourier domains, with amplitude
-              corrections applied to each.
+              `An iterative algorithm for phase retrieval
+              <http://www.u.arizona.edu/~ppoon/GerchbergandSaxton1972.pdf>`_,
+              accomplished by moving back and forth between the imaging and Fourier domains,
+              with amplitude corrections applied to each.
               This is implemented using fast Fourier transforms, potentially GPU-accelerated.
 
         - Weighted Gerchberg-Saxton (WGS) phase retrieval algorithms of various flavors.
           Improves the uniformity of GS-computed focus arrays using weighting methods and
           techniques from literature. The ``method`` keywords are:
 
-            ``'WGS-Leonardo'`` [6]_
+            ``'WGS-Leonardo'``
 
-              The original WGS algorithm. Weights the target
-              amplitudes by the ratio of mean amplitude to computed amplitude, which
-              amplifies weak spots while attenuating strong spots. Uses the following
-              weighting function:
+              `The original WGS algorithm <https://doi.org/10.1364/OE.15.001913>`_.
+              Weights the target amplitudes by the ratio of mean amplitude to computed
+              amplitude, which amplifies weak spots while attenuating strong spots. Uses
+              the following weighting function:
 
               .. math:: \mathcal{W} = \mathcal{W}\left(\frac{\mathcal{T}}{\mathcal{F}}\right)^p
 
@@ -620,18 +615,19 @@ class Hologram:
               The power :math:`p` defaults to .9 if not passed. In general, smaller
               :math:`p` will lead to slower yet more stable optimization.
 
-            ``'WGS-Kim'`` [3]_
+            ``'WGS-Kim'``
 
-              Improves the convergence of `Leonardo` by fixing the far-field
-              phase strictly after a desired number of net iterations
+              `Improves the convergence <https://doi.org/10.1364/OL.44.003178>`_
+              of `Leonardo` by fixing the far-field phase
+              strictly after a desired number of net iterations
               specified by ``"fix_phase_iteration"``
               or after exceeding a desired efficiency
               (fraction of far-field energy at the desired points)
               specified by ``"fix_phase_efficiency"``
 
-            ``'WGS-Nogrette'`` [7]_
+            ``'WGS-Nogrette'``
 
-              Weights target intensities by a tunable gain factor.
+              Weights target intensities by `a tunable gain factor <https://doi.org/10.1103/PhysRevX.4.021034>`_.
 
               .. math:: \mathcal{W} = \mathcal{W}/\left(1 - f\left(1 - \mathcal{F}/\mathcal{T}\right)\right)
 
@@ -737,17 +733,6 @@ class Hologram:
         **kwargs : dict, optional
             Various weight keywords and values to pass depending on the weight method.
             These are passed into :attr:`flags`. See options documented in the constructor.
-
-        References
-        ----------
-        .. [1] R. W. Gerchberg and W. O. Saxton, "A Practical Algorithm for Determination
-            of Phase from Image and Diffraction Plane Pictures," Optik 35, (1972).
-        .. [3] D. Kim, et al., "Large-scale uniform optical focus array generation with a
-            phase spatial light modulator," Opt. Lett. 44, (2019).
-        .. [6] R. Di Leonardo, F. Ianni, and G. Ruocco, "Computer generation of
-               optimal holograms for optical trap arrays," Opt. Express 15, (2007).
-        .. [7] F. Nogrette et al., "Single-Atom Trapping in Holographic 2D Arrays
-               of Microtraps with Arbitrary Geometries" Phys. Rev. X 4, (2014).
         """
         # 0) Check and record method.
         methods = list(ALGORITHM_DEFAULTS.keys())
@@ -1548,7 +1533,7 @@ class Hologram:
             If units requiring a SLM are desired, the attribute :attr:`cameraslm` must be
             filled.
         limit_padding : float
-            Fraction of the width and height to expand the limits of the zoom plot by, 
+            Fraction of the width and height to expand the limits of the zoom plot by,
             only if the passed ``limits`` is ``None`` (autocompute).
         figsize : tuple
             Size of the plot.
@@ -1868,12 +1853,8 @@ class Hologram:
     @staticmethod
     def set_mempool_limit(device=0, size=None, fraction=None):
         """
-        Helper function to set the cupy memory pool size. See [8]_.
-
-        References
-        ----------
-
-        .. [8] https://docs.cupy.dev/en/stable/reference/generated/cupy.cuda.MemoryPool.html#cupy.cuda.MemoryPool
+        Helper function to set the `cupy memory pool size
+        <https://docs.cupy.dev/en/stable/reference/generated/cupy.cuda.MemoryPool.html#cupy.cuda.MemoryPool>`_.
 
         Parameters
         ----------
@@ -1901,12 +1882,8 @@ class Hologram:
     @staticmethod
     def get_mempool_limit(device=0):
         """
-        Helper function to get the cupy memory pool size. See [8]_.
-
-        References
-        ----------
-
-        .. [8] https://docs.cupy.dev/en/stable/reference/generated/cupy.cuda.MemoryPool.html#cupy.cuda.MemoryPool
+        Helper function to get the `cupy memory pool size
+        <https://docs.cupy.dev/en/stable/reference/generated/cupy.cuda.MemoryPool.html#cupy.cuda.MemoryPool>`_.
 
         Parameters
         ----------

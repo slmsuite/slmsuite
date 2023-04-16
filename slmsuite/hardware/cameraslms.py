@@ -1495,31 +1495,3 @@ class FourierSLM(CameraSLM):
             self.process_wavefront_calibration(**kwargs)
 
         return file_path
-
-    ### Measured Amplitude Helpers ###
-
-    def measured_amplitude_fit_gaussian(self, reset=False):
-        """
-        Fits the wavefront calibration's measured amplitude to a Gaussian.
-        Stores the result in the ``"measured_amplitude_fit_gaussian"`` field of
-        :attr:`wavefront_calibration`.
-
-        Parameters
-        ----------
-        reset : bool
-            Whether to overwrite the previously-computed fit, or return the cached fit.
-
-        Returns
-        -------
-        numpy.ndarray
-            The result of the fit in the form of arguments to
-            :meth:`~~slmsuite.misc.fitfunctions.gaussian2d()`.
-        """
-        assert "measured_amplitude" in self.wavefront_calibration, \
-            "measured_amplitude must be defined to fit it."
-
-        if reset or not "measured_amplitude_fit_gaussian" in self.wavefront_calibration:
-            fit = analysis.image_fit(self.wavefront_calibration["measured_amplitude"])
-            self.wavefront_calibration["measured_amplitude_fit_gaussian"] = fit
-
-        return self.wavefront_calibration["measured_amplitude_fit_gaussian"]

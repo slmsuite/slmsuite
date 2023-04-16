@@ -39,30 +39,35 @@ def take(
     centered : bool
         Whether to center the integration region on the ``vectors``.
         If ``False``, ``vectors`` indicates the upper-left corner of the integration region.
+        Defaults to ``True``.
     integrate : bool
         If ``True``, the spatial dimension are integrated (summed), yielding a result of the
-        same length as the number of vectors.
+        same length as the number of vectors. Defaults to ``False``.
     clip : bool
         Whether to allow out-of-range integration regions. ``True`` allows regions outside
         the valid area, setting the invalid region to ``np.nan``
         (or zero if the array datatype does not support ``np.nan``).
-        ``False`` throws an error upon out of range.
+        ``False`` throws an error upon out of range. Defaults to ``False``.
     return_mask : bool
         If ``True``, returns a boolean mask corresponding to the regions which are taken
         from. Defaults to ``False``. The average user will ignore this.
     plot : bool
         Calls :meth:`take_plot()` to visualize the images regions.
     mp : module
-        If ``images`` are :mod:`cupy` objects, then :mod:`cupy` must be passed as ``mp``.
+        If ``images`` are :mod:`cupy` objects, then :mod:`cupy` must be passed as
+        ``mp``. Very useful to minimize the cost of moving data between the GPU and CPU.
         Defaults to :mod:`numpy`.
+        Indexing variables inside `:meth:`take` still use :mod:`numpy` for speed, no
+        matter what module is used.
 
     Returns
     -------
-    numpy.ndarray
+    numpy.ndarray OR cupy.ndarray
         If ``integrate`` is ``False``, returns an array containing the images cropped
         from the regions of size ``(image_count, h, w)``.
         If ``integrate`` is ``True``, instead returns an array of floats of size ``(image_count,)``
         where each float corresponds to the :meth:`numpy.sum` of a cropped image.
+        If ``mp`` is :mod:`cupy`, then a ``cupy.ndarray`` is returned.
     """
     # Clean variables.
     if isinstance(size, REAL_TYPES):

@@ -61,6 +61,7 @@ and also list useful packages for code profiling which can be included via
 `IPython <https://ipython.org/>`_
 `magic <https://ipython.readthedocs.io/en/stable/interactive/tutorial.html#magics-explained>`_,
 along with other features like |autoreload|_ or |matplotlibs|_ which are packaged with IPython.
+To install recommended jupyter-related packages, use ``pip install -r requirements_ipython.txt``.
 
 - `jupyter <https://jupyter.org>`_
     - `line-profiler <https://github.com/pyutils/line_profiler>`_

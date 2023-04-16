@@ -1032,9 +1032,14 @@ def blob_detect(
 
 
 def blob_array_detect(
-    img, size, orientation=None, orientation_check=True, dft_threshold=50,
-    dft_pad_exponent=0, plot=False,
-    ):
+    img,
+    size,
+    orientation=None,
+    orientation_check=True,
+    dft_threshold=50,
+    dft_padding=0,
+    plot=False,
+):
     r"""
     Detect an array of spots and return the orientation as an affine transformation.
     Primarily used for calibration.
@@ -1064,9 +1069,9 @@ def blob_array_detect(
     dft_threshold : float in [0, 255]
         Minimum value of peak in blob detect of the DFT of `img` when `orientation` is `None`.
         Passed as kwarg to :meth:`blob_detect` with name `minThreshold`.
-    dft_pad_exponent : int
+    dft_padding : int
         Increases the dimensions of the padded `img` before the DFT is taken when `orientation`
-        is `None`. Dimensions are increased like `2 ** dft_pad_exponent`. Increasing
+        is `None`. Dimensions are increased like `2 ** dft_padding`. Increasing
         this value increases the k-space resolution of the DFT, and can improve orientation detection.
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
@@ -1087,7 +1092,7 @@ def blob_array_detect(
     else:                           # Otherwise, find a guess orientation.
         # FFT to find array pitch and orientation
         # Take the largest dimension rounded up to nearest power of 2.
-        fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img))))) * 2 ** dft_pad_exponent
+        fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img))))) * 2 ** dft_padding
         dft = np.fft.fftshift(np.fft.fft2(img_8it, s=[fftsize, fftsize]))
         fft_blur_size = (
             int(2 * np.ceil(fftsize / 1000)) + 1
@@ -1171,7 +1176,7 @@ def blob_array_detect(
             raise RuntimeError(
                 "Not enough spots found in DFT, expected 5. Try:\n"
                 "- increase exposure time\n"
-                "- increase `dft_pad_exponent`\n"
+                "- increase `dft_padding`\n"
                 "- decrease `dft_threshold`"
             )
 

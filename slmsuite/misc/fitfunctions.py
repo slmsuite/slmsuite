@@ -53,7 +53,8 @@ def hyperbola(z, w0, z0, zr):
 
 
 def cos(x, b, a, c, k=1):
-    r"""For fitting an offset sinusoid.
+    r"""
+    For fitting an offset sinusoid.
 
     .. math:: y(x) = c + \frac{a}{2} \left[1+\cos(kx+b) \right].
 
@@ -277,22 +278,23 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
 
 def tophat2d(xy, x0, y0, r, a=1):
     r"""
-    2D tophat distribution.
+    For fitting a 2D tophat distribution.
 
     Parameters
     ----------
     xy : numpy.ndarray
         Points to fit upon (x, y).
-    x0, y0 : real
+    x0, y0 : float
         Vector offset.
-    r : real
+    r : float
         Active radius of the tophat.
-    a : real
+    a : float
         Amplitude.
 
     Returns
     -------
     z : numpy.ndarray
+        Tophat fit evaluated at all ``(x,y)`` in ``xy``.
     """
     x = xy[0] - x0
     y = xy[1] - y0

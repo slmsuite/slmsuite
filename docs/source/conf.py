@@ -129,14 +129,6 @@ def skip(app, what, name, obj, would_skip, options):
     elif name[0] == '_':
         skip_ = True
 
-    deprecated = [
-        "axicon", "blaze", "hermite_gaussian", "ince_gaussian", "laguerre_gaussian",
-        "lens", "matheui_gaussian", "zernike", "zernike_sum"
-    ]
-    if name in deprecated and obj.__module__ == "slmsuite.holography.toolbox":
-        # print("obj", obj, obj.__module__)
-        skip_ = True
-
     return skip_
 
 examples_repo_owner = "QPG-MIT"

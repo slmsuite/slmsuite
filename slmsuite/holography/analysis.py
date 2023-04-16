@@ -118,7 +118,7 @@ def take(
 
         return canvas
     else:
-        # Take the data, depending on the
+        # Take the data, depending on the shape of the images.
         if len(shape) == 2:
             result = images[np.newaxis, integration_y, integration_x]
         elif len(shape) == 3:
@@ -134,9 +134,9 @@ def take(
         else:
             pass
 
-        if integrate:  # Sum over the integration axis
+        if integrate:  # Sum over the integration axis.
             return mp.squeeze(mp.sum(result, axis=-1))
-        else:  # Reshape the integration axis
+        else:  # Reshape the integration axis.
             return mp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
@@ -149,17 +149,19 @@ def take_plot(images):
     images : numpy.ndarray
         Stack of 2D images, usually a :meth:`take()` output.
     """
+    # Gather helper variables and set the min and max of all the subplots.
     (img_count, sy, sx) = np.shape(images)
     M = int(np.ceil(np.sqrt(img_count)))
-
-    plt.figure(figsize=(12, 12))
 
     sx = sx / 2.0 - 0.5
     sy = sy / 2.0 - 0.5
     extent = (-sx, sx, -sy, sy)
 
-    vmin = np.min(images)
-    vmax = np.max(images)
+    vmin = np.nanmin(images)
+    vmax = np.nanmax(images)
+
+    # Make the figure and subplots.
+    plt.figure(figsize=(12, 12))
 
     for x in range(img_count):
         ax = plt.subplot(M, M, x + 1)

@@ -85,10 +85,6 @@ class FourierSLM(CameraSLM):
         in the optical system (phase_correction) and measures the amplitude distribution
         of power on the SLM (measured_amplitude).
         See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
-    wavefront_calibration : dict or None
-        Processed derivative of
-        :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`.
-        See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`.
     """
 
     def __init__(self, *args, **kwargs):
@@ -96,7 +92,6 @@ class FourierSLM(CameraSLM):
         super().__init__(*args, **kwargs)
 
         self.fourier_calibration = None
-        self.wavefront_calibration = None
         self.wavefront_calibration_raw = None
 
     ### Settle Time Measurement ###
@@ -187,7 +182,7 @@ class FourierSLM(CameraSLM):
         Project and fit a SLM Fourier space (``"knm"``) grid onto
         camera pixel space (``"ij"``) for affine fitting.
         Sets :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`.
-        A an array produced by
+        An array produced by
         :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
         is projected for analysis by
         :meth:`~slmsuite.holography.analysis.blob_array_detect()`.
@@ -195,12 +190,15 @@ class FourierSLM(CameraSLM):
         Important
         ~~~~~~~~~
         For best results, array_pitch should be integer data. Otherwise non-uniform
-        rounding to the SLM's computational k-space will result in non-uniform pitch and
+        rounding to the SLM's computational :math:`k`-space will result in non-uniform pitch and
         a bad fit.
 
         Parameters
         ----------
-        array_shape, array_pitch, array_center
+        array_shape, array_pitch
+            Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
+            **in the** ``"knm"`` **basis.**
+        array_center
             Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
             **in the** ``"knm"`` **basis.**  ``array_center`` is not passed directly, and is
             processed as being relative to the center of ``"knm"`` space, the position
@@ -241,6 +239,10 @@ class FourierSLM(CameraSLM):
             **kwargs
         )
 
+        # The rounding of the values might cause the center to shift from the desired
+        # value. To compensate for this, we find the true written center.
+        # The first two points are ignored for balance against the parity check omission
+        # of the last two points.
         array_center = np.mean(hologram.spot_kxy_rounded[:, 2:], axis=1)
 
         if plot:
@@ -266,10 +268,10 @@ class FourierSLM(CameraSLM):
             else:
                 self.cam.autoexposure()
 
-        #self.cam.flush()
+        self.cam.flush()
         img = self.cam.get_image()
 
-        # 2) Get orientation of projected array
+        # Get orientation of projected array
         orientation = analysis.blob_array_detect(img, array_shape, plot=plot)
 
         a = format_2vectors(array_center)
@@ -371,7 +373,10 @@ class FourierSLM(CameraSLM):
 
         Parameters
         ----------
-        array_shape, array_pitch, array_center
+        array_shape, array_pitch
+            Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
+            **in the** ``"knm"`` **basis.**
+        array_center
             Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
             **in the** ``"knm"`` **basis.**  ``array_center`` is not passed directly, and is
             processed as being relative to the center of ``"knm"`` space, the position
@@ -556,8 +561,7 @@ class FourierSLM(CameraSLM):
         from this point, the less ideal the correction is.
         Sets :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`.
         Run :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`
-        after to produce the usable
-        :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration`.
+        after to produce the usable calibration which is written to the SLM.
         This procedure measures the wavefront phase and amplitude.
         If only amplitude calibration is desired,
         set ``phase_steps=0`` to omit the phase calibration.
@@ -712,12 +716,10 @@ class FourierSLM(CameraSLM):
         # Remove the current calibration
         measured_amplitude = self.slm.measured_amplitude
         phase_correction = self.slm.measured_amplitude
-        wavefront_calibration = self.wavefront_calibration
 
         if fresh_calibration:
             self.slm.measured_amplitude = None
             self.slm.phase_correction = None
-            self.wavefront_calibration = None
 
         def superpixels(index,
                         reference=None,
@@ -1069,7 +1071,6 @@ class FourierSLM(CameraSLM):
             if test_superpixel is not None:
                 self.slm.measured_amplitude = measured_amplitude
                 self.slm.phase_correction = phase_correction
-                self.wavefront_calibration = wavefront_calibration
 
             if return_movie: return frames
 
@@ -1154,8 +1155,8 @@ class FourierSLM(CameraSLM):
         ):
         """
         Processes :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
-        into the desired phase correction and amplitude measurement. Sets
-        :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration`.
+        into the desired phase correction and amplitude measurement. Applies these
+        parameters to the respective variables in the SLM if ``apply`` is ``True``.
 
         Parameters
         ----------
@@ -1166,8 +1167,8 @@ class FourierSLM(CameraSLM):
             ignored in the final data, depending upon the rsquared value of the fit.
             Should be within [0, 1].
         apply : bool
-            Whether to apply the processed calibration to :attr:`wavefront_calibration`
-            and the associated SLM. Otherwise, this function only returns and maybe
+            Whether to apply the processed calibration to the associated SLM.
+            Otherwise, this function only returns and maybe
             plots these results. Defaults to ``True``.
         plot : bool
             Whether to enable debug plots.
@@ -1175,7 +1176,8 @@ class FourierSLM(CameraSLM):
         Returns
         -------
         dict
-            :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration`.
+            A dictionary consisting of the ``measured_amplitude`` and
+            ``phase_correction``. With the same names as keys.
         """
         # Step 0: Initialize helper variables and functions.
         data = self.wavefront_calibration_raw
@@ -1383,9 +1385,8 @@ class FourierSLM(CameraSLM):
         wavefront_calibration = {   "phase_correction":phase_fin,
                                     "measured_amplitude":amp_large}
 
-        # Step 4: Load the correction to the SLM and wavefront_calibration
+        # Step 4: Load the correction to the SLM
         if apply:
-            self.wavefront_calibration = wavefront_calibration
             self.slm.phase_correction = phase_fin
             self.slm.measured_amplitude = amp_large
 

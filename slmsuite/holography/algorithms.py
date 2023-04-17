@@ -98,6 +98,7 @@ except ImportError:
 # Import helper functions
 from slmsuite.holography import analysis, toolbox
 from slmsuite.misc.math import REAL_TYPES
+from slmsuite.misc.files import write_h5, read_h5
 from slmsuite.misc.fitfunctions import gaussian2d
 
 # List of algorithms and default parameters
@@ -1400,6 +1401,28 @@ class Hologram:
         self._calculate_stats_computational(stats, stat_groups)
 
         self._update_stats_dictionary(stats)
+
+    def export_stats(self, file_path):
+        """
+        Uses :meth:`write_h5` to export the statistics hierarchy to a given h5 file.
+
+        Parameters
+        ----------
+        file_path : str
+            Full path to the file to read the data from.
+        """
+        write_h5(file_path, self.stats)
+
+    def import_stats(self, file_path):
+        """
+        Uses :meth:`write_h5` to import the statistics hierarchy from a given h5 file.
+
+        Parameters
+        ----------
+        file_path : str
+            Full path to the file to read the data from.
+        """
+        self.stats = read_h5(file_path)
 
     # Visualization helper functions.
     @staticmethod

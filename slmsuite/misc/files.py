@@ -166,31 +166,41 @@ def latest_path(path, name, extension=None, kind="file", digit_count=5):
 def read_h5(file_path, decode_bytes=True):
     """
     Read data from an h5 file into a dictionary.
+    In the case of more complicated h5 hierarchy, a dictionary of dictionaries is returned.
 
     Parameters
     ----------
     file_path : str
         Full path to the file to read the data from.
-
-    Returns
-    -------
-    data : dict
-        Dictionary of data stored in the file.
     decode_bytes : bool
         Whether or not objects with type `bytes` should be decoded.
         By default HDF5 writes strings as bytes objects; this functionality
         will make strings read back from the file `str` type.
+
+    Returns
+    -------
+    data : dict
+        Dictionary of the data stored in the file.
     """
-    data = {}
+    def recurse(group):
+        data = {}
+
+        for key in group.keys():
+            if isinstance(group[key], h5py.Group):
+                data[key] = recurse(group[key])
+            else:
+                data_ = group[key][()]
+                if decode_bytes:
+                    if isinstance(data_, bytes):
+                        data_ = bytes.decode(data_)
+                    elif isinstance(data_, np.ndarray) and isinstance(data_[0], bytes):
+                        data_ = np.vectorize(bytes.decode)(data_)
+                data[key] = data_
+
+        return data
+
     with h5py.File(file_path, "r") as file_:
-        for key in file_.keys():
-            data_ = file_[key][()]
-            if decode_bytes:
-                if isinstance(data_, bytes):
-                    data_ = bytes.decode(data_)
-                elif isinstance(data_, np.ndarray) and isinstance(data_[0], bytes):
-                    data_ = np.vectorize(bytes.decode)(data_)
-            data[key] = data_
+        data = recurse(file_)
 
     return data
 
@@ -209,6 +219,13 @@ def write_h5(file_path, data, mode="w"):
     mode : str
         The mode to open the file with.
     """
-    with h5py.File(file_path, mode) as file_:
+    def recurse(group, data):
         for key in data.keys():
-            file_[key] = data[key]
+            if isinstance(data[key], dict):
+                new_group = group.create_group(key)
+                recurse(new_group, data[key])
+            else:
+                group[key] = data[key]
+
+    with h5py.File(file_path, mode) as file_:
+        recurse(file_, data)

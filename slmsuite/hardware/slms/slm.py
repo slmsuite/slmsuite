@@ -542,7 +542,7 @@ class SLM:
 
     def spot_radius_kxy(self):
         """
-        Measures the (average) radius of the farfield spot in the ``"kxy"`` basis.
+        Approximates the expected radius of farfield spots in the ``"kxy"`` basis based on the near-field amplitude distribution :attr:`measured_amplitude`.
 
         Returns
         -------

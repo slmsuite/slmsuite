@@ -37,7 +37,7 @@ class MMCore(Camera):
         ----------
         config : str
             Name of the config file corresponding to the desired camera. This is assumed to be
-            a ``.cfg`` file stored in the Micrmanager ``path`` (see below). ``.cfg`` may be included
+            a ``.cfg`` file stored in the Micro-Manager ``path`` (see below). ``.cfg`` may be included
             or omitted, but the :attr:`name` of the camera will be without it.
         path : str
             Directory of the Micro-Manager installation. Defaults to the directory of a default

@@ -388,7 +388,9 @@ def _zernike_coefficients(n, m):
 def _determine_source_radius(grid, w=None):
     r"""
     Helper function to determine the assumed Gaussian source radius for various
-    structured light conversion functions.  For instance, see the ``w`` parameter in
+    structured light conversion functions. This is important because structured light
+    conversions need knowledge of the size of the incident Gaussian beam.
+    For example, see the ``w`` parameter in
     :meth:`~slmsuite.holography.toolbox.laguerre_gaussian()`.
 
     Note
@@ -473,9 +475,7 @@ def hermite_gaussian(grid, n, m, w=None):
     r"""
     Returns the phase farfield for a
     `Hermite-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Hermite-Gaussian_modes>`_
-    beam.
-
-    Ref: https://doi.org/10.1364/AO.54.008444
+    beam. Uses the formalism described by `this paper <https://doi.org/10.1364/AO.54.008444>`_.
 
     Parameters
     ----------
@@ -516,14 +516,10 @@ def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
     **(NotImplemented)** Returns the phase farfield for an
     `Ince-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Ince-Gaussian_modes>`_
     beam.
-
-    Ref: https://doi.org/10.1364/OL.29.000144
-
-    Ref: https://doi.org/10.1364/AO.54.008444
-
-    Ref: https://doi.org/10.3390/jimaging8050144
-
-    Ref: https://en.wikipedia.org/wiki/Elliptic_coordinate_system
+    `Consider <https://doi.org/10.1364/OL.29.000144>`_
+    `using <https://doi.org/10.1364/AO.54.008444>`_
+    `these <https://doi.org/10.3390/jimaging8050144>`_
+    `references <https://en.wikipedia.org/wiki/Elliptic_coordinate_system>`_.
 
     Parameters
     ----------
@@ -572,9 +568,8 @@ def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
 
 def matheui_gaussian(grid, r, q, w=None):
     """
-    **(NotImplemented)** Returns the phase farfield for a Matheui-Gaussian beam.
-
-    Ref: https://doi.org/10.1364/AO.49.006903
+    **(NotImplemented)** Returns the phase farfield for a
+    `Matheui-Gaussian <https://doi.org/10.1364/AO.49.006903>`_ beam.
 
     Returns
     -------
@@ -582,7 +577,7 @@ def matheui_gaussian(grid, r, q, w=None):
         The phase for this function.
     """
     (x_grid, y_grid) = _process_grid(grid)
-
     w = _determine_source_radius(grid, w)
+
     raise NotImplementedError()
 

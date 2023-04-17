@@ -105,7 +105,7 @@ from slmsuite.misc.fitfunctions import gaussian2d
 #      stability at the cost of slower convergence. The default (0.8)
 #      is an empirically derived value for a reasonable tradeoff.
 ALGORITHM_DEFAULTS = {
-    "GS":             {"feedback" : "computational"},    # No feedback for bare GS, but initializes var.
+    "GS" :            {"feedback" : "computational"},    # No feedback for bare GS, but initializes var.
     "WGS-Leonardo" :  {"feedback" : "computational",
                         "feedback_exponent" : 0.8},
     "WGS-Kim" :       {"feedback" : "computational",
@@ -319,7 +319,7 @@ class Hologram:
             )
 
         # 1.5) Determine the shape of the SLM. We have three sources of this shape, which are
-        # optional to pass, but must be self-consistant if passed:
+        # optional to pass, but must be self-consistent if passed:
         # a) The shape of the nearfield amplitude
         # b) The shape of the seed nearfield phase
         # c) slm_shape itself (which is set to the shape of a passed SLM, if given).
@@ -407,9 +407,9 @@ class Hologram:
     def reset(self, reset_phase=True, reset_flags=False):
         r"""
         Resets the hologram to an initial state. Does not restore the preconditioned ``phase``
-        that may have been passed to the constructor. Also uses the current ``target``
-        rather than the ``target`` that may have been passed to the constructor (e.g.
-        includes :meth:`.refine_offset()` changes, etc).
+        that may have been passed to the constructor (as this information is lost upon optimization).
+        Also uses the current ``target`` rather than the ``target`` that may have been
+        passed to the constructor (e.g. includes current :meth:`.refine_offset()` changes, etc).
 
         Parameters
         ----------
@@ -472,13 +472,15 @@ class Hologram:
         By default, pads to the smallest square power of two that
         encapsulates the original ``slm_shape``.
 
-        Future: Add a setting to pad based on available memory
-        (see :meth:`_calculate_memory_constrained_shape()`).
-
         Tip
         ~~~
         See also the first tip in the constructor of :class:`Hologram` for more information
         about the importance of padding.
+
+        Note
+        ~~~~
+        Under development: a parameter to pad based on available memory
+        (see :meth:`_calculate_memory_constrained_shape()`).
 
         Parameters
         ----------
@@ -642,14 +644,14 @@ class Hologram:
           iterative algorithms, the entire Fourier-domain unpatterned field is replaced with zeros.
           This is disadvantageous because a desired farfield pattern might not be especially
           compatible with a given nearfield amplitude, or otherwise. MRAF enables
-          "noise regions" where the field is **not** replaced with zeros and is instead
-          maintains the some fraction of the given farfield. In practice, MRAF is
+          "noise regions" where some fraction of the given farfield is **not** replaced
+          with zeros and instead is allowed to vary. In practice, MRAF is
           enabled by setting parts of the :attr:`target` to ``nan``; these regions act
           as the noise regions. The ``"mraf_factor"`` flag in
           :attr:`~slmsuite.holography.algorithms.Hologram.flags`
           allows the user to partially attenuate the noise regions.
-          A factor of 0 fully attenuates the noise region (normal WGS behavior)
-          A factor of 1 does not attenuate (the default).
+          A factor of 0 fully attenuates the noise region (normal WGS behavior).
+          A factor of 1 does not attenuate the noise region at all (the default).
           Middle ground is recommended, but is application-dependent as a
           tradeoff between improving pattern fidelity and maintaining pattern efficiency.
 
@@ -705,7 +707,7 @@ class Hologram:
             Type of feedback to use during optimization, for instance when weighting in ``"WGS"``.
             For direct instances of :class:`Hologram`, this can only
             be ``"computational"`` feedback. Subclasses support more types of feedback.
-            The full list of supported feedback is the following:
+            Supported feedback options include the following:
 
             - ``"computational"`` Uses the the projected farfield pattern (transform of
               the complex nearfield) as feedback.
@@ -736,10 +738,10 @@ class Hologram:
         """
         # 0) Check and record method.
         methods = list(ALGORITHM_DEFAULTS.keys())
-        if not method in list(ALGORITHM_DEFAULTS.keys()):
+        if not method in methods:
             raise ValueError(
                 "algorithms.py: unrecognized method '{}'.\n"
-                "Valid methods include {}".format(method, list(ALGORITHM_DEFAULTS.keys()))
+                "Valid methods include {}".format(method, methods)
             )
         self.method = method
 
@@ -788,11 +790,11 @@ class Hologram:
         if verbose and maxiter > 1:
             iterations = tqdm(iterations)
 
-        # 3) Switch between optimization methods.
+        # 3) Switch between optimization methods (currently only GS- or WGS-type is supported).
         if "GS" in method:
             self.GS(iterations, callback)
 
-    # Optimization methods (currently only GS-type is supported).
+    # Optimization methods (currently only GS- or WGS-type is supported).
     def GS(self, iterations, callback):
         """
         GPU-accelerated Gerchberg-Saxton (GS) iterative phase retrieval.
@@ -827,39 +829,39 @@ class Hologram:
             See :meth:`.optimize()`.
         """
         # Proxy to initialize nearfield with the correct shape and correct (complex) type.
-        complex_type = 1j * self.dtype(1)
-        nearfield = cp.zeros(self.shape, dtype=type(complex_type))
+        nearfield = cp.zeros(self.shape, dtype=type(1j * self.dtype(1)))
+
+        # Precompute MRAF helper variables.
         mraf_variables = self._mraf_helper_routines()
 
         # Helper variables for speeding up source phase and amplitude fixing.
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
         for _ in iterations:
-            # 1) Fix the relevant part of the nearfield amplitude to the source amplitude.
+            # 1) Nearfield -> farfield
+            # 1.1) Fix the relevant part of the nearfield amplitude to the source amplitude.
             # Everything else is zero because power outside the SLM is assumed unreflected.
             # This is optimized for when shape is much larger than slm_shape.
             nearfield.fill(0)
             nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
+
+            # 1.2) FFT to move to the farfield.
             farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
 
             # 2) Midloop: caching, prep
-            # 2.1) Cache amp_ff for weighting (if None, will init; otherwise in-place).
-            self.amp_ff = cp.abs(farfield, out=self.amp_ff)
+            # 2.1) Before callback(), cleanup such that it can access updated amp_ff and images.
+            self._midloop_cleaning(farfield)
 
-            # 2.2) Erase images from the past loop. FUTURE: Make better and faster.
-            if hasattr(self, "img_ij"):     self.img_ij = None
-            if hasattr(self, "img_knm"):    self.img_knm = None
-
-            # 2.3) Run step function if present and check termination conditions.
+            # 2.2) Run step function if present and check termination conditions.
             if callback is not None:
                 if callback(self):
                     break
 
-            # 2.4) Evaluate method-specific routines, stats, etc.
+            # 2.3) Evaluate method-specific routines, stats, etc.
             # If you want to add new functionality to GS, do so here to keep the main loop clean.
             self._GS_farfield_routines(farfield, mraf_variables)
 
-            # 3) Move to nearfield.
+            # 3) Farfield -> nearfield.
             nearfield = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho"))
 
             # 3.1) Grab the phase from the complex nearfield.
@@ -876,7 +878,7 @@ class Hologram:
         # Update the final far-field
         nearfield.fill(0)
         nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
-        farfield = cp.fft.fftshift(cp.fft.fft2(nearfield, norm="ortho"))
+        farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
         self.amp_ff = cp.abs(farfield)
         self.phase_ff = cp.angle(farfield)
 
@@ -898,7 +900,7 @@ class Hologram:
         mraf_factor = self.flags.get("mraf_factor", None)
         if mraf_factor is not None:
             if mraf_factor < 0:
-                mraf_factor = None
+                raise ValueError("mraf_factor={} should not be negative.".format(mraf_factor))
 
         # `where=` functionality is needed for MRAF, but this is a undocumented/new cupy feature.
         # We test whether it is available https://github.com/cupy/cupy/pull/7281
@@ -920,10 +922,18 @@ class Hologram:
         return {
             "noise_region":noise_region,
             "signal_region":signal_region,
-            "mraf_enabled":mraf_enabled, # and mraf_factor is not None,
+            "mraf_enabled":mraf_enabled,
             "mraf_factor":mraf_factor,
             "where_working":where_working
         }
+
+    def _midloop_cleaning(self, farfield):
+        # 2.1) Cache amp_ff for weighting (if None, will init; otherwise in-place).
+        self.amp_ff = cp.abs(farfield, out=self.amp_ff)
+
+        # 2.2) Erase images from the past loop. FUTURE: Make better and faster.
+        if hasattr(self, "img_ij"):     self.img_ij = None
+        if hasattr(self, "img_knm"):    self.img_knm = None
 
     def _GS_farfield_routines(self, farfield, mraf_variables):
         # Update statistics
@@ -1059,14 +1069,14 @@ class Hologram:
 
     def extract_phase(self):
         r"""
-        Collects the current near-field phase from the GPU with :meth:`cupy.ndarray.get()`.
+        Collects the current nearfield phase from the GPU with :meth:`cupy.ndarray.get()`.
         Also shifts the :math:`[-\pi, \pi]` range of :meth:`numpy.arctan2()` to :math:`[0, 2\pi]`
         for faster writing to the SLM (see :meth:`~slmsuite.hardware.slms.slm.SLM.write()`).
 
         Returns
         -------
         numpy.ndarray
-            Current near-field phase computed by GS.
+            Current nearfield phase computed by GS.
         """
         if cp != np:
             return self.phase.get() + np.pi
@@ -1074,12 +1084,12 @@ class Hologram:
 
     def extract_farfield(self):
         r"""
-        Collects the current complex far-field from the GPU with :meth:`cupy.ndarray.get()`.
+        Collects the current complex farfield from the GPU with :meth:`cupy.ndarray.get()`.
 
         Returns
         -------
         numpy.ndarray
-            Current near-field phase computed by GS.
+            Current farfield computed by GS.
         """
         nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), self.shape)
         farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
@@ -1405,7 +1415,7 @@ class Hologram:
     @staticmethod
     def _compute_limits(source, epsilon=0, limit_padding=0.1):
         """
-        Returns the retangular region which crops around non-zero pixels in the
+        Returns the rectangular region which crops around non-zero pixels in the
         ``source`` image. See :meth:`plot_farfield()`.
         """
         limits = []
@@ -1863,7 +1873,7 @@ class Hologram:
         size : int
             Desired number of bytes in the pool. Passed to :meth:`cupy.cuda.MemoryPool.set_limit()`.
         fraction : float
-            Fraction of availible memory to use. Passed to :meth:`cupy.cuda.MemoryPool.set_limit()`.
+            Fraction of available memory to use. Passed to :meth:`cupy.cuda.MemoryPool.set_limit()`.
         """
         if cp == np:
             raise ValueError("algorithms.py: Cannot set mempool for numpy. Need cupy.")
@@ -1977,7 +1987,7 @@ class FeedbackHologram(Hologram):
         kwargs
             See :meth:`Hologram.__init__`.
         """
-        # Use the Hologram construtor to initialize self.target with proper shape,
+        # Use the Hologram constructor to initialize self.target with proper shape,
         # pass other arguments (esp. slm_shape).
         self.cameraslm = cameraslm
         if self.cameraslm is not None:
@@ -2206,7 +2216,7 @@ class FeedbackHologram(Hologram):
         Returns
         -------
         numpy.ndarray
-            Euclidian pixel error in the ``"ij"`` basis for each spot.
+            Euclidean pixel error in the ``"ij"`` basis for each spot.
         """
 
         raise NotImplementedError()
@@ -2274,7 +2284,7 @@ class SpotHologram(FeedbackHologram):
 
     Tip
     ~~~
-    Qualtiy of life features to generate noise regions for mixed region amplitude
+    Quality of life features to generate noise regions for mixed region amplitude
     freedom (MRAF) algorithms are supported. Specifically, set ``null_region``
     parameters to help specify where the noise region is not.
 
@@ -2296,7 +2306,7 @@ class SpotHologram(FeedbackHologram):
     spot_kxy_rounded, spot_ij_rounded : array_like of float
         Once :attr:`spot_knm_rounded` is rounded, the original :attr:`spot_kxy`
         and :attr:`spot_ij` are no longer accurate. Transformations are again used
-        to backcompute the positons in the ``"ij"`` and ``"kxy"`` bases corresponding
+        to backcompute the positions in the ``"ij"`` and ``"kxy"`` bases corresponding
         to the true computational location of a given spot.
         These vectors are floats.
     spot_amp : array_like of float
@@ -2308,7 +2318,7 @@ class SpotHologram(FeedbackHologram):
         the user must supply external data. This data is transferred through this
         attribute. For iterative feedback, have the ``callback()`` function set
         :attr:`external_spot_amp` dynamically. By default, this variable is set to even
-        distrubution of amplitude.
+        distribution of amplitude.
     spot_integration_width_knm : int
         For spot-specific feedback methods, better SNR is achieved when integrating over
         many farfield pixels. This variable stores the width of the integration region
@@ -2322,7 +2332,7 @@ class SpotHologram(FeedbackHologram):
         with quality of life features to select points where power is undesired. These
         points are stored in :attr:`null_knm` with shape ``(2, M)`` in the style of
         :meth:`~slmsuite.holography.toolbox.format_2vectors()`. A region around these
-        points is set to zero (null) and not allowed to paritipate in the noise region.
+        points is set to zero (null) and not allowed to participate in the noise region.
     null_radius_knm : float
         The radius in ``"knm"`` space around the points :attr:`null_knm` to zero or null
         (prevent from participating in the ``nan`` noise region).
@@ -2411,7 +2421,7 @@ class SpotHologram(FeedbackHologram):
 
             Defaults to ``False``. This is an experimental feature and should be used
             with caution. Currently, there are issues with the initial phase causing
-            some spots to be perminantly attenuated.
+            some spots to be permanently attenuated.
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
@@ -2693,7 +2703,7 @@ class SpotHologram(FeedbackHologram):
              - If ``"knm"``, this is ``(shape[1], shape[0])/2``.
              - If ``"kxy"``, this is ``(0,0)``.
              - If ``"ij"``, this is the pixel position of the zeroth order on the
-               camera (calculated via Fourier calibraiton).
+               camera (calculated via Fourier calibration).
 
         basis : str
             See :meth:`__init__()`.

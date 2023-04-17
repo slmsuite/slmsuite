@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from functools import reduce
-from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
 from scipy.optimize import curve_fit, minimize
 
 from slmsuite.holography.toolbox import format_2vectors
@@ -184,7 +183,7 @@ def image_remove_field(images, deviations=1, out=None):
     Zeros the field of a stack of images such that moment calculations will succeed.
     Consider, for example, a small spot on a field with strong background.
     Moment calculations in this situation will dominantly measure the moments
-    of the rectangular field. This function zeros the image below some threshold.
+    of the background (i.e. the field). This function zeros the image below some threshold.
     This threshold is set to either the mean plus ``deviations`` standard deviations,
     computed uniquely for each image, or the median of each image if ``deviations``
     is ``None``. This is equivalent to background subtraction.
@@ -214,7 +213,7 @@ def image_remove_field(images, deviations=1, out=None):
     if not isinstance(images.dtype, np.floating):
         images = np.array(images, copy=False, dtype=float)  # Hack to prevent integer underflow.
 
-    # Pasrse out.
+    # Parse out.
     if out is None:
         out = np.copy(images)
     elif out is not images:
@@ -391,8 +390,7 @@ def image_normalize(images, nansum=False, remove_field=False):
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
     remove_field : bool
-        Whether to apply :meth:`.image_remove_field()` to avoid dominating the moments by
-        the field.
+        Whether to apply :meth:`.image_remove_field()` to avoid background-dominated moments.
 
     Returns
     -------
@@ -591,19 +589,17 @@ def image_ellipticity_angle(variances):
     m11 = variances[2, :]
 
     # Some quick math (see image_ellipticity).
-    # half_trace = (m20 + m02) / 2
-    # determinant = m20 * m02 - m11 * m11
+    half_trace = (m20 + m02) / 2
+    determinant = m20 * m02 - m11 * m11
 
-    # eig_plus = half_trace + np.sqrt(np.square(half_trace) - determinant)
+    eig_plus = half_trace + np.sqrt(np.square(half_trace) - determinant)
 
-    # We know that M * v = lambda * v. This yields a system of equations:
-    #   m20 * x + m11 * y = lambda * x
-    #   m11 * x + m02 * y = lambda * y
+    # We know that M * v = eig_plus * v. This yields a system of equations:
+    #   m20 * x + m11 * y = eig_plus * x
+    #   m11 * x + m02 * y = eig_plus * y
     # We're trying to solve for angle, which is just atan(x/y). We can solve for x/y:
-    #   m11 * x = (lambda - m02) * y        ==>         x/y = (lambda - m02) / m11
-    # return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
-
-    return .5 * np.arctan2(m11, m20 - m02, where=m20 != m02, out=np.zeros_like(m11))
+    #   m11 * x = (eig_plus - m02) * y        ==>         x/y = (eig_plus - m02) / m11
+    return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
 def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=False):
@@ -774,7 +770,6 @@ def fit_affine(x, y, guess_affine=None, plot=False):
     ----------
     x, y : array_like
         Array of vectors of shape ``(2, N)`` in the style of :meth:`format_2vectors()`.
-        Is
     plot : bool
         Whether to produce a debug plot.
 
@@ -798,14 +793,14 @@ def fit_affine(x, y, guess_affine=None, plot=False):
         x_ = x - xc
         y_ = y - yc
 
-        # Points very close to the centroid have disproporte influence on the guess.
+        # Points very close to the centroid have disproportionate influence on the guess.
         # Ignore the points which are closer than a median-dependent threshold.
         threshold = np.median(np.sqrt(np.sum(np.square(x_), axis=0))) / 2
 
         # Generate a guess transformation.
         nan_list = np.full_like(y_[0,:], np.nan)
 
-        # This could probably be vectorized more.
+        # This could probably be vectorized more. Also not sure if all corner cases work.
         M_guess = np.array([
             [
                 np.nanmean(np.divide(y_[0,:], x_[0,:], where=x_[0,:] > threshold, out=nan_list.copy())),
@@ -841,7 +836,7 @@ def fit_affine(x, y, guess_affine=None, plot=False):
 
     guess = (M_guess[0,0], M_guess[0,1], M_guess[1,0], M_guess[1,1], b_guess[0,0], b_guess[1,0])
 
-    try:        # Try with default scipy minimization.
+    try:        # Try with default scipy minimization. (Future: better opt than minimize?).
         m = minimize(err, x0=guess)
         p = [float(pp) for pp in m.x]
 
@@ -904,7 +899,7 @@ def blob_detect(
         Axes for plotting.
     show : bool
         Whether or not to show the plot.
-    kwargs
+    **kwargs
        Extra arguments for :class:`cv2.SimpleBlobDetector`.
 
     Returns
@@ -979,6 +974,7 @@ def blob_detect(
         blob_ymax = np.max(blob_ys)
         zoom_padx = 2 * (blob_xmax - blob_xmin) / blob_count
         zoom_pady = 2 * (blob_ymax - blob_ymin) / blob_count
+
         # Plot setup.
         if fig is None and axs is None:
             if zoom:
@@ -991,10 +987,12 @@ def blob_detect(
         else:
             ax0, = axs
         fig.suptitle(title)
+
         # Full image.
         vmin = np.min(img_8it)
         vmax = np.max(img_8it)
         im = ax0.imshow(img_8it, vmin=vmin, vmax=vmax)
+
         # Zoomed Image.
         if zoom:
             ax1.imshow(img_8it, vmin=vmin, vmax=vmax)
@@ -1017,6 +1015,7 @@ def blob_detect(
             ax0.set_title("Full")
         else:
             fig.colorbar(im, ax=ax0)
+
         # Blob patches
         for blob_idx in range(blob_count):
                 patch = matplotlib.patches.Circle(
@@ -1075,8 +1074,9 @@ def blob_array_detect(
         Passed as kwarg to :meth:`blob_detect` with name `minThreshold`.
     dft_padding : int
         Increases the dimensions of the padded `img` before the DFT is taken when `orientation`
-        is `None`. Dimensions are increased like `2 ** dft_padding`. Increasing
-        this value increases the k-space resolution of the DFT, and can improve orientation detection.
+        is `None`. Dimensions are increased by a factor of `2 ** dft_padding`.
+        Increasing this value increases the k-space resolution of the DFT,
+        and can improve orientation detection.
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
 
@@ -1094,8 +1094,9 @@ def blob_array_detect(
     if orientation is not None:     # If an orientation was provided, use this as a guess.
         M = orientation["M"]
     else:                           # Otherwise, find a guess orientation.
-        # FFT to find array pitch and orientation
+        # FFT to find array pitch and orientation.
         # Take the largest dimension rounded up to nearest power of 2.
+        # Future: clean this up to behave like other parts of the package.
         fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img))))) * 2 ** dft_padding
         dft = np.fft.fftshift(np.fft.fft2(img_8it, s=[fftsize, fftsize]))
         fft_blur_size = (
@@ -1177,52 +1178,56 @@ def blob_array_detect(
             plt.show()
 
         if dft_fit_failed:
-            raise RuntimeError(
-                "Not enough spots found in DFT, expected 5. Try:\n"
-                "- increase exposure time\n"
-                "- increase `dft_padding`\n"
-                "- decrease `dft_threshold`"
+            blobs, _ = blob_detect(
+                dft_amp.copy(),
+                plot=True,
+                minThreshold=dft_threshold,
+                thresholdStep=thresholdStep,
             )
 
-        # Future: improve this part of the algorithm. It sometimes makes mistakes.
-        # Future: @tpr0p thinks we should just blob detect `img` and then
-        # fit a Bravais lattice to it with least squares. this will also
-        # make it more obvious to the user how to set the threshold value.
-        # it's not clear on first inspection which blobs in the DFT you're
-        # supposed to detect.
+            raise RuntimeError(
+                "Not enough spots found in DFT, expected 5. Try:\n"
+                "- increasing exposure time\n"
+                "- increasing `dft_padding`\n"
+                "- decreasing `dft_threshold`"
+            )
 
-        # 2.1) Get the max point (DTF center) and its next four neighbors.
-        # Future: using np.fft.fftfreq and np.fft.fftshift
-        # might be more straightforward and rely less on custom equations
+        # Future: Revamp to improve this part of the algorithm.
+        #
+        # Failure paths include:
+        # - Accidentally finding 5 points in a line on one axis instead of 5 points
+        #   making a plus sign.
+        # - Adjacent points being drowned out by the strength of the 0th order.
+        # - etc.
+        #
+        # Potential paths for revamp:
+        # - fit a Bravais lattice more directly
+        # - e.g. using np.fft.fftfreq and np.fft.fftshift
+
+        # 2.1) Get the max point (DTF 0th order) and its next four neighbors.
         blob_dist = np.zeros(len(blobs))
         k = np.zeros((len(blobs), 2))
         for i, blob in enumerate(blobs):
             k[i, 0] = -1 / 2 + blob.pt[0] / dft_amp.shape[1]
             k[i, 1] = -1 / 2 + blob.pt[1] / dft_amp.shape[0]
-            # Assumes max at center
+
+            # Assumes max at 0th order.
             blob_dist[i] = np.linalg.norm(
                 np.array([k[i, 0], k[i, 1]])
             )
 
-        # Future: this sorting isn't used. also blobs are already
-        # sorted by dist to center, see :meth:`blob_detect` with
-        # default `filter` argument.
         sort_ind = np.argsort(blob_dist)[:5]
         blobs = blobs[sort_ind]
         blob_dist = blob_dist[sort_ind]
         k = k[sort_ind]
 
-        # Future: doesn't this assume that we don't get more
-        # blobs outside of the first 5? w.r.t. center distance.
-        # this depends on the user picking a high `dft_threshold`.
-        # 2.2) Calculate array metrics
+        # 2.2) Calculate array metrics.
         left =   np.argmin([k[:, 0]])  # Smallest x
         right =  np.argmax([k[:, 0]])  # Largest x
         bottom = np.argmin([k[:, 1]])  # Smallest y
         top =    np.argmax([k[:, 1]])  # Largest y
 
-        # 2.3) Calculate the vectors in the imaging domain
-        # Future: @tpr0p is wondering where this formula comes from.
+        # 2.3) Calculate the vectors in the imaging domain.
         x = 2 * (k[right, :] - k[left, :]) / (blob_dist[right] + blob_dist[left]) ** 2
         y = 2 * (k[top, :] - k[bottom, :]) / (blob_dist[top] + blob_dist[bottom]) ** 2
 
@@ -1248,7 +1253,7 @@ def blob_array_detect(
         (x_centergrid_larger.ravel(), y_centergrid_larger.ravel())
     )
 
-    # If we're not sure about how things are flipped, consider alternatives
+    # If we're not sure about how things are flipped, consider alternatives...
     if size[0] != size[1] and orientation is None:
         M_alternative = np.array([[M[0, 1], M[0, 0]], [M[1, 1], M[1, 0]]])
         M_options = [M, M_alternative]
@@ -1257,7 +1262,7 @@ def blob_array_detect(
 
     results = []
 
-    # Iterate through these alternatives
+    # Iterate through these alternatives.
     for M_trial in M_options:
         # Find the position of the centers for this trial matrix.
         rotated_centers = np.matmul(M_trial, centers)
@@ -1400,6 +1405,7 @@ def blob_array_detect(
 
     # Hone the center of our fit by averaging the positional deviations of spots.
     # We do this multiple times to allow outliers (1 std error above) to stabilize.
+    # Future: Use a more physics-based psf, optimize for speed, maybe remove_field.
     hone_count = 3
     for _ in range(hone_count):
         guess_positions = np.matmul(orientation["M"], centers) + orientation["b"]
@@ -1499,7 +1505,7 @@ def _make_8bit(img):
     Convert an image to ``numpy.uint8``, scaling to the limits.
 
     This function is useful to convert float or larger bitdepth images to
-    8-bit, which cv2 accepts and can speedily process.
+    8-bit, which :mod:`cv2` accepts and can speedily process.
 
     Parameters
     ----------

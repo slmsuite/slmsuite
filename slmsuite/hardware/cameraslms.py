@@ -768,8 +768,8 @@ class FourierSLM(CameraSLM):
 
         def mask(img, center, lengths):
             """
-            Take a matrix img and CUT everything outside a rectangle, defined by
-            its center point and the lengths
+            Take a matrix img and cut everything outside a rectangle, defined by
+            its center point and the lengths.
 
             Parameters
             ----------
@@ -792,7 +792,7 @@ class FourierSLM(CameraSLM):
             """
             Fits a sine function to the Intensity Vs. phase, and extracts best phase and amplitude
             that give the constructive interference.
-            If fit fails return 0 on all values
+            If fit fails return 0 on all values.
 
             Parameters
             ----------

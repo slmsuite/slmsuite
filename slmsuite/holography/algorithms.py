@@ -170,6 +170,15 @@ class Hologram:
     See :meth:`optimize()` for more details.
     :class:`SpotHologram` has spot-specific methods for generated noise region pattern.
 
+    Caution
+    ~~~~~~~
+    By default, arguments passed to the constructor (:attr:`phase`, :attr:`amp`, ... )
+    are stored directly as attributes **without copying**, where possible. These will be
+    modified in place. However, :mod:`numpy` arrays passed to :mod:`cupy` will naturally
+    be copied onto the GPU and arrays of incorrect :attr:`dtype` will likewise be copied
+    and casted. This lack of copying is desired in many cases, such that external routines are
+    accessing the same data, but the user can pass copied arrays if this behavior is undesired.
+
     Attributes
     ----------
     slm_shape : (int, int)
@@ -390,14 +399,11 @@ class Hologram:
         if amp is None:     # Uniform amplitude by default (scalar).
             self.amp = 1 / np.sqrt(np.prod(self.slm_shape))
         else:               # Otherwise, initialize and normalize.
-            self.amp = cp.array(amp, dtype=dtype)
+            self.amp = cp.array(amp, dtype=dtype, copy=False)
             self.amp *= 1 / Hologram._norm(self.amp)
 
         # Initialize near-field phase
-        if phase is None:   # reset() will set to random phase.
-            self.phase = None
-        else:               # Initialize to provided phase.
-            self.phase = cp.array(phase, dtype=dtype)
+        self.reset_phase(phase)
 
         # Initialize target. reset() will handle weights.
         self._update_target(target, reset_weights=False)
@@ -438,18 +444,29 @@ class Hologram:
         self.amp_ff = None
         self.phase_ff = None
 
-    def reset_phase(self):
+    def reset_phase(self, phase=None):
         r"""
-        Resets the hologram to a random state.
+        Resets the hologram to a random state or to a provided phase.
+
+        Parameters
+        ----------
+        phase : array_like OR None
+            The near-field initial phase.
+            See :attr:`phase`. :attr:`phase` should only be passed if the user wants to
+            precondition the optimization. Of shape :attr:`slm_shape`.
         """
-        # Reset phase to random.
-        if cp == np:  # numpy does not support `dtype=`
-            rng = np.random.default_rng()
-            self.phase = rng.uniform(-np.pi, np.pi, self.slm_shape).astype(self.dtype)
+        # Reset phase to random if no phase is given.
+        if phase is None:
+            if cp == np:  # numpy does not support `dtype=`
+                rng = np.random.default_rng()
+                self.phase = rng.uniform(-np.pi, np.pi, self.slm_shape).astype(self.dtype)
+            else:
+                self.phase = cp.random.uniform(
+                    -np.pi, np.pi, self.slm_shape, dtype=self.dtype
+                )
         else:
-            self.phase = cp.random.uniform(
-                -np.pi, np.pi, self.slm_shape, dtype=self.dtype
-            )
+            # Otherwise, cast as a cp.array with correct type.
+            self.phase = cp.array(phase, dtype=self.dtype, copy=False)
 
     def reset_weights(self):
         """
@@ -1047,7 +1064,8 @@ class Hologram:
                 "Initialize a new Hologram if a different shape is desired."
             )
 
-            self.target = cp.abs(cp.array(new_target, dtype=self.dtype))
+            self.target = cp.array(new_target, dtype=self.dtype, copy=False)
+            cp.abs(self.target, out=self.target)
             self.target *= 1 / Hologram._norm(self.target)
 
         if reset_weights:
@@ -1402,7 +1420,7 @@ class Hologram:
 
         self._update_stats_dictionary(stats)
 
-    def export_stats(self, file_path):
+    def export_stats(self, file_path, include_state=True):
         """
         Uses :meth:`write_h5` to export the statistics hierarchy to a given h5 file.
 
@@ -1410,19 +1428,78 @@ class Hologram:
         ----------
         file_path : str
             Full path to the file to read the data from.
+        include_state : bool
+            If ``True``, also includes all other attributes of :class:`Hologram`
+            except for :attr:`dtype` (cannot pickle) and :attr:`amp_ff` (can regenerate).
+            These attributes are converted to :mod:`numpy` if necessary.
+            Note that the intent is **not** to produce a
+            runnable :class:`Hologram` by default (as this would require pickling hardware
+            interfaces), but rather to provide extra information for debugging.
         """
-        write_h5(file_path, self.stats)
+        # Save attributes, converting to numpy when necessary.
+        if include_state:
+            to_save = {
+                "slm_shape" : self.slm_shape,
+                "phase" : self.phase,
+                "amp" : self.amp,
+                "shape" : self.shape,
+                "target" : self.target,
+                "weights" : self.weights,
+                "phase_ff" : self.phase_ff,
+                "iter" : self.iter,
+                "method" : self.method,
+                "flags" : self.flags
+            }
 
-    def import_stats(self, file_path):
+            for key in to_save.keys():
+                if hasattr(to_save[key], "get") and not isinstance(to_save[key], dict):
+                    to_save[key] = to_save[key].get()
+        else:
+            to_save = {}
+
+        # Save stats.
+        to_save["stats"] = self.stats
+
+        write_h5(file_path, to_save)
+
+    def import_stats(self, file_path, include_state=True):
         """
         Uses :meth:`write_h5` to import the statistics hierarchy from a given h5 file.
+
+        Tip
+        ~~~
+        Enabling the ``"raw_stats"`` flag will export feedback data from each iteration
+        instead of only derived statistics. Consider enabling this to save more detailed
+        information upon export.
 
         Parameters
         ----------
         file_path : str
             Full path to the file to read the data from.
+        include_state : bool
+            If ``True``, also overwrite all other attributes of :class:`Hologram`
+            except for :attr:`dtype` and :attr:`amp_ff`.
         """
-        self.stats = read_h5(file_path)
+        from_save = read_h5(file_path)
+
+        # Overwrite attributes if desired.
+        if include_state:
+            if len(from_save.keys()) <= 1:
+                raise ValueError(
+                    "algorithms.py: State was not stored in file '{}'"
+                    "and cannot be imported".format(file_path)
+                )
+
+            is_cupy = ["phase", "amp", "target", "weights", "phase_ff"]
+            for key in from_save.keys():
+                if key != "stats":
+                    if key in is_cupy:
+                        setattr(self, key, cp.array(from_save[key], dtype=self.dtype, copy=False))
+                    else:
+                        setattr(self, key, from_save[key])
+
+        # Overwrite stats
+        self.stats = from_save["stats"]
 
     # Visualization helper functions.
     @staticmethod

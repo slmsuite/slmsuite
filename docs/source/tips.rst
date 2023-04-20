@@ -35,8 +35,8 @@ Disable "Windows Update"
 
 Windows Updates are important to ensure security and stability. However, on an
 experimental setup, these (surprise) updates can wreck havoc. We suggest
-`disabling Windows Update <https://answers.microsoft.com/en-us/windows/forum/all/how-do-i-permanently-disable-automatic-windows-10/82e1e076-8dff-475e-8c5e-a2061d1a4c5a>`_`
-with a periodic reminder scheduled to install new updates manually.
+`disabling Windows Update <https://answers.microsoft.com/en-us/windows/forum/all/how-do-i-permanently-disable-automatic-windows-10/82e1e076-8dff-475e-8c5e-a2061d1a4c5a>`_
+and scheduling a periodic external reminder to install new updates manually.
 
 Building an SLM Setup
 ---------------------

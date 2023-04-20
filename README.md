@@ -16,7 +16,8 @@
 
 ## Installation
 
-Install the latest version of `slmsuite` from GitHub using:
+[Install](https://slmsuite.readthedocs.io/en/latest/installation.html)
+the latest version of `slmsuite` from GitHub using:
 
 ```console
 $ pip install git+https://github.com/QPG-MIT/slmsuite

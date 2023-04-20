@@ -4,8 +4,6 @@ Common fit functions.
 
 import numpy as np
 
-from slmsuite.holography import toolbox
-
 def linear(x, m, b):
     r"""
     For fitting a line.
@@ -55,7 +53,8 @@ def hyperbola(z, w0, z0, zr):
 
 
 def cos(x, b, a, c, k=1):
-    r"""For fitting an offset sinusoid.
+    r"""
+    For fitting an offset sinusoid.
 
     .. math:: y(x) = c + \frac{a}{2} \left[1+\cos(kx+b) \right].
 
@@ -169,7 +168,7 @@ def gaussian(x, x0, a, c, w):
         constant offset.
     w : float
         The standard deviation of the normal distribution.
-        Equivalent to the :math:`1/e^2` radius.
+        Equivalent to the :math:`1/e` radius.
         This is related to the full width at half maximum (FWHM)
         by a factor of :math:`2\sqrt{2\ln{2}}`.
 
@@ -251,7 +250,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
         constant offset.
     wx, wy : float
         The standard deviation of the normal distribution.
-        Equivalent to half of the :math:`1/e^2` radius.
+        Equivalent to the :math:`1/e` radius.
         This is related to the full width at half maximum (FWHM)
         by a factor of :math:`2\sqrt{2\ln{2}}`.
     wxy : float
@@ -279,22 +278,23 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
 
 def tophat2d(xy, x0, y0, r, a=1):
     r"""
-    2D tophat distribution.
+    For fitting a 2D tophat distribution.
 
     Parameters
     ----------
     xy : numpy.ndarray
         Points to fit upon (x, y).
-    x0, y0 : real
+    x0, y0 : float
         Vector offset.
-    r : real
+    r : float
         Active radius of the tophat.
-    a : real
+    a : float
         Amplitude.
 
     Returns
     -------
     z : numpy.ndarray
+        Tophat fit evaluated at all ``(x,y)`` in ``xy``.
     """
     x = xy[0] - x0
     y = xy[1] - y0

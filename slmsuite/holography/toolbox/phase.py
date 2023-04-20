@@ -200,7 +200,8 @@ def zernike_sum(grid, weights, aperture=None):
     Note
     ~~~~
     There are different schemes to index Zernike polynomials.
-    We use the indexing defined in [0]_, along with the algorithm defined there.
+    We use the indexing defined in `this paper <https://doi.org/10.1117/12.294412>`_,
+    along with the algorithm defined there.
     Other packages use different schemes, sometimes defining
     :math:`m' = l = n - 2m`. Take care to avoid confusion.
 
@@ -320,9 +321,7 @@ def _zernike_coefficients(n, m):
     """
     Returns the coefficients for the :math:`x^ay^b` terms of the real cartesian Zernike polynomial
     of index `(`n, m)``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
-    Uses the algorithm and indexing given in [0]_.
-
-    .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
+    Uses the algorithm and indexing given in `this paper <https://doi.org/10.1117/12.294412>`_.
     """
     n = int(n)
     m = int(m)
@@ -389,7 +388,9 @@ def _zernike_coefficients(n, m):
 def _determine_source_radius(grid, w=None):
     r"""
     Helper function to determine the assumed Gaussian source radius for various
-    structured light conversion functions.  For instance, see the ``w`` parameter in
+    structured light conversion functions. This is important because structured light
+    conversions need knowledge of the size of the incident Gaussian beam.
+    For example, see the ``w`` parameter in
     :meth:`~slmsuite.holography.toolbox.laguerre_gaussian()`.
 
     Note
@@ -474,9 +475,7 @@ def hermite_gaussian(grid, n, m, w=None):
     r"""
     Returns the phase farfield for a
     `Hermite-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Hermite-Gaussian_modes>`_
-    beam.
-
-    Ref: https://doi.org/10.1364/AO.54.008444
+    beam. Uses the formalism described by `this paper <https://doi.org/10.1364/AO.54.008444>`_.
 
     Parameters
     ----------
@@ -517,14 +516,10 @@ def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
     **(NotImplemented)** Returns the phase farfield for an
     `Ince-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Ince-Gaussian_modes>`_
     beam.
-
-    Ref: https://doi.org/10.1364/OL.29.000144
-
-    Ref: https://doi.org/10.1364/AO.54.008444
-
-    Ref: https://doi.org/10.3390/jimaging8050144
-
-    Ref: https://en.wikipedia.org/wiki/Elliptic_coordinate_system
+    `Consider <https://doi.org/10.1364/OL.29.000144>`_
+    `using <https://doi.org/10.1364/AO.54.008444>`_
+    `these <https://doi.org/10.3390/jimaging8050144>`_
+    `references <https://en.wikipedia.org/wiki/Elliptic_coordinate_system>`_.
 
     Parameters
     ----------
@@ -573,9 +568,8 @@ def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
 
 def matheui_gaussian(grid, r, q, w=None):
     """
-    **(NotImplemented)** Returns the phase farfield for a Matheui-Gaussian beam.
-
-    Ref: https://doi.org/10.1364/AO.49.006903
+    **(NotImplemented)** Returns the phase farfield for a
+    `Matheui-Gaussian <https://doi.org/10.1364/AO.49.006903>`_ beam.
 
     Returns
     -------
@@ -583,7 +577,7 @@ def matheui_gaussian(grid, r, q, w=None):
         The phase for this function.
     """
     (x_grid, y_grid) = _process_grid(grid)
-
     w = _determine_source_radius(grid, w)
+
     raise NotImplementedError()
 

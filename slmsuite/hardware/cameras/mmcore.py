@@ -1,14 +1,10 @@
 """
 **(NotImplemented)** Hardware control for Micro-Manager cameras via the :mod:`pymmcore` interface.
-See :mod:`pymmcore` documentation [1]_.
+See :mod:`pymmcore` `documentation <https://github.com/micro-manager/pymmcore>`_.
 
 Warning
 ~~~~~~~~
 Implementation unfinished and untested.
-
-References
-----------
-.. [1] https://github.com/micro-manager/pymmcore
 """
 
 import os
@@ -41,7 +37,7 @@ class MMCore(Camera):
         ----------
         config : str
             Name of the config file corresponding to the desired camera. This is assumed to be
-            a ``.cfg`` file stored in the Micrmanager ``path`` (see below). ``.cfg`` may be included
+            a ``.cfg`` file stored in the Micro-Manager ``path`` (see below). ``.cfg`` may be included
             or omitted, but the :attr:`name` of the camera will be without it.
         path : str
             Directory of the Micro-Manager installation. Defaults to the directory of a default

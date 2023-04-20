@@ -85,10 +85,6 @@ class FourierSLM(CameraSLM):
         in the optical system (phase_correction) and measures the amplitude distribution
         of power on the SLM (measured_amplitude).
         See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
-    wavefront_calibration : dict or None
-        Processed derivative of
-        :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`.
-        See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`.
     """
 
     def __init__(self, *args, **kwargs):
@@ -96,7 +92,6 @@ class FourierSLM(CameraSLM):
         super().__init__(*args, **kwargs)
 
         self.fourier_calibration = None
-        self.wavefront_calibration = None
         self.wavefront_calibration_raw = None
 
     ### Settle Time Measurement ###
@@ -181,15 +176,13 @@ class FourierSLM(CameraSLM):
         plot=False,
         autofocus=False,
         autoexposure=False,
-        dft_threshold=50,
-        dft_pad_exponent=0,
         **kwargs
     ):
         """
         Project and fit a SLM Fourier space (``"knm"``) grid onto
         camera pixel space (``"ij"``) for affine fitting.
         Sets :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`.
-        A an array produced by
+        An array produced by
         :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
         is projected for analysis by
         :meth:`~slmsuite.holography.analysis.blob_array_detect()`.
@@ -197,12 +190,15 @@ class FourierSLM(CameraSLM):
         Important
         ~~~~~~~~~
         For best results, array_pitch should be integer data. Otherwise non-uniform
-        rounding to the SLM's computational k-space will result in non-uniform pitch and
+        rounding to the SLM's computational :math:`k`-space will result in non-uniform pitch and
         a bad fit.
 
         Parameters
         ----------
-        array_shape, array_pitch, array_center
+        array_shape, array_pitch
+            Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
+            **in the** ``"knm"`` **basis.**
+        array_center
             Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
             **in the** ``"knm"`` **basis.**  ``array_center`` is not passed directly, and is
             processed as being relative to the center of ``"knm"`` space, the position
@@ -219,10 +215,6 @@ class FourierSLM(CameraSLM):
             If a dictionary is passed, autoexposure is performed,
             and the dictionary is passed to
             :meth:`~slmsuite.hardware.cameras.camera.Camera.autoexposure()`.
-        dft_threshold
-            See :meth:`~slmsuite.holography.analysis.blob_array_detect`.
-        dft_pad_exponent
-            See :meth:`~slmsuite.holography.analysis.blob_array_detect`.
         **kwargs : dict
             Passed to :meth:`.project_fourier_grid()`.
 
@@ -247,7 +239,11 @@ class FourierSLM(CameraSLM):
             **kwargs
         )
 
-        array_center = np.mean(hologram.spot_kxy_rounded, axis=1)
+        # The rounding of the values might cause the center to shift from the desired
+        # value. To compensate for this, we find the true written center.
+        # The first two points are ignored for balance against the parity check omission
+        # of the last two points.
+        array_center = np.mean(hologram.spot_kxy_rounded[:, 2:], axis=1)
 
         if plot:
             hologram.plot_farfield()
@@ -272,14 +268,11 @@ class FourierSLM(CameraSLM):
             else:
                 self.cam.autoexposure()
 
-        #self.cam.flush()
+        self.cam.flush()
         img = self.cam.get_image()
 
-        # 2) Get orientation of projected array
-        orientation = analysis.blob_array_detect(
-            img, array_shape, dft_threshold=dft_threshold, dft_pad_exponent=dft_pad_exponent,
-            plot=plot
-        )
+        # Get orientation of projected array
+        orientation = analysis.blob_array_detect(img, array_shape, plot=plot)
 
         a = format_2vectors(array_center)
         M = np.array(orientation["M"])
@@ -380,7 +373,10 @@ class FourierSLM(CameraSLM):
 
         Parameters
         ----------
-        array_shape, array_pitch, array_center
+        array_shape, array_pitch
+            Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
+            **in the** ``"knm"`` **basis.**
+        array_center
             Passed to :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
             **in the** ``"knm"`` **basis.**  ``array_center`` is not passed directly, and is
             processed as being relative to the center of ``"knm"`` space, the position
@@ -404,7 +400,7 @@ class FourierSLM(CameraSLM):
             array_pitch=array_pitch,
             array_center=None if array_center is None else (
                 format_2vectors(array_center) +
-                format_2vectors((shape[1] / 2.0, shape[0] / 2.0))
+                format_2vectors(((shape[1]) / 2.0, (shape[0]) / 2.0))
             ),
             basis="knm",
             orientation_check=True,
@@ -553,23 +549,22 @@ class FourierSLM(CameraSLM):
         autoexposure=False,
         test_superpixel=None,
         reference_superpixel=None,
+        fresh_calibration=True,
         plot=0,
     ):
         """
         Perform wavefront calibration.
-        This procedure involves iteratively interfering light diffracted from
-        superpixels across an SLM with a reference superpixel  [1]_. Interference
-        occurs at a given ``interference_point`` in the camera's imaging plane.
+        This procedure involves `iteratively interfering light diffracted from
+        superpixels across an SLM with a reference superpixel <https://doi.org/10.1038/nphoton.2010.8>`_.
+        Interference occurs at a given ``interference_point`` in the camera's imaging plane.
         It is at this point where the computed correction is ideal; the further away
         from this point, the less ideal the correction is.
         Sets :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`.
         Run :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`
-        after to produce the usable
-        :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration`.
-
-        References
-        ----------
-        .. [1]  Čižmár, T., Mazilu, M. & Dholakia, K. "In situ wavefront correction and its application to micromanipulation." Nature Photon 4, 388-394 (2010). https://doi.org/10.1038/nphoton.2010.8
+        after to produce the usable calibration which is written to the SLM.
+        This procedure measures the wavefront phase and amplitude.
+        If only amplitude calibration is desired,
+        set ``phase_steps=0`` to omit the phase calibration.
 
         Parameters
         ----------
@@ -594,6 +589,8 @@ class FourierSLM(CameraSLM):
             then superpixels at the edge of the SLM may be cropped and give undefined results.
         phase_steps : int
             The number of phases measured for the interference pattern.
+            If phase_steps is not strictly positive, phase is not measured:
+            only amplitude is measured.
         exclude_superpixels : (int, int)
             Optionally exclude superpixels from the margin, in ``(nx, ny)`` form.
             That is, the ``nx`` superpixels are omitted from the left and right sides
@@ -609,6 +606,13 @@ class FourierSLM(CameraSLM):
             If ``None``, do not test.
         reference_superpixel : None or (int, int)
             The superpixel to reference from. Defaults to the center of the SLM.
+        fresh_calibration : bool
+            If ``True``, the calibration is performed without an existing calibration
+            (any old calibration is wiped from the :class:`SLM` and :class:`CameraSLM`).
+            If ``False``, the calibration is performed on top of any existing
+            calibration. This is useful to determine the quality of a previous
+            calibration, as a new calibration should yield zero phase correction needed
+            if the previous was perfect.
         plot : int or bool
             Whether to provide visual feedback, options are:
 
@@ -631,7 +635,12 @@ class FourierSLM(CameraSLM):
         """
         # Interpret the plot command.
         return_movie = plot == 3 and test_superpixel is not None
-        if return_movie: plot = 1
+        if return_movie:
+            plot = 1
+            if phase_steps <= 0:
+                raise ValueError(
+                    "cameraslms.py: Must have strictly positive phase_steps to produce a movie."
+                )
         verbose = plot >= 0
         plot_fits = plot >= 1 or test_superpixel is not None
         plot_everything = plot >= 2
@@ -707,11 +716,10 @@ class FourierSLM(CameraSLM):
         # Remove the current calibration
         measured_amplitude = self.slm.measured_amplitude
         phase_correction = self.slm.measured_amplitude
-        wavefront_calibration = self.wavefront_calibration
 
-        self.slm.measured_amplitude = None
-        self.slm.phase_correction = None
-        self.wavefront_calibration = None
+        if fresh_calibration:
+            self.slm.measured_amplitude = None
+            self.slm.phase_correction = None
 
         def superpixels(index,
                         reference=None,
@@ -760,8 +768,8 @@ class FourierSLM(CameraSLM):
 
         def mask(img, center, lengths):
             """
-            Take a matrix img and CUT everything outside a rectangle, defined by
-            its center point and the lengths
+            Take a matrix img and cut everything outside a rectangle, defined by
+            its center point and the lengths.
 
             Parameters
             ----------
@@ -784,7 +792,7 @@ class FourierSLM(CameraSLM):
             """
             Fits a sine function to the Intensity Vs. phase, and extracts best phase and amplitude
             that give the constructive interference.
-            If fit fails return 0 on all values
+            If fit fails return 0 on all values.
 
             Parameters
             ----------
@@ -991,6 +999,21 @@ class FourierSLM(CameraSLM):
             blaze_difference = self.ijcam_to_kxyslm(found_center) - interference_blaze
             target_blaze_fixed = interference_blaze - blaze_difference
 
+            # Step 1.25: Stop here if we don't need to measure the phase.
+            if phase_steps <= 0:
+                pwr = mask(position_image, interference_point, 2 * interference_size).sum()
+                return {
+                    "power": pwr,
+                    "normalization": norm,
+                    "background": back,
+                    "phase": np.nan,
+                    "kx": np.nan,
+                    "ky": np.nan,
+                    "amp_fit": np.nan,
+                    "contrast_fit": np.nan,
+                    "r2_fit": np.nan,
+                }
+
             # Step 1.5: Measure the power in the corrected target mode.
             self.slm.write( superpixels(index, reference=None, target=0,
                                         target_blaze=target_blaze_fixed),
@@ -1048,7 +1071,6 @@ class FourierSLM(CameraSLM):
             if test_superpixel is not None:
                 self.slm.measured_amplitude = measured_amplitude
                 self.slm.phase_correction = phase_correction
-                self.wavefront_calibration = wavefront_calibration
 
             if return_movie: return frames
 
@@ -1124,11 +1146,17 @@ class FourierSLM(CameraSLM):
 
         return correction_dict
 
-    def process_wavefront_calibration(self, smooth=True, r2_threshold=0.9, plot=False):
+    def process_wavefront_calibration(
+            self,
+            smooth=True,
+            r2_threshold=0.9,
+            apply=True,
+            plot=False
+        ):
         """
         Processes :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
-        into the desired phase correction and amplitude measurement. Sets
-        :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration`.
+        into the desired phase correction and amplitude measurement. Applies these
+        parameters to the respective variables in the SLM if ``apply`` is ``True``.
 
         Parameters
         ----------
@@ -1138,14 +1166,20 @@ class FourierSLM(CameraSLM):
             Threshold for a "good fit". Proxy for whether a datapoint should be used or
             ignored in the final data, depending upon the rsquared value of the fit.
             Should be within [0, 1].
+        apply : bool
+            Whether to apply the processed calibration to the associated SLM.
+            Otherwise, this function only returns and maybe
+            plots these results. Defaults to ``True``.
         plot : bool
             Whether to enable debug plots.
 
         Returns
         -------
         dict
-            :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration`.
+            A dictionary consisting of the ``measured_amplitude`` and
+            ``phase_correction``. With the same names as keys.
         """
+        # Step 0: Initialize helper variables and functions.
         data = self.wavefront_calibration_raw
 
         NX = data["NX"]
@@ -1162,7 +1196,7 @@ class FourierSLM(CameraSLM):
                 + np.sum([matrix[nyref + i, nxref - 1] for i in [-1, 0, 1]])
             ) / 8
 
-        # Load the amplitude and norm
+        # Step 1: Process the measured amplitude
         # Fix the reference pixel by averaging the 8 surrounding pixels
         pwr = np.copy(data["power"])
         pwr[pwr == np.inf] = np.amax(pwr)
@@ -1208,7 +1242,7 @@ class FourierSLM(CameraSLM):
         amp = np.sqrt(pwr_norm)
         amp_large = np.sqrt(pwr_large)
 
-        # Process R^2
+        # Step 2: Process R^2
         r2 = np.copy(data["r2_fit"])
         r2[nyref, nxref] = 1
         r2s = r2
@@ -1216,21 +1250,24 @@ class FourierSLM(CameraSLM):
         r2s_large = cv2.resize(r2s, (w, h), interpolation=cv2.INTER_NEAREST)
         r2s_large = r2s_large[:self.slm.shape[0], :self.slm.shape[1]]
 
-        # Process the wavefront
+        # Step 3: Process the wavefront
+        # Load data.
         kx = np.copy(data["kx"])
         ky = np.copy(data["ky"])
-
-        average_neighbors(kx)
-        average_neighbors(ky)
 
         offset = np.copy(data["phase"])
 
         real = np.cos(offset)
         imag = np.sin(offset)
 
+        # Fill in the reference pixel with surrounding data.
+        average_neighbors(kx)
+        average_neighbors(ky)
+
         average_neighbors(real)
         average_neighbors(imag)
 
+        # Cleanup the phase.
         offset = np.arctan2(imag, real) + np.pi
 
         kx[r2s < r2_threshold] = 0
@@ -1238,7 +1275,8 @@ class FourierSLM(CameraSLM):
         offset[r2s < r2_threshold] = 0
         pathing = 0 * r2s
 
-        # For each row
+        # Step 3.5: Infer phase for superpixels which do satisfy the R^2 threshold.
+        # For each row...
         for ny in range(NY):
             # Go forward and then back along each row.
             for nx in list(range(NX)) + list(range(NX-1, -1, -1)):
@@ -1287,7 +1325,7 @@ class FourierSLM(CameraSLM):
 
                         pathing[ny, nx] = ny
 
-        # Make the SLM-sized correction using the compressed data from each superpixel.
+        # Step 3.75: Make the SLM-sized correction using the compressed data from each superpixel.
         phase = np.zeros(self.slm.shape)
         for nx in range(NX):
             for ny in range(NY):
@@ -1318,6 +1356,8 @@ class FourierSLM(CameraSLM):
             imag = np.sin(phase)
             phase = np.arctan2(imag, real) + np.pi
 
+        # Shift the final phase to the nearest pi/4 phase offset which
+        # minimizes 2pi -> 0pi shearing.
         mindiff = np.inf
         phase_fin = []
         for phi in range(8):
@@ -1342,12 +1382,13 @@ class FourierSLM(CameraSLM):
 
                 mindiff = fom
 
-        self.wavefront_calibration = {  "phase_correction":phase_fin,
-                                        "measured_amplitude":amp_large}
+        wavefront_calibration = {   "phase_correction":phase_fin,
+                                    "measured_amplitude":amp_large}
 
-        # Load the correction to the SLM
-        self.slm.phase_correction = phase_fin
-        self.slm.measured_amplitude = amp_large
+        # Step 4: Load the correction to the SLM
+        if apply:
+            self.slm.phase_correction = phase_fin
+            self.slm.measured_amplitude = amp_large
 
         # Plot the result
         if plot:
@@ -1377,7 +1418,7 @@ class FourierSLM(CameraSLM):
 
             plt.show()
 
-        return self.wavefront_calibration
+        return wavefront_calibration
 
     def name_wavefront_calibration(self):
         """
@@ -1455,31 +1496,3 @@ class FourierSLM(CameraSLM):
             self.process_wavefront_calibration(**kwargs)
 
         return file_path
-
-    ### Measured Amplitude Helpers ###
-
-    def measured_amplitude_fit_gaussian(self, reset=False):
-        """
-        Fits the wavefront calibration's measured amplitude to a Gaussian.
-        Stores the result in the ``"measured_amplitude_fit_gaussian"`` field of
-        :attr:`wavefront_calibration`.
-
-        Parameters
-        ----------
-        reset : bool
-            Whether to overwrite the previously-computed fit, or return the cached fit.
-
-        Returns
-        -------
-        numpy.ndarray
-            The result of the fit in the form of arguments to
-            :meth:`~~slmsuite.misc.fitfunctions.gaussian2d()`.
-        """
-        assert "measured_amplitude" in self.wavefront_calibration, \
-            "measured_amplitude must be defined to fit it."
-
-        if reset or not "measured_amplitude_fit_gaussian" in self.wavefront_calibration:
-            fit = analysis.image_fit(self.wavefront_calibration["measured_amplitude"])
-            self.wavefront_calibration["measured_amplitude_fit_gaussian"] = fit
-
-        return self.wavefront_calibration["measured_amplitude_fit_gaussian"]

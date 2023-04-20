@@ -7,388 +7,12 @@ from scipy.spatial.distance import chebyshev
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
-import warnings
 
 from slmsuite.misc.math import (
     INTEGER_TYPES, REAL_TYPES
 )
 
-# Windows creation functions. Windows are views into 2D arrays.
-
-def window_slice(window, shape=None, centered=False, circular=False):
-    """
-    Get the slices that describe the window's view into the larger array.
-
-    Parameters
-    ----------
-    window : (int, int, int, int) OR (array_like, array_like) OR array_like
-        A number of formats are accepted:
-        - List in ``(x, w, y, h)`` format, where ``w`` and ``h`` are the width and height of
-          the region and  ``(x,y)`` is the upper-left coordinate.
-          If ``centered``, then ``(x,y)`` is instead the center of the region to imprint.
-          If ``circular``, then an elliptical region circumscribed by the rectangular region is returned.
-        - Tuple containing arrays of identical length corresponding to y and x indices.
-          ``centered`` and ``circular`` are ignored.
-        - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
-          ``centered`` and ``circular`` are ignored.
-    shape : (int, int) OR None
-        The (height, width) of the array that the window is a view into.
-        If not ``None``, indices beyond those allowed by ``shape`` will be clipped.
-    centered : bool
-        See ``window``.
-    circular : bool
-        See ``window``.
-
-    Returns
-    -------
-    slice_ : (slice, slice) OR (array_like, array_like) OR (array_like)
-        The slice for the window.
-    """
-    # (v.x, w, v.y, h) format
-    if len(window) == 4:
-        # Prepare helper vars
-        xi = int(window[0] - ((window[1] - 2) / 2 if centered else 0))
-        xf = xi + int(window[1])
-        yi = int(window[2] - ((window[3] - 2) / 2 if centered else 0))
-        yf = yi + int(window[3])
-
-        if shape is not None:
-            # xi = np.clip(xi, 0, shape[1] - 1)
-            # xf = np.clip(xf, 0, shape[1] - 1)
-            # yi = np.clip(yi, 0, shape[0] - 1)
-            # yf = np.clip(yf, 0, shape[0] - 1)
-
-            [xi, xf] = np.clip([xi, xf], 0, shape[1] - 1)
-            [yi, yf] = np.clip([yi, yf], 0, shape[0] - 1)
-
-        if circular:    # If a circular window is desired, compute this.
-            x_list = np.arange(xi, xf)
-            y_list = np.arange(yi, yf)
-            x_grid, y_grid = np.meshgrid(x_list, y_list)
-
-            xc = xi + int((window[1] - 1) / 2)
-            yc = yi + int((window[3] - 1) / 2)
-
-            rr_grid = (
-                (window[3] ** 2) * np.square(x_grid.astype(float) - xc) +
-                (window[1] ** 2) * np.square(y_grid.astype(float) - yc)
-            )
-
-            mask_grid = rr_grid <= (window[1] ** 2) * (window[3] ** 2) / 4.
-
-            return window_slice((y_grid[mask_grid], x_grid[mask_grid]), shape=shape)
-        else:           # Otherwise, return square slices
-            slice_ = (slice(yi, yf), slice(xi, xf))
-    # (y_ind, x_ind) format
-    elif len(window) == 2:
-        # Prepare the lists
-        y_ind = np.ravel(window[0])
-        x_ind = np.ravel(window[1])
-        if shape is not None:
-            x_ind = np.clip(x_ind, 0, shape[1] - 1)
-            y_ind = np.clip(y_ind, 0, shape[0] - 1)
-        slice_ = (y_ind, x_ind)
-    # Boolean numpy array.
-    elif np.ndim(window) == 2:
-        slice_ = window
-    else:
-        raise ValueError("Unrecognized format for `window`.")
-
-    return slice_
-
-
-def window_square(window, padding_frac=0, padding_pix=0):
-    """
-    Find a square that covers the active region of ``window``.
-
-    Parameters
-    ----------
-    window : numpy.ndarray<bool> (height, width)
-        Boolean mask.
-    padding : float
-        Fraction of the window width and height to pad these by on all sides.
-        For instance,
-        This result is clipped to be within ``shape`` of the window.
-
-    Returns
-    -------
-    window_square : (int, int, int, int)
-        A square that covers the active region of ``window``
-        in the format (x, width2, y, height2) where
-        (x, y) is the upper left coordinate, and (width2, height2) define
-        the extent.
-    """
-    limits = []
-
-    # For each axis...
-    for a in [0, 1]:
-        if len(window) == 2:        # Handle two list case
-            limit = np.array([np.amin(window[a]), np.amax(window[a])+1])
-        elif np.ndim(window) == 2:  # Handle the boolean array case
-            collapsed = np.where(np.any(window, axis=a))  # Collapse the other axis
-            limit = np.array([np.amin(collapsed), np.amax(collapsed)+1])
-        else:
-            raise ValueError("Unrecognized format for `window`.")
-
-        # Add padding if desired.
-        padding_ = int(np.floor(np.diff(limit) * padding_frac) + padding_pix)
-        limit += np.array([-padding_, padding_])
-
-        # Clip the padding to shape.
-        if np.ndim(window) == 2:
-            limit = np.clip(limit, 0, window.shape[1-a])
-
-        limits.append(tuple(limit))
-
-    # Return desired format.
-    return (
-        limits[0][0], limits[0][1] - limits[0][0],
-        limits[1][0], limits[1][1] - limits[1][0]
-    )
-
-
-def voronoi_windows(grid, vectors, radius=None, plot=False):
-    r"""
-    Returns boolean array windows corresponding to the Voronoi cells for a set of vectors.
-    These boolean array windows are in the style of :meth:`~slmsuite.holography.toolbox.imprint()`.
-    The ith window corresponds to the Voronoi cell centered around the ith vector.
-
-    Note
-    ~~~~
-    The :meth:`cv2.fillConvexPoly()` function used to fill each window dilates
-    slightly outside the window bounds. To avoid pixels belonging to multiple windows
-    simutaneously, we crop away previously-assigned pixels from new windows while these are
-    being iteratively generated. As a result, windows earlier in the list will be slightly
-    larger than windows later in the list.
-
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-        If an ``(int, int)`` is passed, this is assumed to be the shape of the device, and
-        ``vectors`` are **assumed to be in pixel units instead of normalized units**.
-    vectors : array_like
-        Points to Voronoi-ify.
-        Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
-    radius : float
-        Cells on the edge of the set of cells might be very large. This parameter bounds
-        the cells with a boolean and to the aperture of the given ``radius``.
-    plot : bool
-        Whether to plot the resulting Voronoi diagram with :meth:`scipy.spatial.voronoi_plot_2d()`.
-
-    Returns
-    -------
-    list of numpy.ndarray
-        The resulting windows.
-    """
-    vectors = format_2vectors(vectors)
-
-    if (
-        isinstance(grid, (list, tuple))
-        and isinstance(grid[0], (int))
-        and isinstance(grid[1], (int))
-    ):
-        shape = grid
-    else:
-        (x_grid, y_grid) = _process_grid(grid)
-
-        shape = x_grid.shape
-
-        x_list = x_grid[0, :]
-        y_list = y_grid[:, 0]
-
-        vectors = np.vstack((
-            np.interp(vectors[0, :], x_list, np.arange(shape[1])),
-            np.interp(vectors[1, :], y_list, np.arange(shape[0])),
-        ))
-
-    # Half shape data.
-    hsx = shape[1] / 2
-    hsy = shape[0] / 2
-
-    vectors_voronoi = np.concatenate(
-        (
-            vectors.T,
-            np.array(
-                [[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]
-            ),
-        )
-    )
-
-    vor = Voronoi(vectors_voronoi, furthest_site=False)
-
-    if plot:
-        sx = shape[1]
-        sy = shape[0]
-
-        fig = voronoi_plot_2d(vor)
-
-        plt.plot(np.array([0, sx, sx, 0, 0]), np.array([0, 0, sy, sy, 0]), "r")
-
-        plt.xlim(-0.05 * sx, 1.05 * sx)
-        plt.ylim(1.05 * sy, -0.05 * sy)
-
-        plt.gca().set_aspect('equal')
-
-        plt.title("Voronoi Cells")
-
-        plt.show()
-
-    N = np.shape(vectors)[1]
-    filled_regions = []
-    already_filled = np.zeros(shape, dtype=np.uint8)
-
-    for x in range(N):
-        point = tuple(np.around(vor.points[x]).astype(np.int32))
-        region = vor.regions[vor.point_region[x]]
-        pts = np.around(vor.vertices[region]).astype(np.int32)
-
-        canvas1 = np.zeros(shape, dtype=np.uint8)
-        cv2.fillConvexPoly(canvas1, pts, 255, cv2.LINE_4)
-
-        if radius is not None and radius > 0:
-            canvas2 = np.zeros(shape, dtype=np.uint8)
-            cv2.circle(
-                canvas2, point, int(np.ceil(radius)), 255, -1
-            )
-
-            filled_regions.append((canvas1 > 0) & (canvas2 > 0) & np.logical_not(already_filled))
-        else:
-            filled_regions.append((canvas1 > 0) & np.logical_not(already_filled))
-
-        already_filled |= filled_regions[-1]
-
-    return filled_regions
-
-
-# Phase pattern collation and manipulation. Uses windows.
-
-def imprint(
-    matrix,
-    window,
-    function,
-    grid=None,
-    imprint_operation="replace",
-    centered=False,
-    circular=False,
-    clip=True,
-    transform=0,
-    shift=(0,0),
-    **kwargs
-):
-    r"""
-    Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
-    This ``function`` must be in the style of :mod:`~slmsuite.holography.toolbox.phase`
-    phase helper functions, which expect a ``grid`` parameter to define the coordinate basis
-    (see :meth:`~slmsuite.holography.toolbox.phase.blaze()` or
-    :meth:`~slmsuite.holography.toolbox.phase.lens()`).
-
-    For instance, we can imprint a blaze on a 200 by 200 pixel region
-    of the SLM with:
-
-    .. highlight:: python
-    .. code-block:: python
-
-        canvas = np.zeros(shape=slm.shape)  # Matrix to imprint onto.
-        window = [200, 200, 200, 200]       # Region of the matrix to imprint.
-        toolbox.imprint(canvas, window=window, function=toolbox.phase.blaze, grid=slm, vector=(.001, .001))
-
-    See also :ref:`examples`.
-
-    Parameters
-    ----------
-    matrix : numpy.ndarray
-        The data to imprint a ``function`` onto.
-    window
-        See :meth:`~slmsuite.holography.toolbox.window_slice()`.
-    function : function OR float
-        A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
-        which accept ``grid`` as the first argument.
-        Also accepts floating point values, in which case this value is simply added.
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR None
-        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
-        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
-        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
-        ``None`` can only be passed if a float is passed as ``function``.
-    imprint_operation : {"replace" OR "add"}
-        Decides how the ``function`` is imparted to the ``matrix``.
-
-        - If ``"replace"``, then the values of ``matrix`` inside ``window`` are replaced with ``function``.
-        - If ``"add"``, then these are instead added together (useful, for instance, for global blazes).
-    centered
-        See :meth:`~slmsuite.holography.toolbox.window_slice()`.
-    circular
-        See :meth:`~slmsuite.holography.toolbox.window_slice()`.
-    clip : bool
-        Whether to clip the imprint region if it exceeds the size of ``matrix``.
-        If ``False``, then an error is raised when the size is exceeded.
-        If ``True``, then the out-of-range pixels are instead filled with ``numpy.nan``.
-    transform : float or ((float, float), (float, float))
-       Passed to :meth:`shift_grid`, operating on the cropped imprint grid.
-       This is left as an option such that the user does not have to transform the
-       entire ``grid`` to satisfy a tiny imprinted patch.
-       See :meth:`shift_grid`.
-    shift : (float, float)
-       Passed to :meth:`shift_grid`, operating on the cropped imprint grid.
-       This is left as an option such that the user does not have to transform the
-       entire ``grid`` to satisfy a tiny imprinted patch.
-       See :meth:`shift_grid`.
-    **kwargs :
-        For passing additional arguments accepted by ``function``.
-
-    Returns
-    ----------
-    matrix : numpy.ndarray
-        The modified image. Note that the matrix is modified in place, and this return
-        is merely a copy of the user's pointer to the data.
-
-    Raises
-    ----------
-    ValueError
-        If invalid ``window`` or ``imprint_operation`` are provided.
-    """
-    # Format the grid.
-    if grid is not None:
-        (x_grid, y_grid) = _process_grid(grid)
-
-    # Get slices for the window in the matrix.
-    shape = matrix.shape if clip else None
-    slice_ = window_slice(window, shape=shape, centered=centered, circular=circular)
-
-    # Decide whether to treat function as a float.
-    is_float = isinstance(function, REAL_TYPES)
-
-    if not is_float:
-        assert grid is not None, "toolbox.py: imprint grid cannot be None if a function is given."
-
-    # Modify the matrix.
-    if imprint_operation == "replace":
-        if is_float:
-            matrix[slice_] = function
-        else:
-            matrix[slice_] = function(
-                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift),
-                **kwargs
-            )
-    elif imprint_operation == "add":
-        if is_float:
-            matrix[slice_] += function
-        else:
-            matrix[slice_] += function(
-                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift),
-                **kwargs
-            )
-    else:
-        raise ValueError("Unrecognized imprint operation {}.".format(imprint_operation))
-
-    return matrix
-
-
-# Unit helper functions.
+# Unit definitions.
 
 BLAZE_LABELS = {
     "norm" : (r"$k_x/k$",               r"$k_y/k$"),
@@ -403,78 +27,67 @@ BLAZE_LABELS = {
 }
 BLAZE_UNITS = BLAZE_LABELS.keys()
 
-def convert_blaze_radius(radius, from_units="norm", to_units="norm", slm=None, shape=None):
-    v0 = convert_blaze_vector(
-        (0, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
-    )
-    vx = convert_blaze_vector(
-        (radius, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
-    )
-    vy = convert_blaze_vector(
-        (0, radius), from_units=from_units, to_units=to_units, slm=slm, shape=shape
-    )
-    return np.mean([np.linalg.norm(vx - v0), np.linalg.norm(vy - v0)])
-
+# Unit helper functions.
 
 def convert_blaze_vector(
     vector, from_units="norm", to_units="norm", slm=None, shape=None
 ):
     r"""
-        Helper function for unit conversions.
+    Helper function for vector unit conversions.
 
-        Currently supported units:
+    Currently supported units:
 
-          ``"norm"``, ``"kxy"``
-            Blaze :math:`k_x` normalized to wavenumber :math:`k`, i.e. :math:`\frac{k_x}{k}`.
-            Equivalent to radians in the small angle approximation.
-            This is the default unit for :mod:`slmsuite`.
-          ``"knm"``
-            Computational blaze units for a given Fourier domain ``shape``.
-            This corresponds to integer points on the grid of this
-            (potentially padded) SLM's Fourier transform.
-            See :class:`~slmsuite.holography.Hologram`.
+        ``"norm"``, ``"kxy"``
+        Blaze :math:`k_x` normalized to wavenumber :math:`k`, i.e. :math:`\frac{k_x}{k}`.
+        Equivalent to radians in the small angle approximation.
+        This is the default unit for :mod:`slmsuite`.
+        ``"knm"``
+        Computational blaze units for a given Fourier domain ``shape``.
+        This corresponds to integer points on the grid of this
+        (potentially padded) SLM's Fourier transform.
+        See :class:`~slmsuite.holography.Hologram`.
 
-            The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
+        The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
 
-          ``"freq"``
-            Pixel frequency of a grating producing the blaze.
-            e.g. 1/16 is a grating with a period of 16 pixels.
-          ``"lpmm"``
-            Line pairs per mm or lines per mm of a grating producing the blaze.
-          ``"rad"``, ``"mrad"``, ``"deg"``
-            Angle at which light is blazed in various units. Small angle approximation is assumed.
+        ``"freq"``
+        Pixel frequency of a grating producing the blaze.
+        e.g. 1/16 is a grating with a period of 16 pixels.
+        ``"lpmm"``
+        Line pairs per mm or lines per mm of a grating producing the blaze.
+        ``"rad"``, ``"mrad"``, ``"deg"``
+        Angle at which light is blazed in various units. Small angle approximation is assumed.
 
-        Warning
-        ~~~~~~~
-        The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
-        so a ``slm`` should be passed (otherwise returns an array of ``nan`` values).
-        The unit ``"ij"``, camera pixels, requires information stored in a CameraSLM, so
-        this must be passed in place of ``slm``.
-        The unit ``"knm"`` additionally requires the ``shape`` of the computational space.
-        If not included when an slm is passed, ``shape=slm.shape`` is assumed.
+    Warning
+    ~~~~~~~
+    The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
+    so a ``slm`` should be passed (otherwise returns an array of ``nan`` values).
+    The unit ``"ij"``, camera pixels, requires information stored in a CameraSLM, so
+    this must be passed in place of ``slm``.
+    The unit ``"knm"`` additionally requires the ``shape`` of the computational space.
+    If not included when an slm is passed, ``shape=slm.shape`` is assumed.
 
-        Parameters
-        ----------
-        vector : array_like
-            2-vectors for which we want to convert units, from ``from_units`` to ``to_units``.
-            Processed according to :meth:`format_2vectors()`.
-        from_units, to_units : str
-            Units which we are converting between. See the listed units above for options.
-            Defaults to ``"norm"``.
-        slm : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.CameraSLM` OR None
-            Relevant SLM to pull data from in the case of
-            ``"freq"``, ``"knm"``, or ``"lpmm"``.
-            If :class:`~slmsuite.hardware.cameraslms.CameraSLM`, the unit ``"ij"`` can be
-            processed too.
-        shape : (int, int) OR None
-            Shape of the computational SLM space. Defaults to ``slm.shape`` if ``slm``
-            is not ``None``.
+    Parameters
+    ----------
+    vector : array_like
+        2-vectors for which we want to convert units, from ``from_units`` to ``to_units``.
+        Processed according to :meth:`format_2vectors()`.
+    from_units, to_units : str
+        Units which we are converting between. See the listed units above for options.
+        Defaults to ``"norm"``.
+    slm : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.CameraSLM` OR None
+        Relevant SLM to pull data from in the case of
+        ``"freq"``, ``"knm"``, or ``"lpmm"``.
+        If :class:`~slmsuite.hardware.cameraslms.CameraSLM`, the unit ``"ij"`` can be
+        processed too.
+    shape : (int, int) OR None
+        Shape of the computational SLM space. Defaults to ``slm.shape`` if ``slm``
+        is not ``None``.
 
-        Returns
-        --------
-        numpy.ndarray
-            Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
-        """
+    Returns
+    --------
+    numpy.ndarray
+        Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
+    """
     assert from_units in BLAZE_UNITS, \
         "toolbox.py: Unit '{}' not recognized as a valid unit for convert_blaze_vector().".format(from_units)
     assert to_units in BLAZE_UNITS, \
@@ -577,6 +190,407 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
         print("'{}' : {}".format(unit, tuple(result.T[0])))
 
 
+def convert_blaze_radius(radius, from_units="norm", to_units="norm", slm=None, shape=None):
+    """
+    Helper function for scalar unit conversions.
+    Uses :meth:`convert_blaze_vector` to deduce the (average, in the case of an
+    anisotropic transformation) scalar radius when going between sets of units.
+
+    Parameters
+    ----------
+    radius : float
+        The scalar radius to convert.
+    from_units, to_units : str
+        Passed to :meth:`convert_blaze_vector`.
+    slm : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.CameraSLM` OR None
+        Passed to :meth:`convert_blaze_vector`.
+    shape : (int, int) OR None
+        Passed to :meth:`convert_blaze_vector`.
+    """
+    v0 = convert_blaze_vector(
+        (0, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
+    )
+    vx = convert_blaze_vector(
+        (radius, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
+    )
+    vy = convert_blaze_vector(
+        (0, radius), from_units=from_units, to_units=to_units, slm=slm, shape=shape
+    )
+    return np.mean([np.linalg.norm(vx - v0), np.linalg.norm(vy - v0)])
+
+
+# Windows creation functions. Windows are views into 2D arrays.
+
+def window_slice(window, shape=None, centered=False, circular=False):
+    """
+    Get the slices that describe the window's view into the larger array.
+
+    Parameters
+    ----------
+    window : (int, int, int, int) OR (array_like, array_like) OR array_like
+        A number of formats are accepted:
+        - List in ``(x, w, y, h)`` format, where ``w`` and ``h`` are the width and height of
+          the region and  ``(x,y)`` is the upper-left coordinate.
+          If ``centered``, then ``(x,y)`` is instead the center of the region to imprint.
+          If ``circular``, then an elliptical region circumscribed by the rectangular region is returned.
+        - Tuple containing arrays of identical length corresponding to y and x indices.
+          ``centered`` and ``circular`` are ignored.
+        - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
+          ``centered`` and ``circular`` are ignored.
+    shape : (int, int) OR None
+        The (height, width) of the array that the window is a view into.
+        If not ``None``, indices beyond those allowed by ``shape`` will be clipped.
+    centered : bool
+        See ``window``.
+    circular : bool
+        See ``window``.
+
+    Returns
+    -------
+    slice_ : (slice, slice) OR (array_like, array_like) OR (array_like)
+        The slice for the window.
+    """
+    # (v.x, w, v.y, h) format
+    if len(window) == 4:
+        # Prepare helper vars
+        xi = int(window[0] - ((window[1] - 2) / 2 if centered else 0))
+        xf = xi + int(window[1])
+        yi = int(window[2] - ((window[3] - 2) / 2 if centered else 0))
+        yf = yi + int(window[3])
+
+        if shape is not None:
+            [xi, xf] = np.clip([xi, xf], 0, shape[1] - 1)
+            [yi, yf] = np.clip([yi, yf], 0, shape[0] - 1)
+
+        if circular:    # If a circular window is desired, compute this.
+            x_list = np.arange(xi, xf)
+            y_list = np.arange(yi, yf)
+            x_grid, y_grid = np.meshgrid(x_list, y_list)
+
+            xc = xi + int((window[1] - 1) / 2)
+            yc = yi + int((window[3] - 1) / 2)
+
+            rr_grid = (
+                (window[3] ** 2) * np.square(x_grid.astype(float) - xc) +
+                (window[1] ** 2) * np.square(y_grid.astype(float) - yc)
+            )
+
+            mask_grid = rr_grid <= (window[1] ** 2) * (window[3] ** 2) / 4.
+
+            return window_slice((y_grid[mask_grid], x_grid[mask_grid]), shape=shape)
+        else:           # Otherwise, return square slices
+            slice_ = (slice(yi, yf), slice(xi, xf))
+    # (y_ind, x_ind) format
+    elif len(window) == 2:
+        # Prepare the lists
+        y_ind = np.ravel(window[0])
+        x_ind = np.ravel(window[1])
+        if shape is not None:
+            x_ind = np.clip(x_ind, 0, shape[1] - 1)
+            y_ind = np.clip(y_ind, 0, shape[0] - 1)
+        slice_ = (y_ind, x_ind)
+    # Boolean numpy array.
+    elif np.ndim(window) == 2:
+        slice_ = window
+    else:
+        raise ValueError("Unrecognized format for `window`.")
+
+    return slice_
+
+
+def window_square(window, padding_frac=0, padding_pix=0):
+    """
+    Find a square that covers the active region of ``window``.
+
+    Parameters
+    ----------
+    window : numpy.ndarray<bool> (height, width)
+        Boolean mask.
+    padding : float
+        Fraction of the window width and height to pad these by on all sides.
+        For instance,
+        This result is clipped to be within ``shape`` of the window.
+
+    Returns
+    -------
+    window_square : (int, int, int, int)
+        A square that covers the active region of ``window``
+        in the format (x, width2, y, height2) where
+        (x, y) is the upper left coordinate, and (width2, height2) define
+        the extent.
+    """
+    limits = []
+
+    # For each axis...
+    for a in [0, 1]:
+        if len(window) == 2:        # Handle two list case
+            limit = np.array([np.amin(window[a]), np.amax(window[a])+1])
+        elif np.ndim(window) == 2:  # Handle the boolean array case
+            collapsed = np.where(np.any(window, axis=a))  # Collapse the other axis
+            limit = np.array([np.amin(collapsed), np.amax(collapsed)+1])
+        else:
+            raise ValueError("Unrecognized format for `window`.")
+
+        # Add padding if desired.
+        padding_ = int(np.floor(np.diff(limit) * padding_frac) + padding_pix)
+        limit += np.array([-padding_, padding_])
+
+        # Clip the padding to shape.
+        if np.ndim(window) == 2:
+            limit = np.clip(limit, 0, window.shape[1-a])
+
+        limits.append(tuple(limit))
+
+    # Return desired format.
+    return (
+        limits[0][0], limits[0][1] - limits[0][0],
+        limits[1][0], limits[1][1] - limits[1][0]
+    )
+
+
+def voronoi_windows(grid, vectors, radius=None, plot=False):
+    r"""
+    Returns boolean array windows corresponding to the Voronoi cells for a set of vectors.
+    These boolean array windows are in the style of :meth:`~slmsuite.holography.toolbox.imprint()`.
+    The ith window corresponds to the Voronoi cell centered around the ith vector.
+
+    Note
+    ~~~~
+    The :meth:`cv2.fillConvexPoly()` function used to fill each window dilates
+    slightly outside the window bounds. To avoid pixels belonging to multiple windows
+    simultaneously, we crop away previously-assigned pixels from new windows while these are
+    being iteratively generated. As a result, windows earlier in the list will be slightly
+    larger than windows later in the list.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+        If an ``(int, int)`` is passed, this is assumed to be the shape of the device, and
+        ``vectors`` are **assumed to be in pixel units instead of normalized units**.
+    vectors : array_like
+        Points to Voronoi-ify.
+        Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
+    radius : float
+        Cells on the edge of the set of cells might be very large. This parameter bounds
+        the cells with a boolean and to the aperture of the given ``radius``.
+    plot : bool
+        Whether to plot the resulting Voronoi diagram with :meth:`scipy.spatial.voronoi_plot_2d()`.
+
+    Returns
+    -------
+    list of numpy.ndarray
+        The resulting windows.
+    """
+    vectors = format_2vectors(vectors)
+
+    if (
+        isinstance(grid, (list, tuple))
+        and isinstance(grid[0], (int))
+        and isinstance(grid[1], (int))
+    ):
+        shape = grid
+    else:
+        (x_grid, y_grid) = _process_grid(grid)
+
+        shape = x_grid.shape
+
+        x_list = x_grid[0, :]
+        y_list = y_grid[:, 0]
+
+        vectors = np.vstack((
+            np.interp(vectors[0, :], x_list, np.arange(shape[1])),
+            np.interp(vectors[1, :], y_list, np.arange(shape[0])),
+        ))
+
+    # Half shape data.
+    hsx = shape[1] / 2
+    hsy = shape[0] / 2
+
+    # Add additional points in a diamond outside the shape of interest to cause all
+    # windows of interest to be finite.
+    vectors_voronoi = np.concatenate((
+        vectors.T,
+        np.array(
+            [[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]
+        ),
+    ))
+
+    vor = Voronoi(vectors_voronoi, furthest_site=False)
+
+    if plot:
+        sx = shape[1]
+        sy = shape[0]
+
+        # Use the built-in scipy function to plot a visualization of the windows.
+        fig = voronoi_plot_2d(vor)
+
+        # Plot a bounding box corresponding to the grid.
+        plt.plot(np.array([0, sx, sx, 0, 0]), np.array([0, 0, sy, sy, 0]), "r")
+
+        # Format and show the plot.
+        plt.xlim(-0.05 * sx, 1.05 * sx)
+        plt.ylim(1.05 * sy, -0.05 * sy)
+        plt.gca().set_aspect('equal')
+        plt.title("Voronoi Cells")
+        plt.show()
+
+    # Gather data from scipy Voronoi and return as a list of boolean windows.
+    N = np.shape(vectors)[1]
+    filled_regions = []
+    already_filled = np.zeros(shape, dtype=np.uint8)
+
+    for x in range(N):
+        point = tuple(np.around(vor.points[x]).astype(np.int32))
+        region = vor.regions[vor.point_region[x]]
+        pts = np.around(vor.vertices[region]).astype(np.int32)
+
+        canvas1 = np.zeros(shape, dtype=np.uint8)
+        cv2.fillConvexPoly(canvas1, pts, 255, cv2.LINE_4)
+
+        # Crop the window to with a given radius, if desired.
+        if radius is not None and radius > 0:
+            canvas2 = np.zeros(shape, dtype=np.uint8)
+            cv2.circle(
+                canvas2, point, int(np.ceil(radius)), 255, -1
+            )
+
+            filled_regions.append((canvas1 > 0) & (canvas2 > 0) & np.logical_not(already_filled))
+        else:
+            filled_regions.append((canvas1 > 0) & np.logical_not(already_filled))
+
+        already_filled |= filled_regions[-1]
+
+    return filled_regions
+
+
+# Phase pattern collation and manipulation. Uses windows.
+
+def imprint(
+    matrix,
+    window,
+    function,
+    grid=None,
+    imprint_operation="replace",
+    centered=False,
+    circular=False,
+    clip=True,
+    transform=0,
+    shift=(0,0),
+    **kwargs
+):
+    r"""
+    Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
+    This ``function`` must be in the style of :mod:`~slmsuite.holography.toolbox.phase`
+    phase helper functions, which expect a ``grid`` parameter to define the coordinate basis
+    (see :meth:`~slmsuite.holography.toolbox.phase.blaze()` or
+    :meth:`~slmsuite.holography.toolbox.phase.lens()`).
+
+    For instance, we can imprint a blaze on a 200 by 200 pixel region
+    of the SLM with:
+
+    .. highlight:: python
+    .. code-block:: python
+
+        canvas = np.zeros(shape=slm.shape)  # Matrix to imprint onto.
+        window = [200, 200, 200, 200]       # Region of the matrix to imprint.
+        toolbox.imprint(canvas, window=window, function=toolbox.phase.blaze, grid=slm, vector=(.001, .001))
+
+    See also :ref:`examples`.
+
+    Parameters
+    ----------
+    matrix : numpy.ndarray
+        The data to imprint a ``function`` onto.
+    window
+        See :meth:`~slmsuite.holography.toolbox.window_slice()`.
+    function : function OR float
+        A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
+        which accept ``grid`` as the first argument.
+        Also accepts floating point values, in which case this value is simply added.
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR None
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+        ``None`` can only be passed if a float is passed as ``function``.
+    imprint_operation : {"replace" OR "add"}
+        Decides how the ``function`` is imparted to the ``matrix``.
+
+        - If ``"replace"``, then the values of ``matrix`` inside ``window`` are replaced with ``function``.
+        - If ``"add"``, then these are instead added together (useful, for instance, for global blazes).
+    centered
+        See :meth:`~slmsuite.holography.toolbox.window_slice()`.
+    circular
+        See :meth:`~slmsuite.holography.toolbox.window_slice()`.
+    clip : bool
+        Whether to clip the imprint region if it exceeds the size of ``matrix``.
+        If ``False``, then an error is raised when the size is exceeded.
+        If ``True``, then the out-of-range pixels are instead filled with ``numpy.nan``.
+    transform : float or ((float, float), (float, float))
+       Passed to :meth:`shift_grid`, operating on the cropped imprint grid.
+       This is left as an option such that the user does not have to transform the
+       entire ``grid`` to satisfy a tiny imprinted patch.
+       See :meth:`shift_grid` for more details.
+    shift : (float, float)
+       Passed to :meth:`shift_grid`, operating on the cropped imprint grid.
+       This is left as an option such that the user does not have to transform the
+       entire ``grid`` to satisfy a tiny imprinted patch.
+       See :meth:`shift_grid` for more details.
+    **kwargs :
+        For passing additional arguments accepted by ``function``.
+
+    Returns
+    ----------
+    matrix : numpy.ndarray
+        The modified image. Note that the matrix is modified in place, and this return
+        is merely a copy of the user's pointer to the data.
+
+    Raises
+    ----------
+    ValueError
+        If invalid ``window`` or ``imprint_operation`` are provided.
+    """
+    # Format the grid.
+    if grid is not None:
+        (x_grid, y_grid) = _process_grid(grid)
+
+    # Get slices for the window in the matrix.
+    shape = matrix.shape if clip else None
+    slice_ = window_slice(window, shape=shape, centered=centered, circular=circular)
+
+    # Decide whether to treat function as a float.
+    is_float = isinstance(function, REAL_TYPES)
+
+    if not is_float:
+        assert grid is not None, "toolbox.py: imprint grid cannot be None if a function is given."
+
+    # Modify the matrix.
+    if imprint_operation == "replace":
+        if is_float:
+            matrix[slice_] = function
+        else:
+            matrix[slice_] = function(
+                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift),
+                **kwargs
+            )
+    elif imprint_operation == "add":
+        if is_float:
+            matrix[slice_] += function
+        else:
+            matrix[slice_] += function(
+                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift),
+                **kwargs
+            )
+    else:
+        raise ValueError("Unrecognized imprint operation {}.".format(imprint_operation))
+
+    return matrix
+
+
 # Vector helper functions.
 
 def format_2vectors(vectors):
@@ -616,16 +630,6 @@ def format_2vectors(vectors):
     return vectors
 
 
-def fit_affine(**kwargs):
-    """**(Deprecated; this function has been renamed to**
-    :meth:`slmsuite.holography.toolbox.fit_3pt()` **)**"""
-    warnings.warn(
-        "slmsuite.toolbox.fit_affine is deprecated."
-        "Use slmsuite.toolbox.fit_3pt instead"
-    )
-    return fit_3pt(**kwargs)
-
-
 def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_check=False):
     r"""
     Fits three points to an affine transformation. This transformation is given by:
@@ -641,10 +645,11 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
         y1 = (2.,2.)    # First point in x direction
         y2 = (1.,2.)    # first point in y direction
 
-        # Dict with keys "M", and "b":
+        # If N is None, return a dict with keys "M", and "b"
         affine_dict =   fit_3pt(y0, y1, y2, N=None)
 
-        # Array with shape (2,25) corresponding to a 5x5 evaluation of the above:
+        # If N is provided, evaluates the transformation on indices with the given shape
+        # In this case, the requested 5x5 indices results in an array with shape (2,25)
         vector_array =  fit_3pt(y0, y1, y2, N=(5,5))
 
     However, ``fit_3pt`` is more powerful that this, and can fit an affine
@@ -656,10 +661,10 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
     .. code-block:: python
 
         # y11 is at x index (1,1), etc
-        fit_3pt(y11, y34, y78, (5,5), (1,1), (3,4), (7,8))
+        fit_3pt(y11, y34, y78, N=(5,5), x0=(1,1), x1=(3,4), x2=(7,8))
 
         # These indices don't have to be integers
-        fit_3pt(a, b, c, (5,5), (np.pi,1.5), (20.5,np.sqrt(2)), (7.7,42.0))
+        fit_3pt(a, b, c, N=(5,5), x0=(np.pi,1.5), x1=(20.5,np.sqrt(2)), x2=(7.7,42.0))
 
     Optionally, basis vectors can be passed directly instead of adding these
     vectors to the origin, by making use of passing ``None`` for ``x1`` or ``x2``:
@@ -672,8 +677,8 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
         dv2 =       (1.,0.)     # Basis vector in y direction
 
         # The following are equivalent:
-        option1 = fit_3pt(origin, origin+dv1, origin+dv2, (5,5))
-        option2 = fit_3pt(origin, dv1, dv2, (5,5), x1=None, x2=None)
+        option1 = fit_3pt(origin, np.add(origin, dv1), np.add(origin, dv2), N=(5,5))
+        option2 = fit_3pt(origin, dv1, dv2, N=(5,5), x1=None, x2=None)
 
         assert option1 == option2
 
@@ -967,7 +972,9 @@ import slmsuite.holography.toolbox.phase as toolbox_phase
 
 def shift_grid(grid, transform=None, shift=None):
     r"""
-    Returns a copy of a coordinate basis ``grid`` with a given ``shift`` and ``transformation``.
+    Returns a copy of a coordinate basis ``grid`` with a given ``shift`` and
+    ``transformation``. These can be the :math:`\vec{b}` and :math:`M` of a standard
+    affine transformation as used elsewhere in the package.
     Such grids are used as arguments for phase patterns, such as those in
     :mod:`slmsuite.holography.toolbox.phase`.
 
@@ -980,18 +987,19 @@ def shift_grid(grid, transform=None, shift=None):
         such a class can be passed instead of the grids directly.
     transform : float OR ((float, float), (float, float)) OR None
         If a scalar is passed, this is the angle to rotate the basis of the lens by.
-        Defaults to zero if `None`.
+        Defaults to zero if ``None``.
         If a 2x2 matrix is passed, transforms the :math:`x` and :math:`y` grids
         according to :math:`x' = M_{00}x + M_{01}y`,  :math:`y' = M_{10}y + M_{11}y`.
     shift : (float, float) OR None
-        Center of the grid in normalized :math:`\frac{x}{\lambda}` coordinates.
-        Defaults to no shift if `None`.
+        Translational shift of the grid in normalized :math:`\frac{x}{\lambda}` coordinates.
+        Defaults to no shift if ``None``.
 
     Returns
     -------
     grid : (array_like, array_like)
         The shifted grid
     """
+    # Parse arguments.
     (x_grid, y_grid) = _process_grid(grid)
 
     if transform is None:
@@ -1000,12 +1008,13 @@ def shift_grid(grid, transform=None, shift=None):
     if shift is None:
         shift = (0, 0)
 
-    if transform == 0:
+    if np.isscalar(transform) and transform == 0:   # The trivial case
         return (
             x_grid if shift[0] == 0 else (x_grid - shift[0]),
             y_grid if shift[1] == 0 else (y_grid - shift[1])
         )
-    else:
+    else:                                           # transform is not trivial.
+        # Interpret angular transform as a matrix.
         if np.isscalar(transform):
             s = np.sin(transform)
             c = np.cos(transform)
@@ -1015,6 +1024,7 @@ def shift_grid(grid, transform=None, shift=None):
 
         assert np.shape(transform) == 2
 
+        # Use the matrix to transform the grid.
         return (
             transform[0,0] * x_grid - transform[0,0] * y_grid if shift[0] == 0 else (c * x_grid - s * y_grid - shift[0]),
             transform[0,0] * x_grid + transform[1,1] * y_grid if shift[1] == 0 else (c * y_grid + s * x_grid - shift[1])
@@ -1027,17 +1037,23 @@ def pad(matrix, shape):
     """
     Helper function to pad data with zeros. The padding is centered.
     This is used to get higher resolution upon Fourier transform.
+
     Parameters
     ----------
     matrix : numpy.ndarray
         Data to pad.
-    shape : (int, int)
+    shape : (int, int) OR None
         The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
+        If ``None``, the ``matrix`` is returned unpadded.
+
     Returns
     -------
     numpy.ndarray
         Padded ``matrix``.
     """
+    if shape is None:
+        return matrix
+
     deltashape = (
         (shape[0] - matrix.shape[0]) / 2.0,
         (shape[1] - matrix.shape[1]) / 2.0,
@@ -1047,18 +1063,18 @@ def pad(matrix, shape):
         deltashape[0] >= 0 and deltashape[1] >= 0
     ), "Shape {} is too large to pad to shape {}".format(tuple(matrix.shape), shape)
 
-    padB = int(np.floor(deltashape[0]))
-    padT = int(np.ceil(deltashape[0]))
-    padL = int(np.floor(deltashape[1]))
-    padR = int(np.ceil(deltashape[1]))
+    pad_b = int(np.floor(deltashape[0]))
+    pad_t = int(np.ceil(deltashape[0]))
+    pad_l = int(np.floor(deltashape[1]))
+    pad_r = int(np.ceil(deltashape[1]))
 
-    toReturn = np.pad(
-        matrix, [(padB, padT), (padL, padR)], mode="constant", constant_values=0
+    padded = np.pad(
+        matrix, [(pad_b, pad_t), (pad_l, pad_r)], mode="constant", constant_values=0
     )
 
-    assert np.all(toReturn.shape == shape)
+    assert np.all(padded.shape == shape)
 
-    return toReturn
+    return padded
 
 
 def unpad(matrix, shape):
@@ -1070,9 +1086,10 @@ def unpad(matrix, shape):
     ----------
     matrix : numpy.ndarray OR (int, int)
         Data to unpad. If this is a shape in :mod:`numpy` ``(h, w)`` form,
-        returns the four slicing integers used to unpad that shape ``[padB:padT, padL:padR]``.
-    shape : (int, int)
+        returns the four slicing integers used to unpad that shape ``[pad_b:pad_t, pad_l:pad_r]``.
+    shape : (int, int) OR None
         The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
+        If ``None``, the ``matrix`` is returned unchanged.
 
     Returns
     ----------
@@ -1083,7 +1100,7 @@ def unpad(matrix, shape):
     mshape = np.shape(matrix)
     return_args = False
     if len(mshape) == 1 or np.prod(mshape) == 2:
-        # Assume as tuple was provided.
+        # Assume a shape was provided.
         mshape = np.squeeze(matrix)
         return_args = True
 
@@ -1099,120 +1116,16 @@ def unpad(matrix, shape):
         deltashape[0] <= 0 and deltashape[1] <= 0
     ), "Shape {} is too small to unpad to shape {}".format(tuple(mshape), shape)
 
-    padB = int(np.floor(-deltashape[0]))
-    padT = int(mshape[0] - np.ceil(-deltashape[0]))
-    padL = int(np.floor(-deltashape[1]))
-    padR = int(mshape[1] - np.ceil(-deltashape[1]))
+    pad_b = int(np.floor(-deltashape[0]))
+    pad_t = int(mshape[0] - np.ceil(-deltashape[0]))
+    pad_l = int(np.floor(-deltashape[1]))
+    pad_r = int(mshape[1] - np.ceil(-deltashape[1]))
 
     if return_args:
-        return (padB, padT, padL, padR)
+        return (pad_b, pad_t, pad_l, pad_r)
 
-    toReturn = matrix[padB:padT, padL:padR]
+    unpadded = matrix[pad_b:pad_t, pad_l:pad_r]
 
-    assert np.all(toReturn.shape == shape)
+    assert np.all(unpadded.shape == shape)
 
-    return toReturn
-
-
-# Deprecated phase functions (moved to toolbox.phase).
-
-def blaze(grid, vector=(0, 0), offset=0):
-    r"""
-    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.blaze` **instead)**
-    """
-    warnings.warn(
-        "slmsuite.toolbox.blaze is deprecated."
-        "Use slmsuite.toolbox.phase.blaze instead"
-    )
-    return toolbox_phase.blaze(grid, vector, offset)
-
-
-def lens(grid, f=(np.inf, np.inf), center=None, angle=None):
-    r"""
-    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.lens` **instead)**
-    """
-    warnings.warn(
-        "slmsuite.toolbox.lens is deprecated."
-        "Use slmsuite.toolbox.phase.lens instead"
-    )
-    if center is not None or angle is not None:
-        grid = shift_grid(grid, transform=angle, shift=center)
-
-    return toolbox_phase.lens(grid, f)
-
-
-def axicon(grid, f=(np.inf, np.inf), w=None):
-    r"""
-    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.axicon` **instead)**
-    """
-    warnings.warn(
-        "slmsuite.toolbox.axicon is deprecated."
-        "Use slmsuite.toolbox.phase.axicon instead"
-    )
-    return toolbox_phase.axicon(grid, f, w)
-
-
-def zernike(grid, n, m, aperture=None):
-    r"""
-    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.zernike` **instead)**
-    """
-    warnings.warn(
-        "slmsuite.toolbox.zernike is deprecated."
-        "Use slmsuite.toolbox.phase.zernike instead"
-    )
-    return toolbox_phase.zernike(grid, n, m, aperture)
-
-
-def zernike_sum(grid, weights, aperture=None):
-    r"""
-    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.zernike_sum` **instead)**
-    """
-    warnings.warn(
-        "slmsuite.toolbox.zernike_sum is deprecated."
-        "Use slmsuite.toolbox.phase.zernike_sum instead"
-    )
-    return toolbox_phase.zernike_sum(grid, weights, aperture)
-
-
-def laguerre_gaussian(grid, l, p, w=None):
-    r"""
-    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.laguerre_gaussian` **instead)**
-    """
-    warnings.warn(
-        "slmsuite.toolbox.laguerre_gaussian is deprecated."
-        "Use slmsuite.toolbox.phase.laguerre_gaussian instead"
-    )
-    return toolbox_phase.laguerre_gaussian(grid, l, p, w)
-
-
-def hermite_gaussian(grid, n, m, w=None):
-    r"""
-    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.hermite_gaussian` **instead)**
-    """
-    warnings.warn(
-        "slmsuite.toolbox.hermite_gaussian is deprecated."
-        "Use slmsuite.toolbox.phase.hermite_gaussian instead"
-    )
-    return toolbox_phase.hermite_gaussian(grid, n, m, w)
-
-
-def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
-    r"""
-    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.ince_gaussian` **instead)**
-    """
-    warnings.warn(
-        "slmsuite.toolbox.ince_gaussian is deprecated."
-        "Use slmsuite.toolbox.phase.ince_gaussian instead"
-    )
-    return ince_gaussian(grid, p, m, parity, ellipticity, w)
-
-
-def matheui_gaussian(grid, r, q, w=None):
-    """
-    **(Deprecated; use** :meth:`slmsuite.toolbox.phase.matheui_gaussian` **instead)**
-    """
-    warnings.warn(
-        "slmsuite.toolbox.matheui_gaussian is deprecated."
-        "Use slmsuite.toolbox.phase.matheui_gaussian instead"
-    )
-    return matheui_gaussian(grid, r, q, w)
+    return unpadded

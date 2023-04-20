@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from functools import reduce
-from scipy.ndimage import gaussian_filter1d as sp_gaussian_filter1d
 from scipy.optimize import curve_fit, minimize
 
 from slmsuite.holography.toolbox import format_2vectors
@@ -22,7 +21,8 @@ def take(
     Crop integration regions around an array of ``vectors``, yielding an array of images.
 
     Each integration region is a rectangle of the same ``size``. Similar to but more
-    general than :meth:`numpy.take`; useful for gathering data from spots in spot arrays.
+    general than :meth:`numpy.take`. Useful for gathering data from spots in spot
+    arrays. Operates with some speed due to the vectorized nature of implemented slicing.
 
     Parameters
     ----------
@@ -38,30 +38,35 @@ def take(
     centered : bool
         Whether to center the integration region on the ``vectors``.
         If ``False``, ``vectors`` indicates the upper-left corner of the integration region.
+        Defaults to ``True``.
     integrate : bool
         If ``True``, the spatial dimension are integrated (summed), yielding a result of the
-        same length as the number of vectors.
+        same length as the number of vectors. Defaults to ``False``.
     clip : bool
         Whether to allow out-of-range integration regions. ``True`` allows regions outside
         the valid area, setting the invalid region to ``np.nan``
         (or zero if the array datatype does not support ``np.nan``).
-        ``False`` throws an error upon out of range.
+        ``False`` throws an error upon out of range. Defaults to ``False``.
     return_mask : bool
         If ``True``, returns a boolean mask corresponding to the regions which are taken
         from. Defaults to ``False``. The average user will ignore this.
     plot : bool
         Calls :meth:`take_plot()` to visualize the images regions.
     mp : module
-        If ``images`` are :mod:`cupy` objects, then :mod:`cupy` must be passed as ``mp``.
+        If ``images`` are :mod:`cupy` objects, then :mod:`cupy` must be passed as
+        ``mp``. Very useful to minimize the cost of moving data between the GPU and CPU.
         Defaults to :mod:`numpy`.
+        Indexing variables inside `:meth:`take` still use :mod:`numpy` for speed, no
+        matter what module is used.
 
     Returns
     -------
-    numpy.ndarray
+    numpy.ndarray OR cupy.ndarray
         If ``integrate`` is ``False``, returns an array containing the images cropped
-        from the regions of size `(image_count, h, w)`.
-        If ``integrate`` is ``True``, instead returns an array of floats of size `(image_count,)`
+        from the regions of size ``(image_count, h, w)``.
+        If ``integrate`` is ``True``, instead returns an array of floats of size ``(image_count,)``
         where each float corresponds to the :meth:`numpy.sum` of a cropped image.
+        If ``mp`` is :mod:`cupy`, then a ``cupy.ndarray`` is returned.
     """
     # Clean variables.
     if isinstance(size, REAL_TYPES):
@@ -112,7 +117,7 @@ def take(
 
         return canvas
     else:
-        # Take the data, depending on the
+        # Take the data, depending on the shape of the images.
         if len(shape) == 2:
             result = images[np.newaxis, integration_y, integration_x]
         elif len(shape) == 3:
@@ -128,9 +133,9 @@ def take(
         else:
             pass
 
-        if integrate:  # Sum over the integration axis
+        if integrate:  # Sum over the integration axis.
             return mp.squeeze(mp.sum(result, axis=-1))
-        else:  # Reshape the integration axis
+        else:  # Reshape the integration axis.
             return mp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
@@ -143,17 +148,19 @@ def take_plot(images):
     images : numpy.ndarray
         Stack of 2D images, usually a :meth:`take()` output.
     """
+    # Gather helper variables and set the min and max of all the subplots.
     (img_count, sy, sx) = np.shape(images)
     M = int(np.ceil(np.sqrt(img_count)))
-
-    plt.figure(figsize=(12, 12))
 
     sx = sx / 2.0 - 0.5
     sy = sy / 2.0 - 0.5
     extent = (-sx, sx, -sy, sy)
 
-    vmin = np.min(images)
-    vmax = np.max(images)
+    vmin = np.nanmin(images)
+    vmax = np.nanmax(images)
+
+    # Make the figure and subplots.
+    plt.figure(figsize=(12, 12))
 
     for x in range(img_count):
         ax = plt.subplot(M, M, x + 1)
@@ -171,62 +178,67 @@ def take_plot(images):
     plt.show()
 
 
-def image_remove_field(images, deviations=1, ignore_nan=True, out=None):
+def image_remove_field(images, deviations=1, out=None):
     r"""
     Zeros the field of a stack of images such that moment calculations will succeed.
     Consider, for example, a small spot on a field with strong background.
     Moment calculations in this situation will dominantly measure the moments
-    of the rectangular field. This function zeros the image below some threshold.
+    of the background (i.e. the field). This function zeros the image below some threshold.
     This threshold is set to either the mean plus ``deviations`` standard deviations,
     computed uniquely for each image, or the median of each image if ``deviations``
-    is ``None``.
+    is ``None``. This is equivalent to background subtraction.
 
     Parameters
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
-        ``(h, w)`` is passed.
+        ``(h, w)`` is passed, though the returned image remains shape ``(h, w)`` in that case.
     deviations : int OR None
         Number of standard deviations above the mean to set the threshold.
         If ``None``, uses the median as the threshold instead.
         Defaults to ``None``.
     out : numpy.ndarray or None
-        The array to place the output data into.
-        Should be the same shape as ``images``,
-        according to the format of :meth:`image_moment()`.
-        In-place if ``out`` equals ``images``.
+        The array to place the output data into. Should be the same shape as ``images``.
+        This function operates in-place if ``out`` equals ``images``.
 
     Returns
     -------
     out : numpy.ndarray
-        Images with zeroed field.
+        ``images`` or a copy of ``images``, with each image background-subtracted.
     """
-    images = np.array(images)
+    # Parse images. Convert to float.
+    images = np.array(images, copy=False)
     if not isinstance(images.dtype, np.floating):
-        images = np.array(images, dtype=float)  # Hack to prevent integer underflow.
+        images = np.array(images, copy=False, dtype=float)  # Hack to prevent integer underflow.
 
-    if len(images.shape) == 2:
-        images = np.reshape(images, (1, images.shape[0], images.shape[1]))
-    img_count = images.shape[0]
-
-    if deviations is None:  # Median case
-        threshold = np.nanmedian(images, axis=(1, 2))
-    else:   # Mean + deviations * std case
-        threshold = (
-            np.nanmean(images, axis=(1, 2))
-            + deviations*np.nanstd(images, axis=(1, 2))
-        )
-
-    threshold = np.reshape(threshold, (img_count, 1, 1))
-
+    # Parse out.
     if out is None:
         out = np.copy(images)
     elif out is not images:
         out = np.copyto(out, images)
 
-    # This needs float. Unsigned int would underflow.
+    # Make sure that we're testing 3D images.
+    single_image = len(images.shape) == 2
+    if single_image:
+        images_ = np.reshape(images, (1, images.shape[0], images.shape[1]))
+    else:
+        images_ = images
+    img_count = images_.shape[0]
+
+    # Generate the threshold.
+    if deviations is None:  # Median case
+        threshold = np.nanmedian(images_, axis=(1, 2))
+    else:   # Mean + deviations * std case
+        threshold = (
+            np.nanmean(images_, axis=(1, 2))
+            + deviations*np.nanstd(images_, axis=(1, 2))
+        )
+    if not single_image:
+        threshold = np.reshape(threshold, (img_count, 1, 1))
+
+    # Remove the field. This needs the float from before. Unsigned integer could underflow.
     out -= threshold
     out[out < 0] = 0
 
@@ -252,15 +264,15 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
 
     Warning
     ~~~~~~~
-    This function does not check for or correct for passed ``images`` with negative
-    values. Negative values may produce unusual results.
+    This function does not check for or correct for negative values in ``images``.
+    Negative values may produce unusual results.
 
     Warning
     ~~~~~~~
     Higher order even moments (e.g. 2) will potentially yield unexpected results if
     the images are not background-subtracted. For instance, a calculation on an image
     with large background will yield the moment of the window, rather than say anything
-    about the image.
+    about the image. Consider using :meth:`image_remove_field()` to background-subtract.
 
     Parameters
     ----------
@@ -296,7 +308,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
         The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size ``(image_count,)``
         for provided ``images`` data of shape ``(image_count, h, w)``.
     """
-    images = np.array(images)
+    images = np.array(images, copy=False)
     if len(images.shape) == 2:
         images = np.reshape(images, (1, images.shape[0], images.shape[1]))
     (img_count, w_y, w_x) = images.shape
@@ -350,7 +362,7 @@ def image_normalization(images, nansum=False):
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     nansum : bool
@@ -372,15 +384,13 @@ def image_normalize(images, nansum=False, remove_field=False):
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
-        ``(h, w)`` is passed.
+        ``(h, w)`` is passed, though the returned image remains shape ``(h, w)`` in that case.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
     remove_field : bool
-        Whether to apply :meth:`.image_remove_field()` to avoid dominating the moments by
-        the field. ``nansum`` is passed as ``ignore_nan``.
-
+        Whether to apply :meth:`.image_remove_field()` to avoid background-dominated moments.
 
     Returns
     -------
@@ -388,19 +398,25 @@ def image_normalize(images, nansum=False, remove_field=False):
         A copy of ``images``, with each image normalized.
     """
     if remove_field:
-        images = image_remove_field(images, ignore_nan=nansum)
+        images = image_remove_field(images)
     else:
-        images = np.array(images, dtype=float)
-        if len(images.shape) == 2:
-            images = np.reshape(images, (1, images.shape[0], images.shape[1]))
+        images = np.array(images, copy=False, dtype=float)
 
-    img_count = images.shape[0]
+    single_image = len(images.shape) == 2
 
     normalization = image_normalization(images, nansum=nansum)
-    reciprical = np.reciprocal(
-        normalization, where=normalization != 0, out=np.zeros(img_count,)
-    )
-    return images * np.reshape(reciprical, (img_count, 1, 1))
+
+    if single_image:
+        normalization = np.asscalar(normalization)
+        if normalization == 0:
+            return np.zeros_like(images)
+        else:
+            return images / normalization
+    else:
+        reciprical = np.reciprocal(
+            normalization, where=normalization != 0, out=np.zeros(len(normalization))
+        )
+        return images * np.reshape(reciprical, (len(normalization), 1, 1))
 
 
 def image_positions(images, normalize=True, nansum=False):
@@ -413,7 +429,7 @@ def image_positions(images, normalize=True, nansum=False):
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     normalize : bool
@@ -458,7 +474,7 @@ def image_variances(images, centers=None, normalize=True, nansum=False):
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and :math:`image_count` is the number of
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     centers : numpy.ndarray OR None
@@ -572,20 +588,18 @@ def image_ellipticity_angle(variances):
     m02 = variances[1, :]
     m11 = variances[2, :]
 
-    # Some quick math (see image_variances_circularity).
-    # half_trace = (m20 + m02) / 2
-    # determinant = m20 * m02 - m11 * m11
+    # Some quick math (see image_ellipticity).
+    half_trace = (m20 + m02) / 2
+    determinant = m20 * m02 - m11 * m11
 
-    # eig_plus = half_trace + np.sqrt(np.square(half_trace) - determinant)
+    eig_plus = half_trace + np.sqrt(np.square(half_trace) - determinant)
 
-    # We know that M * v = lambda * v. This yields a system of equations:
-    #   m20 * x + m11 * y = lambda * x
-    #   m11 * x + m02 * y = lambda * y
+    # We know that M * v = eig_plus * v. This yields a system of equations:
+    #   m20 * x + m11 * y = eig_plus * x
+    #   m11 * x + m02 * y = eig_plus * y
     # We're trying to solve for angle, which is just atan(x/y). We can solve for x/y:
-    #   m11 * x = (lambda - m02) * y        ==>         x/y = (lambda - m02) / m11
-    # return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
-
-    return .5 * np.arctan2(m11, m20 - m02, where=m20 != m02, out=np.zeros_like(m11))
+    #   m11 * x = (eig_plus - m02) * y        ==>         x/y = (eig_plus - m02) / m11
+    return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
 def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=False):
@@ -756,7 +770,6 @@ def fit_affine(x, y, guess_affine=None, plot=False):
     ----------
     x, y : array_like
         Array of vectors of shape ``(2, N)`` in the style of :meth:`format_2vectors()`.
-        Is
     plot : bool
         Whether to produce a debug plot.
 
@@ -780,14 +793,14 @@ def fit_affine(x, y, guess_affine=None, plot=False):
         x_ = x - xc
         y_ = y - yc
 
-        # Points very close to the centroid have disproporte influence on the guess.
+        # Points very close to the centroid have disproportionate influence on the guess.
         # Ignore the points which are closer than a median-dependent threshold.
         threshold = np.median(np.sqrt(np.sum(np.square(x_), axis=0))) / 2
 
         # Generate a guess transformation.
         nan_list = np.full_like(y_[0,:], np.nan)
 
-        # This could probably be vectorized more.
+        # This could probably be vectorized more. Also not sure if all corner cases work.
         M_guess = np.array([
             [
                 np.nanmean(np.divide(y_[0,:], x_[0,:], where=x_[0,:] > threshold, out=nan_list.copy())),
@@ -823,7 +836,7 @@ def fit_affine(x, y, guess_affine=None, plot=False):
 
     guess = (M_guess[0,0], M_guess[0,1], M_guess[1,0], M_guess[1,1], b_guess[0,0], b_guess[1,0])
 
-    try:        # Try with default scipy minimization.
+    try:        # Try with default scipy minimization. (Future: better opt than minimize?).
         m = minimize(err, x0=guess)
         p = [float(pp) for pp in m.x]
 
@@ -864,7 +877,9 @@ def blob_detect(
     """
     Detect blobs in an image.
 
-    Wraps :class:`cv2.SimpleBlobDetector` [1]_. See also [2]_.
+    Wraps :class:`cv2.SimpleBlobDetector` (see
+    `these <https://docs.opencv.org/3.4/d8/da7/structcv_1_1SimpleBlobDetector_1_1Params.html>`_
+    `links <https://learnopencv.com/blob-detection-using-opencv-python-c/>`_)
     Default parameters are optimized for bright spot detection on dark background,
     but can be changed with ``**kwargs``.
 
@@ -884,7 +899,7 @@ def blob_detect(
         Axes for plotting.
     show : bool
         Whether or not to show the plot.
-    kwargs
+    **kwargs
        Extra arguments for :class:`cv2.SimpleBlobDetector`.
 
     Returns
@@ -893,11 +908,6 @@ def blob_detect(
         List of blobs found by  ``detector``.
     detector : :class:`cv2.SimpleBlobDetector`
         A blob detector with customized parameters.
-
-    References
-    ~~~~~~~~~~
-    .. [1] https://docs.opencv.org/3.4/d8/da7/structcv_1_1SimpleBlobDetector_1_1Params.html
-    .. [2] https://learnopencv.com/blob-detection-using-opencv-python-c/
     """
     img_8it = _make_8bit(np.copy(img))
     params = cv2.SimpleBlobDetector_Params()
@@ -964,6 +974,7 @@ def blob_detect(
         blob_ymax = np.max(blob_ys)
         zoom_padx = 2 * (blob_xmax - blob_xmin) / blob_count
         zoom_pady = 2 * (blob_ymax - blob_ymin) / blob_count
+
         # Plot setup.
         if fig is None and axs is None:
             if zoom:
@@ -976,10 +987,12 @@ def blob_detect(
         else:
             ax0, = axs
         fig.suptitle(title)
+
         # Full image.
         vmin = np.min(img_8it)
         vmax = np.max(img_8it)
         im = ax0.imshow(img_8it, vmin=vmin, vmax=vmax)
+
         # Zoomed Image.
         if zoom:
             ax1.imshow(img_8it, vmin=vmin, vmax=vmax)
@@ -1002,6 +1015,7 @@ def blob_detect(
             ax0.set_title("Full")
         else:
             fig.colorbar(im, ax=ax0)
+
         # Blob patches
         for blob_idx in range(blob_count):
                 patch = matplotlib.patches.Circle(
@@ -1021,9 +1035,14 @@ def blob_detect(
 
 
 def blob_array_detect(
-    img, size, orientation=None, orientation_check=True, dft_threshold=50,
-    dft_pad_exponent=0, plot=False,
-    ):
+    img,
+    size,
+    orientation=None,
+    orientation_check=True,
+    dft_threshold=50,
+    dft_padding=0,
+    plot=False,
+):
     r"""
     Detect an array of spots and return the orientation as an affine transformation.
     Primarily used for calibration.
@@ -1053,10 +1072,11 @@ def blob_array_detect(
     dft_threshold : float in [0, 255]
         Minimum value of peak in blob detect of the DFT of `img` when `orientation` is `None`.
         Passed as kwarg to :meth:`blob_detect` with name `minThreshold`.
-    dft_pad_exponent : int
+    dft_padding : int
         Increases the dimensions of the padded `img` before the DFT is taken when `orientation`
-        is `None`. Dimensions are increased like `2 ** dft_pad_exponent`. Increasing
-        this value increases the k-space resolution of the DFT, and can improve orientation detection.
+        is `None`. Dimensions are increased by a factor of `2 ** dft_padding`.
+        Increasing this value increases the k-space resolution of the DFT,
+        and can improve orientation detection.
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
 
@@ -1070,12 +1090,14 @@ def blob_array_detect(
          - ``"b"`` : ``numpy.ndarray`` (2, 1).
     """
     img_8it = _make_8bit(img)
-    start_orientation = orientation
 
-    if orientation is None:
-        # FFT to find array pitch and orientation
+    if orientation is not None:     # If an orientation was provided, use this as a guess.
+        M = orientation["M"]
+    else:                           # Otherwise, find a guess orientation.
+        # FFT to find array pitch and orientation.
         # Take the largest dimension rounded up to nearest power of 2.
-        fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img))))) * 2 ** dft_pad_exponent
+        # Future: clean this up to behave like other parts of the package.
+        fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img))))) * 2 ** dft_padding
         dft = np.fft.fftshift(np.fft.fft2(img_8it, s=[fftsize, fftsize]))
         fft_blur_size = (
             int(2 * np.ceil(fftsize / 1000)) + 1
@@ -1156,58 +1178,60 @@ def blob_array_detect(
             plt.show()
 
         if dft_fit_failed:
-            raise RuntimeError(
-                "Not enough spots found in DFT, expected 5. Try:\n"
-                "- increase exposure time\n"
-                "- increase `dft_pad_exponent`\n"
-                "- decrease `dft_threshold`"
+            blobs, _ = blob_detect(
+                dft_amp.copy(),
+                plot=True,
+                minThreshold=dft_threshold,
+                thresholdStep=thresholdStep,
             )
 
-        # Future: improve this part of the algorithm. It sometimes makes mistakes.
-        # Future: @tpr0p thinks we should just blob detect `img` and then
-        # fit a Bravais lattice to it with least squares. this will also
-        # make it more obvious to the user how to set the threshold value.
-        # it's not clear on first inspection which blobs in the DFT you're
-        # supposed to detect.
+            raise RuntimeError(
+                "Not enough spots found in DFT, expected 5. Try:\n"
+                "- increasing exposure time\n"
+                "- increasing `dft_padding`\n"
+                "- decreasing `dft_threshold`"
+            )
 
-        # 2.1) Get the max point (DTF center) and its next four neighbors.
-        # Future: using np.fft.fftfreq and np.fft.fftshift
-        # might be more straightforward and rely less on custom equations
+        # Future: Revamp to improve this part of the algorithm.
+        #
+        # Failure paths include:
+        # - Accidentally finding 5 points in a line on one axis instead of 5 points
+        #   making a plus sign.
+        # - Adjacent points being drowned out by the strength of the 0th order.
+        # - etc.
+        #
+        # Potential paths for revamp:
+        # - fit a Bravais lattice more directly
+        # - e.g. using np.fft.fftfreq and np.fft.fftshift
+
+        # 2.1) Get the max point (DTF 0th order) and its next four neighbors.
         blob_dist = np.zeros(len(blobs))
         k = np.zeros((len(blobs), 2))
         for i, blob in enumerate(blobs):
             k[i, 0] = -1 / 2 + blob.pt[0] / dft_amp.shape[1]
             k[i, 1] = -1 / 2 + blob.pt[1] / dft_amp.shape[0]
-            # Assumes max at center
+
+            # Assumes max at 0th order.
             blob_dist[i] = np.linalg.norm(
                 np.array([k[i, 0], k[i, 1]])
             )
 
-        # Future: this sorting isn't used. also blobs are already
-        # sorted by dist to center, see :meth:`blob_detect` with
-        # default `filter` argument.
         sort_ind = np.argsort(blob_dist)[:5]
         blobs = blobs[sort_ind]
         blob_dist = blob_dist[sort_ind]
         k = k[sort_ind]
 
-        # Future: doesn't this assume that we don't get more
-        # blobs outside of the first 5? w.r.t. center distance.
-        # this depends on the user picking a high `dft_threshold`.
-        # 2.2) Calculate array metrics
-        left = np.argmin([k[:, 0]])  # Smallest x
-        right = np.argmax([k[:, 0]])  # Largest x
+        # 2.2) Calculate array metrics.
+        left =   np.argmin([k[:, 0]])  # Smallest x
+        right =  np.argmax([k[:, 0]])  # Largest x
         bottom = np.argmin([k[:, 1]])  # Smallest y
-        top = np.argmax([k[:, 1]])  # Largest y
+        top =    np.argmax([k[:, 1]])  # Largest y
 
-        # 2.3) Calculate the vectors in the imaging domain
-        # Future: @tpr0p is wondering where this formula comes from.
+        # 2.3) Calculate the vectors in the imaging domain.
         x = 2 * (k[right, :] - k[left, :]) / (blob_dist[right] + blob_dist[left]) ** 2
         y = 2 * (k[top, :] - k[bottom, :]) / (blob_dist[top] + blob_dist[bottom]) ** 2
 
         M = np.array([[x[0], y[0]], [x[1], y[1]]])
-    else:
-        M = orientation["M"]
 
     # 3) Make the array kernel for convolutional detection of the array center.
     # Make lists that we will use to make the kernel: the array...
@@ -1229,7 +1253,7 @@ def blob_array_detect(
         (x_centergrid_larger.ravel(), y_centergrid_larger.ravel())
     )
 
-    # If we're not sure about how things are flipped, consider alternatives
+    # If we're not sure about how things are flipped, consider alternatives...
     if size[0] != size[1] and orientation is None:
         M_alternative = np.array([[M[0, 1], M[0, 0]], [M[1, 1], M[1, 0]]])
         M_options = [M, M_alternative]
@@ -1238,7 +1262,7 @@ def blob_array_detect(
 
     results = []
 
-    # Iterate through these alternatives
+    # Iterate through these alternatives.
     for M_trial in M_options:
         # Find the position of the centers for this trial matrix.
         rotated_centers = np.matmul(M_trial, centers)
@@ -1381,25 +1405,24 @@ def blob_array_detect(
 
     # Hone the center of our fit by averaging the positional deviations of spots.
     # We do this multiple times to allow outliers (1 std error above) to stabilize.
+    # Future: Use a more physics-based psf, optimize for speed, maybe remove_field.
     hone_count = 3
     for _ in range(hone_count):
         guess_positions = np.matmul(orientation["M"], centers) + orientation["b"]
 
-        # Odd helper parameters.
+        # Calculate a point spread function (psf) integration window size.
         psf = 2 * int(np.floor(np.amin(np.amax(np.abs(orientation["M"]), axis=0))) / 2) + 1
         psf = np.max([3, psf])
-        blur = 2 * int(psf / 16) + 1
 
+        # Grab windows (sized by psf) about the guess_positions.
         regions = take(
             img, guess_positions, psf, centered=True, integrate=False, clip=True
         )
 
         # Get the first order moment around each of the guess windows.
         shift = image_positions(regions) - (guess_positions - np.around(guess_positions))
-        # fit = image_fit(regions)
-        # shift = np.vstack((fit[1, :], fit[2, :])) - (guess_positions - np.around(guess_positions))
 
-        # Remove outliers
+        # Remove outliers.
         shift_error = np.sqrt(np.square(shift[0, :]) + np.square(shift[1, :]))
         thresh = np.mean(shift_error) + np.std(shift_error)
         shift[:, shift_error > thresh] = np.nan
@@ -1430,6 +1453,7 @@ def blob_array_detect(
             np.clip(np.amax(y) + max_pitch, 0, img.shape[0]),
         ]
 
+        # Plot the zoom window, with red axes.
         axs[1].imshow(img)
         axs[1].scatter(
             x, y, facecolors="none", edgecolors="r", marker="o", s=80, linewidths=0.5
@@ -1448,6 +1472,7 @@ def blob_array_detect(
             axs[1].spines[spine].set_color("r")
             axs[1].spines[spine].set_linewidth(1.5)
 
+        # Plot the non-zoom axes.
         axs[0].imshow(img_8it)
         axs[0].scatter(array_center[0], array_center[1], c="r", marker="x", s=10)
 
@@ -1464,8 +1489,7 @@ def blob_array_detect(
             axs[2].imshow(match)
             axs[2].set_title("Result - Match")
 
-        # fig.supxlabel("Image $x$ [pix]")
-        # fig.supylabel("Image $y$ [pix]")
+        # Handle xy labels.
         for ax in axs[:2]:
             ax.set_xlabel("Image $x$ [pix]")
             ax.set_ylabel("Image $y$ [pix]")
@@ -1481,7 +1505,7 @@ def _make_8bit(img):
     Convert an image to ``numpy.uint8``, scaling to the limits.
 
     This function is useful to convert float or larger bitdepth images to
-    8-bit, which cv2 accepts and can speedily process.
+    8-bit, which :mod:`cv2` accepts and can speedily process.
 
     Parameters
     ----------

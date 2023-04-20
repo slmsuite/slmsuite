@@ -4,7 +4,6 @@ Abstract functionality for SLMs.
 
 import time
 import numpy as np
-from slmsuite.holography.toolbox import blaze
 from slmsuite.holography import toolbox
 from slmsuite.holography import analysis
 
@@ -79,9 +78,6 @@ class SLM:
     display : numpy.ndarray
         Displayed data in SLM units (integers).
     """
-    # Comment: @tpr0p dislikes that FourierSLM.wavefront_calibration and FourierSLM.slm
-    # both have "measured_amplitude" fields that might be different.
-
     def __init__(
         self,
         width,
@@ -271,12 +267,12 @@ class SLM:
 
         Caution
         ~~~~~~~
-        After scale conversion, data is `floor()`ed to integers with `np.copyto`, rather than
-        rounded to the nearest integer (`np.around()` equivalent). While this is
+        After scale conversion, data is ``floor()`` ed to integers with ``np.copyto``, rather than
+        rounded to the nearest integer (``np.around()`` equivalent). While this is
         irrelevant for the average user, it may be significant in some cases.
         If this behavior is undesired consider either: :meth:`write()` integer data
         directly or modifying the behavior of the private method :meth:`_phase2gray()` in
-        a pull request. We have not been able to find an example of `np.copyto`
+        a pull request. We have not been able to find an example of ``np.copyto``
         producing undesired behavior, but will change this if such behavior is found.
 
         Parameters
@@ -546,7 +542,7 @@ class SLM:
 
     def spot_radius_kxy(self):
         """
-        Measures the (average) radius of the farfield spot in the ``"kxy"`` basis.
+        Approximates the expected radius of farfield spots in the ``"kxy"`` basis based on the near-field amplitude distribution :attr:`measured_amplitude`.
 
         Returns
         -------

@@ -4,17 +4,17 @@ Tested with Meadowlark (AVR Optics) P1920-400-800-HDMI-T.
 
 Note
 ~~~~
-Check that DLL files, etc. are in folder C:\Program Files\Meadowlark Optics\Blink 1920
-HDMI\SDK.
+Check that DLL files, etc. are in folder 
+C:\Program Files\Meadowlark Optics\Blink 1920 HDMI
+or otherwise pass the corect directory in the constructor.
 """
-import os
+import os, sys
 import ctypes
 import numpy as np
 
 from .slm import SLM
 
-# TODO: generalize this directory.
-my_path = "C:\\Program Files\\Meadowlark Optics\\Blink 1920 HDMI\\"
+default_sdk_path = "C:\\Program Files\\Meadowlark Optics\\Blink 1920 HDMI\\"
 
 class Meadowlark(SLM):
     """
@@ -24,9 +24,11 @@ class Meadowlark(SLM):
     ----------
     slm_lib : ctypes.CDLL
         Connection to the Meadowlark library.
+    sdk_path : str
+        Path of the Blink SDK folder.
     """
 
-    def __init__(self, verbose=True, **kwargs):
+    def __init__(self, verbose=True, sdk_path=default_sdk_path, lut_path=None,  **kwargs):
         r"""
         Initializes an instance of a Meadowlark SLM.
 
@@ -34,15 +36,14 @@ class Meadowlark(SLM):
         ------
         verbose : bool
             Whether to print extra information.
+        sdk_path : str
+            Path of the Blink SDK folder. Stored in :attr:`sdk_path`.
+        lut_path : str OR None
+            Passed to :meth:`load_lut`.
         kwargs
             See :meth:`.SLM.__init__` for permissible options.
         """
-        # TODO: Determine whether image_lib should be included.
-        # TODO: Determine how to connect several SLMs at the same time.
-        # TODO: Handle errors correctly.
-        # TODO: Check LUT issues and SetPreRampSlope / etc.
-        # TODO: Implement other SDK functions.
-        os.chdir(my_path + "SDK")
+        # os.chdir(sdk_path + "SDK")
 
         awareness = ctypes.c_int()
         errorCode = ctypes.windll.shcore.GetProcessDpiAwareness(0, ctypes.byref(awareness))
@@ -54,66 +55,133 @@ class Meadowlark(SLM):
         # Open the SLM library
         if verbose: print("Constructing blink SDK...", end="")
 
-        ctypes.cdll.LoadLibrary(my_path + "SDK\\Blink_C_wrapper")
+        ctypes.cdll.LoadLibrary(os.path.join(sdk_path, "SDK", "Blink_C_wrapper"))
         self.slm_lib = ctypes.CDLL("Blink_C_wrapper")
 
-        # Open the image generation library
-        # ctypes.cdll.LoadLibrary(my_path + "SDK\\ImageGen")
-        # image_lib = ctypes.CDLL("ImageGen")
-
-        # Indicate that our images are 8 bit images instead of RGB
-        # self.is_eight_bit_image = ctypes.c_uint(1)
+        self.sdk_path = sdk_path
 
         # Initialize the SDK. The requirements of Matlab, LabVIEW, C++ and Python are different, so pass
         # the constructor a boolean indicating if we are calling from C++/Python (true), or Matlab/LabVIEW (false)
-        b_cpp_or_python = ctypes.c_uint(1)
-        self.slm_lib.Create_SDK(b_cpp_or_python)
+        bool_cpp_or_python = ctypes.c_uint(1)
+        self.slm_lib.Create_SDK(bool_cpp_or_python)
 
-        # Adjust pre- and post-ramp slopes for accurate voltage setting (otherwise, calibration is not properly implemented).
+        # Adjust pre- and post-ramp slopes for accurate voltage setting 
+        # (otherwise, custom LUT calibration is not properly implemented [this feature is not implemented in slmsuite]).
         # You may need a special version of the SDK sent to you from Meadowlark to have access to these parameters.
-        self.slm_lib.SetPreRampSlope(20) # default is 7
-        self.slm_lib.SetPostRampSlope(24) # default is 24
+        # self.slm_lib.SetPreRampSlope(20) # default is 7
+        # self.slm_lib.SetPostRampSlope(24) # default is 24
 
         if verbose: print("success")
 
-        # Load a linear lookup table. You can replace this file with your own calibration once it's generated.
-        self.slm_lib.Load_lut(my_path + "LUT Files\\linear.lut")
-        # self.slm_lib.Load_lut(my_path + "LUT Files\\calibrated.lut")
+        true_lut_path = self.load_lut(lut_path)
+
+        if verbose and true_lut_path != lut_path:
+            print("Loaded LUT from '{}'".format(true_lut_path))
+
+        # Default the pixel pitch to 8 x 8 um if not provided.
+        dx_um = kwargs.pop("dx_um", 8)
+        dy_um = kwargs.pop("dy_um", 8)
 
         super().__init__(
-            1920,
-            1152,
-            bitdepth=8,
+            self.slm_lib.Get_Width(),
+            self.slm_lib.Get_Height(),
+            bitdepth=self.slm_lib.Get_Depth(),
             name="Meadowlark",
-            dx_um=8,
-            dy_um=8,
+            dx_um=dx_um,
+            dy_um=dy_um,
             **kwargs
         )
 
         self.write(None)
 
+    def load_lut(self, lut_path=None):
+        """
+        Loads a voltage lookup table (LUT) to the SLM.
+        This converts requested phase values to physical voltage perturbing
+        the liquid crystals.
+
+        Parameters
+        ----------
+        lut_path : str OR None
+            Path to look for an LUT file in. 
+            If this is a .lut file, then this file is loaded.
+            If this is a directory, then searches all files inside the
+            directory, and selects either the first .lut file, or if possible
+            an .lut file starting with `"slm"`
+            (which is more likely to correspond to a table customized to an SLM,
+            as Meadowlark sends files such as `slm5758_at532.lut`).
+
+        Raises
+        ------
+        RuntimeError
+            If a .lut file is not found.
+
+        Returns
+        -------
+        str
+            The path which was used to load the LUT.
+        """
+        # If a path is not given, search inside the SDK path.
+        if lut_path is None:
+            lut_path = os.path.join(self.sdk_path, "LUT Files")
+
+        # If we already have a .lut file, proceed.
+        if len(lut_path) > 4 and lut_path[-4:] == ".lut":
+            pass    
+        else:   # Otherwise, treat the path like a folder and search inside the folder.
+            lut_file = None
+
+            for file in os.listdir(lut_path):
+                if len(file) > 4 and file[-4:] == ".lut":
+                    if lut_file is None:
+                        lut_file = file
+                    if file[:3] == "slm" and not lut_file[:3] == "slm":
+                        lut_file = file
+
+            if lut_file is not None:
+                lut_path = os.path.join(lut_path, lut_file)
+            else:
+                raise RuntimeError(
+                    "Could not find a .lut file at path '{}'".format(lut_path)
+                )
+
+        # Finally, load the lookup table.
+        self.slm_lib.Load_lut(lut_path)
+
+        return lut_path
+
     @staticmethod
     def info(verbose=True):
         """
-        **(NotImplemented)** Discovers the names of all the displays.
+        The normal behavior of this function is to discover the names of all the displays
+        to help the user identify the correct display. However, Meadowlark software does 
+        not currently support multiple SLMs, so this function instead raises an error.
 
         Parameters
         ----------
         verbose : bool
             Whether to print the discovered information.
 
-        Returns
-        --------
-        None
+        Raises
+        ------
+        NotImplementedError
         """
-        return
+        raise NotImplementedError(
+            "Meadowlark software does not currently support multiple SLMs, "
+            "so a function to identify SLMs is moot. "
+            "If functionality with multiple SLMs is desired, contact them directly."
+        )
 
     def close(self):
-        """See :meth:`.SLM.close`."""
+        """
+        See :meth:`.SLM.close`.
+        """
         self.slm_lib.Delete_SDK()
 
     def _write_hw(self, phase):
-        """See :meth:`.SLM._write_hw`."""
+        """
+        See :meth:`.SLM._write_hw`.
+        """
         # TODO: Need to test on hardware, but this is can certainly be accomplished
         # more efficiently (e.g. by not reallocating memory each frame).
         buffer = np.empty([self.shape[0] * self.shape[1]], np.uint8, 'C')
@@ -121,5 +189,29 @@ class Meadowlark(SLM):
 
         self.slm_lib.Write_image(
             buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
-            ctypes.c_uint(1)    # Is 8-bit
+            ctypes.c_uint(self.bitdepth == 8)   # Is 8-bit
         )
+
+    ### Additional Meadowlark-specific functionality
+
+    def get_temperature(self):
+        """
+        Read the temperature of the SLM.
+
+        Returns
+        -------
+        float
+            Temperature in degrees celcius.
+        """
+        return self.slm_lib.Get_Width()
+
+    def get_coverglass_voltage(self):
+        """
+        Read the voltage of the SLM coverglass.
+
+        Returns
+        -------
+        float
+            Voltage of the SLM coverglass.
+        """
+        return self.slm_lib.Get_SLMVCom()

@@ -6,6 +6,7 @@ import time
 import numpy as np
 from slmsuite.holography.toolbox import blaze
 from slmsuite.holography import toolbox
+# from slmsuite.misc.math
 
 
 class SLM:
@@ -278,7 +279,8 @@ class SLM:
         Parameters
         ----------
         phase : numpy.ndarray or None
-            Data to display in units of phase delay (unless the passed data is of integer type).
+            Phase data to display in units of :math:`2\pi`,
+            unless the passed data is of integer type and the data is applied directly.
 
              - If ``None`` is passed to :meth:`.write()`, data is zeroed.
              - If the array has a larger shape than the SLM shape, then the data is
@@ -290,10 +292,10 @@ class SLM:
                SLM, without going through the "phase delay to grayscale" conversion
                defined in the private method :meth:`_phase2gray`. In this situation,
                ``phase_correct`` and non-zero ``blaze_vector`` are **ignored**.
-               This is error-checked such that bits with greater significance than the
-               bitdepth of the SLM are zero (e.g. the final 6 bits of 16 bit data for a
+               This is error-checked to validate that bits with greater significance than the
+               bitdepth of the SLM are zeroed (e.g. the final 6 bits of 16 bit data for a
                10-bit SLM). Integer data with type different from :attr:`display` leads
-               to an AssertionError.
+               to a TypeError.
 
             Usually, an **exact** stored copy of the data passed by the user under
             ``phase`` is stored in the attribute :attr:`phase`.
@@ -316,7 +318,7 @@ class SLM:
 
         Raises
         ------
-        AssertionError
+        TypeError
             If integer data is incompatible with the bitdepth or if the passed phase is
             otherwise incompatible (not a 2D array or smaller than the SLM shape, etc).
         """
@@ -332,7 +334,11 @@ class SLM:
             # Make sure the array is an ndarray.
             phase = np.array(phase)
 
-        if phase is not None and phase.dtype == self.display.dtype:
+        if phase is not None and isinstance(phase):
+            # Check the type.
+            if phase.dtype != self.display.dtype:
+                raise TypeError("Unexpected integer type {}. Expected {}.".format(phase.dtype, self.display.dtype))
+            
             # If integer data was passed.
             # Check that we are not out of range.
             assert not np.any(phase >= self.bitresolution), \

@@ -19,34 +19,45 @@ import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
 
-def configure_tlcam_dll_path(
-    dll_path=(  "C:\\Program Files\\Thorlabs\\Scientific Imaging\\"
-                "Scientific Camera Support\\Scientific Camera "
-                "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"    )):
+default_dll_path = (
+    "C:\\Program Files\\Thorlabs\\Scientific Imaging\\"
+    "Scientific Camera Support\\Scientific Camera "
+    "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"
+)
+
+def configure_tlcam_dll_path(dll_path=default_dll_path):
     """
     Adds Thorlabs camera DLLs to the DLL path.
+    `"32_lib"` or `"64_lib"` is appended to the default .dll path
+    depending on the type of system.
 
     Parameters
     ----------
     dll_path : str
         Full path to the Thorlabs camera DLLs.
     """
-    is_64bits = sys.maxsize > 2 ** 32
+    if default_dll_path == dll_path:
+        is_64bits = sys.maxsize > 2 ** 32
 
-    if is_64bits:
-        dll_path += "64_lib"
-    else:
-        dll_path += "32_lib"
+        if is_64bits:
+            dll_path += "64_lib"
+        else:
+            dll_path += "32_lib"
 
     if hasattr(os, "add_dll_directory"):
         try:
             os.add_dll_directory(dll_path)
-        except BaseException as e:
-            print("thorlabs.py: thorlabs_tsi_sdk DLL not found. Resolve to use Thorlabs cameras.")
+        except:
+            if default_dll_path == dll_path:
+                print(
+                    "thorlabs.py: thorlabs_tsi_sdk DLLs not found at default path. "
+                    "Resolve to use Thorlabs cameras.\nDefault path: '{}'".format(default_dll_path)
+                )
     else:
         os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]
 
 configure_tlcam_dll_path()
+
 try:
     from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, ROI
 except ImportError:
@@ -97,7 +108,16 @@ class ThorCam(Camera):
         if ThorCam.sdk is None:
             if verbose:
                 print("TLCameraSDK initializing... ", end="")
-            ThorCam.sdk = TLCameraSDK()
+            try:
+                ThorCam.sdk = TLCameraSDK()
+            except:
+                print("failure")
+                raise RuntimeError(
+                    "thorlabs.py: TLCameraSDK() open failed. "
+                    "Is thorlabs_tsi_sdk installed? "
+                    "Are the .dlls in the directory added by configure_tlcam_dll_path? "
+                    "Sometimes adding the .dlls to the working directory can help."
+                )
             if verbose:
                 print("success")
 
@@ -178,7 +198,15 @@ class ThorCam(Camera):
             List of ThorCam serial numbers.
         """
         if ThorCam.sdk is None:
-            ThorCam.sdk = TLCameraSDK()
+            try:
+                ThorCam.sdk = TLCameraSDK()
+            except:
+                raise RuntimeError(
+                    "thorlabs.py: TLCameraSDK() open failed. "
+                    "Is thorlabs_tsi_sdk installed? "
+                    "Are the .dlls in the directory added by configure_tlcam_dll_path? "
+                    "Sometimes adding the .dlls to the working directory can help."
+                )
             close_sdk = True
         else:
             close_sdk = False

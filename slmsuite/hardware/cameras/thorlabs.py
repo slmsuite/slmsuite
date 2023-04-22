@@ -1,15 +1,15 @@
 """
 Hardware control for Thorlabs cameras via :mod:`TLCameraSDK`.
 The :mod:`thorlabs_tsi_sdk` module must
-be installed (See [1]_ -> Programming Interfaces). Consider also installing ThorCam
-for testing cameras outside of Python (See [1]_ -> Software).
+be installed
+(See `ThorCam <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ -> Programming Interfaces).
+Consider also installing ThorCam
+for testing cameras outside of Python
+(See `ThorCam <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ ->  Software).
 After installing the SDK, extract the files in:
 ``~\\Program Files\\Thorlabs\\Scientific Imaging\\Scientific Camera Support\\Scientific_Camera_Interfaces.zip``.
-Follow the instructions in Python_README.txt.
-
-References
-----------
-.. [1] https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam
+Follow the instructions in the extracted file Python_README.txt to install into your
+python environment via ``pip``.
 """
 
 import os
@@ -269,19 +269,19 @@ class ThorCam(Camera):
             woi = (
                 self.cam.roi_range.upper_left_x_pixels_min,
                 self.cam.roi_range.lower_right_x_pixels_max
-                - self.cam.roi_range.upper_left_x_pixels_min,
+                - self.cam.roi_range.upper_left_x_pixels_min + 1,
                 self.cam.roi_range.upper_left_y_pixels_min,
                 self.cam.roi_range.lower_right_y_pixels_max
-                - self.cam.roi_range.upper_left_y_pixels_min,
+                - self.cam.roi_range.upper_left_y_pixels_min + 1,
             )
 
         self.woi = woi
 
         newroi = ROI(
-            self.cam.roi_range.lower_right_x_pixels_max - woi[0] - woi[1],
+            self.cam.roi_range.lower_right_x_pixels_max - woi[0] - woi[1] + 1,
             woi[2],
             self.cam.roi_range.lower_right_x_pixels_max - woi[0],
-            woi[2] + woi[3],
+            woi[2] + woi[3] - 1,
         )
 
         assert (
@@ -305,10 +305,13 @@ class ThorCam(Camera):
             <= self.cam.roi_range.lower_right_y_pixels_max
         )
 
+        # Update the woi
         self.cam.roi = newroi
-
         self.woi = woi
-        self.shape = (woi[3], woi[1])
+
+        # Update the shape (test the transform; maybe make this more efficient in the future)
+        test = np.zeros((woi[3], woi[1]))
+        self.shape = np.shape(self.transform(test))
 
         # Restore profile
         self.setup(profile)
@@ -348,7 +351,7 @@ class ThorCam(Camera):
 
             self.profile = profile
 
-    def get_image(self, timeout_s=1, trigger=True, grab=True):
+    def get_image(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
         """
         See :meth:`.Camera.get_image`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
@@ -362,31 +365,36 @@ class ThorCam(Camera):
         trigger : bool
             Whether or not to issue a software trigger.
         grab : bool
-            Whehter or not to grab the frame (blocking).
+            Whether or not to grab the frame (blocking).
 
         Returns
         -------
         numpy.ndarray or None
             Array of shape :attr:`shape` if ``grab=True``, else ``None``.
         """
-        if trigger:
-            if self.profile == "single":
+        should_trigger = trigger and self.profile == "single"
+
+        for _ in range(attempts):
+            if should_trigger:
                 t = time.time()
                 self.cam.issue_software_trigger()
 
-        ret = None
-        if grab:
-            # Start the timer.
-            if not trigger:
-                t = time.time()
+            ret = None
+            if grab:
+                # Start the timer.
+                if not should_trigger:
+                    t = time.time()
 
-            frame = None
+                frame = None
 
-            # Try to grab a frame until we succeed.
-            while time.time() - t < timeout_s and frame is None:
-                frame = self.cam.get_pending_frame_or_null()
+                # Try to grab a frame until we succeed.
+                while time.time() - t < timeout_s and frame is None:
+                    frame = self.cam.get_pending_frame_or_null()
 
-            ret = self.transform(np.copy(frame.image_buffer)) if frame is not None else None
+                ret = self.transform(np.copy(frame.image_buffer)) if frame is not None else None
+
+                if ret is not None:
+                    break
 
         return ret
 

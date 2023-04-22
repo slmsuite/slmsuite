@@ -4,9 +4,9 @@ Abstract functionality for SLMs.
 
 import time
 import numpy as np
-from slmsuite.holography.toolbox import blaze
 from slmsuite.holography import toolbox
 # from slmsuite.misc.math
+from slmsuite.holography import analysis
 
 
 class SLM:
@@ -18,7 +18,7 @@ class SLM:
     name : str
         Name of the SLM.
     shape : (int, int)
-        Stores ``(height, width)`` of the SLM in pixels, same form as :attr:`numpy.ndarray.shape`.
+        Stores ``(height, width)`` of the SLM in pixels, the same convention as :attr:`numpy.ndarray.shape`.
     wav_um : float
         Operating wavelength targeted by the SLM in microns. Defaults to 780 nm.
     wav_design_um : float
@@ -48,7 +48,7 @@ class SLM:
     settle_time_s : float
         Delay in seconds to allow the SLM to settle. This is mostly useful for applications
         requiring high precision. This delay is applied if the user flags ``settle``
-        in :meth:`write()`.
+        in :meth:`write()`. Defaults to .3 sec for precision.
     dx_um : float
         x pixel pitch in um.
     dy_um : float
@@ -57,10 +57,12 @@ class SLM:
         Normalized x pixel pitch ``dx_um / wav_um``.
     dy : float
         See :attr:`dx`.
-    x_grid : numpy.ndarray of floats
-        Point grid of the SLM's :attr:`shape` derived from :meth:`numpy.meshgrid` ing.
-        This uses normalized units (:attr:`dx`, :attr:`dy`).
-    y_grid : numpy.ndarray of floats
+    x_grid : numpy.ndarray<float> (height, width)
+        Coordinates of the SLM's pixels in wavelengths
+        (see :attr:`wav_um`, :attr:`dx`, :attr:`dy`)
+        measured from the center of the SLM.
+        Of size :attr:`shape`. Produced by :meth:`numpy.meshgrid`.
+    y_grid
         See :attr:`x_grid`.
     measured_amplitude : numpy.ndarray or None
         Amplitude measured on the SLM via
@@ -77,7 +79,6 @@ class SLM:
     display : numpy.ndarray
         Displayed data in SLM units (integers).
     """
-
     def __init__(
         self,
         width,
@@ -88,7 +89,7 @@ class SLM:
         wav_design_um=None,
         dx_um=1,
         dy_um=1,
-        settle_time_s=0,
+        settle_time_s=0.3,
     ):
         """
         Initialize SLM.
@@ -217,7 +218,6 @@ class SLM:
         phase,
         phase_correct=True,
         settle=False,
-        blaze_vector=None,
     ):
         r"""
         Checks, cleans, and adds to data, then sends the data to the SLM and
@@ -268,12 +268,12 @@ class SLM:
 
         Caution
         ~~~~~~~
-        After scale conversion, data is `floor()`ed to integers with `np.copyto`, rather than
-        rounded to the nearest integer (`np.around()` equivalent). While this is
+        After scale conversion, data is ``floor()`` ed to integers with ``np.copyto``, rather than
+        rounded to the nearest integer (``np.around()`` equivalent). While this is
         irrelevant for the average user, it may be significant in some cases.
         If this behavior is undesired consider either: :meth:`write()` integer data
         directly or modifying the behavior of the private method :meth:`_phase2gray()` in
-        a pull request. We have not been able to find an example of `np.copyto`
+        a pull request. We have not been able to find an example of ``np.copyto``
         producing undesired behavior, but will change this if such behavior is found.
 
         Parameters
@@ -307,9 +307,6 @@ class SLM:
             Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction` to ``phase``.
         settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
-        blaze_vector : (float, float)
-            See :meth:`~slmsuite.holography.toolbox.blaze`.
-            If ``None``, no blaze is applied.
 
         Returns
         -------
@@ -338,7 +335,7 @@ class SLM:
             # Check the type.
             if phase.dtype != self.display.dtype:
                 raise TypeError("Unexpected integer type {}. Expected {}.".format(phase.dtype, self.display.dtype))
-            
+
             # If integer data was passed.
             # Check that we are not out of range.
             assert not np.any(phase >= self.bitresolution), \
@@ -368,11 +365,6 @@ class SLM:
             # Add phase correction if requested.
             if phase_correct and self.phase_correction is not None:
                 self.phase += self.phase_correction
-                zero_phase = False
-
-            # Blaze if requested.
-            if blaze_vector is not None and (blaze_vector[0] != 0 or blaze_vector[1] != 0):
-                self.phase += blaze(self, blaze_vector)
                 zero_phase = False
 
             # Pass the data to self.display.
@@ -524,3 +516,56 @@ class SLM:
         self.measured_amplitude = np.exp(-r2_grid * (1 / radius ** 2))
 
         return self.measured_amplitude
+
+    def _get_measured_amplitude(self):
+        """Deals with the None case of measured_amplitude"""
+        if self.measured_amplitude is None:
+            return np.ones_like(self.shape)
+        else:
+            return self.measured_amplitude
+
+    def point_spread_function_knm(self, padded_shape=None):
+        """
+        Fourier transforms the wavefront calibration's measured amplitude to find
+        the expected diffraction-limited perfomance of the system in ``"knm"`` space.
+
+        Parameters
+        ----------
+        padded_shape : (int, int) OR None
+            The point spread function changes in resolution depending on the padding.
+            Use this variable to provide this padding.
+            If ``None``, do not pad.
+
+        Returns
+        -------
+        numpy.ndarray
+            The point spread function of shape ``padded_shape``.
+        """
+        nearfield = toolbox.pad(self._get_measured_amplitude(), padded_shape)
+        farfield = np.abs(np.fft.fftshift(np.fft.fft2(np.fft.fftshift(nearfield), norm="ortho")))
+
+        return farfield
+
+    def spot_radius_kxy(self):
+        """
+        Approximates the expected radius of farfield spots in the ``"kxy"`` basis based on the near-field amplitude distribution :attr:`measured_amplitude`.
+
+        Returns
+        -------
+        float
+            Average radius of the farfield spot.
+        """
+        try:
+            psf_nm = np.sqrt(analysis.image_variances(self._get_measured_amplitude())[:2])
+
+            psf_kxy = np.mean(toolbox.convert_blaze_vector(
+                np.reciprocal(8 * psf_nm),
+                from_units="freq",
+                to_units="kxy",
+                slm=self,
+                shape=self.shape
+            ))
+        except:
+            psf_kxy = np.mean([1 / self.dx / self.shape[1], 1 / self.dy / self.shape[0]])
+
+        return psf_kxy

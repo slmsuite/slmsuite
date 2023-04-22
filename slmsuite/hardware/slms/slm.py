@@ -289,7 +289,7 @@ class SLM:
                then this data is **directly** passed to the
                SLM, without going through the "phase delay to grayscale" conversion
                defined in the private method :meth:`_phase2gray`. In this situation,
-               ``phase_correct`` and non-zero ``blaze_vector`` are **ignored**.
+               ``phase_correct`` is **ignored**.
                This is error-checked such that bits with greater significance than the
                bitdepth of the SLM are zero (e.g. the final 6 bits of 16 bit data for a
                10-bit SLM). Integer data with type different from :attr:`display` leads
@@ -363,8 +363,7 @@ class SLM:
 
             # Pass the data to self.display.
             if zero_phase:
-                # If None was passed and neither phase_correct nor blaze_vector were
-                # passed, then use a faster method.
+                # If None was passed and phase_correct is False, then use a faster method.
                 self.display.fill(0)
             else:
                 # Turn the floats in phase space to integer data for the SLM.

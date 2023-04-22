@@ -49,6 +49,8 @@ def convert_blaze_vector(
 
         The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
 
+        ``"ij"``
+        Camera pixel units.
         ``"freq"``
         Pixel frequency of a grating producing the blaze.
         e.g. 1/16 is a grating with a period of 16 pixels.
@@ -61,7 +63,7 @@ def convert_blaze_vector(
     ~~~~~~~
     The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
     so a ``slm`` should be passed (otherwise returns an array of ``nan`` values).
-    The unit ``"ij"``, camera pixels, requires information stored in a CameraSLM, so
+    The unit ``"ij"``, camera pixels, requires calibration data stored in a CameraSLM, so
     this must be passed in place of ``slm``.
     The unit ``"knm"`` additionally requires the ``shape`` of the computational space.
     If not included when an slm is passed, ``shape=slm.shape`` is assumed.

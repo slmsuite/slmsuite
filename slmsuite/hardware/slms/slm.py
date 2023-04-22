@@ -4,8 +4,10 @@ Abstract functionality for SLMs.
 
 import time
 import numpy as np
+from PIL import Image
+
 from slmsuite.holography import toolbox
-# from slmsuite.misc.math
+from slmsuite.misc.math import INTEGER_TYPES
 from slmsuite.holography import analysis
 
 
@@ -185,6 +187,7 @@ class SLM:
         """
         Abstract method to load vendor-provided phase correction from file,
         setting :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`.
+        By default, a bitmap is read in and 
         Subclasses should implement vendor-specific routines for loading and
         interpreting the file.
 
@@ -199,7 +202,30 @@ class SLM:
             :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`,
             the vendor-provided phase correction.
         """
-        raise NotImplementedError()
+        phase_correction = self.bitresolution - 1 - np.array(Image.open(file_path), dtype=float)
+
+        if phase_correction.ndim != 2:
+            raise ValueError("Expected 2D image; found shape {}.".format(phase_correction.shape))
+        
+        phase_correction *= 2 * np.pi / (self.phase_scaling * self.bitresolution)
+
+        # Deal with correction shape
+        file_shape_error = np.sign(np.array(phase_correction.shape) - np.array(self.shape))
+
+        if np.abs(np.diff(file_shape_error)) > 1:
+            raise ValueError(
+                "Note sure how to pad or unpad correction shape {} to SLM shape {}."
+                .format(phase_correction.shape, self.shape)
+            )
+        
+        if np.any(file_shape_error > 1):
+            self.phase_correction = toolbox.unpad(phase_correction, self.shape)
+        elif np.any(file_shape_error < 1):
+            self.phase_correction = toolbox.pad(phase_correction, self.shape)
+        else:
+            self.phase_correction = phase_correction
+
+        return self.phase_correction
 
     def _write_hw(self, phase):
         """
@@ -331,15 +357,14 @@ class SLM:
             # Make sure the array is an ndarray.
             phase = np.array(phase)
 
-        if phase is not None and isinstance(phase):
+        if phase is not None and isinstance(phase, INTEGER_TYPES):
             # Check the type.
             if phase.dtype != self.display.dtype:
                 raise TypeError("Unexpected integer type {}. Expected {}.".format(phase.dtype, self.display.dtype))
 
-            # If integer data was passed.
-            # Check that we are not out of range.
-            assert not np.any(phase >= self.bitresolution), \
-                "Integer data must be within the bitdepth ({}-bit) of the SLM.".format(self.bitdepth)
+            # If integer data was passed, check that we are not out of range.
+            if np.any(phase >= self.bitresolution):
+                raise TypeError("Integer data must be within the bitdepth ({}-bit) of the SLM.".format(self.bitdepth))
 
             # Copy the pattern and unpad if necessary.
             if phase.shape != self.shape:
@@ -353,10 +378,6 @@ class SLM:
             # If float data was passed (or the None case).
             # Copy the pattern and unpad if necessary.
             if phase is not None:
-                assert not isinstance(phase.flat[0], (int, np.uint)), \
-                    "Integer data must have the same type as slm.display ({})." \
-                    "Instead received {}".format(type(self.display.dtype), type(phase.flat[0]))
-
                 if self.phase.shape != self.shape:
                     np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
                 else:

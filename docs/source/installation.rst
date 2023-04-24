@@ -3,11 +3,11 @@
 Installation
 ============
 
-.. Install the latest version of |slmsuite|_ from `PyPi <http://google.com>`_ using:
+Install the stable version of |slmsuite|_ from `PyPi <https://pypi.org/project/slmsuite/>`_ using:
 
-.. .. code-block:: console
+.. code-block:: console
 
-..     pip install slmsuite
+    pip install slmsuite
 
 Install the latest version of |slmsuite|_ from `GitHub <https://github.com/QPG-MIT/slmsuite>`_ using:
 

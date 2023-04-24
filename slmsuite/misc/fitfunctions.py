@@ -4,7 +4,6 @@ Common fit functions.
 
 import numpy as np
 
-
 def linear(x, m, b):
     r"""
     For fitting a line.
@@ -54,7 +53,8 @@ def hyperbola(z, w0, z0, zr):
 
 
 def cos(x, b, a, c, k=1):
-    r"""For fitting an offset sinusoid.
+    r"""
+    For fitting an offset sinusoid.
 
     .. math:: y(x) = c + \frac{a}{2} \left[1+\cos(kx+b) \right].
 
@@ -106,6 +106,7 @@ def lorentzian(x, x0, a, c, Q):
         Lorentzian fit evaluated at all ``x``.
     """
     return a / (1 + ((x - x0) / (x0 / Q / 2)) ** 2) + c
+
 
 def lorentzian_jacobian(x, x0, a, c, Q):
     """
@@ -167,8 +168,8 @@ def gaussian(x, x0, a, c, w):
         constant offset.
     w : float
         The standard deviation of the normal distribution.
-        Equivalent to the :math:`1/e^2` radius.
-        This is related to the full width at half maximum (FWHM) 
+        Equivalent to the :math:`1/e` radius.
+        This is related to the full width at half maximum (FWHM)
         by a factor of :math:`2\sqrt{2\ln{2}}`.
 
     Returns
@@ -249,8 +250,8 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
         constant offset.
     wx, wy : float
         The standard deviation of the normal distribution.
-        Equivalent to the :math:`1/e^2` radius.
-        This is related to the full width at half maximum (FWHM) 
+        Equivalent to the :math:`1/e` radius.
+        This is related to the full width at half maximum (FWHM)
         by a factor of :math:`2\sqrt{2\ln{2}}`.
     wxy : float
         Shear variance. See above.
@@ -264,7 +265,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     y = xy[1] - y0
 
     wxy = np.sign(wxy) * np.min([np.abs(wxy), wx*wy])
-    
+
     try:
         M = np.linalg.inv([[wx*wx, wxy], [wxy, wy*wy]])
     except np.linalg.LinAlgError:
@@ -273,3 +274,29 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     argument = np.square(x) * M[0,0] + np.square(y) * M[1,1] + 2 * x * y * M[1,0]
 
     return c + a * np.exp(-.5 * argument)
+
+
+def tophat2d(xy, x0, y0, r, a=1):
+    r"""
+    For fitting a 2D tophat distribution.
+
+    Parameters
+    ----------
+    xy : numpy.ndarray
+        Points to fit upon (x, y).
+    x0, y0 : float
+        Vector offset.
+    r : float
+        Active radius of the tophat.
+    a : float
+        Amplitude.
+
+    Returns
+    -------
+    z : numpy.ndarray
+        Tophat fit evaluated at all ``(x,y)`` in ``xy``.
+    """
+    x = xy[0] - x0
+    y = xy[1] - y0
+    return np.where(x ** 2 + y ** 2 <= r ** 2, a, 0)
+

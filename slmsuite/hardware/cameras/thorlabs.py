@@ -1,15 +1,15 @@
 """
 Hardware control for Thorlabs cameras via :mod:`TLCameraSDK`.
 The :mod:`thorlabs_tsi_sdk` module must
-be installed (See [1]_ -> Programming Interfaces). Consider also installing ThorCam
-for testing cameras outside of Python (See [1]_ -> Software).
+be installed
+(See `ThorCam <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ -> Programming Interfaces).
+Consider also installing ThorCam
+for testing cameras outside of Python
+(See `ThorCam <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ ->  Software).
 After installing the SDK, extract the files in:
 ``~\\Program Files\\Thorlabs\\Scientific Imaging\\Scientific Camera Support\\Scientific_Camera_Interfaces.zip``.
-Follow the instructions in Python_README.txt.
-
-References
-----------
-.. [1] https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam
+Follow the instructions in the extracted file Python_README.txt to install into your
+python environment via ``pip``.
 """
 
 import os
@@ -19,34 +19,45 @@ import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
 
-def configure_tlcam_dll_path(
-    dll_path=(  "C:\\Program Files\\Thorlabs\\Scientific Imaging\\"
-                "Scientific Camera Support\\Scientific Camera "
-                "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"    )):
+DEFAULT_DLL_PATH = (
+    "C:\\Program Files\\Thorlabs\\Scientific Imaging\\"
+    "Scientific Camera Support\\Scientific Camera "
+    "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"
+)
+
+def configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
     """
     Adds Thorlabs camera DLLs to the DLL path.
+    `"32_lib"` or `"64_lib"` is appended to the default .dll path
+    depending on the type of system.
 
     Parameters
     ----------
     dll_path : str
         Full path to the Thorlabs camera DLLs.
     """
-    is_64bits = sys.maxsize > 2 ** 32
+    if DEFAULT_DLL_PATH == dll_path:
+        is_64bits = sys.maxsize > 2 ** 32
 
-    if is_64bits:
-        dll_path += "64_lib"
-    else:
-        dll_path += "32_lib"
+        if is_64bits:
+            dll_path += "64_lib"
+        else:
+            dll_path += "32_lib"
 
     if hasattr(os, "add_dll_directory"):
         try:
             os.add_dll_directory(dll_path)
-        except BaseException as e:
-            print("thorlabs.py: thorlabs_tsi_sdk DLL not found. Resolve to use Thorlabs cameras.")
+        except:
+            if DEFAULT_DLL_PATH == dll_path:
+                print(
+                    "thorlabs.py: thorlabs_tsi_sdk DLLs not found at default path. "
+                    "Resolve to use Thorlabs cameras.\nDefault path: '{}'".format(DEFAULT_DLL_PATH)
+                )
     else:
         os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]
 
 configure_tlcam_dll_path()
+
 try:
     from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, ROI
 except ImportError:
@@ -97,7 +108,16 @@ class ThorCam(Camera):
         if ThorCam.sdk is None:
             if verbose:
                 print("TLCameraSDK initializing... ", end="")
-            ThorCam.sdk = TLCameraSDK()
+            try:
+                ThorCam.sdk = TLCameraSDK()
+            except:
+                print("failure")
+                raise RuntimeError(
+                    "thorlabs.py: TLCameraSDK() open failed. "
+                    "Is thorlabs_tsi_sdk installed? "
+                    "Are the .dlls in the directory added by configure_tlcam_dll_path? "
+                    "Sometimes adding the .dlls to the working directory can help."
+                )
             if verbose:
                 print("success")
 
@@ -178,7 +198,15 @@ class ThorCam(Camera):
             List of ThorCam serial numbers.
         """
         if ThorCam.sdk is None:
-            ThorCam.sdk = TLCameraSDK()
+            try:
+                ThorCam.sdk = TLCameraSDK()
+            except:
+                raise RuntimeError(
+                    "thorlabs.py: TLCameraSDK() open failed. "
+                    "Is thorlabs_tsi_sdk installed? "
+                    "Are the .dlls in the directory added by configure_tlcam_dll_path? "
+                    "Sometimes adding the .dlls to the working directory can help."
+                )
             close_sdk = True
         else:
             close_sdk = False
@@ -253,19 +281,19 @@ class ThorCam(Camera):
             woi = (
                 self.cam.roi_range.upper_left_x_pixels_min,
                 self.cam.roi_range.lower_right_x_pixels_max
-                - self.cam.roi_range.upper_left_x_pixels_min,
+                - self.cam.roi_range.upper_left_x_pixels_min + 1,
                 self.cam.roi_range.upper_left_y_pixels_min,
                 self.cam.roi_range.lower_right_y_pixels_max
-                - self.cam.roi_range.upper_left_y_pixels_min,
+                - self.cam.roi_range.upper_left_y_pixels_min + 1,
             )
 
         self.woi = woi
 
         newroi = ROI(
-            self.cam.roi_range.lower_right_x_pixels_max - woi[0] - woi[1],
+            self.cam.roi_range.lower_right_x_pixels_max - woi[0] - woi[1] + 1,
             woi[2],
             self.cam.roi_range.lower_right_x_pixels_max - woi[0],
-            woi[2] + woi[3],
+            woi[2] + woi[3] - 1,
         )
 
         assert (
@@ -289,10 +317,13 @@ class ThorCam(Camera):
             <= self.cam.roi_range.lower_right_y_pixels_max
         )
 
+        # Update the woi
         self.cam.roi = newroi
-
         self.woi = woi
-        self.shape = (woi[3], woi[1])
+
+        # Update the shape (test the transform; maybe make this more efficient in the future)
+        test = np.zeros((woi[3], woi[1]))
+        self.shape = np.shape(self.transform(test))
 
         # Restore profile
         self.setup(profile)
@@ -332,7 +363,7 @@ class ThorCam(Camera):
 
             self.profile = profile
 
-    def get_image(self, timeout_s=1, trigger=True, grab=True):
+    def get_image(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
         """
         See :meth:`.Camera.get_image`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
@@ -346,31 +377,36 @@ class ThorCam(Camera):
         trigger : bool
             Whether or not to issue a software trigger.
         grab : bool
-            Whehter or not to grab the frame (blocking).
+            Whether or not to grab the frame (blocking).
 
         Returns
         -------
         numpy.ndarray or None
             Array of shape :attr:`shape` if ``grab=True``, else ``None``.
         """
-        if trigger:
-            if self.profile == "single":
+        should_trigger = trigger and self.profile == "single"
+
+        for _ in range(attempts):
+            if should_trigger:
                 t = time.time()
                 self.cam.issue_software_trigger()
 
-        ret = None
-        if grab:
-            # Start the timer.
-            if not trigger:
-                t = time.time()
+            ret = None
+            if grab:
+                # Start the timer.
+                if not should_trigger:
+                    t = time.time()
 
-            frame = None
+                frame = None
 
-            # Try to grab a frame until we succeed.
-            while time.time() - t < timeout_s and frame is None:
-                frame = self.cam.get_pending_frame_or_null()
+                # Try to grab a frame until we succeed.
+                while time.time() - t < timeout_s and frame is None:
+                    frame = self.cam.get_pending_frame_or_null()
 
-            ret = self.transform(np.copy(frame.image_buffer)) if frame is not None else None
+                ret = self.transform(np.copy(frame.image_buffer)) if frame is not None else None
+
+                if ret is not None:
+                    break
 
         return ret
 

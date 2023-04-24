@@ -28,12 +28,13 @@
 
 ## Installation
 
+<!--
 Install the stable version of `slmsuite` from [PyPi](https://pypi.org/project/slmsuite/) using:
 
 ```console
 $ pip install slmsuite
 ```
-
+-->
 
 Install the latest version of `slmsuite` from GitHub using:
 

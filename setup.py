@@ -5,9 +5,14 @@ setup.py - this module makes the package installable
 from distutils.core import setup
 
 NAME = "slmsuite"
-VERSION = "0.0.4"
+VERSION = "0.0.1"
 DEPENDENCIES = [
-    "numpy", "scipy", "opencv-python", "matplotlib", "h5py", "tqdm"
+    "numpy",
+    "scipy",
+    "opencv-python",
+    "matplotlib",
+    "h5py",
+    "tqdm"
 ]
 DESCRIPTION = ("Package for high-performance spatial light "
                "modulator (SLM) control and holography.")

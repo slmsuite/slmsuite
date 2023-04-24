@@ -53,18 +53,18 @@ class Template(Camera):
         # Most cameras have an SDK that needs to be loaded before the camera
         if verbose: print("Template SDK initializing... ", end="")
         raise NotImplementedError()
-        Template.sdk = something()                      # TODO: This function name will depend on the camera.
+        Template.sdk = something()                      # TODO: Fill in proper function.
         if verbose: print("success")
 
         # Then we load the camera from the SDK
         if verbose: print('"{}" initializing... '.format(serial), end="")
         raise NotImplementedError()
-        self.cam = sdk.something(serial)                # TODO: This function name will depend on the camera.
+        self.cam = sdk.something(serial)                # TODO: Fill in proper function.
         if verbose: print("success")
 
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
-            self.cam.get_width(),                       # TODO: These function names will depend on the camera.
+            self.cam.get_width(),                       # TODO: Fill in proper functions.
             self.cam.get_height(),
             bitdepth=self.cam.get_depth(),
             name=serial,
@@ -76,7 +76,7 @@ class Template(Camera):
     def close(self):
         """See :meth:`.Camera.close`."""
         raise NotImplementedError()
-        self.cam.close()                                # TODO: This function name will depend on the camera.
+        self.cam.close()                                # TODO: Fill in proper function.
         del self.cam
 
     @staticmethod
@@ -96,7 +96,7 @@ class Template(Camera):
             List of serial numbers or identifiers.
         """
         raise NotImplementedError()
-        serial_list = Template.sdk.get_serial_list()    # TODO: This function name will depend on the camera.
+        serial_list = Template.sdk.get_serial_list()    # TODO: Fill in proper function.
         return serial_list
 
     ### Property Configuration ###
@@ -104,12 +104,12 @@ class Template(Camera):
     def get_exposure(self):
         """See :meth:`.Camera.get_exposure`."""
         raise NotImplementedError()
-        return float(self.cam.get_exposure()) / 1e3     # TODO: This function name will depend on the camera.
+        return float(self.cam.get_exposure()) / 1e3     # TODO: Fill in proper function.
 
     def set_exposure(self, exposure_s):
         """See :meth:`.Camera.set_exposure`."""
         raise NotImplementedError()
-        self.cam.get_exposure(1e3 * exposure_s)         # TODO: This function name will depend on the camera.
+        self.cam.get_exposure(1e3 * exposure_s)         # TODO: Fill in proper function.
 
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
@@ -122,4 +122,4 @@ class Template(Camera):
         # The core method: grabs an image from the camera.
         # self.transform implements the flipping and rotating keywords passed to the
         # superclass constructor. This is handled automatically.
-        return self.transform(self.cam.get_image())     # TODO: This function name will depend on the camera.
+        return self.transform(self.cam.get_image())     # TODO: Fill in proper function.

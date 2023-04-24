@@ -90,7 +90,7 @@ class Template(SLM):
             List of serial numbers or identifiers.
         """
         raise NotImplementedError()
-        serial_list = get_serial_list()     # TODO: This function name will depend on the SLM.
+        serial_list = get_serial_list()     # TODO: Fill in proper function.
         return serial_list
 
     def _write_hw(self, phase):

@@ -5,12 +5,12 @@ setup.py - this module makes the package installable
 from distutils.core import setup
 
 NAME = "slmsuite"
-VERSION = "0.1"
+VERSION = "0.0.1"
 DEPENDENCIES = [
     "scipy", "matplotlib", "numpy", "opencv-python", "tqdm", "h5py"
 ]
 DESCRIPTION = ("Package for high-performance spatial light "
-               "modulator (SLMs) control and holography.")
+               "modulator (SLM) control and holography.")
 AUTHOR = "MIT Quantum Photonics Group"
 AUTHOR_EMAIL = "qp-slm@mit.edu"
 

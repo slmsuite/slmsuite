@@ -120,4 +120,6 @@ class Template(Camera):
         """See :meth:`.Camera.get_image`."""
         raise NotImplementedError()
         # The core method: grabs an image from the camera.
+        # self.transform implements the flipping and rotating keywords passed to the
+        # superclass constructor. This is handled automatically.
         return self.transform(self.cam.get_image())     # TODO: This function name will depend on the camera.

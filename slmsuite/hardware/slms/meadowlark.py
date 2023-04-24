@@ -4,8 +4,7 @@ Tested with Meadowlark (AVR Optics) P1920-400-800-HDMI-T.
 
 Note
 ~~~~
-Check that the Blink SDK, inlcuding DLL files etc, are in folder 
-C:\Program Files\Meadowlark Optics\Blink 1920 HDMI
+Check that the Blink SDK, inlcuding DLL files etc, are in the default folder
 or otherwise pass the correct directory in the constructor.
 """
 import os
@@ -14,7 +13,7 @@ import warnings
 
 from .slm import SLM
 
-default_sdk_path = "C:\\Program Files\\Meadowlark Optics\\Blink 1920 HDMI\\"
+DEFAULT_SDK_PATH = "C:\\Program Files\\Meadowlark Optics\\Blink 1920 HDMI\\"
 
 class Meadowlark(SLM):
     """
@@ -28,7 +27,7 @@ class Meadowlark(SLM):
         Path of the Blink SDK folder.
     """
 
-    def __init__(self, verbose=True, sdk_path=default_sdk_path, lut_path=None, dx_um=8, dy_um=8, **kwargs):
+    def __init__(self, verbose=True, sdk_path=DEFAULT_SDK_PATH, lut_path=None, dx_um=8, dy_um=8, **kwargs):
         r"""
         Initializes an instance of a Meadowlark SLM.
 
@@ -67,8 +66,16 @@ class Meadowlark(SLM):
         # Open the SLM library
         if verbose: print("Constructing Blink SDK...", end="")
 
-        ctypes.cdll.LoadLibrary(os.path.join(sdk_path, "SDK", "Blink_C_wrapper"))
-        self.slm_lib = ctypes.CDLL("Blink_C_wrapper")
+        dll_path = os.path.join(sdk_path, "SDK", "Blink_C_wrapper")
+        try:
+            ctypes.cdll.LoadLibrary(dll_path)
+            self.slm_lib = ctypes.CDLL("Blink_C_wrapper")
+        except:
+            print("failure")
+            raise ImportError(
+                "Meadowlark .dlls did not did not import correctly. Is '{}' the correct path?"
+                .format(dll_path)
+            )
 
         self.sdk_path = sdk_path
 
@@ -77,7 +84,7 @@ class Meadowlark(SLM):
         bool_cpp_or_python = ctypes.c_uint(1)
         self.slm_lib.Create_SDK(bool_cpp_or_python)
 
-        # Adjust pre- and post-ramp slopes for accurate voltage setting 
+        # Adjust pre- and post-ramp slopes for accurate voltage setting
         # (otherwise, custom LUT calibration is not properly implemented [this feature is not implemented in slmsuite]).
         # You may need a special version of the SDK sent to you from Meadowlark to have access to these parameters.
         # self.slm_lib.SetPreRampSlope(20) # default is 7
@@ -95,10 +102,6 @@ class Meadowlark(SLM):
         else:
             if verbose and true_lut_path != lut_path:
                 print("success\n(loaded from '{}')".format(true_lut_path))
-
-        # Default the pixel pitch to 8 x 8 um if not provided.
-        dx_um = kwargs.pop("dx_um", 8)
-        dy_um = kwargs.pop("dy_um", 8)
 
         # Construct other variables.
         super().__init__(
@@ -127,7 +130,7 @@ class Meadowlark(SLM):
         Parameters
         ----------
         lut_path : str OR None
-            Path to look for an LUT file in. 
+            Path to look for an LUT file in.
             If this is a .lut file, then this file is loaded to the SLM.
             If this is a directory, then searches all files inside the
             directory, and loads either the first .lut file, or if possible
@@ -151,7 +154,7 @@ class Meadowlark(SLM):
 
         # If we already have a .lut file, proceed.
         if len(lut_path) > 4 and lut_path[-4:] == ".lut":
-            pass    
+            pass
         else:   # Otherwise, treat the path like a folder and search inside the folder.
             lut_file = None
 
@@ -161,7 +164,7 @@ class Meadowlark(SLM):
                     # Choose the first one.
                     if lut_file is None:
                         lut_file = file
-                    
+
                     # Or choose the first one that starts with "slm"
                     if file[:3].lower() == "slm" and not lut_file[:3].lower() == "slm":
                         lut_file = file
@@ -184,7 +187,7 @@ class Meadowlark(SLM):
     def info(verbose=True):
         """
         The normal behavior of this function is to discover the names of all the displays
-        to help the user identify the correct display. However, Meadowlark software does 
+        to help the user identify the correct display. However, Meadowlark software does
         not currently support multiple SLMs, so this function instead raises an error.
 
         Parameters
@@ -213,7 +216,7 @@ class Meadowlark(SLM):
         See :meth:`.SLM._write_hw`.
         """
         self.slm_lib.Write_image(
-            display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)), 
+            display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
             ctypes.c_uint(self.bitdepth == 8)   # Is 8-bit
         )
 

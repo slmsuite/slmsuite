@@ -41,14 +41,7 @@ and scheduling a periodic external reminder to install new updates manually.
 Building an SLM Setup
 ---------------------
 
-Configuration
-~~~~~~~~~~~~~
-
 There are a variety of ways to configure an SLM in a beamline, each with advantages and
-disadvantages. **(Under construction)**
-
-Alignment
-~~~~~~~~~
-
-Better alignment is better. Here we discuss a few tips on how to acheive better
-alignment. **(Under construction)**
+disadvantages. In addition, there are known "best practices" to consider when aligning.
+We're in the progress of writing a full guide; however, in the interim, the alignment
+tutorial `here <https://aomicroscopy.org/slm-alignment>`_ should get you started!

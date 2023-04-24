@@ -68,7 +68,7 @@ class MMCore(Camera):
             self.cam.getImageWidth(),
             self.cam.getImageHeight(),
             bitdepth=self.cam.getImageBitDepth(),
-            name=config
+            name=config,
             **kwargs
         )
 

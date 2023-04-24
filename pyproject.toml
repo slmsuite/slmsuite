@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slmsuite"
+readme = "README_PYPI.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dynamic = ["version", "dependencies", "description", "authors"]
+
+[project.urls]
+"Homepage" = "https://github.com/QPG-MIT/slmsuite"
+"Documentation" = "https://slmsuite.readthedocs.io/en/latest/"

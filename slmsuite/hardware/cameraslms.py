@@ -1182,6 +1182,9 @@ class FourierSLM(CameraSLM):
         # Step 0: Initialize helper variables and functions.
         data = self.wavefront_calibration_raw
 
+        if len(data) == 0:
+            raise RuntimeError("No raw wavefront data to process. Either load data or calibrate.")
+
         NX = data["NX"]
         NY = data["NY"]
         nxref = data["nxref"]

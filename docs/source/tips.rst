@@ -26,7 +26,7 @@ Upon hovering over a program in the taskbar, Windows Aero Peek hides all other w
 to make finding this program easier. However, Aero Peek can also hide the window being used to
 project data onto the SLM in the virtual display, causing most power to
 return to the zeroth order, and in some cases burning holes through devices
-(this happened several times before we realized what was happening).
+(this occurred several times before we realized what was happening).
 We suggest `disabling Aero Peek
 <https://answers.microsoft.com/en-us/windows/forum/all/how-to-completely-disable-aero-peek-in-windows-11/ec65a8de-6401-4be2-a0b3-ba0d29c6cfe4>`_.
 
@@ -41,14 +41,7 @@ and scheduling a periodic external reminder to install new updates manually.
 Building an SLM Setup
 ---------------------
 
-Configuration
-~~~~~~~~~~~~~
-
 There are a variety of ways to configure an SLM in a beamline, each with advantages and
-disadvantages. **(Under construction)**
-
-Alignment
-~~~~~~~~~
-
-Better alignment is better. Here we discuss a few tips on how to acheive better
-alignment. **(Under construction)**
+disadvantages. In addition, there are known "best practices" to consider when aligning.
+We're in the progress of writing a full guide; however, in the interim, the alignment
+tutorial `here <https://aomicroscopy.org/slm-alignment>`_ should get you started!

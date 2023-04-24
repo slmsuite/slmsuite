@@ -32,7 +32,7 @@ conditions!) using the latest algorithms from research. It features:
 .. We've now used slmsuite for state-of-the-art science.
 
 During the initial development alone, |slmsuite|_ enabled us to tune arrays of
-micro-scale optical cavities into resonance with picometer-precision, dynamcially
+micro-scale optical cavities into resonance with picometer-precision, dynamically
 address clusters of artificial atoms in diamond, and efficiently fan-out input activations
 in optical neural networks. We're excited to see what you come up with next!
 

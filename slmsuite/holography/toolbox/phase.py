@@ -188,7 +188,7 @@ def zernike_sum(grid, weights, aperture=None):
     .. highlight:: python
     .. code-block:: python
 
-        zernike_sum_phase = toolbox.zernike_sum(
+        zernike_sum_phase = toolbox.phase.zernike_sum(
             grid=slm,
             weights=(   ((2, 0),  1),       # Z_20
                         ((2, 1), -1),       # Z_21
@@ -204,8 +204,6 @@ def zernike_sum(grid, weights, aperture=None):
     along with the algorithm defined there.
     Other packages use different schemes, sometimes defining
     :math:`m' = l = n - 2m`. Take care to avoid confusion.
-
-    .. [0] Efficient Cartesian representation of Zernike polynomials in computer memory.
 
     Important
     ~~~~~~~~~
@@ -224,14 +222,16 @@ def zernike_sum(grid, weights, aperture=None):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     weights : list of ((int, int), float)
-        Which Zernike polynomials to sum. The ``(int, int)`` is the cartesian index
-        ``(n, m)``. The float is the weight for the given index.
+        Which Zernike polynomials to sum. The ``(int, int)`` is the index ``(n, m)``, 
+        which correspond to the azimuthal degree and order of the polynomial.
+        The ``float`` is the weight for the given index.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
         How to scale the polynomials relative to the grid shape. This is relative
         to the :math:`R = 1` edge of a standard Zernike pupil.
 
         ``"circular"``, ``None``
           The circle is scaled isotropically until the pupil edge touches the grid edge.
+          This is the default aperture.
         ``"elliptical"``
           The circle is scaled anisotropically until each cartesian pupil edge touches a grid
           edge. Generally produces and ellipse.
@@ -391,7 +391,7 @@ def _determine_source_radius(grid, w=None):
     structured light conversion functions. This is important because structured light
     conversions need knowledge of the size of the incident Gaussian beam.
     For example, see the ``w`` parameter in
-    :meth:`~slmsuite.holography.toolbox.laguerre_gaussian()`.
+    :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`.
 
     Note
     ~~~~

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 from slmsuite.holography import analysis
-from slmsuite.misc import lorentzian, lorentzian_jacobian
+from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
 
 class Camera:
     """

@@ -1742,13 +1742,17 @@ class Hologram:
                 ext_nm = img.get_extent()
                 ext_min = np.squeeze(toolbox.convert_blaze_vector(
                     [ext_nm[0], ext_nm[-1]],
-                    from_units="knm", to_units=to_units,
-                    slm=slm, shape=npsource.shape
+                    from_units="knm", 
+                    to_units=to_units,
+                    slm=slm, 
+                    shape=npsource.shape
                 ))
                 ext_max = np.squeeze(toolbox.convert_blaze_vector(
                     [ext_nm[1], ext_nm[2]],
-                    from_units="knm", to_units=to_units,
-                    slm=slm, shape=npsource.shape
+                    from_units="knm", 
+                    to_units=to_units,
+                    slm=slm, 
+                    shape=npsource.shape
                 ))
                 img.set_extent([ext_min[0] ,ext_max[0], ext_max[1], ext_min[1]])
 
@@ -1795,8 +1799,10 @@ class Hologram:
             else:
                 cam_points = toolbox.convert_blaze_vector(
                     self.cam_points,
-                    from_units="knm", to_units=units,
-                    slm=slm, shape=npsource.shape
+                    from_units="knm", 
+                    to_units=units,
+                    slm=slm, 
+                    shape=npsource.shape
                 )
 
             # Plot the labeled yellow rectangle representing the camera.
@@ -2578,7 +2584,7 @@ class SpotHologram(FeedbackHologram):
             self.spot_ij = vectors
             self.spot_kxy = cameraslm.ijcam_to_kxyslm(vectors)
             self.spot_knm = toolbox.convert_blaze_vector(
-                self.spot_kxy, "ij", "knm", cameraslm, shape
+                vectors, "ij", "knm", cameraslm, shape
             )
         else:
             raise Exception("algorithms.py: Unrecognized basis for spots '{}'.".format(basis))

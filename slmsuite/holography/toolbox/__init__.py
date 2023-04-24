@@ -49,6 +49,8 @@ def convert_blaze_vector(
 
         The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
 
+        ``"ij"``
+        Camera pixel units.
         ``"freq"``
         Pixel frequency of a grating producing the blaze.
         e.g. 1/16 is a grating with a period of 16 pixels.
@@ -61,7 +63,7 @@ def convert_blaze_vector(
     ~~~~~~~
     The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
     so a ``slm`` should be passed (otherwise returns an array of ``nan`` values).
-    The unit ``"ij"``, camera pixels, requires information stored in a CameraSLM, so
+    The unit ``"ij"``, camera pixels, requires calibration data stored in a CameraSLM, so
     this must be passed in place of ``slm``.
     The unit ``"knm"`` additionally requires the ``shape`` of the computational space.
     If not included when an slm is passed, ``shape=slm.shape`` is assumed.
@@ -967,7 +969,7 @@ def _process_grid(grid):
     return grid
 
 
-import slmsuite.holography.toolbox.phase as toolbox_phase
+import slmsuite.holography.toolbox.phase as phase
 
 
 def shift_grid(grid, transform=None, shift=None):
@@ -1022,12 +1024,12 @@ def shift_grid(grid, transform=None, shift=None):
         else:
             transform = np.squeeze(transform)
 
-        assert np.shape(transform) == 2
+        assert transform.ndim == 2
 
         # Use the matrix to transform the grid.
         return (
-            transform[0,0] * x_grid - transform[0,0] * y_grid if shift[0] == 0 else (c * x_grid - s * y_grid - shift[0]),
-            transform[0,0] * x_grid + transform[1,1] * y_grid if shift[1] == 0 else (c * y_grid + s * x_grid - shift[1])
+            transform[0,0] * (x_grid - shift[0]) + transform[0,1] * (y_grid - shift[1]),
+            transform[1,0] * (x_grid - shift[0]) + transform[1,1] * (y_grid - shift[1])
         )
 
 

@@ -19,13 +19,13 @@ import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
 
-default_dll_path = (
+DEFAULT_DLL_PATH = (
     "C:\\Program Files\\Thorlabs\\Scientific Imaging\\"
     "Scientific Camera Support\\Scientific Camera "
     "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"
 )
 
-def configure_tlcam_dll_path(dll_path=default_dll_path):
+def configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
     """
     Adds Thorlabs camera DLLs to the DLL path.
     `"32_lib"` or `"64_lib"` is appended to the default .dll path
@@ -36,7 +36,7 @@ def configure_tlcam_dll_path(dll_path=default_dll_path):
     dll_path : str
         Full path to the Thorlabs camera DLLs.
     """
-    if default_dll_path == dll_path:
+    if DEFAULT_DLL_PATH == dll_path:
         is_64bits = sys.maxsize > 2 ** 32
 
         if is_64bits:
@@ -48,10 +48,10 @@ def configure_tlcam_dll_path(dll_path=default_dll_path):
         try:
             os.add_dll_directory(dll_path)
         except:
-            if default_dll_path == dll_path:
+            if DEFAULT_DLL_PATH == dll_path:
                 print(
                     "thorlabs.py: thorlabs_tsi_sdk DLLs not found at default path. "
-                    "Resolve to use Thorlabs cameras.\nDefault path: '{}'".format(default_dll_path)
+                    "Resolve to use Thorlabs cameras.\nDefault path: '{}'".format(DEFAULT_DLL_PATH)
                 )
     else:
         os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]

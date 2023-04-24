@@ -18,13 +18,10 @@ Santec provides base wavefront correction accounting for the curvature of the SL
 Consider loading these files via :meth:`.SLM.load_vendor_phase_correction()`
 """
 import os
-import time
 import ctypes
 import numpy as np
 import cv2
 import warnings
-
-import matplotlib.pyplot as plt
 
 from .slm import SLM
 
@@ -79,7 +76,7 @@ class Santec(SLM):
         grayscale values and applied voltages. This is configured based upon the wavelength
         supplied to :attr:`.SLM.wav_design_um`. This allows :attr:`.SLM.phase_scaling`
         to be one if desired, and make use of optimized routines (see :meth`.write()`).
-        However, sometimes setting the phase table runs into issues, where the maximum value 
+        However, sometimes setting the phase table runs into issues, where the maximum value
         doesn't correspond to exactly :math:`2\pi` at the target wavelength. This is noted
         in the initialization, and the user should update :attr:`.SLM.wav_design_um` or otherwise
         to avoid undesired behavior.
@@ -89,7 +86,7 @@ class Santec(SLM):
         :class:`.Santec` defaults to 8 micron SLM pixel size
         (:attr:`.SLM.dx_um` = :attr:`.SLM.dy_um` = 8)
         and 10-bit :attr:`.SLM.bitdepth`.
-        This is valid for SLM-200, SLM-210, and SLM-300, 
+        This is valid for SLM-200, SLM-210, and SLM-300,
         but may not be valid for future Santec models.
         """
         # Default max phase. Maybe this should be opened to the user in the future.
@@ -138,7 +135,7 @@ class Santec(SLM):
             wav_desired_nm = int(1e3 * wav_design_um)
             phase_desired = int(np.floor(max_phase * 100 / np.pi))
 
-            # Update the phase table if necessary. This sometimes fails for unknown 
+            # Update the phase table if necessary. This sometimes fails for unknown
             # reasons, so we do multiple attempts. Reasons for failure might include overheating
             # while the energy-intensive process of updating the table is underway.
             attempt = 1
@@ -168,7 +165,7 @@ class Santec(SLM):
                 if verbose:
                     print("Updated phase table: wav = {0} nm, maxphase = {1:.2f}pi"
                             .format(wav_current_nm.value, phase_current.value / 100.0))
-                
+
                 attempt += 1
 
             # Raise an error if we failed.
@@ -369,7 +366,7 @@ class Santec(SLM):
         (float, float)
             Temperature in Celsius of the drive and option board
         """
-        # Note that the Santec documentation suggests using signed 
+        # Note that the Santec documentation suggests using signed
         # integers, but the header requests unsigned integers.
         drive_temp = ctypes.c_uint32(0)
         option_temp = ctypes.c_uint32(0)
@@ -387,7 +384,7 @@ class Santec(SLM):
         raise_error : bool
             Whether to raise an error (if True) or a warning (if False) if error(s) are detected.
         return_codes : bool
-            Whether to return an error string or integer error codes 
+            Whether to return an error string or integer error codes
             (in ``(drive_error, option_error)`` form).
 
         Returns

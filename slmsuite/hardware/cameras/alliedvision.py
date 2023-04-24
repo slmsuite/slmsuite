@@ -1,17 +1,14 @@
 """
 Hardware control for AlliedVision cameras via the :mod:`vimba` interface.
-Install :mod:`vimba` by following the instructions at [1]_. Include the
-``numpy-export`` flag in the ``pip install`` command, as the :class:`AlliedVision` class
-makes use of these features. See especially the vimba python manual [2]_ for reference.
-
-References
-----------
-.. [1] https://github.com/alliedvision/VimbaPython
-.. [2] https://github.com/alliedvision/VimbaPython/blob/master/Documentation/Vimba%20Python%20Manual.pdf
+Install :mod:`vimba` by following the
+`provided instructions <https://github.com/alliedvision/VimbaPython>`_.
+Include the ``numpy-export`` flag in the ``pip install`` command,
+as the :class:`AlliedVision` class makes use of these features. See especially the
+`vimba python manual <https://github.com/alliedvision/VimbaPython/blob/master/Documentation/Vimba%20Python%20Manual.pdf>`_
+for reference.
 """
 
 import time
-
 import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
@@ -204,7 +201,6 @@ class AlliedVision(Camera):
             try:
                 print(prop.get_name(), end="\t")
             except BaseException as e:
-                # print(prop)
                 print("Error accessing property dictionary, '{}':{}".format(key, e))
                 continue
 

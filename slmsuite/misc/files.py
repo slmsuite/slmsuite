@@ -1,20 +1,19 @@
 """
 Utilities for interfacing with files.
 This includes helper functions for naming directories without conflicts, and convenience
-wrappers for file writing. :mod:`slmsuite` uses the HDF5 [1]_ (.h5) filetype by default, 
-as it is fast, compact, and widely supported by programming languages for scientific
-computing [2]_ . This uses the :mod:`h5py` module [3]_ .
-
-References
-----------
-.. [1] https://hdfgroup.org/solutions/hdf5
-.. [2] https://en.wikipedia.org/wiki/Hierarchical_Data_Format#Interfaces
-.. [3] https://h5py.org
+wrappers for file writing. :mod:`slmsuite` uses the
+`HDF5 filetype <https://hdfgroup.org/solutions/hdf5>`_
+(.h5) by default, as it is fast, compact, and
+`widely supported by programming languages for scientific computing
+<https://en.wikipedia.org/wiki/Hierarchical_Data_Format#Interfaces>`_.
+This uses the :mod:`h5py` `module <https://h5py.org>`_.
 """
 
 import os
 import re
+
 import h5py
+import numpy as np
 
 
 def _max_numeric_id(path, name, extension=None, kind="file", digit_count=5):
@@ -160,35 +159,56 @@ def latest_path(path, name, extension=None, kind="file", digit_count=5):
         if extension is not None and kind == "file":
             name_augmented = "{}.{}".format(name_augmented, extension)
         ret = os.path.join(path, name_augmented)
-        
+
     return ret
 
 
-def read_h5(file_path):
+def read_h5(file_path, decode_bytes=True):
     """
     Read data from an h5 file into a dictionary.
+    In the case of more complicated h5 hierarchy, a dictionary of dictionaries is returned.
 
     Parameters
     ----------
     file_path : str
         Full path to the file to read the data from.
+    decode_bytes : bool
+        Whether or not objects with type `bytes` should be decoded.
+        By default HDF5 writes strings as bytes objects; this functionality
+        will make strings read back from the file `str` type.
 
     Returns
     -------
     data : dict
-        Dictionary of data stored in the file.
+        Dictionary of the data stored in the file.
     """
-    data = {}
+    def recurse(group):
+        data = {}
+
+        for key in group.keys():
+            if isinstance(group[key], h5py.Group):
+                data[key] = recurse(group[key])
+            else:
+                data_ = group[key][()]
+                if decode_bytes:
+                    if isinstance(data_, bytes):
+                        data_ = bytes.decode(data_)
+                    elif isinstance(data_, np.ndarray) and isinstance(data_[0], bytes):
+                        data_ = np.vectorize(bytes.decode)(data_)
+                data[key] = data_
+
+        return data
+
     with h5py.File(file_path, "r") as file_:
-        for key in file_.keys():
-            data[key] = file_[key][()]
+        data = recurse(file_)
 
     return data
 
 
 def write_h5(file_path, data, mode="w"):
     """
-    Write data in a dictionary to an h5 file.
+    Write data in a dictionary to an `h5 file
+    <https://docs.h5py.org/en/stable/high/file.html#opening-creating-files>`_.
 
     Parameters
     ----------
@@ -197,12 +217,15 @@ def write_h5(file_path, data, mode="w"):
     data : dict
         Dictionary of data to save in the file.
     mode : str
-        The mode to open the file with [1]_.
-
-    References
-    ----------
-    .. [1] https://docs.h5py.org/en/stable/high/file.html#opening-creating-files
+        The mode to open the file with.
     """
-    with h5py.File(file_path, mode) as file_:
+    def recurse(group, data):
         for key in data.keys():
-            file_[key] = data[key]
+            if isinstance(data[key], dict):
+                new_group = group.create_group(key)
+                recurse(new_group, data[key])
+            else:
+                group[key] = data[key]
+
+    with h5py.File(file_path, mode) as file_:
+        recurse(file_, data)

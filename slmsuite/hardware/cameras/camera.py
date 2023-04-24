@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 from slmsuite.holography import analysis
-from slmsuite.misc import lorentzian, lorentzian_jacobian
+from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
 
 class Camera:
     """
@@ -218,7 +218,7 @@ class Camera:
     def get_images(self, image_count, flush=False):
         """
         Grab ``image_count`` images in succession. Overwrite this
-        impelementation if a camera supports faster batch acquisition.
+        implementation if a camera supports faster batch acquisition.
 
         Parameters
         ----------
@@ -497,10 +497,3 @@ def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
             ax.imshow(img, interpolation=None, cmap=cmap)
         fig.canvas.draw()
         fig.canvas.flush_events()
-
-
-
-
-
-
-

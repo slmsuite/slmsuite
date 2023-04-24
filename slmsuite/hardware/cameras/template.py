@@ -17,6 +17,7 @@ class Template(Camera):
         Most cameras will wrap some handle which connects to the the hardware.
     """
 
+    # Class variable (same for all instances of Template) pointing to a singleton SDK.
     sdk = None
 
     def __init__(
@@ -39,7 +40,7 @@ class Template(Camera):
 
         # Most cameras have an SDK that needs to be loaded before the camera
         raise NotImplementedError()
-        # Template.sdk = something()...
+        Template.sdk = something()                      # This function name will depend on the camera.
 
         if verbose:
             print("success")
@@ -49,13 +50,13 @@ class Template(Camera):
 
         # Then we load the camera from the SDK
         raise NotImplementedError()
-        # self.cam = sdk.something(serial)...
+        self.cam = sdk.something(serial)                # This function name will depend on the camera.
 
         if verbose:
             print("success")
 
         super().__init__(
-            self.cam.get_width(),           # These function names will depend on the camera.
+            self.cam.get_width(),                       # These function names will depend on the camera.
             self.cam.get_height(),
             bitdepth=self.cam.get_depth(),
             name=serial,
@@ -67,7 +68,7 @@ class Template(Camera):
     def close(self):
         """See :meth:`.Camera.close`."""
         raise NotImplementedError()
-        self.cam.close()                    # This function name will depend on the camera.
+        self.cam.close()                                # This function name will depend on the camera.
         del self.cam
 
     @staticmethod

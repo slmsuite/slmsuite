@@ -4,18 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slmsuite"
-version = "0.0.1"
-authors = [
-  { name="MIT Quantum Photonics Group", email="qp-slm@mit.edu" },
-]
-description = "Package for high-performance spatial light modulator (SLM) control and holography."
-readme = "README.md"
-requires-python = ">=3.7"
+readme = "README_PYPI.md"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dynamic = ["version", "dependencies", "description", "authors"]
 
 [project.urls]
 "Homepage" = "https://github.com/QPG-MIT/slmsuite"

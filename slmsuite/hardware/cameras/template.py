@@ -109,7 +109,7 @@ class Template(Camera):
     def set_exposure(self, exposure_s):
         """See :meth:`.Camera.set_exposure`."""
         raise NotImplementedError()
-        self.cam.get_exposure(1e3 * exposure_s)         # TODO: Fill in proper function.
+        self.cam.set_exposure(1e3 * exposure_s)         # TODO: Fill in proper function.
 
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
@@ -123,3 +123,8 @@ class Template(Camera):
         # self.transform implements the flipping and rotating keywords passed to the
         # superclass constructor. This is handled automatically.
         return self.transform(self.cam.get_image())     # TODO: Fill in proper function.
+
+    def flush(self):
+        """See :meth:`.Camera.flush`."""
+        raise NotImplementedError()
+        # Clears ungrabbed images from the queue

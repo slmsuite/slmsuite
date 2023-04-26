@@ -22,7 +22,7 @@ class SimulatedCam(Camera):
         (M, b) 2x2 affine matrix and 2x1 offset vector to convert SLM k-space to camera-space. 
     """
 
-    def __init__(self, resolution, affine=None, **kwargs):
+    def __init__(self, resolution, slm, affine=None, **kwargs):
         """
         Initialize simulated camera.
 
@@ -30,6 +30,8 @@ class SimulatedCam(Camera):
         ----------
         resolution : tuple
             See :attr:`resolution`.
+        slm : :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`
+            Simulated SLM creating the image.
         affine : ndarray
             See :attr:`M`.
         kwargs
@@ -47,14 +49,47 @@ class SimulatedCam(Camera):
             **kwargs
         )
 
-    def get_image(self, slm, plot=False):
+        # Digital gain emulates exposure
+        self.exposure = 1
+        
+        # Store a reference to the SLM: we need this to compute the far-field camera images.
+        self._slm = slm
+
+        # Hologram for calculating the far-field
+        self.hologram = Hologram(self.shape,
+                                 amp=self._slm.amp_profile,
+                                 phase=self._slm.phase+self._slm.phase_offset,
+                                 slm_shape=self._slm)
+
+    def flush(self):
+        """
+        See :meth:`.Camera.flush`.
+        """
+        return
+    
+    def set_exposure(self, exposure):
+        """
+        Set the simulated exposure (i.e. digital gain).
+
+        Parameters
+        ----------
+        exposure : float
+            Digital gain.
+        """
+        self.exposure = exposure
+
+    def get_exposure(self):
+        """
+        Get the simulated exposure (i.e. digital gain).
+        """
+        return self.exposure
+
+    def get_image(self, plot=False):
         """
         See :meth:`.Camera.get_image`. Computes and samples the affine-transformed SLM far-field.
 
         Parameters
         ----------
-        slm : :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`
-            Simulated SLM creating the image.
         plot : bool
             Whether to plot the output.
 
@@ -64,15 +99,14 @@ class SimulatedCam(Camera):
             Array of shape :attr:`shape`
         """
 
-        # Efficiently calculate the far-field with a 0-iteration GS loop
-        hologram = Hologram(slm.shape,phase=slm.phase+slm.phase_offset,slm_shape=slm)
-        hologram.optimize(method='GS', maxiter=0)
+        # Update phase; calculate the far-field
+        self.hologram.reset_phase(self._slm.phase + self._slm.phase_offset)
+        ff = self.hologram.extract_farfield()
 
         if plot:
-            # Look at the associated near- and far- fields
-            hologram.plot_nearfield(cbar=True)
-            hologram.plot_farfield(cbar=True) #TODO: limits docstring update (tuple v. vec)
+            # Look at the associated near- and far-fields
+            self.hologram.plot_nearfield(cbar=True)
+            self.hologram.plot_farfield(cbar=True)
 
-        im = hologram.amp_ff
+        return self.exposure*np.abs(ff)**2
 
-        return im

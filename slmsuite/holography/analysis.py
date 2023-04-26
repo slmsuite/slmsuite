@@ -1102,6 +1102,7 @@ def blob_array_detect(
         fft_blur_size = (
             int(2 * np.ceil(fftsize / 1000)) + 1
         )  # Future: Make not arbitrary.
+
         dft_amp = cv2.GaussianBlur(np.abs(dft), (fft_blur_size, fft_blur_size), 0)
 
         # Need copy for some reason:

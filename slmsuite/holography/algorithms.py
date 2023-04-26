@@ -356,15 +356,18 @@ class Hologram:
             try:        # Check if slm_shape is a CameraSLM.
                 if amp is None:
                     amp = slm_shape.slm.measured_amplitude
+                    amp_shape = amp.shape
                 slm_shape = slm_shape.slm.shape
             except:
                 try:    # Check if slm_shape is an SLM
                     if amp is None:
                         amp = slm_shape.measured_amplitude
+                        amp_shape = amp.shape
                     slm_shape = slm_shape.shape
+                    
                 except: # (int, int) case
                     pass
-
+            
             if len(slm_shape) != 2:
                 slm_shape = (np.nan, np.nan)
 
@@ -1117,6 +1120,8 @@ class Hologram:
         """
         nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), self.shape)
         farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
+        self.amp_ff = cp.abs(farfield)
+        self.phase_ff = cp.angle(farfield)
 
         if cp != np:
             return farfield.get()

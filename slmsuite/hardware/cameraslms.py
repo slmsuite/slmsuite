@@ -1385,8 +1385,9 @@ class FourierSLM(CameraSLM):
 
                 mindiff = fom
 
-        wavefront_calibration = {   "phase_correction":phase_fin,
-                                    "measured_amplitude":amp_large}
+        wavefront_calibration = {"phase_correction":phase_fin,
+                                 "measured_amplitude":amp_large,
+                                 "r2":r2}
 
         # Step 4: Load the correction to the SLM
         if apply:
@@ -1399,7 +1400,7 @@ class FourierSLM(CameraSLM):
 
             plt.subplot(1, 3, 1)
             plt.imshow(
-                phase_fin,
+                phase_fin, clim=(0,2*np.pi),
                 cmap=plt.get_cmap("twilight"),
                 interpolation="none",
             )
@@ -1408,13 +1409,13 @@ class FourierSLM(CameraSLM):
             plt.ylabel("SLM $y$ [pix]")
 
             plt.subplot(1, 3, 2)
-            plt.imshow(amp_large)
+            plt.imshow(amp_large, clim=(0,1))
             plt.title("Measured Beam Amplitude")
             plt.xlabel("SLM $x$ [pix]")
             plt.ylabel("SLM $y$ [pix]")
 
             plt.subplot(1, 3, 3)
-            plt.imshow(r2)
+            plt.imshow(r2, clim=(0,1))
             plt.title("$R^2$")
             plt.xlabel("SLM $x$ [superpix]")
             plt.ylabel("SLM $y$ [superpix]")

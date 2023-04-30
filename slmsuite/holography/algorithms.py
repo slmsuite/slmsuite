@@ -69,7 +69,7 @@ space.
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import cv2
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 import warnings
 import pprint
 
@@ -1109,9 +1109,15 @@ class Hologram:
             return self.phase.get() + np.pi
         return self.phase + np.pi
 
-    def extract_farfield(self):
+    def extract_farfield(self, affine=None):
         r"""
         Collects the current complex farfield from the GPU with :meth:`cupy.ndarray.get()`.
+
+        Parameters
+        ----------
+        affine : dict
+            Affine transformation to apply to far-field data (in the form of
+            :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`).
 
         Returns
         -------
@@ -1124,8 +1130,29 @@ class Hologram:
         self.phase_ff = cp.angle(farfield)
 
         if cp != np:
+            if affine is not None:
+                cp_affine_transform(
+                    input=farfield,
+                    matrix=affine["M"],
+                    offset=affine["b"],
+                    output_shape=self.shape,
+                    order=3,
+                    output=farfield,
+                    mode="constant",
+                    cval=0)
             return farfield.get()
-        return farfield
+        else:
+            if affine is not None:
+                sp_affine_transform(
+                    input=farfield,
+                    matrix=affine["M"],
+                    offset=affine["b"],
+                    output_shape=self.shape,
+                    order=3,
+                    output=farfield,
+                    mode="constant",
+                    cval=0)
+            return farfield
 
     # Weighting functions.
     def _update_weights_generic(

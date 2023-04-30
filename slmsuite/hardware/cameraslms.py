@@ -8,7 +8,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import optimize
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 
 from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
@@ -1117,7 +1117,7 @@ class FourierSLM(CameraSLM):
             return measure(test_superpixel, plot=plot_fits)
 
         # Otherwise, proceed with all of the superpixels.
-        for n in tqdm(range(NX * NY), position=0, leave=False, desc="calibration"):
+        for n in tqdm(range(NX * NY), position=1, leave=True, desc="calibration"):
             nx = int(n % NX)
             ny = int(n / NX)
 

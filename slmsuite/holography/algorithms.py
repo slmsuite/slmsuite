@@ -69,7 +69,7 @@ space.
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import cv2
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 import warnings
 import pprint
 

@@ -324,7 +324,7 @@ class Camera:
             err = np.abs(im_max - set_val) / self.bitresolution
 
             if verbose:
-                print(exp, im_max)
+                print("Reset exposure to %1.2fs; maximum image value = %d."%(exp, im_max))
 
         exp_fin = exp * 2 * set_fraction
 

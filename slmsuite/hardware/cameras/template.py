@@ -123,3 +123,8 @@ class Template(Camera):
         # self.transform implements the flipping and rotating keywords passed to the
         # superclass constructor. This is handled automatically.
         return self.transform(self.cam.get_image())     # TODO: Fill in proper function.
+
+    def flush(self):
+        """See :meth:`.Camera.flush`."""
+        raise NotImplementedError()
+        # Clears ungrabbed images from the queue

@@ -182,7 +182,7 @@ def zernike_sum(grid, weights, aperture=None):
     Returns a summation of
     `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
     in a computationally-efficient manner. To improve performance, especially for higher
-    order polynomials, we store a cached of Zernike coefficients to avoid regeneration.
+    order polynomials, we store a cache of Zernike coefficients to avoid regeneration.
     See the below example to generate :math:`Z_{20} - Z_{21} + Z_{31}`.
 
     .. highlight:: python

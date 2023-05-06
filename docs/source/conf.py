@@ -30,7 +30,7 @@ for module_path in module_paths:
 project = "slmsuite"
 copyright = "2023, slmsuite Developers"
 author = "slmsuite Developers"
-release = "0.0.0"
+release = "0.0.1"
 
 # -- General configuration ---------------------------------------------------
 

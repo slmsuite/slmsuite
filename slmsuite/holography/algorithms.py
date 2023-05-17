@@ -603,7 +603,7 @@ class Hologram:
     ):
         r"""
         Optimizers to solve the "phase problem": approximating the near-field phase that
-        transforms a known near-field source amplitude to a desired near-field
+        transforms a known near-field source amplitude to a desired far-field
         target amplitude.
         Supported optimization methods include:
 
@@ -642,7 +642,7 @@ class Hologram:
             ``'WGS-Kim'``
 
               `Improves the convergence <https://doi.org/10.1364/OL.44.003178>`_
-              of `Leonardo` by fixing the far-field phase
+              of ``WGS-Leonardo`` by fixing the far-field phase
               strictly after a desired number of net iterations
               specified by ``"fix_phase_iteration"``
               or after exceeding a desired efficiency
@@ -823,7 +823,7 @@ class Hologram:
         GPU-accelerated Gerchberg-Saxton (GS) iterative phase retrieval.
 
         Solves the "phase problem": approximates the near-field phase that
-        transforms a known near-field source amplitude to a known near-field
+        transforms a known near-field source amplitude to a desired far-field
         target amplitude.
 
         Caution
@@ -1742,16 +1742,16 @@ class Hologram:
                 ext_nm = img.get_extent()
                 ext_min = np.squeeze(toolbox.convert_blaze_vector(
                     [ext_nm[0], ext_nm[-1]],
-                    from_units="knm", 
+                    from_units="knm",
                     to_units=to_units,
-                    slm=slm, 
+                    slm=slm,
                     shape=npsource.shape
                 ))
                 ext_max = np.squeeze(toolbox.convert_blaze_vector(
                     [ext_nm[1], ext_nm[2]],
-                    from_units="knm", 
+                    from_units="knm",
                     to_units=to_units,
-                    slm=slm, 
+                    slm=slm,
                     shape=npsource.shape
                 ))
                 img.set_extent([ext_min[0] ,ext_max[0], ext_max[1], ext_min[1]])
@@ -1799,9 +1799,9 @@ class Hologram:
             else:
                 cam_points = toolbox.convert_blaze_vector(
                     self.cam_points,
-                    from_units="knm", 
+                    from_units="knm",
                     to_units=units,
-                    slm=slm, 
+                    slm=slm,
                     shape=npsource.shape
                 )
 

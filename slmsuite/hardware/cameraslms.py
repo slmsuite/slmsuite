@@ -563,8 +563,11 @@ class FourierSLM(CameraSLM):
         Run :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`
         after to produce the usable calibration which is written to the SLM.
         This procedure measures the wavefront phase and amplitude.
+
+        Tip
+        ~~~
         If only amplitude calibration is desired,
-        set ``phase_steps=0`` to omit the phase calibration.
+        set ``phase_steps=0`` to omit the more time consuming phase calibration.
 
         Parameters
         ----------
@@ -713,10 +716,12 @@ class FourierSLM(CameraSLM):
             if key not in correction_dict.keys():
                 correction_dict.update({key: np.zeros((NY, NX), dtype=np.float32)})
 
-        # Remove the current calibration
+        # Save the current calibration in case we are just testing (test_superpixel != None)
         measured_amplitude = self.slm.measured_amplitude
-        phase_correction = self.slm.measured_amplitude
+        phase_correction = self.slm.phase_correction
 
+        # If we're starting fresh, remove the old calibration such that this does not
+        # muddle things. If we're only testing, the stored data above will be reinstated.
         if fresh_calibration:
             self.slm.measured_amplitude = None
             self.slm.phase_correction = None
@@ -1068,10 +1073,6 @@ class FourierSLM(CameraSLM):
             if plot:
                 plot_labeled(interference_image, plot=plot, title="Best Interference")
 
-            if test_superpixel is not None:
-                self.slm.measured_amplitude = measured_amplitude
-                self.slm.phase_correction = phase_correction
-
             if return_movie: return frames
 
             return {
@@ -1114,7 +1115,13 @@ class FourierSLM(CameraSLM):
 
         # If we just want to debug/test one region, then do so.
         if test_superpixel is not None:
-            return measure(test_superpixel, plot=plot_fits)
+            result = measure(test_superpixel, plot=plot_fits)
+
+            # Reset the phase and amplitude of the SLM to the stored data.
+            self.slm.measured_amplitude = measured_amplitude
+            self.slm.phase_correction = phase_correction
+
+            return result
 
         # Otherwise, proceed with all of the superpixels.
         for n in tqdm(range(NX * NY), position=1, leave=True, desc="calibration"):

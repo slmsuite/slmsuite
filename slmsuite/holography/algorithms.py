@@ -221,14 +221,16 @@ class Hologram:
         This is of shape :attr:`shape`.
     dtype : type
         Datatype for stored **near-** and **far-field** arrays, which are **all real**.
+        The default is ``float32``.
+    dtype_complex : type
         Some internal variables are complex. The complex numbers follow :mod:`numpy`
         `type promotion <https://numpy.org/doc/stable/reference/routines.fft.html#type-promotion>`_.
-        Complex datatypes are derived from ``dtype``:
+        Complex datatypes are derived from :attr:`dtype`:
 
-         - ``float32`` -> ``complex64`` (assumed by default)
+         - ``float32`` -> ``complex64`` (default :attr:`dtype`)
          - ``float64`` -> ``complex128``
 
-        ``float16`` is *not* recommended for ``dtype`` because ``complex32`` is not
+        ``float16`` is *not* recommended for :attr:`dtype` because ``complex32`` is not
         implemented by :mod:`numpy`.
     iter : int
         Tracks the current iteration number.
@@ -394,6 +396,7 @@ class Hologram:
         # 2) Initialize variables.
         # Save the data type.
         self.dtype = dtype
+        self.dtype_complex = type(1j * dtype(1))
 
         # Initialize and normalize near-field amplitude
         if amp is None:     # Uniform amplitude by default (scalar).
@@ -852,7 +855,8 @@ class Hologram:
             See :meth:`.optimize()`.
         """
         # Proxy to initialize nearfield with the correct shape and correct (complex) type.
-        nearfield = cp.zeros(self.shape, dtype=type(1j * self.dtype(1)))
+        nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
+        farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)    # Use target.shape for FreeSpotHologram cases.
 
         # Precompute MRAF helper variables.
         mraf_variables = self._mraf_helper_routines()
@@ -869,7 +873,7 @@ class Hologram:
             nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
 
             # 1.2) FFT to move to the farfield.
-            farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
+            farfield = self._nearfield2farfield(nearfield, farfield_out=farfield)
 
             # 2) Midloop: caching, prep
             # 2.1) Before callback(), cleanup such that it can access updated amp_ff and images.
@@ -885,7 +889,7 @@ class Hologram:
             self._GS_farfield_routines(farfield, mraf_variables)
 
             # 3) Farfield -> nearfield.
-            nearfield = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho"))
+            nearfield = self._farfield2nearfield(farfield, nearfield_out=nearfield)
 
             # 3.1) Grab the phase from the complex nearfield.
             # Use arctan2() directly instead of angle() for in-place operations (out=).
@@ -904,6 +908,14 @@ class Hologram:
         farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
         self.amp_ff = cp.abs(farfield)
         self.phase_ff = cp.angle(farfield)
+
+    def _nearfield2farfield(self, nearfield, farfield_out=None):
+        """TODO"""
+        return cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
+
+    def _farfield2nearfield(self, farfield, nearfield_out=None):
+        """TODO"""
+        return cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho"))
 
     def _mraf_helper_routines(self):
         # MRAF helper variables
@@ -1059,10 +1071,11 @@ class Hologram:
         if new_target is None:
             self.target = cp.zeros(shape=self.shape, dtype=self.dtype)
         else:
-            assert new_target.shape == self.shape, (
-                "Target must be of appropriate shape. "
-                "Initialize a new Hologram if a different shape is desired."
-            )
+            if new_target.shape != self.shape:
+                raise ValueError(
+                    "Target must be of appropriate shape. "
+                    "Initialize a new Hologram if a different shape is desired."
+                )
 
             self.target = cp.array(new_target, dtype=self.dtype, copy=False)
             cp.abs(self.target, out=self.target)
@@ -1211,7 +1224,7 @@ class Hologram:
     def _update_weights(self):
         """
         Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
-        :attr:`amp_ff`, the computed farfield amplitude. This function also updates stats.
+        :attr:`amp_ff`, the computed farfield amplitude.
         """
         feedback = self.flags["feedback"]
 
@@ -2319,7 +2332,7 @@ class FeedbackHologram(Hologram):
     def _update_weights(self):
         """
         Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
-        :attr:`amp_ff`, the computed farfield amplitude. This function also updates stats.
+        :attr:`amp_ff`, the computed farfield amplitude.
         """
         feedback = self.flags["feedback"]
 
@@ -2368,6 +2381,299 @@ class FeedbackHologram(Hologram):
         self._calculate_stats_experimental(stats, stat_groups)
 
         self._update_stats_dictionary(stats)
+
+
+class FreeSpotHologram(FeedbackHologram):
+    """
+    Holography optimized for the generation of optical focal arrays.
+
+    Is a subclass of :class:`FeedbackHologram`, but falls back to non-camera-feedback
+    routines if :attr:`cameraslm` is not passed.
+
+    Attributes
+    ----------
+    spot_knm, spot_kxy, spot_ij : array_like of float OR None
+        Stored vectors with shape ``(2, N)`` in the style of
+        :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
+        These vectors are floats.
+        The subscript refers to the basis of the vectors, the transformations between
+        which are autocomputed.
+        If necessary transformations do not exist, :attr:`spot_ij` is set to ``None``.
+    external_spot_amp : array_like of float
+        When using ``"external_spot"`` feedback or the ``"external_spot"`` stat group,
+        the user must supply external data. This data is transferred through this
+        attribute. For iterative feedback, have the ``callback()`` function set
+        :attr:`external_spot_amp` dynamically. By default, this variable is set to even
+        distribution of amplitude.
+    spot_integration_width_ij : int
+        For spot-specific feedback methods, better SNR is achieved when integrating over
+        many camera pixels. This variable stores the width of the integration region
+        in ``"ij"`` (camera) space.
+    cache : TODO
+        TODO
+    cached_kernel : bool
+    """
+
+    def __init__(
+        self,
+        spot_kxy,
+        spot_amp=None,
+        cameraslm=None,
+        **kwargs
+    ):
+        """
+        Initializes a :class:`SpotHologram` targeting given spots at ``spot_vectors``.
+
+        Parameters
+        ----------
+        spot_kxy : array_like
+            Spot position vectors with shape ``(2, N)`` in the style of
+            :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
+        spot_amp : array_like OR None
+            The amplitude to target for each spot.
+            See :attr:`SpotHologram.spot_amp`.
+            If ``None``, all spots are assumed to have the same amplitude.
+            Normalization is performed automatically; the user is not required to
+            normalize.
+        cameraslm : slmsuite.hardware.cameraslms.FourierSLM OR None
+            If the ``"ij"`` basis is chosen, and/or if the user wants to make use of camera
+            feedback, a cameraslm must be provided.
+        **kwargs
+            Passed to :meth:`.FeedbackHologram.__init__()`.
+        """
+        # Parse vectors.
+        self.spot_kxy = toolbox.format_2vectors(spot_kxy)
+
+        if spot_amp is not None:
+            assert np.shape(self.spot_kxy)[1] == len(spot_amp.ravel()), \
+                "spot_amp must have the same length as the provided spots."
+
+
+        # Generate point spread functions (psf) for the knm and ij bases
+        if cameraslm is not None:
+            psf_kxy = cameraslm.slm.spot_radius_kxy()
+            psf_ij = toolbox.convert_blaze_radius(psf_kxy, "kxy", "ij", cameraslm)
+        else:
+            psf_ij = np.nan
+
+        if np.isnan(psf_ij):    psf_ij = 0
+
+        # Use semi-arbitrary values to determine integration widths. The default width is:
+        #  - six times the psf,
+        #  - but then clipped to be:
+        #    + larger than 3 and
+        #    + smaller than the minimum inf-norm distance between spots divided by 1.5
+        #      (divided by 1 would correspond to the largest non-overlapping integration
+        #      regions; 1.5 gives comfortable padding)
+        #  - and finally forced to be an odd integer.
+        min_psf = 3
+
+        if self.spot_ij is not None:
+            dist_ij = np.max([toolbox.smallest_distance(self.spot_ij) / 1.5, min_psf])
+            if psf_ij > dist_ij:
+                warnings.warn(
+                    "The expected camera spot point-spread-function is too large. "
+                    "Clipping to a smaller "
+                )
+            self.spot_integration_width_ij = np.clip(6 * psf_ij, 3, dist_ij)
+            self.spot_integration_width_ij =  int(2 * np.floor(self.spot_integration_width_ij / 2) + 1)
+        else:
+            self.spot_integration_width_ij = None
+
+        # Check to make sure spots are within relevant camera and SLM shapes.
+        # TODO: modify for kxy
+        # if (
+        #     np.any(self.spot_knm[0] < self.spot_integration_width_knm / 2) or
+        #     np.any(self.spot_knm[1] < self.spot_integration_width_knm / 2) or
+        #     np.any(self.spot_knm[0] >= shape[1] - self.spot_integration_width_knm / 2) or
+        #     np.any(self.spot_knm[1] >= shape[0] - self.spot_integration_width_knm / 2)
+        # ):
+        #     raise ValueError(
+        #         "Spots outside SLM computational space bounds!\nSpots:\n{}\nBounds: {}".format(
+        #             self.spot_knm, shape
+        #         )
+        #     )
+
+        # if self.spot_ij is not None:
+        #     cam_shape = cameraslm.cam.shape
+
+        #     if (
+        #         np.any(self.spot_ij[0] < self.spot_integration_width_ij / 2) or
+        #         np.any(self.spot_ij[1] < self.spot_integration_width_ij / 2) or
+        #         np.any(self.spot_ij[0] >= cam_shape[1] - self.spot_integration_width_ij / 2) or
+        #         np.any(self.spot_ij[1] >= cam_shape[0] - self.spot_integration_width_ij / 2)
+        #     ):
+        #         raise ValueError(
+        #             "Spots outside camera bounds!\nSpots:\n{}\nBounds: {}".format(
+        #                 self.spot_ij, cam_shape
+        #             )
+        #         )
+
+        # Initialize target/etc with fake shape.
+        super().__init__(shape=(1,1), target_ij=None, cameraslm=cameraslm, **kwargs)
+
+        self.shape = self.slm_shape
+
+        # Fill the target with data.
+        self.update_target(new_target=spot_amp, reset_weights=True)
+
+        # Set the external amp variable to be perfect by default.
+        self.external_spot_amp = np.ones(self.target.shape)
+
+
+    def __len__(self):
+        """
+        Overloads len() to return the number of spots in this :class:`SpotHologram`.
+
+        Returns
+        -------
+        int
+            The length of :attr:`spot_amp`.
+        """
+        return self.spot_kxy.shape[1]
+
+    def _build_kernel_batched(self, spot_kxy, stack=None, out=None):
+        """TODO"""
+        # Parse spot_kxy.
+        spot_kxy = toolbox.format_2vectors(spot_kxy)    # Shape (2|3, N)
+        N = spot_kxy.shape[1]
+
+        # Parse stack.
+        if stack is None:
+            X = (2 * cp.pi) * cp.array(self.slm.x_grid, dtype=self.dtype_complex).ravel()
+            Y = (2 * cp.pi) * cp.array(self.slm.y_grid, dtype=self.dtype_complex).ravel()
+
+            if spot_kxy.shape[0] == 2:
+                stack = cp.stack((X, Y), axis=-1)       # Shape (H*W, 2)
+            elif spot_kxy.shape[0] == 3:
+                # Currently restricted to non-cylindrical focusing.
+                # This is a good assumption if the SLM has square pixel size.
+                RR = (1 / (4 * cp.pi)) * (cp.square(X) + cp.square(Y))
+                stack = cp.stack((X, Y, RR), axis=-1)   # Shape (H*W, 3)
+            else:
+                raise ValueError("Expected spots to be 2D or 3D. Found {}D".format(spot_kxy.shape[0]))
+
+            stack *= 1j
+        else:
+            if stack.shape != (spot_kxy.shape[0], ) + self.slm_shape:
+                raise ValueError("TODO")
+
+        # Parse out.
+        expected_shape = (N, ) + self.slm_shape         # Shape (N, H*W)
+
+        if out is None:
+            out = cp.zeros(expected_shape, dtype=self.dtype_complex)
+
+        if out.shape != expected_shape:
+            raise ValueError("TODO")
+
+        # Evaluate the result in a (hopefully) memory and compute efficient way.
+        out = cp.matmul(stack, spot_kxy, out=out)       # (H*W, 2|3) x (2|3, N) = (H*W, N)
+
+        # Convert from phase to complex amplitude.
+        out = cp.exp(out, out=out)
+
+    def _nearfield2farfield(self, nearfield, farfield_out=None):
+        """TODO"""
+        # FYI: Nearfield shape is (H,W)
+
+        N = self.spot_kxy.shape[1]
+        N_batch_max = 100
+
+        if farfield_out is None:
+            farfield_out = cp.zeros((N, ), dtype=self.dtype_complex)
+
+        def collapse_kernel(out):
+            # (1,H*W) x (H*W, N) = (N,1)^T  # TODO: check transpose
+            cp.matmul(nearfield.ravel(), self.kernel, out=out)
+
+        if N <= N_batch_max:
+            if self.kernel is None:
+                self.kernel = self._build_kernel_batched(self.spot_kxy, out=self.kernel)
+
+            collapse_kernel(out=farfield_out)
+        else:
+            batches = N // N_batch_max
+            for batch in range(batches):
+                batch_slice = slice(batch * N_batch_max, np.clip((batch+1) * N_batch_max, 0, N))
+                self.kernel = self._build_kernel_batched(self.spot_kxy[:, batch_slice], out=self.kernel)
+
+                collapse_kernel(out=farfield_out[batch_slice])
+
+        return farfield_out
+
+    def _farfield2nearfield(self, farfield, nearfield_out=None):
+        """TODO"""
+        # FYI: Farfield shape is (N,1)
+
+        N = self.spot_kxy.shape[1]
+        N_batch_max = 100
+
+        if nearfield_out is None:
+            nearfield_out = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
+
+        def expand_kernel(out):
+            # (H*W, N) x (N,1) = (H*W, 1)   ===reshape===>   (H,W)
+            return cp.matmul(self.kernel, farfield, out=out).reshape(self.slm_shape)
+
+        if N <= N_batch_max:
+            if self.kernel is None:
+                self.kernel = self._build_kernel_batched(self.spot_kxy, out=self.kernel)
+
+                expand_kernel(out=nearfield_out.ravel())
+        else:
+            nearfield_out_temp = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
+
+            batches = N // N_batch_max
+            for batch in range(batches):
+                batch_slice = slice(batch * N_batch_max, np.clip((batch+1) * N_batch_max, 0, N))
+                self.kernel = self._build_kernel_batched(self.spot_kxy[:, batch_slice], out=self.kernel)
+
+                if batch == 0:
+                    expand_kernel(out=nearfield_out)
+                else:
+                    expand_kernel(out=nearfield_out_temp)
+                    nearfield_out += nearfield_out_temp
+
+        return nearfield_out
+
+    def _update_target(self, new_target, reset_weights=False, plot=False):
+        """
+        Change the target to something new. This method handles cleaning and normalization.
+
+        This method is shelled by :meth:`update_target()` such that it is still accessible
+        in the case that a subclass overwrites :meth:`update_target()`.
+
+        Parameters
+        ----------
+        new_target : array_like OR None
+            If ``None``, sets the target to zero. The ``None`` case is used internally
+            by :class:`SpotHologram`.
+        reset_weights : bool
+            Whether to overwrite ``weights`` with ``target``.
+        plot : bool
+            Calls :meth:`.plot_farfield()` on :attr:`target`.
+        """
+        if new_target is None:
+            # Default to even power on all spots.
+            N = len(self)
+            self.target = cp.full(shape=(N,), fill_value=1/np.sqrt(N), dtype=self.dtype)
+        else:
+            if new_target.shape != (len(self),):
+                raise ValueError(
+                    "Target must be of appropriate shape. "
+                    "Initialize a new Hologram if a different shape is desired."
+                )
+
+            self.target = cp.array(new_target, dtype=self.dtype, copy=False)
+            cp.abs(self.target, out=self.target)
+            self.target *= 1 / Hologram._norm(self.target)
+
+        if reset_weights:
+            self.reset_weights()
+
+        if plot:
+            raise NotImplementedError()
 
 
 class SpotHologram(FeedbackHologram):
@@ -3058,7 +3364,7 @@ class SpotHologram(FeedbackHologram):
     def _update_weights(self):
         """
         Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
-        :attr:`amp_ff`, the computed farfield amplitude. This function also updates stats.
+        :attr:`amp_ff`, the computed farfield amplitude.
         """
         feedback = self.flags["feedback"]
 

@@ -56,7 +56,7 @@ def cos(x, b, a, c, k=1):
     r"""
     For fitting an offset sinusoid.
 
-    .. math:: y(x) = c + \frac{a}{2} \left[1+\cos(kx+b) \right].
+    .. math:: y(x) = c + \frac{a}{2} \left[1+\cos(kx-b) \right].
 
     Parameters
     ----------
@@ -276,9 +276,11 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     return c + a * np.exp(-.5 * argument)
 
 
-def tophat2d(xy, x0, y0, r, a=1):
+def tophat2d(xy, x0, y0, r, a=1, c=0):
     r"""
     For fitting a 2D tophat distribution.
+
+    .. math:: z(x,y) = c.
 
     Parameters
     ----------
@@ -290,6 +292,8 @@ def tophat2d(xy, x0, y0, r, a=1):
         Active radius of the tophat.
     a : float
         Amplitude.
+    c : float
+        Offset.
 
     Returns
     -------
@@ -298,5 +302,49 @@ def tophat2d(xy, x0, y0, r, a=1):
     """
     x = xy[0] - x0
     y = xy[1] - y0
-    return np.where(x ** 2 + y ** 2 <= r ** 2, a, 0)
+    return np.where(x ** 2 + y ** 2 <= r ** 2, a+c, c)
+
+
+def sinc2d(xy, x0, y0, D, a=1, b=0, c=0, d=0, kx=1, ky=1):
+    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+    r"""
+    For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
+
+    .. math:: z(x,y) =  d + \left(c + \frac{a}{2} \left[1+\cos(k_xx+k_yy-b) \right]\right) *
+                        \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
+
+    where
+
+    .. math:: \text{sinc}(t) = \frac{\sin(x)}{x}
+
+    Parameters
+    ----------
+    xy : numpy.ndarray
+        Points to fit upon (x, y).
+    x0, y0 : float
+        Vector offset.
+    D : float
+        Square diameter of the sinc (diameter of the first zero).
+    a : float
+        Peak amplitude.
+    b : float
+        Phase offset.
+    c : float
+        Sinusoidal amplitude offset.
+    d : float
+        Global offset.
+    kx, ky : float
+        Vector phase scale factor. Default is 1.
+
+    Returns
+    -------
+    z : numpy.ndarray
+        Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
+    """
+    x = xy[0] - x0
+    y = xy[1] - y0
+    return (
+        np.square(np.sinc(np.pi * x) * np.sinc(np.pi * y))
+        * (a * 0.5 * (1 + np.cos(kx * x + ky * y - b)) + c)
+    )
 

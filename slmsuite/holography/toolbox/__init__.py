@@ -869,16 +869,23 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
 
         # For each point, move towards the centroid of the window.
         for index, window in enumerate(windows):
-            centroid_x = np.mean(x_grid[window])
-            centroid_y = np.mean(y_grid[window])
+            if np.any(window):
+                centroid_x = np.mean(x_grid[window])
+                centroid_y = np.mean(y_grid[window])
+            else:   # If the window is empty (point overlap, etc), then reset this point.
+                centroid_x = np.random.choice(x_grid.ravel())
+                centroid_y = np.random.choice(x_grid.ravel())
 
             # Iterate
-            if abs(centroid_x - result[0, index]) < 1 and abs(centroid_y - result[1, index]) < 1:
+            if (
+                np.abs(centroid_x - result[0, index]) < 1 and
+                np.abs(centroid_y - result[1, index]) < 1
+            ):
                 pass
             else:
                 no_change = False
-                result[0, index] = np.mean(x_grid[window])
-                result[1, index] = np.mean(y_grid[window])
+                result[0, index] = centroid_x
+                result[1, index] = centroid_y
 
         # If this iteration did nothing, then finish.
         if no_change:

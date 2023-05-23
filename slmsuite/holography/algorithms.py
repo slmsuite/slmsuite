@@ -3302,7 +3302,8 @@ class SpotHologram(FeedbackHologram):
         """
         # If no image was provided, get one from cache.
         if img is None:
-            img = self.measure(basis="ij")
+            self.measure(basis="ij")
+            img = self.img_ij
 
         # Take regions around each point from the given image.
         regions = analysis.take(

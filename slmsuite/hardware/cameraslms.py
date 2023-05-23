@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import optimize
 from tqdm.autonotebook import tqdm
+import warnings
 
 from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
@@ -16,7 +17,7 @@ from slmsuite.holography.algorithms import SpotHologram
 from slmsuite.holography.toolbox import imprint, format_2vectors
 from slmsuite.holography.toolbox.phase import blaze
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
-from slmsuite.misc.fitfunctions import cos
+from slmsuite.misc.fitfunctions import cos, sinc2d
 from slmsuite.misc.math import REAL_TYPES
 
 
@@ -544,12 +545,14 @@ class FourierSLM(CameraSLM):
         field_point,
         field_point_units="ij",
         superpixel_size=50,
-        phase_steps=10,
+        phase_steps=1,
         exclude_superpixels=(0, 0),
         autoexposure=False,
         test_superpixel=None,
         reference_superpixel=None,
         fresh_calibration=True,
+        measure_background=False,
+        corrected_amplitude=False,
         plot=0,
     ):
         """
@@ -567,7 +570,13 @@ class FourierSLM(CameraSLM):
         Tip
         ~~~
         If only amplitude calibration is desired,
-        set ``phase_steps=0`` to omit the more time consuming phase calibration.
+        set ``phase_steps=None`` to omit the more time consuming phase calibration.
+
+        Tip
+        ~~~
+        Set ``phase_steps=1`` for faster calibration. This fits the phase fringes of an 
+        image rather than scanning the fringes over a single camera pixel over many
+        ``phase_steps``. This is usually optimal except in cases with excessive noise.
 
         Parameters
         ----------
@@ -592,8 +601,10 @@ class FourierSLM(CameraSLM):
             then superpixels at the edge of the SLM may be cropped and give undefined results.
         phase_steps : int
             The number of phases measured for the interference pattern.
-            If phase_steps is not strictly positive, phase is not measured:
+            If ``phase_steps`` is ``None`, phase is not measured:
             only amplitude is measured.
+            If ``phase_steps`` is one, does a one-shot fit on the interference
+            pattern to improve speed.
         exclude_superpixels : (int, int)
             Optionally exclude superpixels from the margin, in ``(nx, ny)`` form.
             That is, the ``nx`` superpixels are omitted from the left and right sides
@@ -615,7 +626,15 @@ class FourierSLM(CameraSLM):
             If ``False``, the calibration is performed on top of any existing
             calibration. This is useful to determine the quality of a previous
             calibration, as a new calibration should yield zero phase correction needed
-            if the previous was perfect.
+            if the previous was perfect. The old calibration will be stored in the 
+            :attr:`wavefront_calibration_raw` under ``"previous_phase_correction"``, 
+            so keep in mind that this (uncompressed) image will take up significantly more space.
+        measure_background : bool
+            Whether to measure the background at each point.
+        corrected_amplitude : bool
+            If ``False``, the power in the uncorrected target beam
+            is used as the source of amplitude measurement.
+            If ``True``, adds another step to measure the power of the corrected target beam.
         plot : int or bool
             Whether to provide visual feedback, options are:
 
@@ -636,13 +655,21 @@ class FourierSLM(CameraSLM):
         AssertionError
             If the fourier plane calibration does not exist.
         """
+        # Parse phase_steps
+        if phase_steps is not None:
+            if not np.isclose(phase_steps, int(phase_steps)):
+                raise ValueError(f"Expected integer phase_steps. Received {phase_steps}.")
+            phase_steps = int(phase_steps)
+            if phase_steps <= 0:
+                raise ValueError(f"Expected positive phase_steps. Received {phase_steps}.")
+
         # Interpret the plot command.
         return_movie = plot == 3 and test_superpixel is not None
         if return_movie:
             plot = 1
-            if phase_steps <= 0:
+            if phase_steps is None or phase_steps == 1:
                 raise ValueError(
-                    "cameraslms.py: Must have strictly positive phase_steps to produce a movie."
+                    "cameraslms.py: Must have phase_steps > 1 to produce a movie."
                 )
         verbose = plot >= 0
         plot_fits = plot >= 1 or test_superpixel is not None
@@ -676,13 +703,18 @@ class FourierSLM(CameraSLM):
 
         if reference_superpixel is None:
             # Set the reference superpixel to be centered on the SLM.
-            [nxref, nyref] = np.floor(  np.flip(self.slm.shape)
-                                        / superpixel_size / 2).astype(int)
+            reference_superpixel = tuple(
+                np.floor(  np.flip(self.slm.shape) / superpixel_size / 2).astype(int)
+            )
+        (nxref, nyref) = reference_superpixel
 
-            reference_superpixel = [nxref, nyref]
-        else:
-            (nxref, nyref) = reference_superpixel
+        if (
+            nxref < exclude_superpixels[0] or nyref < exclude_superpixels[1] or 
+            nxref >= NX-exclude_superpixels[0] or nyref >= NY-exclude_superpixels[1]
+        ):
+            raise ValueError("reference_superpixel out of range of calibration.")
 
+        # Determine the interference spot size.
         interference_size = np.around(np.array(
             self.get_farfield_spot_size(
                 (superpixel_size * self.slm.dx, superpixel_size * self.slm.dy),
@@ -690,14 +722,46 @@ class FourierSLM(CameraSLM):
             )
         )).astype(int)
 
+        # Error check whether we expect to be able to see fringes.
+        max_r = np.sqrt(
+            np.square(np.max([nxref-exclude_superpixels[0], NX-nxref-exclude_superpixels[0]])) + 
+            np.square(np.max([nyref-exclude_superpixels[1], NY-nyref-exclude_superpixels[1]]))
+        )
+
+        fringe_period = interference_size / max_r / 2
+
+        if fringe_period < 1:
+            warnings.warn(
+                "Non-resolvable interference fringe period "
+                "for the given SLM calibration extent. "
+                "Either exclude more of the SLM or magnify the field on the camera."
+            )
+
+        # Save the current calibration in case we are just testing (test_superpixel != None)
+        measured_amplitude = self.slm.measured_amplitude
+        phase_correction = self.slm.phase_correction
+
+        # If we're starting fresh, remove the old calibration such that this does not
+        # muddle things. If we're only testing, the stored data above will be reinstated.
+        if fresh_calibration:
+            self.slm.measured_amplitude = None
+            self.slm.phase_correction = None
+
+        # Build the correction dict.
         correction_dict = {
-            "NX": NX,
-            "NY": NY,
-            "nxref": nxref,
-            "nyref": nyref,
-            "superpixel_size": superpixel_size,
-            "interference_point": interference_point,
-            "interference_size": interference_size,
+            "NX" : NX,
+            "NY" : NY,
+            "nxref" : nxref,
+            "nyref" : nyref,
+            "superpixel_size" : superpixel_size,
+            "interference_point" : interference_point,
+            "interference_size" : interference_size,
+            "phase_steps" : phase_steps,
+            "previous_phase_correction" : (
+                False
+                if self.slm.phase_correction is None else
+                np.copy(self.slm.phase_correction)
+            )
         }
 
         keys = [
@@ -715,16 +779,6 @@ class FourierSLM(CameraSLM):
         for key in keys:
             if key not in correction_dict.keys():
                 correction_dict.update({key: np.zeros((NY, NX), dtype=np.float32)})
-
-        # Save the current calibration in case we are just testing (test_superpixel != None)
-        measured_amplitude = self.slm.measured_amplitude
-        phase_correction = self.slm.phase_correction
-
-        # If we're starting fresh, remove the old calibration such that this does not
-        # muddle things. If we're only testing, the stored data above will be reinstated.
-        if fresh_calibration:
-            self.slm.measured_amplitude = None
-            self.slm.phase_correction = None
 
         def superpixels(index,
                         reference=None,
@@ -795,8 +849,8 @@ class FourierSLM(CameraSLM):
 
         def fit_phase(phases, intensities):
             """
-            Fits a sine function to the Intensity Vs. phase, and extracts best phase and amplitude
-            that give the constructive interference.
+            Fits a sine function to the intensity vs phase, and extracts best phase and amplitude
+            that give constructive interference.
             If fit fails return 0 on all values.
 
             Parameters
@@ -808,13 +862,13 @@ class FourierSLM(CameraSLM):
 
             Returns
             -------
-            best_phase :
+            best_phase : float
                 b
-            amp :
+            amp : float
                 a
-            r2 :
+            r2 : float
                 R^2 of fit
-            contrast :
+            contrast : float
                 a / (a + c)
             """
             guess = [
@@ -828,12 +882,12 @@ class FourierSLM(CameraSLM):
             except BaseException:
                 return 0, 0, 0, 0
 
-            # extract phase and amplitude from fit
+            # Extract phase and amplitude from fit.
             best_phase = popt[0]
             amp = popt[1]
             contrast = popt[1] / (popt[1] + popt[2])
 
-            # residual and total sum of squares, producing the R^2 metric.
+            # Residual and total sum of squares, producing the R^2 metric.
             ss_res = np.sum((intensities - cos(phases, *popt)) ** 2)
             ss_tot = np.sum((intensities - np.mean(intensities)) ** 2)
             r2 = 1 - (ss_res / ss_tot)
@@ -858,6 +912,117 @@ class FourierSLM(CameraSLM):
                 plt.show()
 
             return best_phase, amp, r2, contrast
+
+        def fit_phase_image(img, dsuperpixel, plot_fits=True):
+            """
+            Fits a modulated 2D sinc function to an image, and extracts best phase and
+            amplitude that give constructive interference.
+            If fit fails return 0 on all values.
+
+            Parameters
+            ----------
+            img : numpy.ndarray
+                2D image centered on the interference point.
+
+            Returns
+            -------
+            best_phase : float
+                b
+            amp : float
+                a
+            r2 : float
+                R^2 of fit
+            contrast : float
+                a / (a + c)
+            """
+            # Future: Cache this outside to avoid repeating memory allocation.
+            xy = np.meshgrid(
+                *[np.arange(-(img.shape[1-a]-1)/2, +(img.shape[1-a]-1)/2+.5) for a in range(2)]
+            )
+            xyr = [l.ravel() for l in xy]
+
+            # Process dsuperpixel by rotating it according to the Fourier calibration.
+            M = self.fourier_calibration["M"]
+            M_norm = 2 * M / np.trace(M)            # trace is sum of eigenvalues.
+            dsuperpixel = np.squeeze(np.matmul(M_norm, format_2vectors(dsuperpixel)))
+            
+            # Make the guess and bounds.
+            d = np.amin(img)
+            c = 0
+            a = np.amax(img) - c
+
+            R = np.mean(img.shape)/2
+
+            guess = [
+                R, a, 0, c, d, 
+                4 * np.pi * dsuperpixel[0] / img.shape[1], 
+                4 * np.pi * dsuperpixel[1] / img.shape[0]
+            ]
+            lb = [
+                .9*R, 0, -4*np.pi, 0, 0, 
+                guess[5]-1, 
+                guess[6]-1
+            ]
+            ub = [
+                1.1*R, 2*a, 4*np.pi, a, a, 
+                guess[5]+1, 
+                guess[6]+1
+            ]
+
+            # Restrict sinc2d to be centered (as expected).
+            def sinc2d_local(xy, R, a=1, b=0, c=0, d=0, kx=1, ky=1):
+                return sinc2d(xy, 0, 0, R, a, b, c, d, kx, ky)
+            
+            # Determine the guess phase byt overlapping shifted guesses with the image.
+            differences = []
+            N = 20
+            phases = np.arange(N) * 2 * np.pi / N
+
+            for phase in phases:
+                guess[2] = phase
+                differences.append(np.sum(np.square(img - sinc2d_local(xy, *guess))))
+
+            guess[2] = phases[int(np.min(np.argmin(differences)))]
+
+            # Try the fit!
+            try:
+                popt, _ = optimize.curve_fit(sinc2d_local, xyr, img.ravel(), p0=guess, bounds=(lb, ub))
+            except BaseException:
+                return 0, 0, 0, 0
+
+            # Extract phase and amplitude from fit.
+            best_phase = popt[2]
+            amp = np.abs(popt[1])
+            contrast = np.abs(popt[1] / (np.abs(popt[1]) + np.abs(popt[3])))
+
+            # Remove the sinc term when doing the rquared.
+            popt_nomod = np.copy(popt)
+            popt_nomod[3] += popt_nomod[1]/2
+            popt_nomod[1] = 0
+            img0 = img - sinc2d_local(xy, *popt_nomod)
+            fit0 = sinc2d_local(xy, *popt) - sinc2d_local(xy, *popt_nomod)
+
+            # Residual and total sum of squares, producing the R^2 metric.
+            ss_res = np.sum((img0 - fit0) ** 2)
+            ss_tot = np.sum((img0 - np.mean(img0)) ** 2)
+            r2 = 1 - (ss_res / ss_tot)
+            
+            final = (np.mod(-best_phase, 2*np.pi), amp, r2, contrast)
+
+            # Plot the image, guess, and fit, if desired.
+            if plot_fits:
+                _, axs = plt.subplots(1, 3)
+
+                axs[0].imshow(img)
+                axs[1].imshow(sinc2d_local(xy, *guess))
+                axs[2].imshow(sinc2d_local(xy, *popt))
+
+                for index, title in enumerate(["Image", "Guess", "Fit"]):
+                    axs[index].set_title(title)
+                
+                plt.show()
+
+            return final
 
         def plot_labeled(img, plot=False, title="", plot_zoom=False):
             if plot_everything or plot:
@@ -919,6 +1084,7 @@ class FourierSLM(CameraSLM):
                         c=color, size="x-small", ha="center")
 
                 im = axs[2].imshow(np.log10(img + .1))
+                axs[2].scatter([point[0]], [point[1]], 5, "r", "*")
                 axs[2].set_xlim(point[0] - wh, point[0] + wh)
                 axs[2].set_ylim(point[1] + hh, point[1] - hh)
                 im.set_clim(0, np.log10(self.cam.bitresolution))
@@ -978,35 +1144,44 @@ class FourierSLM(CameraSLM):
             self.cam.flush()
 
             # Step 0: Measure the background.
-            self.slm.write( superpixels(index, reference=None, target=None),
-                            settle=True    )
-            background_image = self.cam.get_image()
-            plot_labeled(background_image, plot=plot, title="Background")
-            back = mask(background_image, interference_point,
-                        2 * interference_size).sum()
+            if measure_background:
+                self.slm.write(superpixels(index, reference=None, target=None), settle=True)
+                background_image = self.cam.get_image()
+                plot_labeled(background_image, plot=plot, title="Background")
+                back = mask(background_image, interference_point, 2 * interference_size).sum()
+            else:
+                back = np.nan
 
             # Step 0.5: Measure the power in the reference mode.
-            self.slm.write( superpixels(index, reference=0, target=None),
-                            settle=True    )
+            self.slm.write(superpixels(index, reference=0, target=None), settle=True)
             normalization_image = self.cam.get_image()
             plot_labeled(normalization_image, plot=plot, title="Reference Diffraction")
-            norm = mask(normalization_image, interference_point,
-                        2 * interference_size).sum()
+            norm = mask(normalization_image, interference_point, 2 * interference_size).sum()
 
-            # Step 1: Add a blaze to the target mode so that it overlaps with
-            # reference mode.
-            self.slm.write( superpixels(index, reference=None, target=0),
-                            settle=True    )
+            # Step 1: Measure the position of the target mode.
+            self.slm.write(superpixels(index, reference=None, target=0), settle=True)
             position_image = self.cam.get_image()
             plot_labeled(position_image, plot=plot, title="Base Target Diffraction")
             found_center = find_center(position_image)
-
+            
+            # Step 1.25: Add a blaze to the target mode so that it overlaps with reference mode.
             blaze_difference = self.ijcam_to_kxyslm(found_center) - interference_blaze
             target_blaze_fixed = interference_blaze - blaze_difference
 
-            # Step 1.25: Stop here if we don't need to measure the phase.
-            if phase_steps <= 0:
+            # Step 1.5: Measure the power...
+            if accurate_amplitude:      # ...in the corrected target mode.
+                self.slm.write(
+                    superpixels(index, reference=None, target=0, target_blaze=target_blaze_fixed),
+                    settle=True
+                )
+                fixed_image = self.cam.get_image()
+                plot_labeled(fixed_image, plot=plot, title="Corrected Target Diffraction")
+                pwr = mask(fixed_image, interference_point, 2 * interference_size).sum()
+            else:                       # ...in the uncorrected target mode.
                 pwr = mask(position_image, interference_point, 2 * interference_size).sum()
+
+            # Step 1.75: Stop here if we don't need to measure the phase.
+            if phase_steps is None:
                 return {
                     "power": pwr,
                     "normalization": norm,
@@ -1019,60 +1194,69 @@ class FourierSLM(CameraSLM):
                     "r2_fit": np.nan,
                 }
 
-            # Step 1.5: Measure the power in the corrected target mode.
-            self.slm.write( superpixels(index, reference=None, target=0,
-                                        target_blaze=target_blaze_fixed),
-                            settle=True)
-            fixed_image = self.cam.get_image()
-            plot_labeled(fixed_image, plot=plot, title="Corrected Target Diffraction")
-            pwr = mask(fixed_image, interference_point, 2 * interference_size).sum()
-
             # Step 2: Measure interference and find relative phase
-            phases = np.linspace(0, 2 * np.pi, phase_steps, endpoint=False)
-            results = []  # list for recording the intensity of the reference point
-
-            # Determine whether to use a progress bar.
-            if verbose:
-                description = "superpixel=({},{})".format(index[0], index[1])
-                prange = tqdm(phases, position=0, leave=False, desc=description)
-            else:
-                prange = phases
-
-            if return_movie: frames = []
-
-            # Step 3: Measure phase
-            for phase in prange:
-                self.slm.write( superpixels(index, reference=0,target=phase,
-                                            target_blaze=target_blaze_fixed),
-                                settle=True)
-                interference_image = self.cam.get_image()
-                results.append(
-                    interference_image[
-                        int(interference_point[1]), int(interference_point[0])
-                    ]
+            if phase_steps == 1:
+                # Step 2.1: Gather a single image.
+                self.slm.write(
+                    superpixels(index, reference=0, target=0, target_blaze=target_blaze_fixed),
+                    settle=True
                 )
+                result_img = self.cam.get_image()
+                cropped_img = mask(result_img, interference_point, 2 * interference_size)
 
-                if return_movie:
-                    frames.append(
-                        plot_labeled(
-                            interference_image,
-                            plot=plot,
-                            title="Phase = ${:1.2f}\pi$".format(phase / np.pi),
-                            plot_zoom=True
-                        )
+                # Step 2.2: Fit the data and return.
+                phase_fit, amp_fit, r2_fit, contrast_fit = fit_phase_image(
+                    cropped_img, np.subtract(index, reference_superpixel), plot_fits=plot
+                )
+            else:
+                phases = np.linspace(0, 2 * np.pi, phase_steps, endpoint=False)
+                results = []  # list for recording the intensity of the reference point
+
+                # Determine whether to use a progress bar.
+                if verbose:
+                    description = "superpixel=({},{})".format(index[0], index[1])
+                    prange = tqdm(phases, position=0, leave=False, desc=description)
+                else:
+                    prange = phases
+
+                if return_movie: frames = []
+
+                # Step 2.1: Measure phases
+                for phase in prange:
+                    self.slm.write(
+                        superpixels(index, reference=0, target=phase, target_blaze=target_blaze_fixed),
+                        settle=True
+                    )
+                    interference_image = self.cam.get_image()
+                    results.append(
+                        interference_image[
+                            int(interference_point[1]), int(interference_point[0])
+                        ]
                     )
 
-            # Step 4: Fit to sine and return.
-            phase_fit, amp_fit, r2_fit, contrast_fit = fit_phase(phases, results)
+                    if return_movie:
+                        frames.append(
+                            plot_labeled(
+                                interference_image,
+                                plot=plot,
+                                title="Phase = ${:1.2f}\pi$".format(phase / np.pi),
+                                plot_zoom=True
+                            )
+                        )
 
+                # Step 2.2: Fit to sine and return.
+                phase_fit, amp_fit, r2_fit, contrast_fit = fit_phase(phases, results)
 
-            self.slm.write( superpixels(index, reference=0, target=phase_fit,
-                                        target_blaze=target_blaze_fixed),
-                            settle=True)
-            interference_image = self.cam.get_image()
+            # Step 2.5: maybe plot a picture of the correct phase.
             if plot:
+                self.slm.write(
+                    superpixels(index, reference=0, target=phase_fit, target_blaze=target_blaze_fixed),
+                    settle=True
+                )
+                interference_image = self.cam.get_image()
                 plot_labeled(interference_image, plot=plot, title="Best Interference")
 
+            # Step 3: Return the result.
             if return_movie: return frames
 
             return {
@@ -1088,8 +1272,10 @@ class FourierSLM(CameraSLM):
             }
 
         # Correct exposure and position of the reference mode.
-        self.slm.write( superpixels((0, 0), reference=0, target=None),
-                        settle=True)
+        self.slm.write(
+            superpixels((0, 0), reference=0, target=None),
+            settle=True
+        )
         self.cam.flush()
 
         if autoexposure:
@@ -1106,9 +1292,10 @@ class FourierSLM(CameraSLM):
         reference_blaze_fixed = interference_blaze - blaze_difference
 
         if plot_fits:
-            self.slm.write( superpixels((0, 0), reference=0, target=None,
-                                        reference_blaze=reference_blaze_fixed),
-                            settle=True)
+            self.slm.write(
+                superpixels((0, 0), reference=0, target=None, reference_blaze=reference_blaze_fixed),
+                settle=True
+            )
             fixed_image = self.cam.get_image()
             plot_labeled(fixed_image, plot=plot_everything, title="Corrected Reference Diffraction")
             found_center = find_center(fixed_image)
@@ -1123,23 +1310,22 @@ class FourierSLM(CameraSLM):
 
             return result
 
-        # Otherwise, proceed with all of the superpixels.
-        for n in tqdm(range(NX * NY), position=1, leave=True, desc="calibration"):
-            nx = int(n % NX)
-            ny = int(n / NX)
+        # Otherwise, proceed with all of the superpixels (doing some exclusion math first).
+        sx_cropped = exclude_superpixels[0]
+        sy_cropped = exclude_superpixels[1]
+        NX_cropped = NX - exclude_superpixels[0]
+        NY_cropped = NY - exclude_superpixels[1]
+        N = NX_cropped * NY_cropped
+
+        if NX_cropped < 0 or NY_cropped < 0:
+            raise ValueError("Too many superpixels were excluded.")
+
+        for n in tqdm(range(N), position=1, leave=True, desc="calibration"):
+            nx = int(n % NX_cropped) + sx_cropped
+            ny = int(n / NX_cropped) + sy_cropped
 
             # Exclude the reference mode.
             if nx == nxref and ny == nyref:
-                continue
-
-            # Exclude margin superpixels, if desired.
-            if nx < exclude_superpixels[0]:
-                continue
-            if nx > NX - exclude_superpixels[0]:
-                continue
-            if ny < exclude_superpixels[1]:
-                continue
-            if ny > NY - exclude_superpixels[1]:
                 continue
 
             # Measure!
@@ -1220,6 +1406,7 @@ class FourierSLM(CameraSLM):
             norm = cv2.GaussianBlur(norm, (size_blur_k, size_blur_k), 0)
 
         back = np.copy(data["background"])
+        back[np.isnan(back)] = 0
         average_neighbors(back)
         if smooth:
             back = cv2.GaussianBlur(back, (size_blur_k, size_blur_k), 0)
@@ -1392,13 +1579,25 @@ class FourierSLM(CameraSLM):
 
                 mindiff = fom
 
-        wavefront_calibration = {   "phase_correction":phase_fin,
-                                    "measured_amplitude":amp_large,
-                                    "r2":r2}
+        # Add the old phase correction if it's there.
+        if (
+            "previous_phase_correction" in data and 
+            data["previous_phase_correction"] is not None
+        ):
+            phase_fin_fin = phase_fin + data["previous_phase_correction"]
+        else:
+            phase_fin_fin = phase_fin
+
+        # Build the final dict.
+        wavefront_calibration = {   
+            "phase_correction":phase_fin_fin,
+            "measured_amplitude":amp_large,
+            "r2":r2
+        }
 
         # Step 4: Load the correction to the SLM
         if apply:
-            self.slm.phase_correction = phase_fin
+            self.slm.phase_correction = phase_fin_fin
             self.slm.measured_amplitude = amp_large
 
         # Plot the result

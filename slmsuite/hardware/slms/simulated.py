@@ -1,11 +1,5 @@
 """
 Simulated SLM. 
-
-Effects considered:
-- TODO: Phase offset due to physical curvature.
-- TODO: Phase crosstalk
-- TODO: Incomplete fill
-- TODO: Imperfect phase control across aperture
 """
 
 import numpy as np
@@ -35,12 +29,16 @@ class SimulatedSLM(SLM):
         resolution : tuple
             See :attr:`resolution`.
         phase_offset : ndarray
-            See :attr:`phase_offset`.
-        amp_profile : ndarray
-            See :attr:`amp_profile`.
+            See :attr:`phase_offset`. Defaults to flat phase if ``None``.
+        amp_profile : tuple or ndarray
+            See :attr:`amp_profile`. Defaults to uniform illumination if ``None``.
+            If a tuple is provided, amp_profile contains the fractional (i.e. relative to 
+            panel size) standard deviation of a Gaussian *amplitude* profile. Otherwise,
+            the provided ndarray is directly applied as an amplitude profile.
         kwargs
             See :meth:`.SLM.__init__` for permissible options.
         """
+
         super().__init__(
             int(resolution[0]),
             int(resolution[1]),
@@ -50,21 +48,25 @@ class SimulatedSLM(SLM):
 
         if phase_offset is None:
             self.phase_offset = np.zeros_like(self.x_grid)
-        elif type(phase_offset) == float:
-            self.phase_offset = phase_offset*2*np.pi*np.random.rand(resolution[1],resolution[0])
         else:
+            assert np.all(phase_offset.shape == np.array(resolution)[::-1]), \
+            "The shape of the provided phase profile must match the SLM resolution!"
+
             self.phase_offset = phase_offset
-        # TODO: else, build phase mask based on provided zernike coeffs.
 
         if amp_profile is None:
             self.amp_profile = np.ones(resolution[::-1])
-        elif type(amp_profile) == float:
+        elif isinstance(amp_profile, tuple):
             # Gaussian profile w/ amp_profile/width std dev.
-            # TODO: is there already a helper fxn for this?
-            self.amp_profile = gaussian2d(np.array(list((zip((self.y_grid, self.x_grid))))).squeeze(), 0, 0, 1, 0,
-                                          amp_profile*resolution[1], amp_profile*resolution[0])
+            self.amp_profile = gaussian2d(np.array(list((zip(
+                                          (self.y_grid,self.x_grid))))).squeeze(), 0, 0, 1, 0,
+                                          amp_profile[1]*resolution[1],
+                                          amp_profile[0]*resolution[0])
         else:
-            raise NotImplementedError()
+            assert np.all(amp_profile.shape == np.array(resolution)[::-1]), \
+            "The shape of the provided amplitude profile must match the SLM resolution!"
+
+            self.amp_profile = amp_profile
 
         self.write(None)
 
@@ -72,12 +74,6 @@ class SimulatedSLM(SLM):
         """Updates SLM.display to implement various physical artifacts of SLMs."""
 
         # Apply the phase_offset due to physical curvature of the SLM panel
-
-        # Apply phase coupling
-
         self.display = self._phase2gray(self.phase+self.phase_offset, out=self.display)
+        
         return
-
-
-    
-

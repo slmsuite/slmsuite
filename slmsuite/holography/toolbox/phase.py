@@ -153,7 +153,7 @@ def axicon(grid, f=(np.inf, np.inf), w=None):
         return 2 * np.pi * np.sqrt(np.square(x_grid * angle[0]) + np.square(y_grid * angle[1]))
 
 
-def zernike(grid, n, m, aperture=None):
+def zernike(grid, n, m, aperture=None, return_mask=False):
     r"""
     Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
 
@@ -168,16 +168,18 @@ def zernike(grid, n, m, aperture=None):
         Cartesian Zernike index defining the polynomial.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
         See :meth:`.zernike_sum()`.
+    return_mask : bool
+        Whether or not to return the 2D mask showing where Zernikes are computed.
 
     Returns
     -------
     numpy.ndarray
         The phase for this function.
     """
-    return zernike_sum(grid, (((n, m), 1), ), aperture=aperture)
+    return zernike_sum(grid, (((n, m), 1), ), aperture=aperture, return_mask=return_mask)
 
 
-def zernike_sum(grid, weights, aperture=None):
+def zernike_sum(grid, weights, aperture=None, return_mask=False):
     r"""
     Returns a summation of
     `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
@@ -242,11 +244,16 @@ def zernike_sum(grid, weights, aperture=None):
           Custom scaling. These values are multiplied to the ``x_grid`` and ``y_grid``
           directly, respectively. The edge of the pupil corresponds to where
           ``x_grid**2 + y_grid**2 = 1``.
+    return_mask : bool
+        Whether or not to return the 2D mask showing where Zernikes are computed.
 
     Returns
     -------
     numpy.ndarray
         The phase for this function.
+
+    numpy.ndarray
+        Optional return for the 2D Zernike mask.
     """
     # Parse passed values
     (x_grid, y_grid) = _process_grid(grid)
@@ -313,7 +320,10 @@ def zernike_sum(grid, weights, aperture=None):
                 else:
                     canvas += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
 
-    return canvas
+    if return_mask:
+        return canvas, mask
+    else:
+        return canvas
 
 _zernike_cache = {}
 

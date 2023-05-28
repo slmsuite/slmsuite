@@ -3,7 +3,6 @@ Common fit functions.
 """
 
 import numpy as np
-import cv2
 
 def linear(x, m, b):
     r"""
@@ -335,8 +334,6 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
         Global offset.
     kx, ky : float
         Vector phase scale factor. Default is 1.
-    theta : float
-        Rotation angle of the pattern.
 
     Returns
     -------

@@ -525,17 +525,15 @@ class FourierSLM(CameraSLM):
         if isinstance(slm_size, REAL_TYPES):
             slm_size = (slm_size, slm_size)
 
-        size_kxy = (1 / slm_size[0], 1 / slm_size[1])
-
-        ret = None
         if basis == "kxy":
-            ret = size_kxy
+            return (1 / slm_size[0], 1 / slm_size[1])
         elif basis == "ij":
-            ret = np.abs(self.kxyslm_to_ijcam([0, 0]) - self.kxyslm_to_ijcam(size_kxy))
+            M = self.fourier_calibration['M']
+            size_kxy = np.linalg.inv(M/np.sqrt(np.linalg.det(M))) @ \
+                                     np.array((1 / slm_size[0], 1 / slm_size[1]))
+            return np.abs(self.kxyslm_to_ijcam([0, 0]) - self.kxyslm_to_ijcam(size_kxy))
         else:
             raise ValueError("Unrecognized basis \"{}\".".format(basis))
-
-        return ret
 
     ### Wavefront Calibration ###
 
@@ -730,7 +728,7 @@ class FourierSLM(CameraSLM):
 
         fringe_period = interference_size / max_r / 2
 
-        if fringe_period < 1:
+        if np.any(fringe_period < 1):
             warnings.warn(
                 "Non-resolvable interference fringe period "
                 "for the given SLM calibration extent. "
@@ -923,6 +921,8 @@ class FourierSLM(CameraSLM):
             ----------
             img : numpy.ndarray
                 2D image centered on the interference point.
+            dsuperpixel : ndarray
+                Integer distance (dx,dy) between superpixels.
 
             Returns
             -------
@@ -943,35 +943,54 @@ class FourierSLM(CameraSLM):
 
             # Process dsuperpixel by rotating it according to the Fourier calibration.
             M = self.fourier_calibration["M"]
-            M_norm = 2 * M / np.trace(M)            # trace is sum of eigenvalues.
+            M_norm = M/np.sqrt(np.linalg.det(M)) 
             dsuperpixel = np.squeeze(np.matmul(M_norm, format_2vectors(dsuperpixel)))
             
             # Make the guess and bounds.
             d = np.amin(img)
             c = 0
             a = np.amax(img) - c
-
             R = np.mean(img.shape)/2
+            theta = np.arctan(M[1,0]/-M[0,0])
 
             guess = [
                 R, a, 0, c, d, 
                 4 * np.pi * dsuperpixel[0] / img.shape[1], 
-                4 * np.pi * dsuperpixel[1] / img.shape[0]
+                4 * np.pi * dsuperpixel[1] / img.shape[0],
+                theta
             ]
             lb = [
                 .9*R, 0, -4*np.pi, 0, 0, 
                 guess[5]-1, 
-                guess[6]-1
+                guess[6]-1,
+                theta-np.pi/10
             ]
             ub = [
                 1.1*R, 2*a, 4*np.pi, a, a, 
                 guess[5]+1, 
-                guess[6]+1
+                guess[6]+1,
+                theta+np.pi/10
             ]
 
             # Restrict sinc2d to be centered (as expected).
-            def sinc2d_local(xy, R, a=1, b=0, c=0, d=0, kx=1, ky=1):
-                return sinc2d(xy, 0, 0, R, a, b, c, d, kx, ky)
+            def sinc2d_local(xy, R, a=1, b=0, c=0, d=0, kx=1, ky=1, theta=0):
+
+                #When centered, rotation can be applied to xy, kxy
+                c = np.cos(theta)
+                s = np.sin(theta)
+                rotation = np.array([[c, -s], [s, c]])
+                kxy =  rotation @ np.array([kx,ky])
+                
+                # If raveled (for optimization)
+                xy = np.array(xy)
+                if len(np.array(xy).shape) < 3:
+                    xy_rot = rotation @ xy
+                # But otherwise not raveled
+                else:
+                    xy_rot = np.array([rotation @ xy[:,:,i] for i in range(xy.shape[-1])])
+                    xy_rot = np.transpose(xy_rot, (1, 2, 0))
+
+                return sinc2d(xy_rot, 0, 0, R, a, b, c, d, kxy[0], kxy[1])
             
             # Determine the guess phase byt overlapping shifted guesses with the image.
             differences = []
@@ -985,10 +1004,7 @@ class FourierSLM(CameraSLM):
             guess[2] = phases[int(np.min(np.argmin(differences)))]
 
             # Try the fit!
-            try:
-                popt, _ = optimize.curve_fit(sinc2d_local, xyr, img.ravel(), p0=guess, bounds=(lb, ub))
-            except BaseException:
-                return 0, 0, 0, 0
+            popt, _ = optimize.curve_fit(sinc2d_local, xyr, img.ravel(), p0=guess, bounds=(lb, ub))
 
             # Extract phase and amplitude from fit.
             best_phase = popt[2]
@@ -1169,7 +1185,7 @@ class FourierSLM(CameraSLM):
             target_blaze_fixed = interference_blaze - blaze_difference
 
             # Step 1.5: Measure the power...
-            if accurate_amplitude:      # ...in the corrected target mode.
+            if corrected_amplitude:      # ...in the corrected target mode.
                 self.slm.write(
                     superpixels(index, reference=None, target=0, target_blaze=target_blaze_fixed),
                     settle=True
@@ -1329,7 +1345,7 @@ class FourierSLM(CameraSLM):
                 continue
 
             # Measure!
-            measurement = measure((nx, ny))
+            measurement = measure((nx, ny), plot=plot_fits)
 
             # Update dictionary.
             for key in measurement:

@@ -51,11 +51,12 @@ def lens(grid, f=(np.inf, np.inf)):
     r"""
     Returns a simple
     `thin parabolic lens <https://en.wikipedia.org/wiki/Thin_lens#Physical_optics>`_.
-    When ``f`` is isotropic,
+    
+    When the focal length :math:`f` is isotropic,
 
     .. math:: \phi(\vec{x}) = \frac{\pi}{f}|\vec{x}|^2
 
-    Otherwise,
+    Otherwise :math:`\vec{f}` represents an elliptical lens,
 
     .. math:: \phi(x, y) = \pi \left[\frac{x^2}{f_x} + \frac{y^2}{f_y} \right]
 

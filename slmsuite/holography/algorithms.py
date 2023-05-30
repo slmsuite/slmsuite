@@ -395,14 +395,20 @@ class Hologram:
 
         # 2) Initialize variables.
         # Save the data type.
-        self.dtype = dtype
-        self.dtype_complex = type(1j * dtype(1))
+        if dtype(0).nbytes == 4:
+            self.dtype = np.float32
+            self.dtype_complex = np.complex64
+        elif dtype(0).nbytes == 8:
+            self.dtype = np.float64
+            self.dtype_complex = np.complex128
+        else:
+            raise ValueError(f"Data type {dtype} not supported.")
 
         # Initialize and normalize near-field amplitude
         if amp is None:     # Uniform amplitude by default (scalar).
             self.amp = 1 / np.sqrt(np.prod(self.slm_shape))
         else:               # Otherwise, initialize and normalize.
-            self.amp = cp.array(amp, dtype=dtype, copy=False)
+            self.amp = cp.array(amp, dtype=self.dtype, copy=False)
             self.amp *= 1 / Hologram._norm(self.amp)
 
         # Initialize near-field phase
@@ -905,7 +911,7 @@ class Hologram:
         # Update the final far-field
         nearfield.fill(0)
         nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
-        farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
+        farfield = self._nearfield2farfield(nearfield, farfield_out=farfield)
         self.amp_ff = cp.abs(farfield)
         self.phase_ff = cp.angle(farfield)
 
@@ -1216,8 +1222,7 @@ class Hologram:
             weight_amp[weight_amp == np.inf] = 1
 
         # Normalize amp, as methods may have broken conservation.
-        norm = Hologram._norm(weight_amp, mp=mp)
-        weight_amp *= 1 / norm
+        weight_amp *= (1 / Hologram._norm(weight_amp, mp=mp))
 
         return weight_amp
 
@@ -2427,8 +2432,7 @@ class FreeSpotHologram(FeedbackHologram):
         Parameters
         ----------
         spot_kxy : array_like
-            Spot position vectors with shape ``(2, N)`` in the style of
-            :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
+            Spot position vectors with shape ``(2, N)`` or ``(3, N)``.
         spot_amp : array_like OR None
             The amplitude to target for each spot.
             See :attr:`SpotHologram.spot_amp`.
@@ -2442,12 +2446,14 @@ class FreeSpotHologram(FeedbackHologram):
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
         # Parse vectors.
-        self.spot_kxy = toolbox.format_2vectors(spot_kxy)
+        self.spot_kxy = toolbox.format_2vectors(spot_kxy, handle_dimension="pass")
+        if self.spot_kxy.shape[0] > 3:
+            raise ValueError("Cannot interpret greater dimension than three.")
+        self.spot_ij = None
 
         if spot_amp is not None:
-            assert np.shape(self.spot_kxy)[1] == len(spot_amp.ravel()), \
+            assert self.spot_kxy.shape[1] == len(spot_amp.ravel()), \
                 "spot_amp must have the same length as the provided spots."
-
 
         # Generate point spread functions (psf) for the knm and ij bases
         if cameraslm is not None:
@@ -2519,11 +2525,118 @@ class FreeSpotHologram(FeedbackHologram):
 
         # Set the external amp variable to be perfect by default.
         self.external_spot_amp = np.ones(self.target.shape)
+        self.kernel = None
+        self.stack = None
 
+        # FUTURE: Custom GPU kernels for speed.
+        try:
+            # 
+            self._far2near_cuda = cp.RawKernel(
+                r'''
+                #include <cupy/complex.cuh>
+                extern "C" 
+                __global__ void f2n(
+                    const complex<float>* farfield, // Input
+                    const int WH,                   // Size of nearfield (WxH)
+                    const int M,                    // Size of farfield (1xM)
+                    const int D,                    // Dimension of spots (2 or 3)
+                    const float* kxyz,              // Spots
+                    const complex<float>* X,        // X grid
+                    const complex<float>* Y,        // Y grid
+                    const complex<float>* RR,       // RR grid
+                    const int* a,                 // TODO
+                    const complex<float>* map,      // TODO
+                    const int maps,                 // TODO
+                    complex<float>* nearfield       // Output
+                ) {
+                    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+
+                    if (tid < WH) {
+                        nearfield[tid] = 0;
+
+                        for (int i = 0; i < M; i++) {
+                            nearfield[tid] += farfield[i]
+                            * ((maps>0) ? map[tid + a[i] * WH] : 1)
+                            * exp(
+                                X[tid] * kxyz[i] + 
+                                Y[tid] * kxyz[i + WH] +
+                                ((D == 3) ? (RR[tid] * kxyz[i + 2 * WH]) : 0)
+                            );
+                        }
+                    }
+                }
+                ''', 
+                'f2n'
+            )
+
+            return
+
+            # 
+            near2far = cp.RawKernel(
+                r'''
+                #include <cupy/complex.cuh>
+                extern "C"  __device__ void warpReduce(
+                    volatile complex<float>* sdata, 
+                    unsigned int tid
+                ) {
+                    if (blockSize >= 64) sdata += sdata[tid + 32];
+                    if (blockSize >= 32) sdata += sdata[tid + 16];
+                    if (blockSize >= 16) sdata += sdata[tid + 8];
+                    if (blockSize >=  8) sdata += sdata[tid + 4];
+                    if (blockSize >=  4) sdata += sdata[tid + 2];
+                    if (blockSize >=  2) sdata += sdata[tid + 1];
+                }
+
+                extern "C" __global__ void n2f(
+                    const complex<float>* nearfield,
+                    const unsigned int N, 
+                    const float* kxyz, 
+                    complex<float> float* X, 
+                    const complex<float>* Y, 
+                    const complex<float>* RR, 
+                    const float* a, 
+                    const complex<float>* map,
+                    const unsigned int maps,
+                    volatile complex<float>* farfield
+                ) {
+                    extern __shared__ complex<float> sdata[]
+
+                    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+
+                    sdata[tid] = 0;
+
+                    for (int i = 0; i < N; i++) {
+                        sdata[tid] += conj(nearfield[tid]) * (maps>0 ? map[tid + WH * a[i]] : 1) * exp(
+                            X[tid] * kxyz[3 * i] + 
+                            Y[tid] * kxyz[3 * i + 1] + 
+                            (D == 3 ? (RR[tid] * kxyz[3 * i + 2]) : 0)
+                        );
+                    }
+
+                    __syncthreads();
+
+                    if (blockSize >= 512) {
+                        if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads();
+                    }
+                    if (blockSize >= 256) {
+                        if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads();
+                    }
+                    if (blockSize >= 128) {
+                        if (tid < 64) { sdata[tid] += sdata[tid + 64]; } __syncthreads();
+                    }
+
+                    if (tid < 32) warpReduce(sdata, tid);
+                    if (tid == 0) farfield[] = sdata[0]
+                }
+                ''', 
+                'n2f'
+            )
+        except:
+            pass
 
     def __len__(self):
         """
-        Overloads len() to return the number of spots in this :class:`SpotHologram`.
+        Overloads len() to return the number of spots in this :class:`FreeSpotHologram`.
 
         Returns
         -------
@@ -2532,112 +2645,172 @@ class FreeSpotHologram(FeedbackHologram):
         """
         return self.spot_kxy.shape[1]
 
-    def _build_kernel_batched(self, spot_kxy, stack=None, out=None):
+    def _build_stack(self, D=2):
         """TODO"""
-        # Parse spot_kxy.
-        spot_kxy = toolbox.format_2vectors(spot_kxy)    # Shape (2|3, N)
-        N = spot_kxy.shape[1]
+        X = (2 * cp.pi) * cp.array(self.cameraslm.slm.x_grid, dtype=self.dtype_complex).ravel()
+        Y = (2 * cp.pi) * cp.array(self.cameraslm.slm.y_grid, dtype=self.dtype_complex).ravel()
+
+        if D == 2:      # 2D spots
+            self.stack = cp.stack((X, Y), axis=-1)       # Shape (H*W, 2)
+        elif D == 3:    # 3D spots
+            # Currently restricted to non-cylindrical focusing.
+            # This is a good assumption if the SLM has square pixel size.
+            # And the optical train does not include cylindrical optics.
+            # RR = pi * (x_grid ^2 + y_grid ^ 2)
+            RR = (1 / (4 * cp.pi)) * (cp.square(X) + cp.square(Y))
+            self.stack = cp.stack((X, Y, RR), axis=-1)   # Shape (H*W, 3)
+        else:
+            raise ValueError(f"Expected spots to be 2D or 3D. Found {D}D")
+
+        # Rotate to imaginary afterward so we can square X and Y when calculating RR.
+        self.stack *= 1j
+
+    def _build_kernel_batched(self, spot_kxy, out=None):
+        """TODO"""
+        # Gather spot_kxy shape
+        (D, N) = spot_kxy.shape                         # Shape (2|3, N)
 
         # Parse stack.
-        if stack is None:
-            X = (2 * cp.pi) * cp.array(self.slm.x_grid, dtype=self.dtype_complex).ravel()
-            Y = (2 * cp.pi) * cp.array(self.slm.y_grid, dtype=self.dtype_complex).ravel()
-
-            if spot_kxy.shape[0] == 2:
-                stack = cp.stack((X, Y), axis=-1)       # Shape (H*W, 2)
-            elif spot_kxy.shape[0] == 3:
-                # Currently restricted to non-cylindrical focusing.
-                # This is a good assumption if the SLM has square pixel size.
-                RR = (1 / (4 * cp.pi)) * (cp.square(X) + cp.square(Y))
-                stack = cp.stack((X, Y, RR), axis=-1)   # Shape (H*W, 3)
-            else:
-                raise ValueError("Expected spots to be 2D or 3D. Found {}D".format(spot_kxy.shape[0]))
-
-            stack *= 1j
-        else:
-            if stack.shape != (spot_kxy.shape[0], ) + self.slm_shape:
-                raise ValueError("TODO")
+        if self.stack is None:
+            self._build_stack(D)
+        if self.stack.shape != (np.prod(self.slm_shape), D):
+            raise ValueError("TODO")
 
         # Parse out.
-        expected_shape = (N, ) + self.slm_shape         # Shape (N, H*W)
+        out_shape = (np.prod(self.slm_shape), N)        # Shape (H*W, N)
 
         if out is None:
-            out = cp.zeros(expected_shape, dtype=self.dtype_complex)
-
-        if out.shape != expected_shape:
+            out = cp.zeros(out_shape, dtype=self.dtype_complex)
+        if out.shape != out_shape:
             raise ValueError("TODO")
 
         # Evaluate the result in a (hopefully) memory and compute efficient way.
-        out = cp.matmul(stack, spot_kxy, out=out)       # (H*W, 2|3) x (2|3, N) = (H*W, N)
+        out = cp.matmul(self.stack, spot_kxy, out=out)       # (H*W, 2|3) x (2|3, N) = (H*W, N)
 
         # Convert from phase to complex amplitude.
         out = cp.exp(out, out=out)
 
+        return out
+
     def _nearfield2farfield(self, nearfield, farfield_out=None):
         """TODO"""
+        # Conjugate the nearfield to properly take the overlap integral.
         # FYI: Nearfield shape is (H,W)
+        nearfield = cp.conj(nearfield, out=nearfield)
 
         N = self.spot_kxy.shape[1]
-        N_batch_max = 100
+        N_batch_max = 50
 
         if farfield_out is None:
             farfield_out = cp.zeros((N, ), dtype=self.dtype_complex)
 
         def collapse_kernel(out):
-            # (1,H*W) x (H*W, N) = (N,1)^T  # TODO: check transpose
-            cp.matmul(nearfield.ravel(), self.kernel, out=out)
+            # (1,H*W) x (H*W, N) = (N,1)^T
+            cp.matmul(nearfield.ravel()[np.newaxis, :], self.kernel, out=out[np.newaxis, :])
+
+        if self.kernel is None:
+            self.spot_kxy_complex = cp.array(self.spot_kxy, self.dtype_complex)
 
         if N <= N_batch_max:
             if self.kernel is None:
-                self.kernel = self._build_kernel_batched(self.spot_kxy, out=self.kernel)
+                self.kernel = self._build_kernel_batched(self.spot_kxy_complex, out=self.kernel)
 
             collapse_kernel(out=farfield_out)
         else:
             batches = N // N_batch_max
             for batch in range(batches):
                 batch_slice = slice(batch * N_batch_max, np.clip((batch+1) * N_batch_max, 0, N))
-                self.kernel = self._build_kernel_batched(self.spot_kxy[:, batch_slice], out=self.kernel)
+                self.kernel = self._build_kernel_batched(self.spot_kxy_complex[:, batch_slice], out=self.kernel)
 
                 collapse_kernel(out=farfield_out[batch_slice])
 
+        farfield_out *= (1 / Hologram._norm(farfield_out, mp=cp))
+
+        # unconjugate nearfield (leave it unchanged).
+        nearfield = cp.conj(nearfield, out=nearfield)
+
         return farfield_out
 
-    def _farfield2nearfield(self, farfield, nearfield_out=None):
-        """TODO"""
-        # FYI: Farfield shape is (N,1)
-
-        N = self.spot_kxy.shape[1]
-        N_batch_max = 100
-
+    def _farfield2nearfield(self, farfield, nearfield_out=None, cuda=False):
+        """
+        Maps the ``(N,1)`` farfield (complex value for each spot) 
+        onto the ``(H,W)`` nearfield (complex phase on the SLM).
+        CUDA kernel is not fully implemented.
+        """
         if nearfield_out is None:
             nearfield_out = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
 
-        def expand_kernel(out):
+        if cuda:
+            nearfield_out = self._farfield2nearfield_cuda(farfield, nearfield_out)
+        else:
+            nearfield_out = self._farfield2nearfield_cupy(farfield, nearfield_out)
+
+        return nearfield_out
+
+    def _farfield2nearfield_cuda(self, farfield, nearfield_out=None):
+        WH = int(np.prod(nearfield_out.shape))
+        N = len(farfield)
+        D = self.spot_kxy.shape[0]
+
+        if self.stack is None:
+            self._build_stack(D)
+
+        threads_per_block = self._far2near_kernel.max_threads_per_block
+        blocks = WH // threads_per_block
+
+        spot_kxy_float = cp.array(self.spot_kxy, self.dtype)
+
+        self._far2near_cuda(
+            (blocks,),
+            (threads_per_block,),
+            (
+                farfield,
+                WH, N, D,
+                spot_kxy_float,
+                self.stack[0, :],
+                self.stack[1, :],
+                self.stack[2, :] if D == 3 else 0,
+                0, 0, 0,
+                nearfield_out.ravel()
+            )
+        )
+
+        return nearfield_out
+
+    def _farfield2nearfield_cupy(self, farfield, nearfield_out=None):
+        # FYI: Farfield shape is (N,1)
+        N = self.spot_kxy.shape[1]
+        N_batch_max = 50
+
+        def expand_kernel(farfield, out):
             # (H*W, N) x (N,1) = (H*W, 1)   ===reshape===>   (H,W)
-            return cp.matmul(self.kernel, farfield, out=out).reshape(self.slm_shape)
+            return cp.matmul(self.kernel, farfield[:, np.newaxis], out=out[:, np.newaxis])
+
+        if self.kernel is None:
+            self.spot_kxy_complex = cp.array(self.spot_kxy, self.dtype_complex)
 
         if N <= N_batch_max:
             if self.kernel is None:
-                self.kernel = self._build_kernel_batched(self.spot_kxy, out=self.kernel)
+                self.kernel = self._build_kernel_batched(self.spot_kxy_complex, out=self.kernel)
 
-                expand_kernel(out=nearfield_out.ravel())
+            expand_kernel(farfield, out=nearfield_out.ravel())
         else:
             nearfield_out_temp = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
 
-            batches = N // N_batch_max
+            batches = 1 + N // N_batch_max
             for batch in range(batches):
                 batch_slice = slice(batch * N_batch_max, np.clip((batch+1) * N_batch_max, 0, N))
-                self.kernel = self._build_kernel_batched(self.spot_kxy[:, batch_slice], out=self.kernel)
+                self.kernel = self._build_kernel_batched(self.spot_kxy_complex[:, batch_slice], out=self.kernel)
 
                 if batch == 0:
-                    expand_kernel(out=nearfield_out)
+                    expand_kernel(farfield[batch_slice], out=nearfield_out.ravel())
                 else:
-                    expand_kernel(out=nearfield_out_temp)
+                    expand_kernel(farfield[batch_slice], out=nearfield_out_temp.ravel())
                     nearfield_out += nearfield_out_temp
 
         return nearfield_out
 
-    def _update_target(self, new_target, reset_weights=False, plot=False):
+    def update_target(self, new_target, reset_weights=False, plot=False):
         """
         Change the target to something new. This method handles cleaning and normalization.
 
@@ -2648,7 +2821,7 @@ class FreeSpotHologram(FeedbackHologram):
         ----------
         new_target : array_like OR None
             If ``None``, sets the target to zero. The ``None`` case is used internally
-            by :class:`SpotHologram`.
+            by :class:`SpotHologram`.   TODO
         reset_weights : bool
             Whether to overwrite ``weights`` with ``target``.
         plot : bool
@@ -2659,6 +2832,7 @@ class FreeSpotHologram(FeedbackHologram):
             N = len(self)
             self.target = cp.full(shape=(N,), fill_value=1/np.sqrt(N), dtype=self.dtype)
         else:
+            new_target = np.squeeze(new_target.ravel())
             if new_target.shape != (len(self),):
                 raise ValueError(
                     "Target must be of appropriate shape. "
@@ -2674,6 +2848,106 @@ class FreeSpotHologram(FeedbackHologram):
 
         if plot:
             raise NotImplementedError()
+        
+    def _update_weights(self):
+        """
+        Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
+        :attr:`amp_ff`, the computed farfield amplitude.
+        """
+        feedback = self.flags["feedback"]
+
+        # Weighting strategy depends on the chosen feedback method.
+        if feedback == "computational_spot":
+            amp_feedback = self.amp_ff
+        elif feedback == "experimental_spot":
+            self.measure(basis="ij")
+
+            amp_feedback = np.sqrt(analysis.take(
+                np.square(np.array(self.img_ij, copy=False, dtype=self.dtype)),
+                self.spot_ij,
+                self.spot_integration_width_ij,
+                centered=True,
+                integrate=True
+            ))
+        elif feedback == "external_spot":
+            amp_feedback = self.external_spot_amp
+        else:
+            raise ValueError("algorithms.py: Feedback '{}' not recognized.".format(feedback))
+
+        # Apply weights.
+        self._update_weights_generic(
+            self.weights, 
+            cp.array(amp_feedback, copy=False, dtype=self.dtype), 
+            self.target, 
+            nan_checks=True
+        )
+
+    def _calculate_stats_computational_spot(self, stats, stat_groups=[]):
+        """
+        Wrapped by :meth:`SpotHologram.update_stats()`.
+        """
+
+        if "computational_spot" in stat_groups:
+            stats["computational_spot"] = self._calculate_stats(
+                self.amp_ff,
+                self.target,
+                efficiency_compensation=False,
+                raw="raw_stats" in self.flags and self.flags["raw_stats"]
+            )
+
+    def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
+        """
+        Wrapped by :meth:`SpotHologram.update_stats()`.
+        """
+
+        if "experimental_spot" in stat_groups:
+            self.measure(basis="ij")
+
+            pwr_img = np.square(self.img_ij)
+
+            pwr_feedback = analysis.take(
+                pwr_img,
+                self.spot_ij,
+                self.spot_integration_width_ij,
+                centered=True,
+                integrate=True
+            )
+
+            stats["experimental_spot"] = self._calculate_stats(
+                np.sqrt(pwr_feedback),
+                self.spot_amp,
+                mp=np,
+                efficiency_compensation=False,
+                total=np.sum(pwr_img),
+                raw="raw_stats" in self.flags and self.flags["raw_stats"]
+            )
+
+        if "external_spot" in stat_groups:
+            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=False, dtype=self.dtype))
+            stats["external_spot"] = self._calculate_stats(
+                np.sqrt(pwr_feedback),
+                self.spot_amp,
+                mp=np,
+                efficiency_compensation=False,
+                total=np.sum(pwr_feedback),
+                raw="raw_stats" in self.flags and self.flags["raw_stats"]
+            )
+
+    def update_stats(self, stat_groups=[]):
+        """
+        Calculate statistics corresponding to the desired ``stat_groups``.
+
+        Parameters
+        ----------
+        stat_groups : list of str
+            Which groups or types of statistics to analyze.
+        """
+        stats = {}
+
+        self._calculate_stats_computational_spot(stats, stat_groups)
+        self._calculate_stats_experimental_spot(stats, stat_groups)
+
+        self._update_stats_dictionary(stats)
 
 
 class SpotHologram(FeedbackHologram):
@@ -3356,7 +3630,7 @@ class SpotHologram(FeedbackHologram):
                 self.reset_phase()
             elif basis == "ij":
                 # Modify camera targets. Don't modify any k-vectors.
-                self.spot_ij = self.spot_ij - shift_vectors
+                self.spot_ij = self.spot_ij + shift_vectors
             else:
                 raise Exception("Unrecognized basis '{}'.".format(basis))
 
@@ -3441,7 +3715,7 @@ class SpotHologram(FeedbackHologram):
                     )
                     self.weights[window] *= dummy_weights[spot_idx]
 
-    def _calculate_stats_spots(self, stats, stat_groups=[]):
+    def _calculate_stats_computational_spot(self, stats, stat_groups=[]):
         """
         Wrapped by :meth:`SpotHologram.update_stats()`.
         """
@@ -3496,6 +3770,11 @@ class SpotHologram(FeedbackHologram):
                         raw="raw_stats" in self.flags and self.flags["raw_stats"]
                     )
 
+    def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
+        """
+        Wrapped by :meth:`SpotHologram.update_stats()`.
+        """
+
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
 
@@ -3542,6 +3821,7 @@ class SpotHologram(FeedbackHologram):
 
         self._calculate_stats_computational(stats, stat_groups)
         self._calculate_stats_experimental(stats, stat_groups)
-        self._calculate_stats_spots(stats, stat_groups)
+        self._calculate_stats_computational_spot(stats, stat_groups)
+        self._calculate_stats_experimental_spot(stats, stat_groups)
 
         self._update_stats_dictionary(stats)

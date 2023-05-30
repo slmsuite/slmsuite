@@ -93,10 +93,10 @@ def convert_blaze_vector(
     numpy.ndarray
         Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
     """
-    assert from_units in BLAZE_UNITS, \
-        "toolbox.py: Unit '{}' not recognized as a valid unit for convert_blaze_vector().".format(from_units)
-    assert to_units in BLAZE_UNITS, \
-        "toolbox.py: Unit '{}' not recognized as a valid unit for convert_blaze_vector().".format(to_units)
+    if not (from_units in BLAZE_UNITS):
+        raise ValueError(f"Unit '{from_units}' not recognized as a valid unit.")
+    if not (to_units in BLAZE_UNITS):
+        raise ValueError(f"Unit '{to_units}' not recognized as a valid unit.")
 
     vector = format_2vectors(vector).astype(float)
 
@@ -109,7 +109,7 @@ def convert_blaze_vector(
 
     if from_units == "ij" or to_units == "ij":
         if cameraslm is None or cameraslm.fourier_calibration is None:
-            return vector * np.nan
+            return np.full_like(vector, np.nan)
 
     # Generate conversion factors for various units
     if from_units == "freq" or to_units == "freq":
@@ -598,41 +598,109 @@ def imprint(
 
 # Vector helper functions.
 
-def format_2vectors(vectors):
+def format_vectors(vectors, expected_dimension=2, handle_dimension="crop"):
     """
-    Validates that an array of 2D vectors is a ``numpy.ndarray`` of shape ``(2, N)``.
+    Validates that an array of M-dimensional vectors is a ``numpy.ndarray`` of shape ``(M, N)``.
     Handles shaping and transposing if, for instance, tuples or row vectors are passed.
 
     Parameters
     ----------
     vectors : array_like
-        2-vector or array of 2-vectors to process. Shape of ``(2, N)``.
+        M-vector or array of M-vectors to process. Desires shape of ``(M, N)``.
+    expected_dimension : int
+        Dimension of the system, i.e. ``M``.
+    handle_3vectors : {"error", "crop", "pass"}
+        If a 3D array of vectors is provided, decides how to handle these:
+
+        - ``"error"`` Raises an error if not ``(M, N)``.
+
+        - ``"crop"`` Crops the higher dimensions and returns ``(M, N)``.
+
+        - ``"pass"`` Returns ``(K, N)`` if ``K`` is greater than or equal to ``M``.
 
     Returns
     -------
     vectors : numpy.ndarray
-        Cleaned column vector(s).
+        Cleaned column vector(s). Shape of ``(M, N)``.
 
     Raises
     ------
-    AssertionError
+    ValueError
         If the vector input was inappropriate.
     """
+    # Parse expected_dimension
+    expected_dimension = int(expected_dimension)
+
+    # Parse handle_dimension
+    options_dimension = ["error", "crop", "pass"]
+    if not (handle_dimension in options_dimension):
+        raise ValueError(
+            f"handle_dimension option '{handle_dimension}' not recognized. "
+            f"Must be one of '{options_dimension}'."
+        )
+    
     # Convert to np.array and squeeze
     vectors = np.squeeze(vectors)
 
-    if vectors.shape == (2,):
-        vectors = vectors[:, np.newaxis].T
-
-    # Handle the transposed case.
-    if vectors.shape == (1, 2):
+    # Handle the singleton cases.
+    if len(vectors.shape) == 1:
+        vectors = vectors[:, np.newaxis]
+    elif len(vectors.shape) == 2 and vectors.shape[0] == 1:
         vectors = vectors.T
 
-    # Make sure that we are an array of 2-vectors.
-    assert len(vectors.shape) == 2
-    assert vectors.shape[0] == 2
+    # Make sure that we are an array of N-vectors.
+    if len(vectors.shape) != 2:
+        raise ValueError(f"Wrong dimension {vectors.shape} for vectors.")
+    
+    if vectors.shape[0] == expected_dimension:
+        pass
+    elif vectors.shape[0] > expected_dimension:     # Handle unexpected case.
+        if handle_dimension == "pass":
+            pass
+        elif handle_dimension == "crop":
+            if vectors.shape[0] > expected_dimension:
+                vectors = vectors[:expected_dimension,:]
+            else:
+                raise ValueError(f"{vectors.shape[0]}-vectors too small to crop to {expected_dimension}-vectors.")
+        elif handle_dimension == "error":
+            raise ValueError(f"Expected {expected_dimension}-vectors. Found {vectors.shape[0]}-vectors.")
+    else:
+        raise ValueError(f"Expected {expected_dimension}-vectors. Found {vectors.shape[0]}-vectors.")
 
+        
     return vectors
+
+
+def format_2vectors(vectors, handle_dimension="error"):
+    """
+    Validates that an array of 2-dimensional vectors is a ``numpy.ndarray`` of shape ``(2, N)``.
+    Handles shaping and transposing if, for instance, tuples or row vectors are passed.
+    This a wrapper of :meth:`format_vectors` for backwards compatibility.
+
+    Parameters
+    ----------
+    vectors : array_like
+        2-vector or array of 2-vectors to process. Desires shape of ``(2, N)``.
+    handle_3vectors : {"error", "crop", "pass"}
+        If a 3D array of vectors is provided, decides how to handle these:
+
+        - ``"error"`` Raises an error if not ``(2, N)``.
+
+        - ``"crop"`` Crops the higher dimensions and returns ``(2, N)``.
+
+        - ``"pass"`` Raises an error only if dimension is smaller than ``(2, N)``.
+
+    Returns
+    -------
+    vectors : numpy.ndarray
+        Cleaned column vector(s). Shape of ``(2, N)``.
+
+    Raises
+    ------
+    ValueError
+        If the vector input was inappropriate.
+    """
+    return format_vectors(vectors, expected_dimension=2, handle_dimension=handle_dimension)
 
 
 def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_check=False):

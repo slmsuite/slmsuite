@@ -431,29 +431,47 @@ class FourierSLM(CameraSLM):
         where :math:`M`, :math:`\vec{b}`, and :math:`\vec{a}` are stored in
         :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`.
 
+
+        .. math:: y_z = \frac{f_{eff}^2}{f_{slm}} = f_{eff}^2x_z
+
+        Where :math:`x_z`, equivalent to focal power, 
+        is converted into depth :math:`y_z` in pixels.
+
         Parameters
         ----------
         kxy : array_like
-            2-vector or array of 2-vectors to convert.
+            Vector or array of vectors to convert. Can be 2D or 3D.
             Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
 
         Returns
         -------
         ij : numpy.ndarray
-            2-vector or array of 2-vectors in camera coordinates.
+            Vector or array of vectors in camera spatial coordinates. Can be 2D or 3D.
 
         Raises
         ------
-        AssertionError
+        RuntimeError
             If the fourier plane calibration does not exist.
         """
-        assert self.fourier_calibration is not None
-        return (
-            np.matmul(
-                self.fourier_calibration["M"],
-                format_2vectors(kxy) - self.fourier_calibration["a"]
-            ) + self.fourier_calibration["b"]
-        )
+        if self.fourier_calibration is None:
+            raise RuntimeError("Fourier calibration must exist to be used.")
+        
+        kxy = format_2vectors(kxy, handle_dimension="pass")
+
+        # Apply the xy transformation.
+        ij = np.matmul(
+            self.fourier_calibration["M"],
+            kxy[:2, :] - self.fourier_calibration["a"]
+        ) + self.fourier_calibration["b"]
+        
+        # Handle z if needed.
+        if ij.shape[0] == 3:
+            f_eff = self.get_effective_focal_length("norm")
+            pix2um = self._get_camera_pix2um()
+            z = ij[[2], :] * (self.slm.wav_um * f_eff * f_eff / pix2um)
+            return np.vstack((ij, z))
+        else:
+            return ij
 
     def ijcam_to_kxyslm(self, ij):
         r"""
@@ -465,29 +483,48 @@ class FourierSLM(CameraSLM):
         where :math:`M`, :math:`\vec{b}`, and :math:`\vec{a}` are stored in
         :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`.
 
+        If the vectors are three-dimensional, the third depth dimension is treated according to:
+
+        .. math:: x_z = \frac{1}{f_{slm}} = \frac{y_z}{f_{eff}^2}
+
+        Where this factor, equivalent to focal power, is used as the normalized prefactor of
+        the quadratic term of a simple thin lens.
+
         Parameters
         ----------
         ij : array_like
-            2-vector or array of 2-vectors to convert.
+            Vector or array of vectors to convert. Can be 2D or 3D.
             Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
 
         Returns
         -------
         kxy : numpy.ndarray
-            2-vector or array of 2-vectors in slm coordinates.
+            Vector or array of vectors in slm angular coordinates. Can be 2D or 3D.
 
         Raises
         ------
-        AssertionError
+        RuntimeError
             If the fourier plane calibration does not exist.
         """
-        assert self.fourier_calibration is not None
-        return (
-            np.matmul(
-                np.linalg.inv(self.fourier_calibration["M"]),
-                format_2vectors(ij) - self.fourier_calibration["b"]
-            ) + self.fourier_calibration["a"]
-        )
+        if self.fourier_calibration is None:
+            raise RuntimeError("Fourier calibration must exist to be used.")
+        
+        ij = format_2vectors(ij, handle_dimension="pass")
+
+        # Apply the xy transformation.
+        kxy = np.matmul(
+            np.linalg.inv(self.fourier_calibration["M"]),
+            ij[:2, :] - self.fourier_calibration["b"]
+        ) + self.fourier_calibration["a"]
+
+        # Handle z if needed.
+        if ij.shape[0] == 3:
+            f_eff = self.get_effective_focal_length("norm")
+            pix2um = self._get_camera_pix2um()
+            z = ij[[2], :] * (pix2um / (self.slm.wav_um * f_eff * f_eff))
+            return np.vstack((kxy, z))
+        else:
+            return kxy
 
     def get_farfield_spot_size(self, slm_size=None, basis="kxy"):
         """
@@ -536,6 +573,47 @@ class FourierSLM(CameraSLM):
             raise ValueError("Unrecognized basis \"{}\".".format(basis))
 
         return ret
+
+    def _get_camera_pix2um(self):
+        if self.cam.dx_um is None or self.cam.dy_um is None:
+            raise ValueError("Camera dx_um or dy_um are not set.")
+        if self.cam.dx_um != self.cam.dy_um:
+            warnings.warn("Camera does not have square pitch. Odd behavior might result.")
+        return np.mean([self.cam.dx_um, self.cam.dy_um])
+
+    def get_effective_focal_length(self, units="norm"):
+        """
+        Uses the Fourier calibration to estimate the effective focal length of the
+        optical train separating the Fourier-domain SLM from the camera.
+        
+        Parameters
+        ----------
+        units : {"pix", "um", "norm"}
+            Units for the focal length.
+
+        Returns
+        -------
+        f_eff : float
+            Effective focal length.
+        """
+        if self.fourier_calibration is None:
+            raise RuntimeError("Fourier calibration must exist to be used.")
+        
+        # Gather f_eff in pix/rad.
+        f_eff = np.sqrt(np.abs(np.linalg.det(self.fourier_calibration["M"])))
+
+        # Gather other conversions.
+        pix2um = self._get_camera_pix2um()
+
+        # Convert.
+        if units == "pix":
+            pass
+        elif units == "um":
+            f_eff *= pix2um
+        elif units == "norm":
+            f_eff *= pix2um / self.slm.wav_um
+
+        return f_eff
 
     ### Wavefront Calibration ###
 

@@ -431,6 +431,7 @@ class FourierSLM(CameraSLM):
         where :math:`M`, :math:`\vec{b}`, and :math:`\vec{a}` are stored in
         :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`.
 
+        If the vectors are three-dimensional, the third depth dimension is treated according to:
 
         .. math:: y_z = \frac{f_{eff}^2}{f_{slm}} = f_{eff}^2x_z
 

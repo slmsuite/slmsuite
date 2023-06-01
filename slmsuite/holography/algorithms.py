@@ -99,7 +99,6 @@ except ImportError:
 from slmsuite.holography import analysis, toolbox
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.files import write_h5, read_h5
-from slmsuite.misc.fitfunctions import gaussian2d
 
 # List of algorithms and default parameters
 # See algorithm documentation for parameter definitions.
@@ -2167,6 +2166,7 @@ class FeedbackHologram(Hologram):
             self.cam_points = None
             self.cam_shape = None
 
+    # Image transformation helper function.
     def ijcam_to_knmslm(self, img, out=None, blur_ij=None, order=3):
         """
         Convert an image in the camera domain to computational SLM k-space using, in part, the
@@ -2259,16 +2259,7 @@ class FeedbackHologram(Hologram):
 
         return target
 
-    def update_target(self, new_target, reset_weights=False, plot=False):
-        # Transformation order of zero to prevent nan-blurring in MRAF cases.
-        self.ijcam_to_knmslm(new_target, out=self.target, order=0)
-
-        if reset_weights:
-            self.reset_weights()
-
-        if plot:
-            self.plot_farfield(self.target)
-
+    # Measurement.
     def measure(self, basis="ij"):
         """
         Method to request a measurement to occur. If :attr:`img_ij` is ``None``,
@@ -2306,6 +2297,17 @@ class FeedbackHologram(Hologram):
                 self.img_knm = self.ijcam_to_knmslm(np.square(self.img_ij), out=self.img_knm)
                 cp.sqrt(self.img_knm, out=self.img_knm)
 
+    # Target update.
+    def update_target(self, new_target, reset_weights=False, plot=False):
+        # Transformation order of zero to prevent nan-blurring in MRAF cases.
+        self.ijcam_to_knmslm(new_target, out=self.target, order=0)
+
+        if reset_weights:
+            self.reset_weights()
+
+        if plot:
+            self.plot_farfield(self.target)
+
     def refine_offset(self, img, basis="kxy"):
         """
         **(NotImplemented)**
@@ -2334,6 +2336,7 @@ class FeedbackHologram(Hologram):
 
         raise NotImplementedError()
 
+    # Weighting and stats.
     def _update_weights(self):
         """
         Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
@@ -2397,9 +2400,8 @@ class FreeSpotHologram(FeedbackHologram):
 
     Attributes
     ----------
-    spot_knm, spot_kxy, spot_ij : array_like of float OR None
-        Stored vectors with shape ``(2, N)`` in the style of
-        :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
+    spot_kxy, spot_ij : array_like of float OR None
+        Spot position vectors with shape ``(2, N)`` or ``(3, N)``.
         These vectors are floats.
         The subscript refers to the basis of the vectors, the transformations between
         which are autocomputed.
@@ -2414,9 +2416,10 @@ class FreeSpotHologram(FeedbackHologram):
         For spot-specific feedback methods, better SNR is achieved when integrating over
         many camera pixels. This variable stores the width of the integration region
         in ``"ij"`` (camera) space.
-    cache : TODO
+    stack : TODO
         TODO
-    cached_kernel : bool
+    kernel : TODO
+        TODO
     """
 
     def __init__(
@@ -2472,6 +2475,8 @@ class FreeSpotHologram(FeedbackHologram):
         #      (divided by 1 would correspond to the largest non-overlapping integration
         #      regions; 1.5 gives comfortable padding)
         #  - and finally forced to be an odd integer.
+
+        # TODO: unify with SpotHologram
         min_psf = 3
 
         if self.spot_ij is not None:
@@ -2530,11 +2535,11 @@ class FreeSpotHologram(FeedbackHologram):
 
         # FUTURE: Custom GPU kernels for speed.
         try:
-            # 
+            #
             self._far2near_cuda = cp.RawKernel(
                 r'''
                 #include <cupy/complex.cuh>
-                extern "C" 
+                extern "C"
                 __global__ void f2n(
                     const complex<float>* farfield, // Input
                     const int WH,                   // Size of nearfield (WxH)
@@ -2558,25 +2563,25 @@ class FreeSpotHologram(FeedbackHologram):
                             nearfield[tid] += farfield[i]
                             * ((maps>0) ? map[tid + a[i] * WH] : 1)
                             * exp(
-                                X[tid] * kxyz[i] + 
+                                X[tid] * kxyz[i] +
                                 Y[tid] * kxyz[i + WH] +
                                 ((D == 3) ? (RR[tid] * kxyz[i + 2 * WH]) : 0)
                             );
                         }
                     }
                 }
-                ''', 
+                ''',
                 'f2n'
             )
 
             return
 
-            # 
+            #
             near2far = cp.RawKernel(
                 r'''
                 #include <cupy/complex.cuh>
                 extern "C"  __device__ void warpReduce(
-                    volatile complex<float>* sdata, 
+                    volatile complex<float>* sdata,
                     unsigned int tid
                 ) {
                     if (blockSize >= 64) sdata += sdata[tid + 32];
@@ -2589,12 +2594,12 @@ class FreeSpotHologram(FeedbackHologram):
 
                 extern "C" __global__ void n2f(
                     const complex<float>* nearfield,
-                    const unsigned int N, 
-                    const float* kxyz, 
-                    complex<float> float* X, 
-                    const complex<float>* Y, 
-                    const complex<float>* RR, 
-                    const float* a, 
+                    const unsigned int N,
+                    const float* kxyz,
+                    complex<float> float* X,
+                    const complex<float>* Y,
+                    const complex<float>* RR,
+                    const float* a,
                     const complex<float>* map,
                     const unsigned int maps,
                     volatile complex<float>* farfield
@@ -2607,8 +2612,8 @@ class FreeSpotHologram(FeedbackHologram):
 
                     for (int i = 0; i < N; i++) {
                         sdata[tid] += conj(nearfield[tid]) * (maps>0 ? map[tid + WH * a[i]] : 1) * exp(
-                            X[tid] * kxyz[3 * i] + 
-                            Y[tid] * kxyz[3 * i + 1] + 
+                            X[tid] * kxyz[3 * i] +
+                            Y[tid] * kxyz[3 * i + 1] +
                             (D == 3 ? (RR[tid] * kxyz[3 * i + 2]) : 0)
                         );
                     }
@@ -2628,7 +2633,7 @@ class FreeSpotHologram(FeedbackHologram):
                     if (tid < 32) warpReduce(sdata, tid);
                     if (tid == 0) farfield[] = sdata[0]
                 }
-                ''', 
+                ''',
                 'n2f'
             )
         except:
@@ -2636,7 +2641,7 @@ class FreeSpotHologram(FeedbackHologram):
 
     def __len__(self):
         """
-        Overloads len() to return the number of spots in this :class:`FreeSpotHologram`.
+        Overloads ``len()`` to return the number of spots in this :class:`FreeSpotHologram`.
 
         Returns
         -------
@@ -2645,8 +2650,16 @@ class FreeSpotHologram(FeedbackHologram):
         """
         return self.spot_kxy.shape[1]
 
+    # Projection backend helper functions.
     def _build_stack(self, D=2):
-        """TODO"""
+        """
+        Builds the coordinate stack, which is a stack of the
+        :math:`2\pi i x`, :math:`2\pi i y`, and
+        (if desired) :math:`\pi i r^2 = \pi i (x^2 + y^2)` coordinates corresponding
+        to the position of each pixel. The :math:`i\pi` factors are to make compute of
+        the kernels trivial, i.e. such that these factors (and squares) do not have
+        be calculated at each iteration.
+        """
         X = (2 * cp.pi) * cp.array(self.cameraslm.slm.x_grid, dtype=self.dtype_complex).ravel()
         Y = (2 * cp.pi) * cp.array(self.cameraslm.slm.y_grid, dtype=self.dtype_complex).ravel()
 
@@ -2666,23 +2679,30 @@ class FreeSpotHologram(FeedbackHologram):
         self.stack *= 1j
 
     def _build_kernel_batched(self, spot_kxy, out=None):
-        """TODO"""
-        # Gather spot_kxy shape
+        """
+        Uses the coordinate stack to produce the kernel, a stack of images corresponding
+        to the blaze and lens directing power to each desired spot in the farfield.
+
+        Parameters
+        ----------
+        spot_kxy : numpy.ndarray
+            Vector locations of the spot, in two or three dimensions.
+            See :attr:`spot_kxy`.
+        out : numpy.ndarray OR None
+            Array to direct data to when in-place. None if out-of-place.
+        """
         (D, N) = spot_kxy.shape                         # Shape (2|3, N)
 
         # Parse stack.
         if self.stack is None:
-            self._build_stack(D)
-        if self.stack.shape != (np.prod(self.slm_shape), D):
-            raise ValueError("TODO")
+            self._build_stack(D)                        # Shape (H*W, 2|3)
 
         # Parse out.
         out_shape = (np.prod(self.slm_shape), N)        # Shape (H*W, N)
-
         if out is None:
             out = cp.zeros(out_shape, dtype=self.dtype_complex)
         if out.shape != out_shape:
-            raise ValueError("TODO")
+            raise ValueError(f"out shape {out.shape} does not matched the expected {out_shape}")
 
         # Evaluate the result in a (hopefully) memory and compute efficient way.
         out = cp.matmul(self.stack, spot_kxy, out=out)       # (H*W, 2|3) x (2|3, N) = (H*W, N)
@@ -2693,7 +2713,10 @@ class FreeSpotHologram(FeedbackHologram):
         return out
 
     def _nearfield2farfield(self, nearfield, farfield_out=None):
-        """TODO"""
+        """
+        Maps the ``(H,W)`` nearfield (complex phase on the SLM)
+        onto the ``(N,1)`` farfield (complex value for each spot).
+        """
         # Conjugate the nearfield to properly take the overlap integral.
         # FYI: Nearfield shape is (H,W)
         nearfield = cp.conj(nearfield, out=nearfield)
@@ -2733,9 +2756,9 @@ class FreeSpotHologram(FeedbackHologram):
 
     def _farfield2nearfield(self, farfield, nearfield_out=None, cuda=False):
         """
-        Maps the ``(N,1)`` farfield (complex value for each spot) 
+        Maps the ``(N,1)`` farfield (complex value for each spot)
         onto the ``(H,W)`` nearfield (complex phase on the SLM).
-        CUDA kernel is not fully implemented.
+        CUDA kernel is not fully implemented. (cuda=False left in as placeholder.)
         """
         if nearfield_out is None:
             nearfield_out = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
@@ -2810,12 +2833,10 @@ class FreeSpotHologram(FeedbackHologram):
 
         return nearfield_out
 
+    # Target update.
     def update_target(self, new_target, reset_weights=False, plot=False):
         """
         Change the target to something new. This method handles cleaning and normalization.
-
-        This method is shelled by :meth:`update_target()` such that it is still accessible
-        in the case that a subclass overwrites :meth:`update_target()`.
 
         Parameters
         ----------
@@ -2848,7 +2869,8 @@ class FreeSpotHologram(FeedbackHologram):
 
         if plot:
             raise NotImplementedError()
-        
+
+    # Weighting and stats.
     def _update_weights(self):
         """
         Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
@@ -2876,9 +2898,9 @@ class FreeSpotHologram(FeedbackHologram):
 
         # Apply weights.
         self._update_weights_generic(
-            self.weights, 
-            cp.array(amp_feedback, copy=False, dtype=self.dtype), 
-            self.target, 
+            self.weights,
+            cp.array(amp_feedback, copy=False, dtype=self.dtype),
+            self.target,
             nan_checks=True
         )
 
@@ -2886,7 +2908,6 @@ class FreeSpotHologram(FeedbackHologram):
         """
         Wrapped by :meth:`SpotHologram.update_stats()`.
         """
-
         if "computational_spot" in stat_groups:
             stats["computational_spot"] = self._calculate_stats(
                 self.amp_ff,
@@ -2899,7 +2920,6 @@ class FreeSpotHologram(FeedbackHologram):
         """
         Wrapped by :meth:`SpotHologram.update_stats()`.
         """
-
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
 
@@ -3016,12 +3036,6 @@ class SpotHologram(FeedbackHologram):
     null_region_knm : array_like of bool OR ``None``
         Array of shape :attr:`shape`. Where ``True``, sets the background to zero
         instead of nan. If ``None``, has no effect.
-    subpixel_beamradius_knm : float
-        The radius in knm space corresponding to the beamradius of the Gaussian spot
-        which is targeted when ``subpixel`` features are enabled.
-        In the future, a non-Gaussian kernel might be used instead.
-        This radius is computed based upon the stored amplitude in the SLM (if passed).
-        This is an experimental feature and should be used with caution.
     """
 
     def __init__(
@@ -3035,7 +3049,6 @@ class SpotHologram(FeedbackHologram):
         null_radius=None,
         null_region=None,
         null_region_radius_frac=None,
-        subpixel=False,
         **kwargs
     ):
         """
@@ -3083,20 +3096,6 @@ class SpotHologram(FeedbackHologram):
             ``null_region_radius_frac``. This is useful to prevent power being deflected
             to very high orders, which are unlikely to be properly represented in
             practice on a physical SLM.
-        subpixel : bool
-            If enabled, the :attr:`target` is set to a series of Gaussian spots with
-            radius :attr:`subpixel_beamradius_knm` instead of a series of single pixel
-            spots (the default for :class:`SpotHologram`). The major benefit here is:
-
-            - **Greater resolution with limited padding.** With 2-3 orders of padding,
-              the farfield has sufficient resolution to render a Gaussian positioned
-              **inbetween** farfield pixels, allowing for greater resolutions without
-              having to pad further. This is especially important when operating at the
-              memory limits of a system.
-
-            Defaults to ``False``. This is an experimental feature and should be used
-            with caution. Currently, there are issues with the initial phase causing
-            some spots to be permanently attenuated.
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
@@ -3202,22 +3201,6 @@ class SpotHologram(FeedbackHologram):
         if np.isnan(psf_knm):   psf_knm = 0
         if np.isnan(psf_ij):    psf_ij = 0
 
-        if subpixel:
-            warnings.warn(
-                "algorithms.py: subpixel spot sampling is an experimental feature "
-                "and should be used with caution."
-            )
-            if psf_knm > .5:
-                self.subpixel_beamradius_knm = psf_knm
-            else:
-                raise ValueError(
-                    "algorithms.py: nearfield amplitude is not sufficiently padded to have "
-                    "appreciable size in the farfield. Consider padding more to use subpixel "
-                    "features."
-                )
-        else:
-            self.subpixel_beamradius_knm = None
-
         # Use semi-arbitrary values to determine integration widths. The default width is:
         #  - six times the psf,
         #  - but then clipped to be:
@@ -3320,6 +3303,7 @@ class SpotHologram(FeedbackHologram):
         """
         return self.spot_knm.shape[1]
 
+    # Target update.
     @staticmethod
     def make_rectangular_array(
         shape,
@@ -3425,11 +3409,7 @@ class SpotHologram(FeedbackHologram):
         Wrapped by :meth:`SpotHologram.update_target()`.
         """
         # Round the spot points to the nearest integer coordinates in knm space.
-        if self.subpixel_beamradius_knm is None:
-            self.spot_knm_rounded = np.around(self.spot_knm).astype(int)
-        else:
-            # Don't round if we're doing subpixel stuff.
-            self.spot_knm_rounded = self.spot_knm
+        self.spot_knm_rounded = np.around(self.spot_knm).astype(int)
 
         # Convert these to the other coordinate systems if possible.
         if self.cameraslm is not None:
@@ -3477,33 +3457,7 @@ class SpotHologram(FeedbackHologram):
                     )
 
         # Set all the target pixels to the appropriate amplitude.
-        if self.subpixel_beamradius_knm is None:
-            self.target[
-                self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]
-            ] = self.spot_amp
-        else:   # Otherwise, make a target consisting of imprinted gaussians (subpixel enabled)
-            grid = np.meshgrid(np.arange(self.target.shape[1]), np.arange(self.target.shape[0]))
-
-            for spot_idx in range(len(self)):
-                toolbox.imprint(
-                    matrix=self.target,
-                    window=(
-                        self.spot_knm[0, spot_idx], 4*np.ceil(self.subpixel_beamradius_knm)+1,
-                        self.spot_knm[1, spot_idx], 4*np.ceil(self.subpixel_beamradius_knm)+1
-                    ),
-                    function=gaussian2d,
-                    grid=grid,
-                    imprint_operation="replace",
-                    centered=True,
-                    circular=True,
-                    clip=True,                      # End of imprint parameters
-                    x0=self.spot_knm[0, spot_idx],  # Start of gaussian2d parameters
-                    y0=self.spot_knm[1, spot_idx],
-                    a=self.spot_amp[spot_idx],
-                    c=0,
-                    wx=self.subpixel_beamradius_knm,
-                    wy=self.subpixel_beamradius_knm,
-                )
+        self.target[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = self.spot_amp
 
         self.target /= Hologram._norm(self.target)
 
@@ -3636,16 +3590,13 @@ class SpotHologram(FeedbackHologram):
 
         return shift_vectors
 
+    # Weighting and stats.
     def _update_weights(self):
         """
         Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
         :attr:`amp_ff`, the computed farfield amplitude.
         """
         feedback = self.flags["feedback"]
-
-        # If we're doing subpixel stuff, we can't use computational feedback, upgrade to computational_spot.
-        if self.subpixel_beamradius_knm is not None and feedback == "computational":
-            feedback = self.flags["feedback"] = "computational_spot"
 
         # Weighting strategy depends on the chosen feedback method.
         if feedback == "computational":
@@ -3677,43 +3628,15 @@ class SpotHologram(FeedbackHologram):
             else:
                 raise ValueError("algorithms.py: Feedback '{}' not recognized.".format(feedback))
 
-            if self.subpixel_beamradius_knm is None:
-                # Default mode: no subpixel stuff. We update single pixels.
-                self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (
-                    self._update_weights_generic(
-                        self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
-                        cp.array(amp_feedback, copy=False, dtype=self.dtype),
-                        self.spot_amp,
-                        nan_checks=True
-                    )
+            # Update the weights of single pixels.
+            self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (
+                self._update_weights_generic(
+                    self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
+                    cp.array(amp_feedback, copy=False, dtype=self.dtype),
+                    self.spot_amp,
+                    nan_checks=True
                 )
-            else:
-                # Complex mode: subpixel stuff. Update Gaussian patterns.
-                if hasattr(amp_feedback, "get"):
-                    amp_feedback = amp_feedback.get()
-
-                # Figure out the multiplication factors on a dummy array.
-                dummy_weights = (
-                    self._update_weights_generic(
-                        np.ones(len(self)),
-                        amp_feedback,
-                        self.spot_amp,
-                        mp=np
-                    )
-                )
-
-                # Update each Gaussian with each respective multiplication factor.
-                for spot_idx in range(len(self)):
-                    window = toolbox.window_slice(
-                        window=(
-                            self.spot_knm[0, spot_idx], 4*np.ceil(self.subpixel_beamradius_knm)+1,
-                            self.spot_knm[1, spot_idx], 4*np.ceil(self.subpixel_beamradius_knm)+1
-                        ),
-                        shape=None,
-                        centered=True,
-                        circular=True
-                    )
-                    self.weights[window] *= dummy_weights[spot_idx]
+            )
 
     def _calculate_stats_computational_spot(self, stats, stat_groups=[]):
         """

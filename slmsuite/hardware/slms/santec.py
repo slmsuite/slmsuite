@@ -80,6 +80,7 @@ class Santec(SLM):
         doesn't correspond to exactly :math:`2\pi` at the target wavelength. This is noted
         in the initialization, and the user should update :attr:`.SLM.wav_design_um` or otherwise
         to avoid undesired behavior.
+        :attr:`wav_design_um` defaults to :attr:`wav_um` if it is not given.
 
         Caution
         ~~~~~~~

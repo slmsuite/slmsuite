@@ -137,6 +137,8 @@ class AlliedVision(Camera):
         if close_sdk:
             self.close_sdk()
 
+        del self.cam
+
     @staticmethod
     def info(verbose=True):
         """

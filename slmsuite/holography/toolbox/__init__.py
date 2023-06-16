@@ -3,7 +3,7 @@ Helper functions for manipulating phase patterns.
 """
 
 import numpy as np
-from scipy.spatial.distance import chebyshev
+from scipy.spatial.distance import chebyshev, euclidean
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
@@ -598,7 +598,7 @@ def imprint(
 
 # Vector helper functions.
 
-def format_vectors(vectors, expected_dimension=2, handle_dimension="crop"):
+def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
     """
     Validates that an array of M-dimensional vectors is a ``numpy.ndarray`` of shape ``(M, N)``.
     Handles shaping and transposing if, for instance, tuples or row vectors are passed.
@@ -638,7 +638,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="crop"):
             f"handle_dimension option '{handle_dimension}' not recognized. "
             f"Must be one of '{options_dimension}'."
         )
-    
+
     # Convert to np.array and squeeze
     vectors = np.squeeze(vectors)
 
@@ -651,7 +651,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="crop"):
     # Make sure that we are an array of N-vectors.
     if len(vectors.shape) != 2:
         raise ValueError(f"Wrong dimension {vectors.shape} for vectors.")
-    
+
     if vectors.shape[0] == expected_dimension:
         pass
     elif vectors.shape[0] > expected_dimension:     # Handle unexpected case.
@@ -667,7 +667,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="crop"):
     else:
         raise ValueError(f"Expected {expected_dimension}-vectors. Found {vectors.shape[0]}-vectors.")
 
-        
+
     return vectors
 
 
@@ -1014,6 +1014,30 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
         return result
     else:
         return np.vstack((x_grid[result], y_grid[result]))
+
+
+def assign_vectors(vectors, assignment_options):
+    """
+    Assigns ``vectors`` to the closest counterpart ``assignment_options``.
+
+    Parameters
+    ----------
+    vectors : array_like
+        M-vector or array of M-vectors.
+    assignment_options : array_like
+        M-vector or array of M-vectors.
+
+    Returns
+    -------
+    numpy.ndarray
+        For each vector, the index of the closest ``assignment_options``.
+    """
+    vectors = format_vectors(vectors)[:, np.newaxis, :]
+    assignment_options = format_vectors(assignment_options)[:, :, np.newaxis]
+
+    distance = np.sum(np.square(vectors - assignment_options), axis=0)
+
+    return np.argmin(distance, axis=0)
 
 
 # Grid functions.

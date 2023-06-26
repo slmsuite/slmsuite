@@ -51,7 +51,7 @@ def lens(grid, f=(np.inf, np.inf)):
     r"""
     Returns a simple
     `thin parabolic lens <https://en.wikipedia.org/wiki/Thin_lens#Physical_optics>`_.
-    
+
     When the focal length :math:`f` is isotropic,
 
     .. math:: \phi(\vec{x}) = \frac{\pi}{f}|\vec{x}|^2
@@ -223,7 +223,7 @@ def zernike_sum(grid, weights, aperture=None):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     weights : list of ((int, int), float)
-        Which Zernike polynomials to sum. The ``(int, int)`` is the index ``(n, m)``, 
+        Which Zernike polynomials to sum. The ``(int, int)`` is the index ``(n, m)``,
         which correspond to the azimuthal degree and order of the polynomial.
         The ``float`` is the weight for the given index.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None

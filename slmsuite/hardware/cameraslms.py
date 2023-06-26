@@ -555,7 +555,7 @@ class FourierSLM(CameraSLM):
         """
         Perform wavefront calibration.
         This procedure involves `iteratively interfering light diffracted from
-        superpixels across an SLM with a reference superpixel <https://doi.org/10.1038/nphoton.2010.8>`_.
+        superpixels across an SLM with a reference superpixel <https://doi.org/10.1038/nphoton.2010.85>`_.
         Interference occurs at a given ``interference_point`` in the camera's imaging plane.
         It is at this point where the computed correction is ideal; the further away
         from this point, the less ideal the correction is.

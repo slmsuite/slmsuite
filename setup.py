@@ -2,7 +2,7 @@
 setup.py - this module makes the package installable
 """
 
-from distutils.core import setup
+from setuptools import setup
 
 NAME = "slmsuite"
 VERSION = "0.0.1"

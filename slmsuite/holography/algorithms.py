@@ -84,12 +84,14 @@ from scipy.ndimage import gaussian_filter as sp_gaussian_filter
 try:
     import cupy as cp
     import cupyx.scipy.fft as cpfft
+    from cupyx import zeros_pinned as cp_zeros_pinned
     from cupyx.scipy.ndimage import gaussian_filter1d as cp_gaussian_filter1d
     from cupyx.scipy.ndimage import gaussian_filter as cp_gaussian_filter
     from cupyx.scipy.ndimage import affine_transform as cp_affine_transform
 except ImportError:
     cp = np
     cpfft = spfft
+    cp_zeros_pinned = np.zeros
     cp_gaussian_filter1d = sp_gaussian_filter1d
     cp_gaussian_filter = sp_gaussian_filter
     cp_affine_transform = sp_affine_transform
@@ -403,6 +405,9 @@ class Hologram:
         else:
             raise ValueError(f"Data type {dtype} not supported.")
 
+        # # Create a "pinned memory" array for optimized stats transfers off of the GPU.
+        # self._stats_pinned = cp_zeros_pinned((5,))
+
         # Initialize and normalize near-field amplitude
         if amp is None:     # Uniform amplitude by default (scalar).
             self.amp = 1 / np.sqrt(np.prod(self.slm_shape))
@@ -418,6 +423,53 @@ class Hologram:
 
         # Initialize everything else inside reset.
         self.reset(reset_phase=False, reset_flags=True)
+        
+        # Custom GPU kernels for speedy weighting.
+        if np != cp:
+            try:
+                self._update_weights_generic_cuda = cp.RawKernel(
+                    r'''
+                    #include <cupy/complex.cuh>
+                    extern "C"
+                    __global__ void update_weights(
+                        float* feedback_corrected,      //
+                        const float* target,            //
+                        const bool has_target,          //
+                        const unsigned int N,           //
+                        const int method,               // 0 == Kim/Leonardo, 1 == Nogrette
+                        const float factor
+                    ) {
+                        // 
+                        int tid = blockDim.x * blockIdx.x + threadIdx.x;
+
+                        if (tid < N) {
+                            // Make a local result variable to avoid talking with global memory.
+                            float result = feedback_corrected[tid];
+
+                            if (has_target) {
+                                result /= target[tid];
+
+                                if (isnan(result) || isinf(result)) result = 1;
+                            }
+
+                            if (method == 0) {
+                                result = pow(result, -factor)
+                            } else if (method == 1) {
+                                result = 1 / (1 + factor * (1 - result))
+                            }
+
+                            if (isinf(result)) result = 1;
+                            if (isnan(result)) result = 0;
+
+                            // Export the result to global memory.
+                            nearfield[nf] = result;
+                        }
+                    }
+                    ''',
+                    'update_weights'
+                )
+            except:
+                pass
 
     # Initialization helper functions.
     def reset(self, reset_phase=True, reset_flags=False):
@@ -1026,7 +1078,7 @@ class Hologram:
                 # Set the farfield amplitude to the updated weights.
                 cp.divide(farfield, cp.abs(farfield), out=farfield)
                 cp.multiply(farfield, self.weights, out=farfield)
-                cp.nan_to_num(farfield, copy=False, nan=0)
+                # cp.nan_to_num(farfield, copy=False, nan=0)
         else:
             noise_region =  mraf_variables["noise_region"]
             signal_region = mraf_variables["signal_region"]
@@ -1188,7 +1240,7 @@ class Hologram:
 
             if nan_checks:
                 feedback_corrected[feedback_corrected == np.inf] = 1
-                feedback_corrected[mp.array(target_amp) == 0] = 1
+                feedback_corrected[mp.array(target_amp, copy=False) == 0] = 1
 
                 mp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
@@ -1224,6 +1276,9 @@ class Hologram:
         weight_amp *= (1 / Hologram._norm(weight_amp, mp=mp))
 
         return weight_amp
+
+    def _update_weights_generic_cuda():
+        pass
 
     def _update_weights(self):
         """
@@ -1288,7 +1343,8 @@ class Hologram:
         target_pwr = mp.square(target_amp)
 
         if total is not None:
-            efficiency = float(mp.sum(feedback_pwr)) / total
+            efficiency = mp.sum(feedback_pwr) / total
+            # self._stats_pinned[0] 
 
         # Normalize.
         feedback_pwr_sum = mp.sum(feedback_pwr)
@@ -1301,7 +1357,10 @@ class Hologram:
 
         if total is None:
             # Efficiency overlap integral.
-            efficiency = np.square(float(mp.sum(mp.multiply(target_amp, feedback_amp))))
+            efficiency_intermediate = mp.sum(
+                mp.multiply(target_amp, feedback_amp)
+            )
+            efficiency = np.square(float(efficiency_intermediate))
             if efficiency_compensation:
                 feedback_pwr *= 1 / efficiency
 
@@ -1336,7 +1395,7 @@ class Hologram:
                 final_stats["raw_pwr"] = np.square(feedback_amp)
                 ratio_pwr_full[mask] = ratio_pwr
             else:
-                final_stats["raw_pwr"] = np.square(feedback_amp).get()
+                final_stats["raw_pwr"] = mp.square(feedback_amp).get()
                 ratio_pwr_full[mask] = ratio_pwr.get()
 
             final_stats["raw_pwr_ratio"] = ratio_pwr_full
@@ -1416,11 +1475,8 @@ class Hologram:
                                 )
 
                         # Update stat
-                        if group in stats.keys():
-                            if stat in stats[group].keys():
-                                self.stats["stats"][group][stat][self.iter] = stats[group][
-                                    stat
-                                ]
+                        if group in stats.keys() and stat in stats[group].keys():
+                            self.stats["stats"][group][stat][self.iter] = stats[group][stat]
 
     def update_stats(self, stat_groups=[]):
         """
@@ -1888,7 +1944,8 @@ class Hologram:
         stats_dict : dict OR None
             Stats to plot in dictionary form. If ``None``, defaults to :attr:`stats`.
         stat_groups : list of str OR None
-            Which
+            Which statistics groups to plot. If empty or ``None`` is provided,
+            defaults to all groups present in :attr:`stats`.
         ylim : (int, int) OR None
             Allows the user to pass in desired y limits.
             If ``None``, the default y limits are used.
@@ -1968,6 +2025,8 @@ class Hologram:
 
         # Make the color/linestyle legend.
         plt.legend(dummylines_modes + dummylines_keys, stat_keys + legendstats, loc="lower left")
+
+        plt.plot([-.75, len(stats_dict["method"]) - .25], [1,1], alpha=0)
 
         ax.set_xlim([-.75, len(stats_dict["method"]) - .25])
 
@@ -2571,7 +2630,7 @@ class FreeSpotHologram(FeedbackHologram):
                                     * exp(
                                         local_X  * kxyz[i] +
                                         local_Y  * kxyz[i + N] +
-                                        local_RR * kxyz[i + 2 * N])
+                                        local_RR * kxyz[i + N + N]
                                     );
                                 }
                             } else {
@@ -2598,21 +2657,22 @@ class FreeSpotHologram(FeedbackHologram):
                     r'''
                     #include <cupy/complex.cuh>
                     extern "C"  __device__ void warpReduce(
-                        volatile complex<float>* sdata,
+                        complex<float>* sdata, // volatile 
                         unsigned int tid
                     ) {
-                        sdata += sdata[tid + 32];
-                        sdata += sdata[tid + 16];
-                        sdata += sdata[tid + 8];
-                        sdata += sdata[tid + 4];
-                        sdata += sdata[tid + 2];
-                        sdata += sdata[tid + 1];
+                        sdata[tid] += sdata[tid + 32]; __syncwarp();
+                        sdata[tid] += sdata[tid + 16]; __syncwarp();
+                        sdata[tid] += sdata[tid + 8];  __syncwarp();
+                        sdata[tid] += sdata[tid + 4];  __syncwarp();
+                        sdata[tid] += sdata[tid + 2];  __syncwarp();
+                        sdata[tid] += sdata[tid + 1];  __syncwarp();
                     }
 
                     extern "C" __global__ void n2f(
                         const complex<float>* nearfield,        // Input (WH)
                         const unsigned int WH,                  // Size of nearfield
                         const unsigned int N,                   // Size of farfield
+                        const unsigned int D,                   // Dimension of spots (2 or 3)
                         const float* kxyz,                      // Spot parameters (D*N)
                         const complex<float>* X,                // X grid (WH)
                         const complex<float>* Y,                // Y grid (WH)
@@ -2627,10 +2687,9 @@ class FreeSpotHologram(FeedbackHologram):
                         __shared__ complex<float> sdata[1024];
 
                         // Make some IDs.
-                        int tid = threadIdx.x;                  // Thread ID
-                        int rid = blockIdx.x + ff * gridDim.x   // Farfield result ID
-
                         int ff = blockIdx.y;                    // Farfield index  [0, N)
+                        int tid = threadIdx.x;                  // Thread ID
+                        int rid = blockIdx.x + ff * gridDim.x;  // Farfield result ID
                         int nf = blockDim.x * blockIdx.x + tid; // Nearfield index [0, WH)
 
                         if (nf < WH) {
@@ -2640,10 +2699,10 @@ class FreeSpotHologram(FeedbackHologram):
                             * exp(
                                 X[nf] * kxyz[ff] +
                                 Y[nf] * kxyz[ff + N] +
-                                (D == 3 ? (RR[nf] * kxyz[ff + 2*N]) : 0)
+                                (D == 3 ? (RR[nf] * kxyz[ff + N + N]) : 0)
                             );
-                        else {
-                            sdata[tid] = 0
+                        } else {
+                            sdata[tid] = 0;
                         }
 
                         // Now we want to integrate by summing these results.
@@ -2659,7 +2718,7 @@ class FreeSpotHologram(FeedbackHologram):
                             warpReduce(sdata, tid);
 
                             // Save the summed results to global memory.
-                            farfield[rid] = sdata[0];
+                            if (tid == 0) { farfield_intermediate[rid] = sdata[0]; }
                         }
                     }
                     ''',
@@ -2737,7 +2796,7 @@ class FreeSpotHologram(FeedbackHologram):
             raise ValueError(f"out shape {out.shape} does not matched the expected {out_shape}")
 
         # Evaluate the result in a (hopefully) memory and compute efficient way.
-        out = cp.matmul(self.stack, spot_kxy, out=out)       # (H*W, 2|3) x (2|3, N) = (H*W, N)
+        out = cp.matmul(self.stack, spot_kxy, out=out)  # (H*W, 2|3) x (2|3, N) = (H*W, N)
 
         # Convert from phase to complex amplitude.
         out = cp.exp(out, out=out)
@@ -2750,7 +2809,8 @@ class FreeSpotHologram(FeedbackHologram):
         onto the ``(N,1)`` farfield (complex value for each spot).
         """
         if farfield_out is None:
-            farfield_out = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
+            N = self.spot_kxy.shape[1]
+            farfield_out = cp.zeros((N,), dtype=self.dtype_complex)
 
         if cuda is None: cuda = self.cuda
 
@@ -2767,25 +2827,27 @@ class FreeSpotHologram(FeedbackHologram):
         return farfield_out
 
     def _nearfield2farfield_cuda(self, nearfield, farfield_out):
-        WH = self.slm_shape[0] * self.slm_shape[1]
-        N = self.spot_kxy.shape[1]
-        D = self.spot_kxy.shape[0]
+        WH = int(self.slm_shape[0] * self.slm_shape[1])
+        N = int(self.spot_kxy.shape[1])
+        D = int(self.spot_kxy.shape[0])
 
         if self.stack is None:
             self._build_stack(D)
 
-        threads_per_block = 1024
-        assert self._far2near_kernel.max_threads_per_block >= threads_per_block
-        if self._far2near_kernel.max_threads_per_block > threads_per_block:
+        threads_per_block = int(1024)
+        assert self._near2far_cuda.max_threads_per_block >= threads_per_block
+        if self._near2far_cuda.max_threads_per_block > threads_per_block:
             warnings.warn(
                 "Threads per block can be larger than the hardcoded limit of 1024."
                 "Remove this limit for enhanced speed."
             )
-        blocksx = WH // threads_per_block + 1
+        blocksx = WH // threads_per_block
         blocksy = N
 
+        print((blocksx, blocksy))
+
         if self._nearfield2farfield_cuda_intermediate is None:
-            self._nearfield2farfield_cuda_intermediate = cp.zeros((N, blocksx))
+            self._nearfield2farfield_cuda_intermediate = cp.zeros((blocksy, blocksx), dtype=self.dtype_complex)
 
         spot_kxy_float = cp.array(self.spot_kxy, self.dtype)    # TODO: Make this faster.
 
@@ -2797,16 +2859,25 @@ class FreeSpotHologram(FeedbackHologram):
                 nearfield.ravel(),
                 WH, N, D,
                 spot_kxy_float,
-                self.stack[0, :],
-                self.stack[1, :],
-                self.stack[2, :] if D == 3 else 0,
+                self.stack[:, 0],
+                self.stack[:, 1],
+                self.stack[:, 2] if D == 3 else 0,
                 0, 0, 0,
                 self._nearfield2farfield_cuda_intermediate.ravel()
             )
         )
 
-        # Sum over all the blocks to get the final answers.
+        print(WH)
+        print(self.stack.shape)
+        print(self.stack[0, :])
+        print(self._nearfield2farfield_cuda_intermediate)
+        print(cp.abs(self._nearfield2farfield_cuda_intermediate))
+        print(self._nearfield2farfield_cuda_intermediate.shape)
+        print(farfield_out.shape)
+
+        # Sum over all the blocks to get the final answers using optimized cupy methods.
         farfield_out = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=farfield_out)
+        farfield_out *= (1 / Hologram._norm(farfield_out, mp=cp))
 
         return farfield_out
 
@@ -2868,15 +2939,15 @@ class FreeSpotHologram(FeedbackHologram):
         return nearfield_out
 
     def _farfield2nearfield_cuda(self, farfield, nearfield_out):
-        WH = self.slm_shape[0] * self.slm_shape[1]
-        N = self.spot_kxy.shape[1]
-        D = self.spot_kxy.shape[0]
+        WH = int(self.slm_shape[0] * self.slm_shape[1])
+        N = int(self.spot_kxy.shape[1])
+        D = int(self.spot_kxy.shape[0])
 
         if self.stack is None:
             self._build_stack(D)
 
-        threads_per_block = self._far2near_kernel.max_threads_per_block
-        blocks = WH // threads_per_block + 1
+        threads_per_block = int(self._far2near_cuda.max_threads_per_block)
+        blocks = WH // threads_per_block
 
         spot_kxy_float = cp.array(self.spot_kxy, self.dtype)    # TODO: Make this faster.
 
@@ -2888,9 +2959,9 @@ class FreeSpotHologram(FeedbackHologram):
                 farfield,
                 WH, N, D,
                 spot_kxy_float,
-                self.stack[0, :],
-                self.stack[1, :],
-                self.stack[2, :] if D == 3 else 0,
+                self.stack[:, 0],
+                self.stack[:, 1],
+                self.stack[:, 2] if D == 3 else 0,
                 0, 0, 0,
                 nearfield_out.ravel()
             )
@@ -2918,7 +2989,7 @@ class FreeSpotHologram(FeedbackHologram):
         else:
             nearfield_out_temp = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
 
-            batches = 1 + N // N_batch_max
+            batches = N // N_batch_max
             for batch in range(batches):
                 batch_slice = slice(batch * N_batch_max, np.clip((batch+1) * N_batch_max, 0, N))
                 self.kernel = self._build_kernel_batched(self.spot_kxy_complex[:, batch_slice], out=self.kernel)

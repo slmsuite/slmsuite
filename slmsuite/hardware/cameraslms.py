@@ -810,7 +810,7 @@ class FourierSLM(CameraSLM):
 
         fringe_period = interference_size / max_r / 2
 
-        if fringe_period < 1:
+        if np.any(fringe_period < 1):
             warnings.warn(
                 "Non-resolvable interference fringe period "
                 "for the given SLM calibration extent. "
@@ -1249,7 +1249,7 @@ class FourierSLM(CameraSLM):
             target_blaze_fixed = interference_blaze - blaze_difference
 
             # Step 1.5: Measure the power...
-            if accurate_amplitude:      # ...in the corrected target mode.
+            if corrected_amplitude:      # ...in the corrected target mode.
                 self.slm.write(
                     superpixels(index, reference=None, target=0, target_blaze=target_blaze_fixed),
                     settle=True

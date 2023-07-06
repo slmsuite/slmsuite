@@ -84,12 +84,14 @@ from scipy.ndimage import gaussian_filter as sp_gaussian_filter
 try:
     import cupy as cp
     import cupyx.scipy.fft as cpfft
+    from cupyx import zeros_pinned as cp_zeros_pinned
     from cupyx.scipy.ndimage import gaussian_filter1d as cp_gaussian_filter1d
     from cupyx.scipy.ndimage import gaussian_filter as cp_gaussian_filter
     from cupyx.scipy.ndimage import affine_transform as cp_affine_transform
 except ImportError:
     cp = np
     cpfft = spfft
+    cp_zeros_pinned = np.zeros
     cp_gaussian_filter1d = sp_gaussian_filter1d
     cp_gaussian_filter = sp_gaussian_filter
     cp_affine_transform = sp_affine_transform
@@ -403,6 +405,9 @@ class Hologram:
         else:
             raise ValueError(f"Data type {dtype} not supported.")
 
+        # # Create a "pinned memory" array for optimized stats transfers off of the GPU.
+        # self._stats_pinned = cp_zeros_pinned((5,))
+
         # Initialize and normalize near-field amplitude
         if amp is None:     # Uniform amplitude by default (scalar).
             self.amp = 1 / np.sqrt(np.prod(self.slm_shape))
@@ -418,6 +423,53 @@ class Hologram:
 
         # Initialize everything else inside reset.
         self.reset(reset_phase=False, reset_flags=True)
+        
+        # Custom GPU kernels for speedy weighting.
+        if np != cp:
+            try:
+                self._update_weights_generic_cuda = cp.RawKernel(
+                    r'''
+                    #include <cupy/complex.cuh>
+                    extern "C"
+                    __global__ void update_weights(
+                        float* feedback_corrected,      //
+                        const float* target,            //
+                        const bool has_target,          //
+                        const unsigned int N,           //
+                        const int method,               // 0 == Kim/Leonardo, 1 == Nogrette
+                        const float factor
+                    ) {
+                        // 
+                        int tid = blockDim.x * blockIdx.x + threadIdx.x;
+
+                        if (tid < N) {
+                            // Make a local result variable to avoid talking with global memory.
+                            float result = feedback_corrected[tid];
+
+                            if (has_target) {
+                                result /= target[tid];
+
+                                if (isnan(result) || isinf(result)) result = 1;
+                            }
+
+                            if (method == 0) {
+                                result = pow(result, -factor)
+                            } else if (method == 1) {
+                                result = 1 / (1 + factor * (1 - result))
+                            }
+
+                            if (isinf(result)) result = 1;
+                            if (isnan(result)) result = 0;
+
+                            // Export the result to global memory.
+                            nearfield[nf] = result;
+                        }
+                    }
+                    ''',
+                    'update_weights'
+                )
+            except:
+                pass
 
     # Initialization helper functions.
     def reset(self, reset_phase=True, reset_flags=False):
@@ -1209,7 +1261,7 @@ class Hologram:
 
             if nan_checks:
                 feedback_corrected[feedback_corrected == np.inf] = 1
-                feedback_corrected[mp.array(target_amp) == 0] = 1
+                feedback_corrected[mp.array(target_amp, copy=False) == 0] = 1
 
                 mp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
@@ -1245,6 +1297,9 @@ class Hologram:
         weight_amp *= (1 / Hologram._norm(weight_amp, mp=mp))
 
         return weight_amp
+
+    def _update_weights_generic_cuda():
+        pass
 
     def _update_weights(self):
         """
@@ -1309,7 +1364,8 @@ class Hologram:
         target_pwr = mp.square(target_amp)
 
         if total is not None:
-            efficiency = float(mp.sum(feedback_pwr)) / total
+            efficiency = mp.sum(feedback_pwr) / total
+            # self._stats_pinned[0] 
 
         # Normalize.
         feedback_pwr_sum = mp.sum(feedback_pwr)
@@ -1322,7 +1378,10 @@ class Hologram:
 
         if total is None:
             # Efficiency overlap integral.
-            efficiency = np.square(float(mp.sum(mp.multiply(target_amp, feedback_amp))))
+            efficiency_intermediate = mp.sum(
+                mp.multiply(target_amp, feedback_amp)
+            )
+            efficiency = np.square(float(efficiency_intermediate))
             if efficiency_compensation:
                 feedback_pwr *= 1 / efficiency
 
@@ -1357,7 +1416,7 @@ class Hologram:
                 final_stats["raw_pwr"] = np.square(feedback_amp)
                 ratio_pwr_full[mask] = ratio_pwr
             else:
-                final_stats["raw_pwr"] = np.square(feedback_amp).get()
+                final_stats["raw_pwr"] = mp.square(feedback_amp).get()
                 ratio_pwr_full[mask] = ratio_pwr.get()
 
             final_stats["raw_pwr_ratio"] = ratio_pwr_full
@@ -1437,11 +1496,8 @@ class Hologram:
                                 )
 
                         # Update stat
-                        if group in stats.keys():
-                            if stat in stats[group].keys():
-                                self.stats["stats"][group][stat][self.iter] = stats[group][
-                                    stat
-                                ]
+                        if group in stats.keys() and stat in stats[group].keys():
+                            self.stats["stats"][group][stat][self.iter] = stats[group][stat]
 
     def update_stats(self, stat_groups=[]):
         """
@@ -1931,7 +1987,8 @@ class Hologram:
         stats_dict : dict OR None
             Stats to plot in dictionary form. If ``None``, defaults to :attr:`stats`.
         stat_groups : list of str OR None
-            Which
+            Which statistics groups to plot. If empty or ``None`` is provided,
+            defaults to all groups present in :attr:`stats`.
         ylim : (int, int) OR None
             Allows the user to pass in desired y limits.
             If ``None``, the default y limits are used.
@@ -2011,6 +2068,8 @@ class Hologram:
 
         # Make the color/linestyle legend.
         plt.legend(dummylines_modes + dummylines_keys, stat_keys + legendstats, loc="lower left")
+
+        plt.plot([-.75, len(stats_dict["method"]) - .25], [1,1], alpha=0)
 
         ax.set_xlim([-.75, len(stats_dict["method"]) - .25])
 
@@ -2495,18 +2554,24 @@ class FreeSpotHologram(FeedbackHologram):
         self.spot_kxy = toolbox.format_2vectors(spot_kxy, handle_dimension="pass")
         if self.spot_kxy.shape[0] > 3:
             raise ValueError("Cannot interpret greater dimension than three.")
-        self.spot_ij = None
 
         if spot_amp is not None:
             assert self.spot_kxy.shape[1] == len(spot_amp.ravel()), \
                 "spot_amp must have the same length as the provided spots."
 
-        # Generate point spread functions (psf) for the knm and ij bases
+        # Check to make sure spots are within bounds
+        kmax = 1    # TODO: replace with correct value.
+        if np.any(np.abs(self.spot_kxy) > kmax):
+            raise ValueError("Spots outside the bounds of the farfield")
+
+        # Generate ij point spread function (psf)
         if cameraslm is not None:
             psf_kxy = cameraslm.slm.spot_radius_kxy()
+            self.spot_ij = cameraslm.kxyslm_to_ijcam(self.spot_kxy)
             psf_ij = toolbox.convert_blaze_radius(psf_kxy, "kxy", "ij", cameraslm)
         else:
             psf_ij = np.nan
+            self.spot_ij = None
 
         if np.isnan(psf_ij):    psf_ij = 0
 
@@ -2531,41 +2596,27 @@ class FreeSpotHologram(FeedbackHologram):
                 )
             self.spot_integration_width_ij = np.clip(6 * psf_ij, 3, dist_ij)
             self.spot_integration_width_ij =  int(2 * np.floor(self.spot_integration_width_ij / 2) + 1)
+
+            cam_shape = cameraslm.cam.shape
+
+            if (
+                np.any(self.spot_ij[0] < self.spot_integration_width_ij / 2) or
+                np.any(self.spot_ij[1] < self.spot_integration_width_ij / 2) or
+                np.any(self.spot_ij[0] >= cam_shape[1] - self.spot_integration_width_ij / 2) or
+                np.any(self.spot_ij[1] >= cam_shape[0] - self.spot_integration_width_ij / 2)
+            ):
+                raise ValueError(
+                    "Spots outside camera bounds!\nSpots:\n{}\nBounds: {}".format(
+                        self.spot_ij, cam_shape
+                    )
+                )
         else:
             self.spot_integration_width_ij = None
-
-        # Check to make sure spots are within relevant camera and SLM shapes.
-        # TODO: modify for kxy
-        # if (
-        #     np.any(self.spot_knm[0] < self.spot_integration_width_knm / 2) or
-        #     np.any(self.spot_knm[1] < self.spot_integration_width_knm / 2) or
-        #     np.any(self.spot_knm[0] >= shape[1] - self.spot_integration_width_knm / 2) or
-        #     np.any(self.spot_knm[1] >= shape[0] - self.spot_integration_width_knm / 2)
-        # ):
-        #     raise ValueError(
-        #         "Spots outside SLM computational space bounds!\nSpots:\n{}\nBounds: {}".format(
-        #             self.spot_knm, shape
-        #         )
-        #     )
-
-        # if self.spot_ij is not None:
-        #     cam_shape = cameraslm.cam.shape
-
-        #     if (
-        #         np.any(self.spot_ij[0] < self.spot_integration_width_ij / 2) or
-        #         np.any(self.spot_ij[1] < self.spot_integration_width_ij / 2) or
-        #         np.any(self.spot_ij[0] >= cam_shape[1] - self.spot_integration_width_ij / 2) or
-        #         np.any(self.spot_ij[1] >= cam_shape[0] - self.spot_integration_width_ij / 2)
-        #     ):
-        #         raise ValueError(
-        #             "Spots outside camera bounds!\nSpots:\n{}\nBounds: {}".format(
-        #                 self.spot_ij, cam_shape
-        #             )
-        #         )
 
         # Initialize target/etc with fake shape.
         super().__init__(shape=(1,1), target_ij=None, cameraslm=cameraslm, **kwargs)
 
+        # Replace the fake shape with the SLM shape.
         self.shape = self.slm_shape
 
         # Fill the target with data.
@@ -2573,114 +2624,154 @@ class FreeSpotHologram(FeedbackHologram):
 
         # Set the external amp variable to be perfect by default.
         self.external_spot_amp = np.ones(self.target.shape)
+
+        # Default helper variables.
         self.kernel = None
         self.stack = None
+        self.cuda = False
 
-        # FUTURE: Custom GPU kernels for speed.
-        try:
-            #
-            self._far2near_cuda = cp.RawKernel(
-                r'''
-                #include <cupy/complex.cuh>
-                extern "C"
-                __global__ void f2n(
-                    const complex<float>* farfield, // Input
-                    const int WH,                   // Size of nearfield (WxH)
-                    const int M,                    // Size of farfield (1xM)
-                    const int D,                    // Dimension of spots (2 or 3)
-                    const float* kxyz,              // Spots
-                    const complex<float>* X,        // X grid
-                    const complex<float>* Y,        // Y grid
-                    const complex<float>* RR,       // RR grid
-                    const int* a,                 // TODO
-                    const complex<float>* map,      // TODO
-                    const int maps,                 // TODO
-                    complex<float>* nearfield       // Output
-                ) {
-                    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+        # Custom GPU kernels for speed.
+        if np != cp:
+            try:
+                self._far2near_cuda = cp.RawKernel(
+                    r'''
+                    #include <cupy/complex.cuh>
+                    extern "C"
+                    __global__ void f2n(
+                        const complex<float>* farfield, // Input (N)
+                        const unsigned int WH,          // Size of nearfield
+                        const unsigned int N,           // Size of farfield
+                        const unsigned int D,           // Dimension of spots (2 or 3)
+                        const float* kxyz,              // Spot parameters (D*N)
+                        const complex<float>* X,        // X grid (WH)
+                        const complex<float>* Y,        // Y grid (WH)
+                        const complex<float>* RR,       // RR grid (WH, required when D==3)
+                        const int* m,                   // Map index (M)
+                        const complex<float>* map,      // Maps (M*WH)
+                        const unsigned int M,           // Number of maps
+                        complex<float>* nearfield       // Output (WH)
+                    ) {
+                        // nf is each pixel in the nearfield.
+                        int nf = blockDim.x * blockIdx.x + threadIdx.x;
 
-                    if (tid < WH) {
-                        nearfield[tid] = 0;
+                        if (nf < WH) {
+                            // Make a local result variable to avoid talking with global memory.
+                            complex<float> result = 0;
 
-                        for (int i = 0; i < M; i++) {
-                            nearfield[tid] += farfield[i]
-                            * ((maps>0) ? map[tid + a[i] * WH] : 1)
-                            * exp(
-                                X[tid] * kxyz[i] +
-                                Y[tid] * kxyz[i + WH] +
-                                ((D == 3) ? (RR[tid] * kxyz[i + 2 * WH]) : 0)
-                            );
+                            // Copy data that will be used multiple times per thread into local memory (this might not matter though).
+                            complex<float> local_X = X[nf];
+                            complex<float> local_Y = Y[nf];
+
+                            if (D == 3) {
+                                // Additional copy for 3D spots.
+                                complex<float> local_RR = RR[nf];
+
+                                // Loop over all the spots (compiler should handle optimizing the trinary).
+                                for (int i = 0; i < N; i++) {
+                                    result += farfield[i]
+                                    * ((M > 0) ? map[nf + m[i] * WH] : 1)
+                                    * exp(
+                                        local_X  * kxyz[i] +
+                                        local_Y  * kxyz[i + N] +
+                                        local_RR * kxyz[i + N + N]
+                                    );
+                                }
+                            } else {
+                                // Loop over all the spots (compiler should handle optimizing the trinary).
+                                for (int i = 0; i < N; i++) {
+                                    result += farfield[i]
+                                    * ((M > 0) ? map[nf + m[i] * WH] : 1)
+                                    * exp(
+                                        local_X * kxyz[i] +
+                                        local_Y * kxyz[i + N]
+                                    );
+                                }
+                            }
+
+                            // Export the result to global memory.
+                            nearfield[nf] = result;
                         }
                     }
-                }
-                ''',
-                'f2n'
-            )
+                    ''',
+                    'f2n'
+                )
 
-            return
-
-            #
-            near2far = cp.RawKernel(
-                r'''
-                #include <cupy/complex.cuh>
-                extern "C"  __device__ void warpReduce(
-                    volatile complex<float>* sdata,
-                    unsigned int tid
-                ) {
-                    if (blockSize >= 64) sdata += sdata[tid + 32];
-                    if (blockSize >= 32) sdata += sdata[tid + 16];
-                    if (blockSize >= 16) sdata += sdata[tid + 8];
-                    if (blockSize >=  8) sdata += sdata[tid + 4];
-                    if (blockSize >=  4) sdata += sdata[tid + 2];
-                    if (blockSize >=  2) sdata += sdata[tid + 1];
-                }
-
-                extern "C" __global__ void n2f(
-                    const complex<float>* nearfield,
-                    const unsigned int N,
-                    const float* kxyz,
-                    complex<float> float* X,
-                    const complex<float>* Y,
-                    const complex<float>* RR,
-                    const float* a,
-                    const complex<float>* map,
-                    const unsigned int maps,
-                    volatile complex<float>* farfield
-                ) {
-                    extern __shared__ complex<float> sdata[]
-
-                    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-
-                    sdata[tid] = 0;
-
-                    for (int i = 0; i < N; i++) {
-                        sdata[tid] += conj(nearfield[tid]) * (maps>0 ? map[tid + WH * a[i]] : 1) * exp(
-                            X[tid] * kxyz[3 * i] +
-                            Y[tid] * kxyz[3 * i + 1] +
-                            (D == 3 ? (RR[tid] * kxyz[3 * i + 2]) : 0)
-                        );
+                self._near2far_cuda = cp.RawKernel(
+                    r'''
+                    #include <cupy/complex.cuh>
+                    extern "C"  __device__ void warpReduce(
+                        complex<float>* sdata, // volatile 
+                        unsigned int tid
+                    ) {
+                        sdata[tid] += sdata[tid + 32]; __syncwarp();
+                        sdata[tid] += sdata[tid + 16]; __syncwarp();
+                        sdata[tid] += sdata[tid + 8];  __syncwarp();
+                        sdata[tid] += sdata[tid + 4];  __syncwarp();
+                        sdata[tid] += sdata[tid + 2];  __syncwarp();
+                        sdata[tid] += sdata[tid + 1];  __syncwarp();
                     }
 
-                    __syncthreads();
+                    extern "C" __global__ void n2f(
+                        const complex<float>* nearfield,        // Input (WH)
+                        const unsigned int WH,                  // Size of nearfield
+                        const unsigned int N,                   // Size of farfield
+                        const unsigned int D,                   // Dimension of spots (2 or 3)
+                        const float* kxyz,                      // Spot parameters (D*N)
+                        const complex<float>* X,                // X grid (WH)
+                        const complex<float>* Y,                // Y grid (WH)
+                        const complex<float>* RR,               // RR grid (WH, required when D==3)
+                        const int* m,                           // Map index (M)
+                        const complex<float>* map,              // Maps (M*WH)
+                        const unsigned int M,                   // Number of maps
+                        complex<float>* farfield_intermediate   // Output (blockIdx.x*N)
+                    ) {
+                        // Allocate shared data which will store intermediate results.
+                        // (Hardcoded to 1024 block size).
+                        __shared__ complex<float> sdata[1024];
 
-                    if (blockSize >= 512) {
+                        // Make some IDs.
+                        int ff = blockIdx.y;                    // Farfield index  [0, N)
+                        int tid = threadIdx.x;                  // Thread ID
+                        int rid = blockIdx.x + ff * gridDim.x;  // Farfield result ID
+                        int nf = blockDim.x * blockIdx.x + tid; // Nearfield index [0, WH)
+
+                        if (nf < WH) {
+                            // Do the overlap integrand for one nearfield-farfield mapping.
+                            sdata[tid] = conj(nearfield[nf])
+                            * (M > 0 ? map[nf + WH * m[ff]] : 1)
+                            * exp(
+                                X[nf] * kxyz[ff] +
+                                Y[nf] * kxyz[ff + N] +
+                                (D == 3 ? (RR[nf] * kxyz[ff + N + N]) : 0)
+                            );
+                        } else {
+                            sdata[tid] = 0;
+                        }
+
+                        // Now we want to integrate by summing these results.
+                        // Note that we assume 1024 block size and 32 warp size (change this?).
+                        __syncthreads();
+
+                        if (tid < 512) { sdata[tid] += sdata[tid + 512]; } __syncthreads();
                         if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads();
-                    }
-                    if (blockSize >= 256) {
                         if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads();
-                    }
-                    if (blockSize >= 128) {
-                        if (tid < 64) { sdata[tid] += sdata[tid + 64]; } __syncthreads();
-                    }
+                        if (tid < 64) {  sdata[tid] += sdata[tid + 64];  } __syncthreads();
+                        if (tid < 32) {
+                            // The last 32 thread don't require __syncthreads() as they can be warped.
+                            warpReduce(sdata, tid);
 
-                    if (tid < 32) warpReduce(sdata, tid);
-                    if (tid == 0) farfield[] = sdata[0]
-                }
-                ''',
-                'n2f'
-            )
-        except:
-            pass
+                            // Save the summed results to global memory.
+                            if (tid == 0) { farfield_intermediate[rid] = sdata[0]; }
+                        }
+                    }
+                    ''',
+                    'n2f'
+                )
+
+                self.cuda = True
+                self._nearfield2farfield_cuda_intermediate = None
+            except:
+                warnings.warn("Raw CUDA kernel failed to compile. Falling back to cupy.")
 
     def __len__(self):
         """
@@ -2718,7 +2809,7 @@ class FreeSpotHologram(FeedbackHologram):
         else:
             raise ValueError(f"Expected spots to be 2D or 3D. Found {D}D")
 
-        # Rotate to imaginary afterward so we can square X and Y when calculating RR.
+        # Rotate to imaginary afterward (not before so we can square X and Y when calculating RR).
         self.stack *= 1j
 
     def _build_kernel_batched(self, spot_kxy, out=None):
@@ -2748,18 +2839,92 @@ class FreeSpotHologram(FeedbackHologram):
             raise ValueError(f"out shape {out.shape} does not matched the expected {out_shape}")
 
         # Evaluate the result in a (hopefully) memory and compute efficient way.
-        out = cp.matmul(self.stack, spot_kxy, out=out)       # (H*W, 2|3) x (2|3, N) = (H*W, N)
+        out = cp.matmul(self.stack, spot_kxy, out=out)  # (H*W, 2|3) x (2|3, N) = (H*W, N)
 
         # Convert from phase to complex amplitude.
         out = cp.exp(out, out=out)
 
         return out
 
-    def _nearfield2farfield(self, nearfield, farfield_out=None):
+    def _nearfield2farfield(self, nearfield, farfield_out=None, cuda=None):
         """
-        Maps the ``(H,W)`` nearfield (complex phase on the SLM)
+        Maps the ``(H,W)`` nearfield (complex value on the SLM)
         onto the ``(N,1)`` farfield (complex value for each spot).
         """
+        if farfield_out is None:
+            N = self.spot_kxy.shape[1]
+            farfield_out = cp.zeros((N,), dtype=self.dtype_complex)
+
+        if cuda is None: cuda = self.cuda
+
+        if cuda:
+            try:
+                farfield_out = self._nearfield2farfield_cuda(nearfield, farfield_out)
+            except Exception as err:    # Fallback to cupy upon error.
+                warnings.warn("Falling back to cupy: " + str(err))
+                self.cuda = cuda = False
+
+        if not cuda:
+            farfield_out = self._nearfield2farfield_cupy(nearfield, farfield_out)
+
+        return farfield_out
+
+    def _nearfield2farfield_cuda(self, nearfield, farfield_out):
+        WH = int(self.slm_shape[0] * self.slm_shape[1])
+        N = int(self.spot_kxy.shape[1])
+        D = int(self.spot_kxy.shape[0])
+
+        if self.stack is None:
+            self._build_stack(D)
+
+        threads_per_block = int(1024)
+        assert self._near2far_cuda.max_threads_per_block >= threads_per_block
+        if self._near2far_cuda.max_threads_per_block > threads_per_block:
+            warnings.warn(
+                "Threads per block can be larger than the hardcoded limit of 1024."
+                "Remove this limit for enhanced speed."
+            )
+        blocksx = WH // threads_per_block
+        blocksy = N
+
+        print((blocksx, blocksy))
+
+        if self._nearfield2farfield_cuda_intermediate is None:
+            self._nearfield2farfield_cuda_intermediate = cp.zeros((blocksy, blocksx), dtype=self.dtype_complex)
+
+        spot_kxy_float = cp.array(self.spot_kxy, self.dtype)    # TODO: Make this faster.
+
+        # Call the RawKernel.
+        self._near2far_cuda(
+            (blocksx, blocksy),
+            (threads_per_block, 1),
+            (
+                nearfield.ravel(),
+                WH, N, D,
+                spot_kxy_float,
+                self.stack[:, 0],
+                self.stack[:, 1],
+                self.stack[:, 2] if D == 3 else 0,
+                0, 0, 0,
+                self._nearfield2farfield_cuda_intermediate.ravel()
+            )
+        )
+
+        print(WH)
+        print(self.stack.shape)
+        print(self.stack[0, :])
+        print(self._nearfield2farfield_cuda_intermediate)
+        print(cp.abs(self._nearfield2farfield_cuda_intermediate))
+        print(self._nearfield2farfield_cuda_intermediate.shape)
+        print(farfield_out.shape)
+
+        # Sum over all the blocks to get the final answers using optimized cupy methods.
+        farfield_out = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=farfield_out)
+        farfield_out *= (1 / Hologram._norm(farfield_out, mp=cp))
+
+        return farfield_out
+
+    def _nearfield2farfield_cupy(self, nearfield, farfield_out):
         # Conjugate the nearfield to properly take the overlap integral.
         # FYI: Nearfield shape is (H,W)
         nearfield = cp.conj(nearfield, out=nearfield)
@@ -2804,35 +2969,42 @@ class FreeSpotHologram(FeedbackHologram):
 
         return farfield_out
 
-    def _farfield2nearfield(self, farfield, nearfield_out=None, cuda=False):
+    def _farfield2nearfield(self, farfield, nearfield_out=None, cuda=None):
         """
         Maps the ``(N,1)`` farfield (complex value for each spot)
-        onto the ``(H,W)`` nearfield (complex phase on the SLM).
-        CUDA kernel is not fully implemented. (cuda=False left in as placeholder.)
+        onto the ``(H,W)`` nearfield (complex value on the SLM).
         """
         if nearfield_out is None:
             nearfield_out = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
 
+        if cuda is None: cuda = self.cuda
+
         if cuda:
-            nearfield_out = self._farfield2nearfield_cuda(farfield, nearfield_out)
-        else:
+            try:
+                nearfield_out = self._farfield2nearfield_cuda(farfield, nearfield_out)
+            except Exception as err:    # Fallback to cupy upon error.
+                warnings.warn("Falling back to cupy: " + str(err))
+                self.cuda = cuda = False
+
+        if not cuda:
             nearfield_out = self._farfield2nearfield_cupy(farfield, nearfield_out)
 
         return nearfield_out
 
-    def _farfield2nearfield_cuda(self, farfield, nearfield_out=None):
-        WH = int(np.prod(nearfield_out.shape))
-        N = len(farfield)
-        D = self.spot_kxy.shape[0]
+    def _farfield2nearfield_cuda(self, farfield, nearfield_out):
+        WH = int(self.slm_shape[0] * self.slm_shape[1])
+        N = int(self.spot_kxy.shape[1])
+        D = int(self.spot_kxy.shape[0])
 
         if self.stack is None:
             self._build_stack(D)
 
-        threads_per_block = self._far2near_kernel.max_threads_per_block
+        threads_per_block = int(self._far2near_cuda.max_threads_per_block)
         blocks = WH // threads_per_block
 
-        spot_kxy_float = cp.array(self.spot_kxy, self.dtype)
+        spot_kxy_float = cp.array(self.spot_kxy, self.dtype)    # TODO: Make this faster.
 
+        # Call the RawKernel.
         self._far2near_cuda(
             (blocks,),
             (threads_per_block,),
@@ -2840,9 +3012,9 @@ class FreeSpotHologram(FeedbackHologram):
                 farfield,
                 WH, N, D,
                 spot_kxy_float,
-                self.stack[0, :],
-                self.stack[1, :],
-                self.stack[2, :] if D == 3 else 0,
+                self.stack[:, 0],
+                self.stack[:, 1],
+                self.stack[:, 2] if D == 3 else 0,
                 0, 0, 0,
                 nearfield_out.ravel()
             )
@@ -2850,7 +3022,7 @@ class FreeSpotHologram(FeedbackHologram):
 
         return nearfield_out
 
-    def _farfield2nearfield_cupy(self, farfield, nearfield_out=None):
+    def _farfield2nearfield_cupy(self, farfield, nearfield_out):
         # FYI: Farfield shape is (N,1)
         N = self.spot_kxy.shape[1]
         N_batch_max = 50

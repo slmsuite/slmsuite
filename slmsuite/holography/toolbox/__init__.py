@@ -25,7 +25,7 @@ BLAZE_LABELS = {
     "mrad" : (r"$\theta_x$ [mrad]",     r"$\theta_y$ [mrad]"),
     "deg" :  (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]")
 }
-BLAZE_UNITS = BLAZE_LABELS.keys()
+BLAZE_UNITS = list(BLAZE_LABELS.keys())
 
 # Unit helper functions.
 
@@ -94,9 +94,9 @@ def convert_blaze_vector(
         Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
     """
     if not (from_units in BLAZE_UNITS):
-        raise ValueError(f"Unit '{from_units}' not recognized as a valid unit.")
+        raise ValueError(f"Unit '{from_units}' not recognized as a valid unit. Options: {BLAZE_UNITS}")
     if not (to_units in BLAZE_UNITS):
-        raise ValueError(f"Unit '{to_units}' not recognized as a valid unit.")
+        raise ValueError(f"Unit '{to_units}' not recognized as a valid unit. Options: {BLAZE_UNITS}")
 
     vector = format_2vectors(vector).astype(float)
 

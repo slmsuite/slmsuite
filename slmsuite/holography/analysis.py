@@ -11,6 +11,36 @@ from slmsuite.holography.toolbox import format_2vectors
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.fitfunctions import gaussian2d
 
+def _center(width):
+    """
+    Center of an index range with length `width`.
+    """
+    return width / 2
+
+
+def _coordinates(width, centered=False):
+    """
+    Coordinate indices of length `width`.
+    """
+    xs = np.arange(width).astype(np.float64)
+    if centered:
+        center = np.float64(_center(width))
+        xs -= center
+    return xs
+
+
+def _generate_grid(w_x, w_y, centered=False):
+    """
+    
+    """
+    xs = np.reshape(np.arange(w_x, dtype=float), (1, 1, w_x))
+    ys = np.reshape(np.arange(w_y, dtype=float), (1, w_y, 1))
+    if centered:
+        xs -= _center(w_x)
+        ys -= _center(w_y)
+    grid = np.meshgrid(xs, ys)
+    return grid
+
 
 def take(
         images, vectors, size,
@@ -75,8 +105,8 @@ def take(
     vectors = format_2vectors(vectors)
 
     # Prepare helper variables. Future: consider caching for speed, if not negligible.
-    edge_x = np.arange(size[0]) - ((int(size[0] - 1) / 2) if centered else 0)
-    edge_y = np.arange(size[1]) - ((int(size[1] - 1) / 2) if centered else 0)
+    edge_x = _coordinates(size[0], centered)
+    edge_y = _coordinates(size[1], centered)
 
     region_x, region_y = np.meshgrid(edge_x, edge_y)
 
@@ -339,9 +369,8 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
             c_x = centers[0]
             c_y = centers[1]
 
-        edge_x = np.reshape(np.arange(w_x) - (w_x - 1) / 2.0, (1, 1, w_x)) - c_x
-        edge_y = np.reshape(np.arange(w_y) - (w_y - 1) / 2.0, (1, w_y, 1)) - c_y
-
+        edge_x = np.reshape(np.arange(w_x) - _center(w_x), (1, 1, w_x)) - c_x
+        edge_y = np.reshape(np.arange(w_y) - _center(w_y), (1, w_y, 1)) - c_y
         edge_x = np.power(edge_x, moment[0], out=edge_x)
         edge_y = np.power(edge_y, moment[1], out=edge_y)
 
@@ -602,7 +631,7 @@ def image_ellipticity_angle(variances):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
-def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=False):
+def image_fit(images, grid_ravel=None, centered=True, function=gaussian2d, guess=None, plot=False):
     """
     Fit each image in a stack of images to a 2D ``function``.
 
@@ -613,6 +642,8 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
         ``(1, h, w)`` even if ``(h, w)`` is passed.
     grid_ravel : 2-tuple of array_like of reals (height * width)
         Raveled components of the meshgrid describing coordinates over the images.
+    centered : bool
+        If `grid_ravel` is `None`, whether or not to center the grid on the image.
     function : lambda ((float, float), ... ) -> float
         Some fitfunction which accepts ``(x,y)`` coordinates as first argument.
         Defaults to :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`.
@@ -655,9 +686,7 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
     img_shape = (w_y, w_x)
 
     if grid_ravel is None:
-        edge_x = np.reshape(np.arange(w_x) - (w_x - 1) / 2.0, (1, 1, w_x))
-        edge_y = np.reshape(np.arange(w_y) - (w_y - 1) / 2.0, (1, w_y, 1))
-        grid = np.meshgrid(edge_x, edge_y)
+        grid = _generate_grid(w_x, w_y, centered=centered)
         grid_ravel = (grid[0].ravel(), grid[1].ravel())
 
     # Number of fit parameters the function accepts.
@@ -675,20 +704,14 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
             variances = image_variances(images_normalized, centers=centers, normalize=False)
             maxs = np.amax(images, axis=(1, 2))
             mins = np.amin(images, axis=(1, 2))
-
+            if not centered:
+                centers[0] += _center(w_x)
+                centers[1] += _center(w_y)
             guess = np.vstack((
                 centers,
                 maxs - mins,
                 mins,
                 np.sqrt(variances[0:2, :]),
-                variances[2, :]
-            ))
-
-            guess_raw = np.vstack((
-                centers,
-                maxs - mins,
-                mins,
-                variances[0:2, :],
                 variances[2, :]
             ))
 

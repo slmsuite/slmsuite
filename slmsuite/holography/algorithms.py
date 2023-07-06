@@ -483,6 +483,9 @@ class Hologram:
         # Copy from the target.
         self.weights = self.target.copy()
 
+        if hasattr(self, "zero_weights"):
+            self.zero_weights *= 0
+
         # Account for MRAF by setting any noise region to zero by default.
         cp.nan_to_num(self.weights, copy=False, nan=0)
 
@@ -861,7 +864,7 @@ class Hologram:
         """
         # Proxy to initialize nearfield with the correct shape and correct (complex) type.
         nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
-        farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)    # Use target.shape for FreeSpotHologram cases.
+        self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)    # Use target.shape for FreeSpotHologram cases.
 
         # Precompute MRAF helper variables.
         mraf_variables = self._mraf_helper_routines()
@@ -878,11 +881,11 @@ class Hologram:
             nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
 
             # 1.2) FFT to move to the farfield.
-            farfield = self._nearfield2farfield(nearfield, farfield_out=farfield)
+            self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
 
             # 2) Midloop: caching, prep
             # 2.1) Before callback(), cleanup such that it can access updated amp_ff and images.
-            self._midloop_cleaning(farfield)
+            self._midloop_cleaning(self.farfield)
 
             # 2.2) Run step function if present and check termination conditions.
             if callback is not None:
@@ -891,10 +894,10 @@ class Hologram:
 
             # 2.3) Evaluate method-specific routines, stats, etc.
             # If you want to add new functionality to GS, do so here to keep the main loop clean.
-            self._GS_farfield_routines(farfield, mraf_variables)
+            self._GS_farfield_routines(self.farfield, mraf_variables)
 
             # 3) Farfield -> nearfield.
-            nearfield = self._farfield2nearfield(farfield, nearfield_out=nearfield)
+            nearfield = self._farfield2nearfield(self.farfield, nearfield_out=nearfield)
 
             # 3.1) Grab the phase from the complex nearfield.
             # Use arctan2() directly instead of angle() for in-place operations (out=).
@@ -910,9 +913,9 @@ class Hologram:
         # Update the final far-field
         nearfield.fill(0)
         nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
-        farfield = self._nearfield2farfield(nearfield, farfield_out=farfield)
-        self.amp_ff = cp.abs(farfield)
-        self.phase_ff = cp.angle(farfield)
+        self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
+        self.amp_ff = cp.abs(self.farfield)
+        self.phase_ff = cp.angle(self.farfield)
 
     def _nearfield2farfield(self, nearfield, farfield_out=None):
         """TODO"""
@@ -929,18 +932,23 @@ class Hologram:
 
         if not mraf_enabled:
             return {
-                "noise_region":None,
-                "signal_region":None,
                 "mraf_enabled":False,
-                "mraf_factor":None,
-                "where_working":None
+                "where_working":None,
+                "signal_region":None,
+                "noise_region":None,
+                "zero_region":None,
             }
 
-        signal_region = cp.logical_not(noise_region)
+        zero_region = cp.abs(self.target) == 0
+        Z = int(cp.sum(zero_region))
+        if Z > 0 and not hasattr(self, "zero_weights"):
+            self.zero_weights = cp.zeros((Z,), dtype=self.dtype_complex)
+
+        signal_region = cp.logical_not(cp.logical_or(noise_region, zero_region))
         mraf_factor = self.flags.get("mraf_factor", None)
-        if mraf_factor is not None:
-            if mraf_factor < 0:
-                raise ValueError("mraf_factor={} should not be negative.".format(mraf_factor))
+        # if mraf_factor is not None:
+        #     if mraf_factor < 0:
+        #         raise ValueError("mraf_factor={} should not be negative.".format(mraf_factor))
 
         # `where=` functionality is needed for MRAF, but this is a undocumented/new cupy feature.
         # We test whether it is available https://github.com/cupy/cupy/pull/7281
@@ -960,11 +968,11 @@ class Hologram:
                 )
 
         return {
-            "noise_region":noise_region,
-            "signal_region":signal_region,
             "mraf_enabled":mraf_enabled,
-            "mraf_factor":mraf_factor,
-            "where_working":where_working
+            "where_working":where_working,
+            "signal_region":signal_region,
+            "noise_region":noise_region,
+            "zero_region":zero_region,
         }
 
     def _midloop_cleaning(self, farfield):
@@ -1027,12 +1035,20 @@ class Hologram:
                 cp.divide(farfield, cp.abs(farfield), out=farfield)
                 cp.multiply(farfield, self.weights, out=farfield)
                 cp.nan_to_num(farfield, copy=False, nan=0)
-        else:
+        else:   # Mixed region amplitude freedom (MRAF) case.
+            zero_region =   mraf_variables["zero_region"]
             noise_region =  mraf_variables["noise_region"]
             signal_region = mraf_variables["signal_region"]
-            mraf_factor =   mraf_variables["mraf_factor"]
+            mraf_factor =   self.flags.get("mraf_factor", None)
             where_working = mraf_variables["where_working"]
 
+            if hasattr(self, "zero_weights"):
+                # mag1 = cp.abs(self.zero_weights)
+                # mag2 = cp.abs(farfield[zero_region])
+                self.zero_weights -= self.flags.get("zero_factor", 1) * farfield[zero_region]
+                farfield[zero_region] = self.zero_weights
+
+            # Handle signal and noise regions.
             if ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
                 # Set the farfield to the stored phase and updated weights, in the signal region.
                 if where_working:
@@ -1124,16 +1140,21 @@ class Hologram:
             return self.phase.get() + np.pi
         return self.phase + np.pi
 
-    def extract_farfield(self):
+    def extract_farfield(self, shape=None):
         r"""
         Collects the current complex farfield from the GPU with :meth:`cupy.ndarray.get()`.
+
+        TODO shape
 
         Returns
         -------
         numpy.ndarray
             Current farfield computed by GS.
         """
-        nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), self.shape)
+        if shape is None:
+            shape = self.shape
+
+        nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), shape)
         farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
 
         if cp != np:
@@ -1547,8 +1568,14 @@ class Hologram:
 
         return limits
 
-    def plot_nearfield(self, title="", padded=False,
-                       figsize=(8,4), cbar=False):
+    def plot_nearfield(
+            self,
+            source=None,
+            title="",
+            padded=False,
+            figsize=(8,4),
+            cbar=False
+        ):
         """
         Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
         The amplitude is assumed (whether uniform, or experimentally computed) while the
@@ -1569,15 +1596,23 @@ class Hologram:
         """
         fig, axs = plt.subplots(1, 2, figsize=figsize)
 
-        try:
-            if isinstance(self.amp, float):
+        if source is None:
+            try:
+                if isinstance(self.amp, float):
+                    amp = self.amp
+                else:
+                    amp = self.amp.get()
+                phase = self.phase.get()
+            except:
                 amp = self.amp
-            else:
-                amp = self.amp.get()
-            phase = self.phase.get()
-        except:
-            amp = self.amp
-            phase = self.phase
+                phase = self.phase
+        else:
+            try:
+                amp = cp.abs(source).get()
+                phase = cp.angle(source).get()
+            except:
+                amp = np.abs(source)
+                phase = np.angle(source)
 
         if isinstance(amp, float):
             im_amp = axs[0].imshow(
@@ -1624,8 +1659,14 @@ class Hologram:
         plt.show()
 
     def plot_farfield(
-            self, source=None, title="", limits=None, units="knm",
-            limit_padding=0.1, figsize=(8,4), cbar=False,
+            self,
+            source=None,
+            title="",
+            limits=None,
+            units="knm",
+            limit_padding=0.1,
+            figsize=(8,4),
+            cbar=False,
         ):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
@@ -1683,7 +1724,8 @@ class Hologram:
                 title = "FF Amp"
 
         # Interpret source and convert to numpy for plotting.
-        if "phase" in title.lower():
+        isphase = "phase" in title.lower()
+        if isphase:
             try:
                 npsource = source.get()
             except:
@@ -1707,7 +1749,7 @@ class Hologram:
             limits = self._compute_limits(npsource, limit_padding=limit_padding)
         # Check the limits in case the user provided them.
         for a in [0, 1]:
-            limits[a] = np.clip(limits[a], 0, npsource.shape[1-a]-1)
+            limits[a] = np.clip(np.array(limits[a], dtype=int), 0, npsource.shape[1-a]-1)
             if np.diff(limits[a]) == 0:
                 raise ValueError("algorithms.py: clipped limit has zero length.")
 
@@ -1723,7 +1765,8 @@ class Hologram:
         full = axs[0].imshow(
             npsource_blur,
             vmin=0, vmax=np.nanmax(npsource_blur),
-            cmap=("twilight" if "phase" in title.lower() else None)
+            cmap=("twilight" if isphase else None),
+            interpolation=("none" if isphase else "gaussian")
         )
         if len(title) > 0:
             title += ": "
@@ -1738,8 +1781,8 @@ class Hologram:
             vmin=0, vmax=np.nanmax(zoom_data),
             extent=[limits[0][0], limits[0][1],
                     limits[1][1],limits[1][0]],
-            interpolation="none" if b < 2 else "gaussian",
-            cmap=("twilight" if "phase" in title.lower() else None)
+            interpolation="none" if b < 2 or isphase else "gaussian",
+            cmap=("twilight" if isphase else None)
         )
         axs[1].set_title(title + "Zoom", color="r")
         # Red border (to match red zoom box applied below in "full" img)
@@ -2727,9 +2770,9 @@ class FreeSpotHologram(FeedbackHologram):
         if farfield_out is None:
             farfield_out = cp.zeros((N, ), dtype=self.dtype_complex)
 
-        def collapse_kernel(out):
+        def collapse_kernel(kernel, out):
             # (1,H*W) x (H*W, N) = (N,1)^T
-            cp.matmul(nearfield.ravel()[np.newaxis, :], self.kernel, out=out[np.newaxis, :])
+            cp.matmul(nearfield.ravel()[np.newaxis, :], kernel, out=out[np.newaxis, :])
 
         if self.kernel is None:
             self.spot_kxy_complex = cp.array(self.spot_kxy, self.dtype_complex)
@@ -2738,14 +2781,21 @@ class FreeSpotHologram(FeedbackHologram):
             if self.kernel is None:
                 self.kernel = self._build_kernel_batched(self.spot_kxy_complex, out=self.kernel)
 
-            collapse_kernel(out=farfield_out)
+            collapse_kernel(self.kernel, out=farfield_out)
         else:
-            batches = N // N_batch_max
+            if self.kernel is None:
+                self.kernel = cp.zeros((np.prod(self.slm_shape), N_batch_max), dtype=self.dtype_complex)
+
+            batches = 1 + N // N_batch_max
             for batch in range(batches):
                 batch_slice = slice(batch * N_batch_max, np.clip((batch+1) * N_batch_max, 0, N))
-                self.kernel = self._build_kernel_batched(self.spot_kxy_complex[:, batch_slice], out=self.kernel)
+                kernel_slice = slice(0, batch_slice.stop - batch_slice.start)
+                self.kernel[:, kernel_slice] = self._build_kernel_batched(
+                    self.spot_kxy_complex[:, batch_slice],
+                    out=self.kernel[:, kernel_slice]
+                )
 
-                collapse_kernel(out=farfield_out[batch_slice])
+                collapse_kernel(self.kernel[:, kernel_slice], out=farfield_out[batch_slice])
 
         farfield_out *= (1 / Hologram._norm(farfield_out, mp=cp))
 
@@ -2805,9 +2855,9 @@ class FreeSpotHologram(FeedbackHologram):
         N = self.spot_kxy.shape[1]
         N_batch_max = 50
 
-        def expand_kernel(farfield, out):
+        def expand_kernel(kernel, farfield, out):
             # (H*W, N) x (N,1) = (H*W, 1)   ===reshape===>   (H,W)
-            return cp.matmul(self.kernel, farfield[:, np.newaxis], out=out[:, np.newaxis])
+            return cp.matmul(kernel, farfield[:, np.newaxis], out=out[:, np.newaxis])
 
         if self.kernel is None:
             self.spot_kxy_complex = cp.array(self.spot_kxy, self.dtype_complex)
@@ -2816,19 +2866,35 @@ class FreeSpotHologram(FeedbackHologram):
             if self.kernel is None:
                 self.kernel = self._build_kernel_batched(self.spot_kxy_complex, out=self.kernel)
 
-            expand_kernel(farfield, out=nearfield_out.ravel())
+            expand_kernel(self.kernel, farfield, out=nearfield_out.ravel())
         else:
+            if self.kernel is None:
+                self.kernel = cp.zeros((np.prod(self.slm_shape), N_batch_max), dtype=self.dtype_complex)
+
             nearfield_out_temp = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
 
             batches = 1 + N // N_batch_max
+
+            # print(N)
+
             for batch in range(batches):
                 batch_slice = slice(batch * N_batch_max, np.clip((batch+1) * N_batch_max, 0, N))
-                self.kernel = self._build_kernel_batched(self.spot_kxy_complex[:, batch_slice], out=self.kernel)
+                # kernel_slice = slice(0, np.clip(N_batch_max, 0, N - batch * N_batch_max))
+                kernel_slice = slice(0, batch_slice.stop - batch_slice.start)
+                # print(batch)
+                # print(batch_slice)
+                # print(kernel_slice)
+                # print(self.kernel.shape)
+                self.kernel[:, kernel_slice] = self._build_kernel_batched(
+                    self.spot_kxy_complex[:, batch_slice],
+                    out=self.kernel[:, kernel_slice]
+                )
+                # print(self.kernel[:, batch_slice].shape)
 
                 if batch == 0:
-                    expand_kernel(farfield[batch_slice], out=nearfield_out.ravel())
+                    expand_kernel(self.kernel[:, kernel_slice], farfield[batch_slice], out=nearfield_out.ravel())
                 else:
-                    expand_kernel(farfield[batch_slice], out=nearfield_out_temp.ravel())
+                    expand_kernel(self.kernel[:, kernel_slice], farfield[batch_slice], out=nearfield_out_temp.ravel())
                     nearfield_out += nearfield_out_temp
 
         return nearfield_out
@@ -2877,6 +2943,9 @@ class FreeSpotHologram(FeedbackHologram):
         :attr:`amp_ff`, the computed farfield amplitude.
         """
         feedback = self.flags["feedback"]
+
+        if feedback == "computational":
+            feedback = self.flags["feedback"] = "computational_spot"
 
         # Weighting strategy depends on the chosen feedback method.
         if feedback == "computational_spot":

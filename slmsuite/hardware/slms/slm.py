@@ -359,8 +359,8 @@ class SLM:
         else:
             # Make sure the array is an ndarray.
             phase = np.array(phase)
-
-        if phase is not None and isinstance(phase, INTEGER_TYPES):
+        # TODO: everything goes to .issubdtype
+        if phase is not None and np.issubdtype(phase.dtype, np.integer):
             # Check the type.
             if phase.dtype != self.display.dtype:
                 raise TypeError("Unexpected integer type {}. Expected {}.".format(phase.dtype, self.display.dtype))

@@ -2671,22 +2671,23 @@ class SpotHologram(FeedbackHologram):
             self.subpixel_beamradius_knm = None
 
         # Use semi-arbitrary values to determine integration widths. The default width is:
-        #  - six times the psf,
+        #  - N times the psf,
         #  - but then clipped to be:
         #    + larger than 3 and
         #    + smaller than the minimum inf-norm distance between spots divided by 1.5
         #      (divided by 1 would correspond to the largest non-overlapping integration
         #      regions; 1.5 gives comfortable padding)
         #  - and finally forced to be an odd integer.
+        N = 10 #TODO: non-arbitrary
         min_psf = 3
 
         dist_knm = np.max([toolbox.smallest_distance(self.spot_knm) / 1.5, min_psf])
-        self.spot_integration_width_knm = np.clip(6 * psf_knm, min_psf, dist_knm)
+        self.spot_integration_width_knm = np.clip(N * psf_knm, min_psf, dist_knm)
         self.spot_integration_width_knm = int(2 * np.floor(self.spot_integration_width_knm / 2) + 1)
 
         if self.spot_ij is not None:
             dist_ij = np.max([toolbox.smallest_distance(self.spot_ij) / 1.5, min_psf])
-            self.spot_integration_width_ij = np.clip(6 * psf_ij, 3, dist_ij)
+            self.spot_integration_width_ij = np.clip(N * psf_ij, min_psf, dist_ij)
             self.spot_integration_width_ij =  int(2 * np.floor(self.spot_integration_width_ij / 2) + 1)
         else:
             self.spot_integration_width_ij = None

@@ -4,18 +4,16 @@ Simulated camera to image the simulated SLM.
 
 try:
     import cupy as mp
+    from cupyx.scipy.ndimage import map_coordinates
 except:
     import numpy as mp
+    from scipy.ndimage import map_coordinates
 import numpy as np
 import matplotlib.pyplot as plt
 
 from slmsuite.hardware.cameras.camera import Camera
 from slmsuite.holography.algorithms import Hologram
 from slmsuite.holography import toolbox
-
-# Image interpolation
-# TODO: faster version w/ cupyx?
-from scipy import ndimage
 
 class SimulatedCam(Camera):
     """
@@ -77,22 +75,22 @@ class SimulatedCam(Camera):
         self._slm = slm
 
         # Compute the camera pixel grid in `basis` units (currently "ij")
-        self.xgrid, self.ygrid = np.meshgrid(np.linspace(-1/2,1/2,resolution[0])*resolution[0],
-                                             np.linspace(-1/2,1/2,resolution[1])*resolution[1])
+        self.xgrid, self.ygrid = mp.meshgrid(mp.linspace(-1/2,1/2,resolution[0])*resolution[0],
+                                             mp.linspace(-1/2,1/2,resolution[1])*resolution[1])
         if theta != 0:
-            rot = np.array(
-                [[np.cos(-theta), np.sin(-theta)], [-np.sin(-theta), np.cos(-theta)]]
+            rot = mp.array(
+                [[mp.cos(-theta), mp.sin(-theta)], [-mp.sin(-theta), mp.cos(-theta)]]
             )
             # Rotate
-            self.xgrid, self.ygrid = np.einsum('ji, mni -> jmn', rot,
-                                               np.dstack([self.xgrid, self.ygrid]))
+            self.xgrid, self.ygrid = mp.einsum('ji, mni -> jmn', rot,
+                                               mp.dstack([self.xgrid, self.ygrid]))
         # Translate
         self.xgrid = self.xgrid + offset[0]
         self.ygrid = self.ygrid + offset[1]
 
         # Compute SLM Fourier-space grid in `basis` units (currently "ij")
-        f_min = 2*max([np.amax(np.abs(self.xgrid))*slm.dx,
-                       np.amax(np.abs(self.ygrid))*slm.dy])
+        f_min = 2*max([mp.amax(mp.abs(self.xgrid))*slm.dx,
+                       mp.amax(mp.abs(self.ygrid))*slm.dy])
         if f_eff is None:
             self.f_eff = f_min
             print("Setting f_eff = f_min = %1.2f pix/rad to place camera \
@@ -152,16 +150,20 @@ required imaging resolution."%(self.shape_padded[1], self.shape_padded[0]))
             Array of shape :attr:`shape`
         """
 
-        # Update phase; calculate the far-field
+        # Update phase; calculate the far-field (keep on GPU if using cupy for follow-on interp)
         self._hologram.reset_phase(self._slm.phase + self._slm.phase_offset)
-        ff = self._hologram.extract_farfield()
+        ff = self._hologram.extract_farfield(get = True if (mp==np) else False)
+
         # Use map_coordinates for fastest interpolation; but need to reshape pixel dimensions
         # to account for additional padding.
-        img = ndimage.map_coordinates(np.abs(ff)**2,[self.shape_padded[0]/(self.f_eff/self._slm.dy)*
-                                                     self.ygrid+self.shape_padded[0]/2,
-                                                     self.shape_padded[1]/(self.f_eff/self._slm.dx)*
-                                                     self.xgrid+self.shape_padded[1]/2],
-                                                     order=0)
+        img = map_coordinates(mp.abs(ff)**2,mp.array([
+                                            self.shape_padded[0]/(self.f_eff/self._slm.dy)*
+                                            self.ygrid+self.shape_padded[0]/2,
+                                            self.shape_padded[1]/(self.f_eff/self._slm.dx)*
+                                            self.xgrid+self.shape_padded[1]/2]),
+                                            order=0)
+        if mp != np:
+            img = img.get()
         img = self.exposure * img
 
         if plot:

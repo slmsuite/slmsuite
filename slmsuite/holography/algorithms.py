@@ -1115,7 +1115,7 @@ class Hologram:
             return self.phase.get() + np.pi
         return self.phase + np.pi
 
-    def extract_farfield(self, affine=None):
+    def extract_farfield(self, affine=None, get=True):
         r"""
         Collects the current complex farfield from the GPU with :meth:`cupy.ndarray.get()`.
 
@@ -1124,6 +1124,9 @@ class Hologram:
         affine : dict
             Affine transformation to apply to far-field data (in the form of
             :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`).
+
+        get : bool
+            Whether or not to convert the cupy array to a numpy array if cupy is used.
 
         Returns
         -------
@@ -1146,7 +1149,7 @@ class Hologram:
                     output=farfield,
                     mode="constant",
                     cval=0)
-            return farfield.get()
+            return farfield.get() if get else farfield
         else:
             if affine is not None:
                 sp_affine_transform(

@@ -13,6 +13,9 @@ from slmsuite.hardware.cameras.camera import Camera
 from slmsuite.holography.algorithms import Hologram
 from slmsuite.holography import toolbox
 
+# Image interpolation
+# TODO: faster version w/ cupyx?
+from scipy import ndimage
 
 class SimulatedCam(Camera):
     """
@@ -35,7 +38,7 @@ class SimulatedCam(Camera):
         full camera resolution.
     """
 
-    def __init__(self, resolution, slm, mag=None, theta=None, **kwargs):
+    def __init__(self, resolution, slm, f_eff=None, theta=0, offset=(0,0), basis="ij", **kwargs):
         """
         Initialize simulated camera.
 
@@ -45,12 +48,23 @@ class SimulatedCam(Camera):
             See :attr:`resolution`.
         slm : :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`
             Simulated SLM creating the image.
-        mag : float
-            Magnification between camera and SLM fields of view.
+        f_eff : float
+            Effective focal length (in `basis` units) of the
+            optical train separating the Fourier-domain SLM from the camera.
+            If `None`, defaults to the minimum focal length for which the camera is
+            fully contained within the SLM's accessible Fourier space.
         theta : float
-            Rotation angle (in radians) between camera and SLM.
+            Rotation angle (in radians, ccw) of the camera from the SLM axis.
+            Defaults to 0 (i.e., aligned with the SLM).
+        offset : tuple
+            Lateral displacement (in `basis` units) of the camera from the center of the SLM 
+        basis : str
+            Sets the units for `f_eff` and `offset`. Currently, only `"ij"` is supported.
+            TODO: Add support for `"um"`.
         kwargs
             See :meth:`.Camera.__init__` for permissible options.
+
+        TODO: add some notes here about the computation process/unit conversions, etc. 
 
         """
 
@@ -62,37 +76,43 @@ class SimulatedCam(Camera):
         # Store a reference to the SLM: we need this to compute the far-field camera images.
         self._slm = slm
 
-        # Hologram for calculating the far-field
-        # Padded shape: must 1) be >= slm.shape and 2) larger than resolution by a factor of 1/mag
-        pad_order = max(
-            [
-                max([rs / rc for rs, rc in zip(slm.shape, self.shape)]),
-                1 / mag if mag is not None else 1,
-            ]
-        )
-        pad_order = np.round(pad_order).astype(int)
-        self.shape_padded = Hologram.calculate_padded_shape(self.shape, pad_order)
+        # Compute the camera pixel grid in `basis` units (currently "ij")
+        self.xgrid, self.ygrid = np.meshgrid(np.linspace(-1/2,1/2,resolution[0])*resolution[0],
+                                             np.linspace(-1/2,1/2,resolution[1])*resolution[1])
+        if theta != 0:
+            rot = np.array(
+                [[np.cos(-theta), np.sin(-theta)], [-np.sin(-theta), np.cos(-theta)]]
+            )
+            # Rotate
+            self.xgrid, self.ygrid = np.einsum('ji, mni -> jmn', rot,
+                                               np.dstack([self.xgrid, self.ygrid]))
+        # Translate
+        self.xgrid = self.xgrid + offset[0]
+        self.ygrid = self.ygrid + offset[1]
 
-        self._pad_window = toolbox.unpad(self.shape_padded, self.shape)
+        # Compute SLM Fourier-space grid in `basis` units (currently "ij")
+        f_min = 2*max([np.amax(np.abs(self.xgrid))*slm.dx,
+                       np.amax(np.abs(self.ygrid))*slm.dy])
+        if f_eff is None:
+            self.f_eff = f_min
+            print("Setting f_eff = f_min = %1.2f pix/rad to place camera \
+within accessible SLM k-space."%(self.f_eff))
+        elif f_eff < f_min:
+            raise RuntimeError("Camera extends beyond SLM's accessible Fourier space!")
+        else:
+            self.f_eff = f_eff
+        
+        # Fourier space must be sufficiently padded to resolve the camera pixels
+        # TODO: account for small rotation factors
+        self.shape_padded = Hologram.calculate_padded_shape(slm, precision=1/self.f_eff)
         self._hologram = Hologram(
             self.shape_padded,
             amp=self._slm.amp_profile,
             phase=self._slm.phase + self._slm.phase_offset,
             slm_shape=self._slm,
         )
-
-        # Affine transform: slm -> cam
-        if mag is None:
-            mag = 1
-        if theta is None:
-            M = mp.array([[mag, 0], [0, mag]])
-        else:
-            rot = mp.array(
-                [[mp.cos(theta), mp.sin(theta)], [-mp.sin(theta), mp.cos(theta)]]
-            )
-            M = mp.array([[mag, 0], [0, mag]]) @ rot
-        c = mp.array(self.shape_padded)[mp.newaxis].T / 2
-        self.affine = {"M": M, "b": c - M @ c}
+        print("Padded SLM k-space shape set to (%d,%d) to achieve \
+required imaging resolution."%(self.shape_padded[1], self.shape_padded[0]))
 
     def flush(self):
         """
@@ -134,25 +154,27 @@ class SimulatedCam(Camera):
 
         # Update phase; calculate the far-field
         self._hologram.reset_phase(self._slm.phase + self._slm.phase_offset)
-        ff = self._hologram.extract_farfield(affine=self.affine)
-
-        # INCORRECT! Unpadding FF to same resolution --> magnification.
-
-        img = (
-            self.exposure * np.abs(ff[self._pad_window[0] : self._pad_window[1],
-                                      self._pad_window[2] : self._pad_window[3],]) ** 2
-        )
+        ff = self._hologram.extract_farfield()
+        # Use map_coordinates for fastest interpolation; but need to reshape pixel dimensions
+        # to account for additional padding.
+        img = ndimage.map_coordinates(np.abs(ff)**2,[self.shape_padded[0]/(self.f_eff/self._slm.dy)*
+                                                     self.ygrid+self.shape_padded[0]/2,
+                                                     self.shape_padded[1]/(self.f_eff/self._slm.dx)*
+                                                     self.xgrid+self.shape_padded[1]/2],
+                                                     order=0)
+        img = self.exposure * img
 
         if plot:
             # Look at the associated near- and far-fields
             # self._hologram.plot_nearfield(cbar=True)
             # self._hologram.plot_farfield(cbar=True)
 
-            _, ax = plt.figure()
             # Note simualted cam currently has infinite dynamic range.
-            ax.imshow(img, clim=[0, img.max()], interpolation="none")
+            plt.imshow(img, clim=[0, img.max()], interpolation="none")
+            plt.colorbar()
+            ax = plt.gca()
             ax.set_title("Simulated Image")
-            ax.set_xticks([])
-            ax.set_yticks([])
+            # ax.set_xticks([])
+            # ax.set_yticks([])
 
         return img

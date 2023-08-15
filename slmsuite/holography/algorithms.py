@@ -511,8 +511,8 @@ class Hologram:
         ----------
         slm_shape : (int, int) OR slmsuite.hardware.FourierSLM
             The original shape of the SLM in :mod:`numpy` `(h, w)` form. The user can pass a
-            :class:`slmsuite.hardware.FourierSLM` instead, and should pass this
-            when using the ``precision`` parameter.
+            :class:`slmsuite.hardware.FourierSLM` or :class:`slmsuite.hardware.SLM` instead,
+            and should pass this when using the ``precision`` parameter.
         padding_order : int
             Scales to the ``padding_order`` th larger power of 2.
             A ``padding_order`` of zero does nothing. For instance, an SLM
@@ -535,12 +535,18 @@ class Hologram:
             Shape of the computational space which satisfies the above requirements.
         """
         cameraslm = None
+        # If slm_shape is actually a FourierSLM
         if hasattr(slm_shape, "slm"):
             cameraslm = slm_shape
             slm_shape = cameraslm.slm.shape
+        # If slm_shape is actually a SLM
+        elif hasattr(slm_shape, "shape"):
+            cameraslm = lambda:0
+            cameraslm.slm = slm_shape
+            slm_shape = cameraslm.slm.shape
 
         # Handle precision
-        if np.isfinite(precision) and cameraslm is not None:
+        if (np.isfinite(precision) and cameraslm is not None):
             if precision <= 0:
                 raise ValueError(
                     "algorithms.py: Precision passed to calculate_padded_shape() must be positive."
@@ -2678,7 +2684,7 @@ class SpotHologram(FeedbackHologram):
         #      (divided by 1 would correspond to the largest non-overlapping integration
         #      regions; 1.5 gives comfortable padding)
         #  - and finally forced to be an odd integer.
-        N = 10 #TODO: non-arbitrary
+        N = 5 #TODO: non-arbitrary
         min_psf = 3
 
         dist_knm = np.max([toolbox.smallest_distance(self.spot_knm) / 1.5, min_psf])

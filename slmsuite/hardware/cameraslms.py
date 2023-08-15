@@ -506,7 +506,7 @@ class FourierSLM(CameraSLM):
         slm_size : (float, float) OR int OR float OR None
             Size of patch on the SLM in normalized units.
             A scalar is interpreted as the width and height of a square.
-            If ``None``, defaults to the ``shape`` of the SLM.
+            If ``None``, defaults to the normalized SLM size.
         basis : {"kxy", "ij"}
             Basis of the returned size; ``"kxy"`` for SLM size, ``"ij"`` for camera size.
 
@@ -520,15 +520,18 @@ class FourierSLM(CameraSLM):
         ValueError
             If the basis argument was malformed.
         """
+        # Default to normalized SLM size
         if slm_size is None:
-            slm_size = self.slm.shape
-        if isinstance(slm_size, REAL_TYPES):
+            slm_size = (self.slm.dx * self.slm.shape[1], self.slm.dy * self.slm.shape[0])
+        # Float input -> square region
+        elif isinstance(slm_size, REAL_TYPES):
             slm_size = (slm_size, slm_size)
 
         if basis == "kxy":
             return (1 / slm_size[0], 1 / slm_size[1])
         elif basis == "ij":
             M = self.fourier_calibration['M']
+            # Compensate for spot rotation s.t. spot size is along camera axes
             size_kxy = np.linalg.inv(M/np.sqrt(np.linalg.det(M))) @ \
                                      np.array((1 / slm_size[0], 1 / slm_size[1]))
             return np.abs(self.kxyslm_to_ijcam([0, 0]) - self.kxyslm_to_ijcam(size_kxy))
@@ -716,9 +719,7 @@ class FourierSLM(CameraSLM):
         interference_size = np.around(np.array(
             self.get_farfield_spot_size(
                 (superpixel_size * self.slm.dx, superpixel_size * self.slm.dy),
-                basis="ij"
-            )
-        )).astype(int)
+                basis="ij"))).astype(int)
 
         # Error check whether we expect to be able to see fringes.
         max_r = np.sqrt(

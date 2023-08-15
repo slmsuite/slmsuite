@@ -81,6 +81,7 @@ class SLM:
     display : numpy.ndarray
         Displayed data in SLM units (integers).
     """
+
     def __init__(
         self,
         width,
@@ -130,7 +131,7 @@ class SLM:
 
         # Resolution of the SLM.
         self.bitdepth = bitdepth
-        self.bitresolution = 2 ** bitdepth
+        self.bitresolution = 2**bitdepth
 
         # time to delay after writing (allows SLM to stabilize).
         self.settle_time_s = settle_time_s
@@ -143,8 +144,8 @@ class SLM:
         self.dy = dy_um / self.wav_um
 
         # Make normalized coordinate grids.
-        xpix = (width - 1) *  np.linspace(-.5, .5, width)
-        ypix = (height - 1) * np.linspace(-.5, .5, height)
+        xpix = (width - 1) * np.linspace(-0.5, 0.5, width)
+        ypix = (height - 1) * np.linspace(-0.5, 0.5, height)
         self.x_grid, self.y_grid = np.meshgrid(self.dx * xpix, self.dy * ypix)
 
         # Phase and amplitude corrections.
@@ -180,7 +181,8 @@ class SLM:
         list
             An empty list.
         """
-        if verbose: print(".info() NotImplemented.")
+        if verbose:
+            print(".info() NotImplemented.")
         return []
 
     def load_vendor_phase_correction(self, file_path):
@@ -217,8 +219,9 @@ class SLM:
 
         if np.abs(np.diff(file_shape_error)) > 1:
             raise ValueError(
-                "Note sure how to pad or unpad correction shape {} to SLM shape {}."
-                .format(phase_correction.shape, self.shape)
+                "Note sure how to pad or unpad correction shape {} to SLM shape {}.".format(
+                    phase_correction.shape, self.shape
+                )
             )
 
         if np.any(file_shape_error > 1):
@@ -363,11 +366,19 @@ class SLM:
         if phase is not None and isinstance(phase, INTEGER_TYPES):
             # Check the type.
             if phase.dtype != self.display.dtype:
-                raise TypeError("Unexpected integer type {}. Expected {}.".format(phase.dtype, self.display.dtype))
+                raise TypeError(
+                    "Unexpected integer type {}. Expected {}.".format(
+                        phase.dtype, self.display.dtype
+                    )
+                )
 
             # If integer data was passed, check that we are not out of range.
             if np.any(phase >= self.bitresolution):
-                raise TypeError("Integer data must be within the bitdepth ({}-bit) of the SLM.".format(self.bitdepth))
+                raise TypeError(
+                    "Integer data must be within the bitdepth ({}-bit) of the SLM.".format(
+                        self.bitdepth
+                    )
+                )
 
             # Copy the pattern and unpad if necessary.
             if phase.shape != self.shape:
@@ -376,7 +387,9 @@ class SLM:
                 np.copyto(self.display, phase)
 
             # Update the phase variable with the integer data that we displayed.
-            self.phase = 2 * np.pi - self.display * (2 * np.pi / self.phase_scaling / self.bitresolution)
+            self.phase = 2 * np.pi - self.display * (
+                2 * np.pi / self.phase_scaling / self.bitresolution
+            )
         else:
             # If float data was passed (or the None case).
             # Copy the pattern and unpad if necessary.
@@ -471,14 +484,14 @@ class SLM:
                 # generate checks for the conversion to long integer / etc before the final
                 # conversion to dtype of uint8 or uint16.
                 np.mod(phase, self.bitresolution * self.phase_scaling, out=phase)
-                phase +=  self.bitresolution * (1-self.phase_scaling)
+                phase += self.bitresolution * (1 - self.phase_scaling)
 
                 # Set values still out of range to zero.
                 if self.phase_scaling > 1:
-                    phase[phase < 0] = self.bitresolution-1
+                    phase[phase < 0] = self.bitresolution - 1
             else:
                 # Go from negative to positive.
-                phase += self.bitresolution-1
+                phase += self.bitresolution - 1
 
             # Copy and case the data to the output (usually self.display)
             np.copyto(out, phase, casting="unsafe")
@@ -536,7 +549,7 @@ class SLM:
 
         r2_grid = np.square(self.x_grid / dx) + np.square(self.y_grid / dy)
 
-        self.measured_amplitude = np.exp(-r2_grid * (1 / radius ** 2))
+        self.measured_amplitude = np.exp(-r2_grid * (1 / radius**2))
 
         return self.measured_amplitude
 
@@ -571,23 +584,31 @@ class SLM:
 
     def spot_radius_kxy(self):
         """
-        Approximates the expected radius of farfield spots in the ``"kxy"`` basis based on the near-field amplitude distribution :attr:`measured_amplitude`.
+        Approximates the expected radius of farfield spots in the ``"kxy"`` basis based on
+        the near-field amplitude distribution :attr:`measured_amplitude`.
 
         Returns
         -------
         float
             Average radius of the farfield spot.
         """
+        # TODO: clean up 2D support throughout
+        
+        # If SLM amplitude profile is measured (i.e., SLM has been wavefront calibrated)
         try:
+            # TODO: @ichr should this be PSF_ij?
             psf_nm = np.sqrt(analysis.image_variances(self._get_measured_amplitude())[:2])
 
-            psf_kxy = np.mean(toolbox.convert_blaze_vector(
-                np.reciprocal(8 * psf_nm),
-                from_units="freq",
-                to_units="kxy",
-                slm=self,
-                shape=self.shape
-            ))
+            psf_kxy = np.mean(
+                toolbox.convert_blaze_vector(
+                    np.reciprocal(psf_nm),
+                    from_units="freq",
+                    to_units="kxy",
+                    slm=self,
+                    shape=self.shape,
+                )
+            )
+        # No amplitude profile present
         except:
             psf_kxy = np.mean([1 / self.dx / self.shape[1], 1 / self.dy / self.shape[0]])
 

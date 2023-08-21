@@ -2653,7 +2653,7 @@ class SpotHologram(FeedbackHologram):
 
         # Generate point spread functions (psf) for the knm and ij bases
         if cameraslm is not None:
-            psf_kxy = cameraslm.slm.spot_radius_kxy()
+            psf_kxy = np.mean(cameraslm.slm.spot_radius_kxy())
             psf_knm = toolbox.convert_blaze_radius(psf_kxy, "kxy", "knm", cameraslm.slm, shape)
             psf_ij = toolbox.convert_blaze_radius(psf_kxy, "kxy", "ij", cameraslm, shape)
         else:

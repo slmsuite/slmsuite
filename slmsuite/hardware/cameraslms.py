@@ -520,9 +520,10 @@ class FourierSLM(CameraSLM):
         ValueError
             If the basis argument was malformed.
         """
-        # Default to normalized SLM size
+        # Default to effective SLM aperture size (based on amplitude profile if measured)
         if slm_size is None:
-            slm_size = (self.slm.dx * self.slm.shape[1], self.slm.dy * self.slm.shape[0])
+            psf_kxy = self.slm.spot_radius_kxy()[:,0]
+            slm_size = (1/psf_kxy[0], 1/psf_kxy[1])
         # Float input -> square region
         elif isinstance(slm_size, REAL_TYPES):
             slm_size = (slm_size, slm_size)

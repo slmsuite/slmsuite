@@ -591,25 +591,21 @@ class SLM:
         -------
         float
             Average radius of the farfield spot.
-        """
-        # TODO: clean up 2D support throughout
-        
+        """        
         # If SLM amplitude profile is measured (i.e., SLM has been wavefront calibrated)
         try:
-            # TODO: @ichr should this be PSF_ij?
             psf_nm = np.sqrt(analysis.image_variances(self._get_measured_amplitude())[:2])
-
-            psf_kxy = np.mean(
-                toolbox.convert_blaze_vector(
-                    np.reciprocal(psf_nm),
+            fwhm = 2*np.sqrt(2*np.log(2)) * psf_nm
+            psf_kxy = toolbox.convert_blaze_vector(
+                    np.reciprocal(fwhm),
                     from_units="freq",
                     to_units="kxy",
                     slm=self,
                     shape=self.shape,
                 )
-            )
+            
         # No amplitude profile present
         except:
-            psf_kxy = np.mean([1 / self.dx / self.shape[1], 1 / self.dy / self.shape[0]])
+            psf_kxy = [1 / self.dx / self.shape[1], 1 / self.dy / self.shape[0]]
 
-        return psf_kxy
+        return toolbox.format_2vectors(psf_kxy)

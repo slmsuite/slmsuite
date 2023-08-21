@@ -1301,6 +1301,7 @@ def blob_array_detect(
 
         # Make a mask with negative power at the border, positive
         # at the array, with integrated intensity of 0.
+        # Future: use MRAF to minimize ghost spot amp around border
         area = size[0] * size[1]
         perimeter = 2 * (size[0] + size[1]) + 4
 

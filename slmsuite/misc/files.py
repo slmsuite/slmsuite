@@ -163,7 +163,7 @@ def latest_path(path, name, extension=None, kind="file", digit_count=5):
     return ret
 
 
-def read_h5(file_path, decode_bytes=True):
+def read_h5(file_path, decode_bytes=True, **kwargs):
     """
     Read data from an h5 file into a dictionary.
     In the case of more complicated h5 hierarchy, a dictionary of dictionaries is returned.
@@ -176,6 +176,8 @@ def read_h5(file_path, decode_bytes=True):
         Whether or not objects with type `bytes` should be decoded.
         By default HDF5 writes strings as bytes objects; this functionality
         will make strings read back from the file `str` type.
+    **kwargs
+        Passed to h5py.File. Useful for setting raw data chunk cache values (e.g. `rdcc_nbytes`).
 
     Returns
     -------
@@ -199,13 +201,13 @@ def read_h5(file_path, decode_bytes=True):
 
         return data
 
-    with h5py.File(file_path, "r") as file_:
+    with h5py.File(file_path, "r", **kwargs) as file_:
         data = recurse(file_)
 
     return data
 
 
-def write_h5(file_path, data, mode="w"):
+def write_h5(file_path, data, mode="w", **kwargs):
     """
     Write data in a dictionary to an `h5 file
     <https://docs.h5py.org/en/stable/high/file.html#opening-creating-files>`_.
@@ -218,6 +220,8 @@ def write_h5(file_path, data, mode="w"):
         Dictionary of data to save in the file.
     mode : str
         The mode to open the file with.
+    **kwargs
+        Passed to h5py.File. Useful for setting raw data chunk cache values (e.g. `rdcc_nbytes`).
     """
     def recurse(group, data):
         for key in data.keys():
@@ -227,5 +231,5 @@ def write_h5(file_path, data, mode="w"):
             else:
                 group[key] = data[key]
 
-    with h5py.File(file_path, mode) as file_:
+    with h5py.File(file_path, mode, **kwargs) as file_:
         recurse(file_, data)

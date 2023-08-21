@@ -116,8 +116,10 @@ ALGORITHM_DEFAULTS = {
                         "fix_phase_iteration" : 10,
                         "feedback_exponent" : 0.8},
     "WGS-Nogrette" :  {"feedback" : "computational",
-                        "factor":0.1}
+                        "factor":0.1},
+    "WGS-Wu" : {}
 }
+ALGORITHM_INDEX = {key : i for i, key in enumerate(ALGORITHM_DEFAULTS.keys())}
 
 # List of feedback options. See the documentation for the feedback keyword in optimize().
 FEEDBACK_OPTIONS = [
@@ -423,7 +425,7 @@ class Hologram:
 
         # Initialize everything else inside reset.
         self.reset(reset_phase=False, reset_flags=True)
-        
+
         # Custom GPU kernels for speedy weighting.
         if np != cp:
             try:
@@ -439,7 +441,7 @@ class Hologram:
                         const int method,               // 0 == Kim/Leonardo, 1 == Nogrette
                         const float factor
                     ) {
-                        // 
+                        //
                         int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
                         if (tid < N) {
@@ -725,6 +727,12 @@ class Hologram:
               Note that while Nogrette et al compares powers, this implementation
               compares amplitudes for speed. These are identical to first order.
 
+            ``'WGS-Wu'``
+
+              `exponential <https://doi.org/10.1364/OE.413723>`_
+
+              .. math:: \mathcal{W} = \mathcal{W}\exp\left( f (\mathcal{T} - \mathcal{F}) \right)
+
         - The option for `Mixed Region Amplitude Freedom (MRAF)
           <https://doi.org/10.1007/s10043-018-0456-x>`_ feedback. In standard
           iterative algorithms, the entire Fourier-domain unpatterned field is replaced with zeros.
@@ -897,7 +905,7 @@ class Hologram:
 
         Note
         ~~~~
-        FFTs are **not** in-place in this algorithm. In both non-:mod:`cupy` and
+        Default FFTs are **not** in-place in this algorithm. In both non-:mod:`cupy` and
         :mod:`cupy` implementations, :mod:`numpy.fft` does not support in-place
         operations.  However, :mod:`scipy.fft` does in both. In the future, we may move to the scipy
         implementation. However, neither :mod:`numpy` or :mod:`scipy` ``fftshift`` support
@@ -905,7 +913,8 @@ class Hologram:
         consider **not shifting** the FFT result, and instead shifting measurement data / etc to
         this unshifted basis. We might also implement `get_fft_plan
         <https://docs.cupy.dev/en/stable/reference/generated/cupyx.scipy.fftpack.get_fft_plan.html>`_
-        for even faster FFTing.
+        for even faster FFTing. However, in practice, speed is limited by other
+        peripherals (especially feedback and stats) rather than FFT speed or memory.
 
         Parameters
         ----------
@@ -925,33 +934,33 @@ class Hologram:
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
         for _ in iterations:
-            # 1) Nearfield -> farfield
-            # 1.1) Fix the relevant part of the nearfield amplitude to the source amplitude.
+            # (A) Nearfield -> farfield
+            # Fix the relevant part of the nearfield amplitude to the source amplitude.
             # Everything else is zero because power outside the SLM is assumed unreflected.
             # This is optimized for when shape is much larger than slm_shape.
             nearfield.fill(0)
             nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
 
-            # 1.2) FFT to move to the farfield.
+            # FFT to move to the farfield.
             self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
 
-            # 2) Midloop: caching, prep
-            # 2.1) Before callback(), cleanup such that it can access updated amp_ff and images.
+            # (B) Midloop caching and prep
+            # Before callback(), cleanup such that it can access updated amp_ff and images.
             self._midloop_cleaning(self.farfield)
 
-            # 2.2) Run step function if present and check termination conditions.
+            # Run step function if present and check termination conditions.
             if callback is not None:
                 if callback(self):
                     break
 
-            # 2.3) Evaluate method-specific routines, stats, etc.
+            # Evaluate method-specific routines, stats, etc.
             # If you want to add new functionality to GS, do so here to keep the main loop clean.
             self._GS_farfield_routines(self.farfield, mraf_variables)
 
-            # 3) Farfield -> nearfield.
+            # (C) Farfield -> nearfield.
             nearfield = self._farfield2nearfield(self.farfield, nearfield_out=nearfield)
 
-            # 3.1) Grab the phase from the complex nearfield.
+            # Grab the phase from the complex nearfield.
             # Use arctan2() directly instead of angle() for in-place operations (out=).
             self.phase = cp.arctan2(
                 nearfield.imag[i0:i1, i2:i3],
@@ -959,7 +968,7 @@ class Hologram:
                 out=self.phase,
             )
 
-            # 3.2) Increment iteration.
+            # Increment iteration.
             self.iter += 1
 
         # Update the final far-field
@@ -1070,7 +1079,7 @@ class Hologram:
 
                 # Save the phase if we are going from unfixed to fixed.
                 if self.flags["fixed_phase"] and self.phase_ff is None or was_not_fixed:
-                    self.phase_ff = cp.angle(farfield)
+                    self.phase_ff = cp.arctan2(farfield.imag, farfield.real, out=self.phase_ff)
             else:
                 self.flags["fixed_phase"] = False
 
@@ -1078,15 +1087,21 @@ class Hologram:
 
         # Fix amplitude, potentially also fixing the phase.
         if not mraf_enabled:
-            if ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
-                # Set the farfield to the stored phase and updated weights.
-                cp.exp(1j * self.phase_ff, out=farfield)
-                cp.multiply(farfield, self.weights, out=farfield)
-            else:
-                # Set the farfield amplitude to the updated weights.
-                cp.divide(farfield, cp.abs(farfield), out=farfield)
-                cp.multiply(farfield, self.weights, out=farfield)
-                cp.nan_to_num(farfield, copy=False, nan=0)
+            # if ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
+            #     # Set the farfield to the stored phase and updated weights.
+            #     cp.exp(1j * self.phase_ff, out=farfield)
+            #     cp.multiply(farfield, self.weights, out=farfield)
+            # else:
+            #     # Set the farfield amplitude to the updated weights.
+            #     cp.divide(farfield, cp.abs(farfield), out=farfield)
+            #     cp.multiply(farfield, self.weights, out=farfield)
+            #     cp.nan_to_num(farfield, copy=False, nan=0)
+
+            if not ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
+                self.phase_ff = cp.arctan2(farfield.imag, farfield.real, out=self.phase_ff)
+
+            cp.exp(1j * self.phase_ff, out=farfield)
+            cp.multiply(farfield, self.weights, out=farfield)
         else:   # Mixed region amplitude freedom (MRAF) case.
             zero_region =   mraf_variables["zero_region"]
             noise_region =  mraf_variables["noise_region"]
@@ -1095,33 +1110,43 @@ class Hologram:
             where_working = mraf_variables["where_working"]
 
             if hasattr(self, "zero_weights"):
-                # mag1 = cp.abs(self.zero_weights)
-                # mag2 = cp.abs(farfield[zero_region])
-                self.zero_weights -= self.flags.get("zero_factor", 1) * farfield[zero_region]
+                self.zero_weights -= self.flags.get("zero_factor", 1) * np.abs(farfield[zero_region]) * farfield[zero_region]
                 farfield[zero_region] = self.zero_weights
 
-            # Handle signal and noise regions.
-            if ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
-                # Set the farfield to the stored phase and updated weights, in the signal region.
-                if where_working:
-                    cp.exp(1j * self.phase_ff, where=signal_region, out=farfield)
-                    cp.multiply(farfield, self.weights, where=signal_region, out=farfield)
-                    if mraf_factor is not None: cp.multiply(farfield, mraf_factor, where=noise_region, out=farfield)
-                else:
-                    cp.exp(1j * self.phase_ff, _where=signal_region, out=farfield)
-                    cp.multiply(farfield, self.weights, _where=signal_region, out=farfield)
-                    if mraf_factor is not None: cp.multiply(farfield, mraf_factor, _where=noise_region, out=farfield)
+            # # Handle signal and noise regions.
+            # if ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
+            #     # Set the farfield to the stored phase and updated weights, in the signal region.
+            #     if where_working:
+            #         cp.exp(1j * self.phase_ff, where=signal_region, out=farfield)
+            #         cp.multiply(farfield, self.weights, where=signal_region, out=farfield)
+            #         if mraf_factor is not None: cp.multiply(farfield, mraf_factor, where=noise_region, out=farfield)
+            #     else:
+            #         cp.exp(1j * self.phase_ff, _where=signal_region, out=farfield)
+            #         cp.multiply(farfield, self.weights, _where=signal_region, out=farfield)
+            #         if mraf_factor is not None: cp.multiply(farfield, mraf_factor, _where=noise_region, out=farfield)
+            # else:
+            #     # Set the farfield amplitude to the updated weights, in the signal region.
+            #     if where_working:
+            #         cp.divide(farfield, cp.abs(farfield), where=signal_region, out=farfield)
+            #         cp.multiply(farfield, self.weights, where=signal_region, out=farfield)
+            #         if mraf_factor is not None: cp.multiply(farfield, mraf_factor, where=noise_region, out=farfield)
+            #     else:
+            #         cp.divide(farfield, cp.abs(farfield), _where=signal_region, out=farfield)
+            #         cp.multiply(farfield, self.weights, _where=signal_region, out=farfield)
+            #         if mraf_factor is not None: cp.multiply(farfield, mraf_factor, _where=noise_region, out=farfield)
+            #     cp.nan_to_num(farfield, copy=False, nan=0)
+
+            if not ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
+                self.phase_ff = cp.arctan2(farfield.imag, farfield.real, out=self.phase_ff)
+
+            if where_working:
+                cp.exp(1j * self.phase_ff, where=signal_region, out=farfield)
+                cp.multiply(farfield, self.weights, where=signal_region, out=farfield)
+                if mraf_factor is not None: cp.multiply(farfield, mraf_factor, where=noise_region, out=farfield)
             else:
-                # Set the farfield amplitude to the updated weights, in the signal region.
-                if where_working:
-                    cp.divide(farfield, cp.abs(farfield), where=signal_region, out=farfield)
-                    cp.multiply(farfield, self.weights, where=signal_region, out=farfield)
-                    if mraf_factor is not None: cp.multiply(farfield, mraf_factor, where=noise_region, out=farfield)
-                else:
-                    cp.divide(farfield, cp.abs(farfield), _where=signal_region, out=farfield)
-                    cp.multiply(farfield, self.weights, _where=signal_region, out=farfield)
-                    if mraf_factor is not None: cp.multiply(farfield, mraf_factor, _where=noise_region, out=farfield)
-                cp.nan_to_num(farfield, copy=False, nan=0)
+                cp.exp(1j * self.phase_ff, _where=signal_region, out=farfield)
+                cp.multiply(farfield, self.weights, _where=signal_region, out=farfield)
+                if mraf_factor is not None: cp.multiply(farfield, mraf_factor, _where=noise_region, out=farfield)
 
     # User interactions: Changing the target and recovering the nearfield phase and complex farfield.
     def _update_target(self, new_target, reset_weights=False, plot=False):
@@ -1215,7 +1240,7 @@ class Hologram:
 
     # Weighting functions.
     def _update_weights_generic(
-            self, weight_amp, feedback_amp, target_amp=None, mp=cp, nan_checks=True
+            self, weight_amp, feedback_amp, target_amp=None, xp=cp, nan_checks=True
         ):
         """
         Helper function to process weight feedback according to the chosen weighting method.
@@ -1230,13 +1255,13 @@ class Hologram:
             A :class:`~slmsuite.holography.SpotArray` instance containing locations
             where the feedback weight should be calculated.
         feedback_amp : numpy.ndarray OR cupy.ndarray
-            Resulting amplitudes corresponding to ``weight_amp``.
+            Measured or result amplitudes corresponding to ``weight_amp``.
             Should be the same size as ``weight_amp``.
         target_amp : numpy.ndarray OR cupy.ndarray OR None
             Necessary in the case where ``target_amp`` is not uniform, such that the weighting can
             properly be applied to bring the feedback closer to the target. If ``None``, is assumed
             to be uniform. Should be the same size as ``weight_amp``.
-        mp : module
+        xp : module
             This function is used by both :mod:`cupy` and :mod:`numpy`, so we have the option
             for either. Defaults to :mod:`cupy`.
         nan_checks : bool
@@ -1248,34 +1273,38 @@ class Hologram:
             The updated ``weight_amp``.
         """
         assert self.method[:4] == "WGS-", "For now, assume weighting is for WGS."
-        method = self.method[4:]
+        method = self.method[4:].lower()
 
         # Parse feedback_amp
         if target_amp is None:  # Uniform
-            feedback_corrected = mp.array(feedback_amp, copy=True, dtype=self.dtype)
+            feedback_corrected = xp.array(feedback_amp, copy=True, dtype=self.dtype)
         else:  # Non-uniform
-            feedback_corrected = mp.array(feedback_amp, copy=True, dtype=self.dtype)
-            feedback_corrected *= 1 / Hologram._norm(feedback_corrected, mp=mp)
+            feedback_corrected = xp.array(feedback_amp, copy=True, dtype=self.dtype)
+            feedback_corrected *= 1 / Hologram._norm(feedback_corrected, xp=xp)
 
-            mp.divide(feedback_corrected, mp.array(target_amp, copy=False), out=feedback_corrected)
+            xp.divide(feedback_corrected, xp.array(target_amp, copy=False), out=feedback_corrected)
 
             if nan_checks:
                 feedback_corrected[feedback_corrected == np.inf] = 1
-                feedback_corrected[mp.array(target_amp, copy=False) == 0] = 1
+                feedback_corrected[xp.array(target_amp, copy=False) == 0] = 1
 
-                mp.nan_to_num(feedback_corrected, copy=False, nan=1)
+                xp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
         # Fix feedback according to the desired method.
-        if "leonardo" in method.lower() or "kim" in method.lower():
+        if "leonardo" in method or "kim" in method:
             # 1/(x^p)
-            mp.power(feedback_corrected, -self.flags["feedback_exponent"], out=feedback_corrected)
-        elif "nogrette" in method.lower():
+            xp.power(feedback_corrected, -self.flags["feedback_exponent"], out=feedback_corrected)
+        elif "nogrette" in method:
             # Taylor expand 1/(1-g(1-x)) -> 1 + g(1-x) + (g(1-x))^2 ~ 1 + g(1-x)
-            feedback_corrected *= -(1 / mp.nanmean(feedback_corrected))
+            feedback_corrected *= -(1 / xp.nanmean(feedback_corrected))
             feedback_corrected += 1
             feedback_corrected *= -self.flags["feedback_factor"]
             feedback_corrected += 1
-            mp.reciprocal(feedback_corrected, out=feedback_corrected)
+            xp.reciprocal(feedback_corrected, out=feedback_corrected)
+        elif "wu" in method:
+            pass
+        elif "tanh" in method:
+            pass
         else:
             raise RuntimeError(
                 "Method "
@@ -1290,16 +1319,112 @@ class Hologram:
         weight_amp *= feedback_corrected
 
         if nan_checks:
-            mp.nan_to_num(weight_amp, copy=False, nan=.0001)
-            weight_amp[weight_amp == np.inf] = 1
+            xp.nan_to_num(weight_amp, copy=False, nan=.0001)
+            # weight_amp[weight_amp == np.inf] = 1
 
         # Normalize amp, as methods may have broken conservation.
-        weight_amp *= (1 / Hologram._norm(weight_amp, mp=mp))
+        weight_amp *= (1 / Hologram._norm(weight_amp, xp=xp))
 
         return weight_amp
 
-    def _update_weights_generic_cuda():
-        pass
+    def _update_weights_generic_cuda(self, weight_amp, feedback_amp, target_amp=None):
+
+        kernel = cp.RawKernel(
+            r'''
+            // # include <cupy/complex.cuh>
+            #include <math.h>
+            extern "C"
+            __global__ void uwg(
+                float* weight_amp,                  // Input (N)
+                const float* feedback_amp,          // Measured amplitudes (N)
+                const float* target_amp,            // Desired amplitudes (N)
+                const unsigned int N,               // Size
+                const unsigned int method,          // Indexed WGS method
+                const float feedback_norm,          // cupy-computed norm of feedback_amp
+                const float feedback_exponent,      // Method-specific
+                const float feedback_factor,        // Method-specific
+
+            ) {
+                // i is each pixel in the weights.
+                int i = blockDim.x * blockIdx.x + threadIdx.x;
+
+                if (i < N) {
+                    float feedback = feedback_amp[i];
+                    float target = 1 / sqrt(N);         // Make this faster?
+
+                    if (feedback_norm != 0) {
+                        feedback /= feedback_norm;
+                        target = target_amp[i]
+                    }
+
+                    if (method != 4 && method != 5) {
+                        // Handle feedback with a non-uniform target
+                        if (target != 0) {
+                            feedback /= target;
+                        } else {
+                            feedback = 1;
+                        }
+
+                        if (method == 1 || method == 2) {   // Leonardo, Kim
+                            feedback = pow(-feedback, feedback_exponent)
+                        } else if (method == 3) {           // Nogrette
+                            feedback = 1 / (1 - feedback_factor * (1 - feedback))
+                        }
+                    } else {
+                        if (method == 4) {                  // Wu
+                            feedback = exp(feedback_exponent * (target - feedback))
+                        } else if (method == 5) {           // tanh
+                            feedback = feedback_factor * tanh(feedback_exponent * (target - feedback))
+                        }
+                    }
+
+                    // Check nan, inf
+                    if (isinf(feedback) || isnan(feedback)) { feedback = 1 }
+
+                    // Export the result to global memory.
+                    if (feedback != 1) {
+                        weight_amp[i] *= feedback;
+                    }
+                }
+            }
+            ''',
+            'uwg'
+        )
+
+        method = ALGORITHM_INDEX[self.method]
+
+        if target_amp is None:  # Uniform
+            feedback_norm = 0
+            target_amp = 0
+        else:
+            feedback_norm = Hologram._norm(feedback_amp, xp=cp)
+
+
+        N = weight_amp.size
+        method = ALGORITHM_INDEX[self.method]
+
+        threads_per_block = int(kernel.max_threads_per_block)
+        blocks = N // threads_per_block
+
+        # Call the RawKernel.
+        kernel(
+            (blocks,),
+            (threads_per_block,),
+            (
+                weight_amp,
+                feedback_amp,
+                target_amp,
+                N,
+                method,
+                feedback_norm,
+                self.flags.pop("feedback_exponent", 0),
+                self.flags.pop("feedback_factor", 0)
+            )
+        )
+
+        weight_amp *= (1 / Hologram._norm(weight_amp, xp=cp))
+
+        return weight_amp
 
     def _update_weights(self):
         """
@@ -1316,7 +1441,7 @@ class Hologram:
     def _calculate_stats(
         feedback_amp,
         target_amp,
-        mp=cp,
+        xp=cp,
         efficiency_compensation=True,
         total=None,
         raw=False
@@ -1330,7 +1455,7 @@ class Hologram:
             Computational or measured result of holography.
         target_amp : numpy.ndarray OR cupy.ndarray
             Target of holography.
-        mp : module
+        xp : module
             This function is used by both :mod:`cupy` and :mod:`numpy`, so we have the option
             for either. Defaults to :mod:`cupy`.
         efficiency_compensation : bool
@@ -1347,7 +1472,7 @@ class Hologram:
             only the derived statistics.
         """
         # Downgrade to numpy if necessary
-        if mp == np and (hasattr(feedback_amp, "get") or hasattr(target_amp, "get")):
+        if xp == np and (hasattr(feedback_amp, "get") or hasattr(target_amp, "get")):
             if hasattr(feedback_amp, "get"):
                 feedback_amp = feedback_amp.get()
 
@@ -1357,50 +1482,52 @@ class Hologram:
             if total is not None:
                 total = float(total)
 
-        feedback_amp = mp.array(feedback_amp, copy=False)
-        target_amp = mp.array(target_amp, copy=False)
+        feedback_amp = xp.array(feedback_amp, copy=False)
+        target_amp = xp.array(target_amp, copy=False)
 
-        feedback_pwr = mp.square(feedback_amp)
-        target_pwr = mp.square(target_amp)
+        feedback_pwr = xp.square(feedback_amp)
+        target_pwr = xp.square(target_amp)
 
+        # If total is provided, calculate efficiency before normalization.
         if total is not None:
-            efficiency = mp.sum(feedback_pwr) / total
-            # self._stats_pinned[0] 
+            efficiency = xp.nansum(feedback_pwr) / total
+            # self._stats_pinned[0]
 
         # Normalize.
-        feedback_pwr_sum = mp.sum(feedback_pwr)
+        feedback_pwr_sum = xp.sum(feedback_pwr)
         feedback_pwr *= 1 / feedback_pwr_sum
-        feedback_amp *= 1 / mp.sqrt(feedback_pwr_sum)
+        feedback_amp *= 1 / xp.sqrt(feedback_pwr_sum)
 
-        target_pwr_sum = mp.sum(target_pwr)
+        target_pwr_sum = xp.nansum(target_pwr)
         target_pwr *= 1 / target_pwr_sum
-        target_amp *= 1 / mp.sqrt(target_pwr_sum)
+        target_amp *= 1 / xp.sqrt(target_pwr_sum)
 
         if total is None:
             # Efficiency overlap integral.
-            efficiency_intermediate = mp.sum(
-                mp.multiply(target_amp, feedback_amp)
+            efficiency_intermediate = xp.nansum(
+                xp.multiply(target_amp, feedback_amp)
             )
             efficiency = np.square(float(efficiency_intermediate))
             if efficiency_compensation:
                 feedback_pwr *= 1 / efficiency
 
         # Make some helper lists; ignoring power where target is zero.
-        mask = mp.nonzero(target_pwr)
+        mask = xp.logical_and(target_pwr != 0, xp.logical_not(xp.isnan(target_pwr)))
+        # mask = xp.nonzero(target_pwr)
 
         feedback_pwr_masked = feedback_pwr[mask]
         target_pwr_masked = target_pwr[mask]
 
-        ratio_pwr = mp.divide(feedback_pwr_masked, target_pwr_masked)
+        ratio_pwr = xp.divide(feedback_pwr_masked, target_pwr_masked)
         pwr_err = target_pwr_masked - feedback_pwr_masked
 
         # Compute the remaining stats.
-        rmin = float(mp.amin(ratio_pwr))
-        rmax = float(mp.amax(ratio_pwr))
+        rmin = float(xp.amin(ratio_pwr))
+        rmax = float(xp.amax(ratio_pwr))
         uniformity = 1 - (rmax - rmin) / (rmax + rmin)
 
-        pkpk_err = pwr_err.size * float(mp.amax(pwr_err) - mp.amin(pwr_err))
-        std_err = pwr_err.size * float(mp.std(pwr_err))
+        pkpk_err = pwr_err.size * float(xp.amax(pwr_err) - xp.amin(pwr_err))
+        std_err = pwr_err.size * float(xp.std(pwr_err))
 
         final_stats = {
             "efficiency": float(efficiency),
@@ -1412,11 +1539,11 @@ class Hologram:
         if raw:
             ratio_pwr_full = np.full_like(target_pwr, np.nan)
 
-            if mp == np:
+            if xp == np:
                 final_stats["raw_pwr"] = np.square(feedback_amp)
                 ratio_pwr_full[mask] = ratio_pwr
             else:
-                final_stats["raw_pwr"] = mp.square(feedback_amp).get()
+                final_stats["raw_pwr"] = xp.square(feedback_amp).get()
                 ratio_pwr_full[mask] = ratio_pwr.get()
 
             final_stats["raw_pwr_ratio"] = ratio_pwr_full
@@ -1498,6 +1625,24 @@ class Hologram:
                         # Update stat
                         if group in stats.keys() and stat in stats[group].keys():
                             self.stats["stats"][group][stat][self.iter] = stats[group][stat]
+
+        # Rawest stats
+        if "raw_stats" in self.flags and self.flags["raw_stats"]:
+            if not "raw_farfield" in self.stats:
+                self.stats["raw_farfield"] = []
+
+            diff = self.iter + 1 - len(self.stats["raw_farfield"])
+            if diff > 0:
+                self.stats["raw_farfield"].extend(
+                    [np.nan for _ in range(diff)]
+                )
+
+            if hasattr(self.farfield, "get"):
+                farfield = self.farfield.get()
+            else:
+                farfield = self.farfield.copy()
+
+            self.stats["raw_farfield"][self.iter] = farfield
 
     def update_stats(self, stat_groups=[]):
         """
@@ -2133,17 +2278,17 @@ class Hologram:
             return mempool.get_limit()
 
     @staticmethod
-    def _norm(matrix, mp=cp):
+    def _norm(matrix, xp=cp):
         r"""
-        Computes the root of the sum of squares of the given ``matrix``. Implements:
+        Computes the root of the sum of squares of the given ``matrix``. Implements
 
-        .. math:: \sqrt{\iint |\vec{E}|^2}
+        .. math:: \sqrt{\iint |\vec{E}|^2}.
 
         Parameters
         ----------
         matrix : numpy.ndarray OR cupy.ndarray
             Data, potentially complex.
-        mp : module
+        xp : module
             This function is used by both :mod:`cupy` and :mod:`numpy`, so we have the option
             for either. Defaults to :mod:`cupy`.
 
@@ -2152,10 +2297,10 @@ class Hologram:
         float
             The result.
         """
-        if mp.iscomplexobj(matrix):
-            return mp.sqrt(mp.nansum(mp.square(mp.abs(matrix))))
+        if xp.iscomplexobj(matrix):
+            return xp.sqrt(xp.nansum(xp.square(xp.abs(matrix))))
         else:
-            return mp.sqrt(mp.nansum(mp.square(matrix)))
+            return xp.sqrt(xp.nansum(xp.square(matrix)))
 
 
 class FeedbackHologram(Hologram):
@@ -2471,7 +2616,7 @@ class FeedbackHologram(Hologram):
             stats["experimental_ij"] = self._calculate_stats(
                 self.img_ij.astype(self.dtype),
                 self.target_ij,
-                mp=np,
+                xp=np,
                 efficiency_compensation=True,
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]
             )
@@ -2700,7 +2845,7 @@ class FreeSpotHologram(FeedbackHologram):
                     r'''
                     #include <cupy/complex.cuh>
                     extern "C"  __device__ void warpReduce(
-                        complex<float>* sdata, // volatile 
+                        complex<float>* sdata, // volatile
                         unsigned int tid
                     ) {
                         sdata[tid] += sdata[tid + 32]; __syncwarp();
@@ -2757,7 +2902,7 @@ class FreeSpotHologram(FeedbackHologram):
                         if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads();
                         if (tid < 64) {  sdata[tid] += sdata[tid + 64];  } __syncthreads();
                         if (tid < 32) {
-                            // The last 32 thread don't require __syncthreads() as they can be warped.
+                            // The last 32 threads don't require __syncthreads() as they can be warped.
                             warpReduce(sdata, tid);
 
                             // Save the summed results to global memory.
@@ -2920,7 +3065,7 @@ class FreeSpotHologram(FeedbackHologram):
 
         # Sum over all the blocks to get the final answers using optimized cupy methods.
         farfield_out = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=farfield_out)
-        farfield_out *= (1 / Hologram._norm(farfield_out, mp=cp))
+        farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
 
         return farfield_out
 
@@ -2930,7 +3075,7 @@ class FreeSpotHologram(FeedbackHologram):
         nearfield = cp.conj(nearfield, out=nearfield)
 
         N = self.spot_kxy.shape[1]
-        N_batch_max = 50
+        N_batch_max = 500
 
         if farfield_out is None:
             farfield_out = cp.zeros((N, ), dtype=self.dtype_complex)
@@ -2962,7 +3107,8 @@ class FreeSpotHologram(FeedbackHologram):
 
                 collapse_kernel(self.kernel[:, kernel_slice], out=farfield_out[batch_slice])
 
-        farfield_out *= (1 / Hologram._norm(farfield_out, mp=cp))
+        farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
+        farfield_out = cp.conj(farfield_out, out=farfield_out)
 
         # unconjugate nearfield (leave it unchanged).
         nearfield = cp.conj(nearfield, out=nearfield)
@@ -3025,7 +3171,7 @@ class FreeSpotHologram(FeedbackHologram):
     def _farfield2nearfield_cupy(self, farfield, nearfield_out):
         # FYI: Farfield shape is (N,1)
         N = self.spot_kxy.shape[1]
-        N_batch_max = 50
+        N_batch_max = 500
 
         def expand_kernel(kernel, farfield, out):
             # (H*W, N) x (N,1) = (H*W, 1)   ===reshape===>   (H,W)
@@ -3177,7 +3323,7 @@ class FreeSpotHologram(FeedbackHologram):
             stats["experimental_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
-                mp=np,
+                xp=np,
                 efficiency_compensation=False,
                 total=np.sum(pwr_img),
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]
@@ -3188,7 +3334,7 @@ class FreeSpotHologram(FeedbackHologram):
             stats["external_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
-                mp=np,
+                xp=np,
                 efficiency_compensation=False,
                 total=np.sum(pwr_feedback),
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]
@@ -3852,7 +3998,7 @@ class SpotHologram(FeedbackHologram):
                     self.spot_integration_width_knm,
                     centered=True,
                     integrate=True,
-                    mp=cp
+                    xp=cp
                 ))
             elif feedback == "experimental_spot":
                 self.measure(basis="ij")
@@ -3904,13 +4050,13 @@ class SpotHologram(FeedbackHologram):
                         self.spot_integration_width_knm,
                         centered=True,
                         integrate=True,
-                        mp=cp
+                        xp=cp
                     )
 
                     stats["computational_spot"] = self._calculate_stats(
                         cp.sqrt(pwr_feedback),
                         self.spot_amp,
-                        mp=cp,
+                        xp=cp,
                         efficiency_compensation=False,
                         total=cp.sum(pwr_ff),
                         raw="raw_stats" in self.flags and self.flags["raw_stats"]
@@ -3928,7 +4074,7 @@ class SpotHologram(FeedbackHologram):
                     stats["computational_spot"] = self._calculate_stats(
                         np.sqrt(pwr_feedback),
                         self.spot_amp,
-                        mp=np,
+                        xp=np,
                         efficiency_compensation=False,
                         total=np.sum(pwr_ff),
                         raw="raw_stats" in self.flags and self.flags["raw_stats"]
@@ -3955,7 +4101,7 @@ class SpotHologram(FeedbackHologram):
             stats["experimental_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
-                mp=np,
+                xp=np,
                 efficiency_compensation=False,
                 total=np.sum(pwr_img),
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]
@@ -3966,7 +4112,7 @@ class SpotHologram(FeedbackHologram):
             stats["external_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
-                mp=np,
+                xp=np,
                 efficiency_compensation=False,
                 total=np.sum(pwr_feedback),
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]

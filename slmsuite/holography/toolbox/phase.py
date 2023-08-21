@@ -3,11 +3,17 @@ Repository of common analytic phase patterns.
 """
 
 import numpy as np
+try:
+    import cupy as cp
+except ImportError:
+    cp = np
 from scipy import special
 from math import factorial
 
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography.toolbox import _process_grid
+
+# Basic functions
 
 def blaze(grid, vector=(0, 0), offset=0):
     r"""
@@ -38,20 +44,26 @@ def blaze(grid, vector=(0, 0), offset=0):
 
     # Optimize phase construction based on context.
     if vector[0] == 0 and vector[1] == 0:
-        return np.zeros_like(x_grid) + offset
-    elif vector[0] == 0:
-        return 2 * np.pi * (vector[1] * y_grid) + offset
+        result = 0 * x_grid
     elif vector[1] == 0:
-        return 2 * np.pi * (vector[0] * x_grid) + offset
+        result = (2 * np.pi * vector[0]) * x_grid
+    elif vector[0] == 0:
+        result = (2 * np.pi * vector[1]) * y_grid
     else:
-        return 2 * np.pi * (vector[0] * x_grid + vector[1] * y_grid) + offset
+        result = (2 * np.pi * vector[0]) * x_grid + (2 * np.pi * vector[1]) * y_grid
+
+    # Add offset if provided.
+    if offset != 0:
+        result += offset
+
+    return result
 
 
 def lens(grid, f=(np.inf, np.inf)):
     r"""
     Returns a simple
     `thin parabolic lens <https://en.wikipedia.org/wiki/Thin_lens#Physical_optics>`_.
-    
+
     When the focal length :math:`f` is isotropic,
 
     .. math:: \phi(\vec{x}) = \frac{\pi}{f}|\vec{x}|^2
@@ -145,13 +157,111 @@ def axicon(grid, f=(np.inf, np.inf), w=None):
 
     # Optimize phase construction based on context (for speed, to avoid sqrt, etc).
     if angle[0] == 0 and angle[1] == 0:
-        return np.zeros_like(x_grid)
+        return 0 * x_grid
     elif angle[0] == 0:
-        return 2 * np.pi * np.abs(y_grid) * angle[1]
+        return (2 * np.pi * angle[1]) * np.abs(y_grid)
     elif angle[1] == 0:
-        return 2 * np.pi * np.abs(x_grid) * angle[0]
+        return (2 * np.pi * angle[0]) * np.abs(x_grid)
     else:
-        return 2 * np.pi * np.sqrt(np.square(x_grid * angle[0]) + np.square(y_grid * angle[1]))
+        return (2 * np.pi) * np.sqrt(np.square(x_grid * angle[0]) + np.square(y_grid * angle[1]))
+
+
+# Zernike
+
+ZERNIKE_INDEXING_DIMENSION = {"polar" : 2, "cartesian" : 2, "ansi" : 1, "noll" : 1, "fringe" : 1, "wyant" : 1}
+ZERNIKE_INDEXING = ZERNIKE_INDEXING_DIMENSION.keys()
+ZERNIKE_NAMES = [
+    # Oth order
+    "Piston",
+
+    # 1st order
+    "Vertical tilt",
+    "Horizontal tilt",
+
+    # 2nd order
+    "Oblique astigmatism",
+    "Defocus",
+    "Vertical astigmatism",
+
+    # 3rd order
+    "Vertical trefoil",
+    "Vertical coma",
+    "Horizontal coma",
+    "Oblique trefoil",
+
+    # 4th order
+    "Oblique quadrafoil",
+    "Oblique secondary astigmatism",
+    "Primary spherical aberration",
+    "Vertical secondary astigmatism",
+    "Vertical quadrafoil",
+
+    # 5th order
+    "Vertical pentafoil",
+    "Vertical secondary trefoil",
+    "Vertical secondary coma",
+    "Horizontal secondary coma",
+    "Oblique secondary trefoil",
+    "Oblique pentafoil",
+]
+
+def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
+    """
+    TODO
+    """
+    if from_index not in ZERNIKE_INDEXING:
+        raise ValueError(f"Index '{from_index}' not recognized as a valid unit. Options: {ZERNIKE_INDEXING}")
+    if to_index not in ZERNIKE_INDEXING:
+        raise ValueError(f"Index '{to_index}' not recognized as a valid unit. Options: {ZERNIKE_INDEXING}")
+
+    dimension = ZERNIKE_INDEXING_DIMENSION[from_index]
+
+    if indices.shape[0] != dimension:
+        raise ValueError()
+
+    indices = np.array(indices, dtype=int, copy=False)
+
+    n = l = None
+
+    if from_index == "cartesian":
+        n = indices[0, :]
+        l = 2 * indices[1, :] - n
+    elif from_index == "polar":
+        n = indices[0, :]
+        l = indices[1, :]
+    elif from_index == "noll":
+        pass
+    elif from_index == "wyant" or to_index == "fringe":
+        pass
+    elif from_index == "ansi":
+        w = np.floor((np.sqrt(8*indices - 1) - 1) // 2).astype(int)
+        t = (w*w + w) // 2
+
+        y = indices-t
+        x = w-y
+
+        n = x + y
+        l = y - x
+
+    if to_index == "cartesian":
+        result = np.vstack((n, (l - n) // 2))
+    elif to_index == "polar":
+        result = np.vstack((n, l))
+    elif to_index == "noll":
+        result = (n * (n + 1)) // 2 + np.abs(l)
+        result += np.logical_or(l >= 0, np.mod(n, 4) <= 1)
+        result += (l == 0)
+    elif to_index == "wyant" or to_index == "fringe":
+        result = (
+            np.square(1 + (n + np.abs(l) // 2))
+            - 2 * np.abs(l) + (l < 0)
+            - (to_index == "wyant")
+        )
+    elif to_index == "ansi":
+        result = (n * (n + 2) + l) // 2
+
+    return result
+
 
 
 def zernike(grid, n, m, aperture=None):
@@ -223,7 +333,7 @@ def zernike_sum(grid, weights, aperture=None):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     weights : list of ((int, int), float)
-        Which Zernike polynomials to sum. The ``(int, int)`` is the index ``(n, m)``, 
+        Which Zernike polynomials to sum. The ``(int, int)`` is the index ``(n, m)``,
         which correspond to the azimuthal degree and order of the polynomial.
         The ``float`` is the weight for the given index.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
@@ -316,7 +426,12 @@ def zernike_sum(grid, weights, aperture=None):
 
     return canvas
 
+# Old style dictionary.
+#   {(n,m) : {(nx, ny) : w, ... }, ... }
 _zernike_cache = {}
+# New style matrix.
+#   N x M, N spans cantor polynomial indices and M spans ansi Zernike indices.
+_zernike_cache_vectorized = np.array([[]])
 
 def _zernike_coefficients(n, m):
     """
@@ -331,6 +446,7 @@ def _zernike_coefficients(n, m):
 
     # Generate coefficients only if we have not already generated.
     key = (n, m)
+    ansi = convert_zernike_index(key, "cartesian", "ansi")
 
     if not key in _zernike_cache:
         zernike_this = {}
@@ -382,7 +498,274 @@ def _zernike_coefficients(n, m):
         # Update the cache. Remove all factors that have cancelled out (== 0).
         _zernike_cache[key] = {power_key: factor for power_key, factor in zernike_this.items() if factor != 0}
 
+    M = ansi
+
+    # If we need to, enlarge the vector cache.
+    if _zernike_cache_vectorized.shape[1] < M+1:
+        # Enlarge by a factor of two for padding.
+
+        n = convert_zernike_index(ansi, "ansi", "cartesian")[0]
+
+        N = factorial(n)
+
+        _zernike_cache_vectorized = np.pad(
+            _zernike_cache_vectorized,
+            (
+                (0, M + 1 - _zernike_cache_vectorized.shape[0]),
+                (0, N - _zernike_cache_vectorized.shape[1])
+            ),
+            constant_values=0
+        )
+
+        for power_key, factor in _zernike_cache[key].items():
+            cantor_index = _cantor_pairing(power_key)
+            _zernike_cache_vectorized[ansi, cantor_index] = factor
+
     return _zernike_cache[key]
+
+
+# Polynomials
+
+def _cantor_pairing(xy):
+    """
+    Converts a 2D index to a unique 1D index according to the
+    `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
+    """
+    return (np.round(.5 * (xy[0,:] + xy[1,:]) * (xy[0,:] + xy[1,:] + 1) + xy[1,:])).astype(int)
+
+
+def _inverse_cantor_pairing(z):
+    """
+    Converts a 1D index to a unique 2D index according to the
+    `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
+    """
+    z = np.array(z, dtype=int, copy=False)
+
+    w = np.floor((np.sqrt(8*z - 1) - 1) // 2).astype(int)
+    t = (w*w + w) // 2
+
+    y = z-t
+    x = w-y
+
+    return np.vstack((x, y))
+
+
+def _term_pathing(xy):
+    """
+    Returns the index for term sorting to minimize number of monomial multiplications when summing
+    polynomials (with only one storage variable). This yields a provably-optimal set of paths.
+    The proof is left as an exercise to the reader.
+
+    It may be the case that division could yield a shorter path, but division is
+    generally more expensive than multiplication so we omit this scenario.
+
+    It may also be the case that optimizing for large-step multiplications can yield a
+    speedup. (e.g. `x^5 = y * y * x` with `y = x * x` costs three multiplications instead
+    of five) However, it is unlikely that users will need the very-high-order
+    polynomials would would experiance an appreciable speedup.
+    """
+    # Prepare helper variables.
+    xy = np.array(xy, dtype=int, copy=False)
+
+    order = np.sum(xy, axis=1)
+    delta = np.diff(xy, axis=1)
+
+    cantor = _cantor_pairing(xy[:, 0], xy[:, 1])
+    cantor_index = np.argsort(cantor)
+
+    # Prepare the output data structure.
+    I = np.zeros_like(order, dtype=int)
+
+    # Helper function to recurse through pathing options.
+    def recurse(i0, j0):
+        # Fill in the current values.
+        I[j0] = i0
+        cantor[cantor_index[i0]] = -1
+
+        # Figure out the distance between the current index and all other indices.
+        dd = delta - delta[cantor_index[i0]]
+        do = order[cantor_index[i0]] - order
+
+        # Find the best candidate for the next index in the thread.
+        nearest = -cantor + np.inf * ((np.abs(dd) >= do) + (do > 0) + cantor >= 0)
+        i = np.argmin(nearest)
+
+        # Either exit or continue this thread.
+        if cantor[cantor_index[i]] == -1:
+            return recurse(i, j0-1)
+        else:
+            return j0-1
+
+    # Traverse backwards through the array,
+    j = len(I)-1
+    for i in range(len(order)):
+        if cantor[cantor_index[i]] >= 0:
+            j = recurse(i, j)
+
+    return I
+
+
+try:
+    _polynomial_sum_kernel = cp.RawKernel(
+        r'''
+        #include <cupy/complex.cuh>
+        extern "C"
+        __global__ void polynomial_sum(
+            const unsigned int N,           // Number of coefficients
+            const int* pathing,             // Path order (1*N)
+            const float* coefficients,      // Spot parameters (1*N)
+            const float* px,                // Spot parameters (1*N)
+            const float* py,                // Spot parameters (1*N)
+            const unsigned int WH,          // Size of nearfield
+            const float* X,                 // X grid (WH)
+            const float* Y,                 // Y grid (WH)
+            float* out                      // Output (WH)
+        ) {
+            // g is each pixel in the grid.
+            int g = blockDim.x * blockIdx.x + threadIdx.x;
+
+            if (g < WH) {
+                // Make a local result variable to avoid talking with global memory.
+                float result = 0;
+
+                // Copy data that will be used multiple times per thread into local memory (this might not matter though).
+                float local_X = X[g];
+                float local_Y = Y[g];
+                float coefficient;
+
+                // Local helper variables.
+                float monomial = 1;
+                int nx, ny, nx0, ny0 = 0;
+                int j, k = 0
+
+                // Loop over all the spots (compiler should handle optimizing the trinary).
+                for (int i = 0; i < N; i++) {
+                    k = pathing[i];
+                    coefficient = coefficients[k];
+
+                    if (coefficient != 0) {
+                        nx = px[k];
+                        ny = py[k];
+
+                        // Reset if we're starting a new path.
+                        if (nx - nx0 < 0 || ny - ny0 < 0) {
+                            nx0 = ny0 = 0;
+                            monomial = 1;
+                        }
+
+                        // Traverse the path in +x or +y.
+                        for (j = 0; j < nx - nx0; j++) {
+                            monomial *= local_X;
+                        }
+                        for (j = 0; j < ny - ny0; j++) {
+                            monomial *= local_Y;
+                        }
+
+                        // Add the monomial to the result.
+                        result += coefficients[k] * monomial;
+                    }
+                }
+
+                // Export the result to global memory.
+                out[g] = result;
+            }
+        }
+        ''',
+        'polynomial_sum'
+    )
+except:
+    _polynomial_sum_kernel = None
+
+def polynomial_sum(grid, weights, terms=None, pathing=None, out=None):
+    """
+
+    """
+    # Parse terms
+    if terms is None:
+        terms = _inverse_cantor_pairing(np.arange(len(weights)))
+
+    terms = np.squeeze(terms)
+
+    if terms.ndim == 1: # TODO check corner case!
+        terms = _inverse_cantor_pairing(terms)
+
+    assert terms.shape[1] == 2
+
+    # Parse pathing
+    if pathing is False:
+        pathing = np.arange(terms.shape[0])
+    if pathing is None:
+        pathing = _term_pathing(terms)
+
+    # Prepare the grids and canvas.
+    (x_grid, y_grid) = _process_grid(grid)
+    if out is None:
+        # Initialize out to zero.
+        if cp == np:
+            out = np.zeros_like(x_grid)
+        else:
+            out = cp.get_array_module(x_grid).zeros_like(x_grid)
+    else:
+        # Error check user-provided out.
+        if out.shape != x_grid.shape:
+            raise RuntimeError("TODO")
+        if out.dtype != x_grid.dtype:
+            raise RuntimeError("TODO")
+        if cp != np and cp.get_array_module(x_grid) != cp.get_array_module(out):
+            raise RuntimeError("TODO")
+
+    # Decide whether to use numpy/cupy or CUDA
+    if _polynomial_sum_kernel is None:  # numpy/cupy
+        out.fill(0)
+        nx0 = ny0 = 0
+        if cp == np:
+            monomial = np.ones_like(x_grid)
+        else:
+            monomial = cp.get_array_module(x_grid).ones_like(x_grid)
+
+        # Sum the result.
+        for index in pathing:
+            if weights[index] != 0:
+                (nx, ny) = terms[index, :]
+
+                # Reset if we're starting a new path.
+                if nx - nx0 < 0 or ny - ny0 < 0:
+                    nx0 = ny0 = 0
+                    monomial.fill(1)
+
+                # Traverse the path in +x or +y.
+                for _ in range(nx - nx0):
+                    monomial *= x_grid
+                for _ in range(ny - ny0):
+                    monomial *= y_grid
+
+                # Add the monomial to the result.
+                out += weights[index] * monomial
+    else:                               # CUDA
+        N = int(terms.shape[0])
+        WH = int(x_grid.size)
+
+        threads_per_block = int(_polynomial_sum_kernel.max_threads_per_block)
+        blocks = WH // threads_per_block
+
+        # Call the RawKernel.
+        _polynomial_sum_kernel(
+            (blocks,),
+            (threads_per_block,),
+            (
+                N,
+                cp.array(pathing, copy=False),
+                cp.array(weights, copy=False),
+                cp.array(terms[:, 0], copy=False),
+                cp.array(terms[:, 1], copy=False),
+                WH,
+                x_grid.ravel(),
+                y_grid.ravel(),
+                out.ravel()
+            )
+        )
+
+    return out
 
 # Structured light
 

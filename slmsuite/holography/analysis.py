@@ -15,7 +15,7 @@ from slmsuite.misc.fitfunctions import gaussian2d
 def take(
         images, vectors, size,
         centered=True, integrate=False, clip=False,
-        return_mask=False, plot=False, mp=np
+        return_mask=False, plot=False, xp=np
     ):
     """
     Crop integration regions around an array of ``vectors``, yielding an array of images.
@@ -52,9 +52,9 @@ def take(
         from. Defaults to ``False``. The average user will ignore this.
     plot : bool
         Calls :meth:`take_plot()` to visualize the images regions.
-    mp : module
+    xp : module
         If ``images`` are :mod:`cupy` objects, then :mod:`cupy` must be passed as
-        ``mp``. Very useful to minimize the cost of moving data between the GPU and CPU.
+        ``xp``. Very useful to minimize the cost of moving data between the GPU and CPU.
         Defaults to :mod:`numpy`.
         Indexing variables inside `:meth:`take` still use :mod:`numpy` for speed, no
         matter what module is used.
@@ -66,7 +66,7 @@ def take(
         from the regions of size ``(image_count, h, w)``.
         If ``integrate`` is ``True``, instead returns an array of floats of size ``(image_count,)``
         where each float corresponds to the :meth:`numpy.sum` of a cropped image.
-        If ``mp`` is :mod:`cupy`, then a ``cupy.ndarray`` is returned.
+        If ``xp`` is :mod:`cupy`, then a ``cupy.ndarray`` is returned.
     """
     # Clean variables.
     if isinstance(size, REAL_TYPES):
@@ -88,8 +88,8 @@ def take(
         region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
     )).astype(int)
 
-    images = mp.array(images, copy=False)
-    shape = mp.shape(images)
+    images = xp.array(images, copy=False)
+    shape = xp.shape(images)
 
     if clip:  # Prevent out-of-range errors by clipping.
         mask = (
@@ -134,9 +134,9 @@ def take(
             pass
 
         if integrate:  # Sum over the integration axis.
-            return mp.squeeze(mp.sum(result, axis=-1))
+            return xp.squeeze(xp.sum(result, axis=-1))
         else:  # Reshape the integration axis.
-            return mp.reshape(result, (vectors.shape[1], size[1], size[0]))
+            return xp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
 def take_plot(images):

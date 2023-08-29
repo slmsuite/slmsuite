@@ -1,5 +1,5 @@
 """
-Simulated SLM. 
+Simulated SLM.
 """
 
 import numpy as np
@@ -15,14 +15,14 @@ class SimulatedSLM(SLM):
     resolution : tuple
         (width, height) of the SLM in pixels.
     phase_offset : ndarray
-        Phase delay array (radians) emmulating the result of physical SLM curvature. 
+        Phase delay array (radians) emulating the result of physical SLM curvature.
     amp_profile : ndarray
-        Simulated amplitude profile illuminating the SLM. 
+        Simulated amplitude profile illuminating the SLM.
     """
 
     def __init__(self, resolution, phase_offset=None, amp_profile=None, **kwargs):
         r"""
-        Initializes an instance of a Santec SLM.
+        Initialize simulated slm.
 
         Arguments
         ------
@@ -32,7 +32,7 @@ class SimulatedSLM(SLM):
             See :attr:`phase_offset`. Defaults to flat phase if ``None``.
         amp_profile : tuple or ndarray
             See :attr:`amp_profile`. Defaults to uniform illumination if ``None``.
-            If a tuple is provided, amp_profile contains the fractional (i.e. relative to 
+            If a tuple is provided, amp_profile contains the fractional (i.e. relative to
             panel size) standard deviation of a Gaussian *amplitude* profile. Otherwise,
             the provided ndarray is directly applied as an amplitude profile.
         kwargs
@@ -75,5 +75,5 @@ class SimulatedSLM(SLM):
 
         # Apply the phase_offset due to physical curvature of the SLM panel
         self.display = self._phase2gray(self.phase+self.phase_offset, out=self.display)
-        
+
         return

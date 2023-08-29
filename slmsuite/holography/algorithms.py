@@ -364,10 +364,10 @@ class Hologram:
                         amp = slm_shape.measured_amplitude
                         amp_shape = amp.shape
                     slm_shape = slm_shape.shape
-                    
+
                 except: # (int, int) case
                     pass
-            
+
             if len(slm_shape) != 2:
                 slm_shape = (np.nan, np.nan)
 
@@ -1124,9 +1124,9 @@ class Hologram:
         affine : dict
             Affine transformation to apply to far-field data (in the form of
             :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`).
-
         get : bool
             Whether or not to convert the cupy array to a numpy array if cupy is used.
+            This is ignored if numpy is used.
 
         Returns
         -------
@@ -1165,7 +1165,7 @@ class Hologram:
 
     # Weighting functions.
     def _update_weights_generic(
-            self, weight_amp, feedback_amp, target_amp=None, mp=cp, nan_checks=True
+            self, weight_amp, feedback_amp, target_amp=None, xp=cp, nan_checks=True
         ):
         """
         Helper function to process weight feedback according to the chosen weighting method.
@@ -1186,7 +1186,7 @@ class Hologram:
             Necessary in the case where ``target_amp`` is not uniform, such that the weighting can
             properly be applied to bring the feedback closer to the target. If ``None``, is assumed
             to be uniform. Should be the same size as ``weight_amp``.
-        mp : module
+        xp : module
             This function is used by both :mod:`cupy` and :mod:`numpy`, so we have the option
             for either. Defaults to :mod:`cupy`.
         nan_checks : bool
@@ -1202,30 +1202,30 @@ class Hologram:
 
         # Parse feedback_amp
         if target_amp is None:  # Uniform
-            feedback_corrected = mp.array(feedback_amp, copy=True, dtype=self.dtype)
+            feedback_corrected = xp.array(feedback_amp, copy=True, dtype=self.dtype)
         else:  # Non-uniform
-            feedback_corrected = mp.array(feedback_amp, copy=True, dtype=self.dtype)
-            feedback_corrected *= 1 / Hologram._norm(feedback_corrected, mp=mp)
+            feedback_corrected = xp.array(feedback_amp, copy=True, dtype=self.dtype)
+            feedback_corrected *= 1 / Hologram._norm(feedback_corrected, xp=xp)
 
-            mp.divide(feedback_corrected, mp.array(target_amp, copy=False), out=feedback_corrected)
+            xp.divide(feedback_corrected, xp.array(target_amp, copy=False), out=feedback_corrected)
 
             if nan_checks:
                 feedback_corrected[feedback_corrected == np.inf] = 1
-                feedback_corrected[mp.array(target_amp) == 0] = 1
+                feedback_corrected[xp.array(target_amp) == 0] = 1
 
-                mp.nan_to_num(feedback_corrected, copy=False, nan=1)
+                xp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
         # Fix feedback according to the desired method.
         if "leonardo" in method.lower() or "kim" in method.lower():
             # 1/(x^p)
-            mp.power(feedback_corrected, -self.flags["feedback_exponent"], out=feedback_corrected)
+            xp.power(feedback_corrected, -self.flags["feedback_exponent"], out=feedback_corrected)
         elif "nogrette" in method.lower():
             # Taylor expand 1/(1-g(1-x)) -> 1 + g(1-x) + (g(1-x))^2 ~ 1 + g(1-x)
-            feedback_corrected *= -(1 / mp.nanmean(feedback_corrected))
+            feedback_corrected *= -(1 / xp.nanmean(feedback_corrected))
             feedback_corrected += 1
             feedback_corrected *= -self.flags["feedback_factor"]
             feedback_corrected += 1
-            mp.reciprocal(feedback_corrected, out=feedback_corrected)
+            xp.reciprocal(feedback_corrected, out=feedback_corrected)
         else:
             raise RuntimeError(
                 "Method "
@@ -1240,11 +1240,11 @@ class Hologram:
         weight_amp *= feedback_corrected
 
         if nan_checks:
-            mp.nan_to_num(weight_amp, copy=False, nan=.0001)
+            xp.nan_to_num(weight_amp, copy=False, nan=.0001)
             weight_amp[weight_amp == np.inf] = 1
 
         # Normalize amp, as methods may have broken conservation.
-        norm = Hologram._norm(weight_amp, mp=mp)
+        norm = Hologram._norm(weight_amp, xp=xp)
         weight_amp *= 1 / norm
 
         return weight_amp
@@ -1264,7 +1264,7 @@ class Hologram:
     def _calculate_stats(
         feedback_amp,
         target_amp,
-        mp=cp,
+        xp=cp,
         efficiency_compensation=True,
         total=None,
         raw=False
@@ -1278,7 +1278,7 @@ class Hologram:
             Computational or measured result of holography.
         target_amp : numpy.ndarray OR cupy.ndarray
             Target of holography.
-        mp : module
+        xp : module
             This function is used by both :mod:`cupy` and :mod:`numpy`, so we have the option
             for either. Defaults to :mod:`cupy`.
         efficiency_compensation : bool
@@ -1295,7 +1295,7 @@ class Hologram:
             only the derived statistics.
         """
         # Downgrade to numpy if necessary
-        if mp == np and (hasattr(feedback_amp, "get") or hasattr(target_amp, "get")):
+        if xp == np and (hasattr(feedback_amp, "get") or hasattr(target_amp, "get")):
             if hasattr(feedback_amp, "get"):
                 feedback_amp = feedback_amp.get()
 
@@ -1305,46 +1305,46 @@ class Hologram:
             if total is not None:
                 total = float(total)
 
-        feedback_amp = mp.array(feedback_amp, copy=False)
-        target_amp = mp.array(target_amp, copy=False)
+        feedback_amp = xp.array(feedback_amp, copy=False)
+        target_amp = xp.array(target_amp, copy=False)
 
-        feedback_pwr = mp.square(feedback_amp)
-        target_pwr = mp.square(target_amp)
+        feedback_pwr = xp.square(feedback_amp)
+        target_pwr = xp.square(target_amp)
 
         if total is not None:
-            efficiency = float(mp.sum(feedback_pwr)) / total
+            efficiency = float(xp.sum(feedback_pwr)) / total
 
         # Normalize.
-        feedback_pwr_sum = mp.sum(feedback_pwr)
+        feedback_pwr_sum = xp.sum(feedback_pwr)
         feedback_pwr *= 1 / feedback_pwr_sum
-        feedback_amp *= 1 / mp.sqrt(feedback_pwr_sum)
+        feedback_amp *= 1 / xp.sqrt(feedback_pwr_sum)
 
-        target_pwr_sum = mp.sum(target_pwr)
+        target_pwr_sum = xp.sum(target_pwr)
         target_pwr *= 1 / target_pwr_sum
-        target_amp *= 1 / mp.sqrt(target_pwr_sum)
+        target_amp *= 1 / xp.sqrt(target_pwr_sum)
 
         if total is None:
             # Efficiency overlap integral.
-            efficiency = np.square(float(mp.sum(mp.multiply(target_amp, feedback_amp))))
+            efficiency = np.square(float(xp.sum(xp.multiply(target_amp, feedback_amp))))
             if efficiency_compensation:
                 feedback_pwr *= 1 / efficiency
 
         # Make some helper lists; ignoring power where target is zero.
-        mask = mp.nonzero(target_pwr)
+        mask = xp.nonzero(target_pwr)
 
         feedback_pwr_masked = feedback_pwr[mask]
         target_pwr_masked = target_pwr[mask]
 
-        ratio_pwr = mp.divide(feedback_pwr_masked, target_pwr_masked)
+        ratio_pwr = xp.divide(feedback_pwr_masked, target_pwr_masked)
         pwr_err = target_pwr_masked - feedback_pwr_masked
 
         # Compute the remaining stats.
-        rmin = float(mp.amin(ratio_pwr))
-        rmax = float(mp.amax(ratio_pwr))
+        rmin = float(xp.amin(ratio_pwr))
+        rmax = float(xp.amax(ratio_pwr))
         uniformity = 1 - (rmax - rmin) / (rmax + rmin)
 
-        pkpk_err = pwr_err.size * float(mp.amax(pwr_err) - mp.amin(pwr_err))
-        std_err = pwr_err.size * float(mp.std(pwr_err))
+        pkpk_err = pwr_err.size * float(xp.amax(pwr_err) - xp.amin(pwr_err))
+        std_err = pwr_err.size * float(xp.std(pwr_err))
 
         final_stats = {
             "efficiency": float(efficiency),
@@ -1356,7 +1356,7 @@ class Hologram:
         if raw:
             ratio_pwr_full = np.full_like(target_pwr, np.nan)
 
-            if mp == np:
+            if xp == np:
                 final_stats["raw_pwr"] = np.square(feedback_amp)
                 ratio_pwr_full[mask] = ratio_pwr
             else:
@@ -2055,7 +2055,7 @@ class Hologram:
             return mempool.get_limit()
 
     @staticmethod
-    def _norm(matrix, mp=cp):
+    def _norm(matrix, xp=cp):
         r"""
         Computes the root of the sum of squares of the given ``matrix``. Implements:
 
@@ -2065,7 +2065,7 @@ class Hologram:
         ----------
         matrix : numpy.ndarray OR cupy.ndarray
             Data, potentially complex.
-        mp : module
+        xp : module
             This function is used by both :mod:`cupy` and :mod:`numpy`, so we have the option
             for either. Defaults to :mod:`cupy`.
 
@@ -2074,10 +2074,10 @@ class Hologram:
         float
             The result.
         """
-        if mp.iscomplexobj(matrix):
-            return mp.sqrt(mp.nansum(mp.square(mp.abs(matrix))))
+        if xp.iscomplexobj(matrix):
+            return xp.sqrt(xp.nansum(xp.square(xp.abs(matrix))))
         else:
-            return mp.sqrt(mp.nansum(mp.square(matrix)))
+            return xp.sqrt(xp.nansum(xp.square(matrix)))
 
 
 class FeedbackHologram(Hologram):
@@ -2389,7 +2389,7 @@ class FeedbackHologram(Hologram):
             stats["experimental_ij"] = self._calculate_stats(
                 self.img_ij.astype(self.dtype),
                 self.target_ij,
-                mp=np,
+                xp=np,
                 efficiency_compensation=True,
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]
             )
@@ -3122,7 +3122,7 @@ class SpotHologram(FeedbackHologram):
                     self.spot_integration_width_knm,
                     centered=True,
                     integrate=True,
-                    mp=cp
+                    xp=cp
                 ))
             elif feedback == "experimental_spot":
                 self.measure(basis="ij")
@@ -3160,7 +3160,7 @@ class SpotHologram(FeedbackHologram):
                         np.ones(len(self)),
                         amp_feedback,
                         self.spot_amp,
-                        mp=np
+                        xp=np
                     )
                 )
 
@@ -3202,13 +3202,13 @@ class SpotHologram(FeedbackHologram):
                         self.spot_integration_width_knm,
                         centered=True,
                         integrate=True,
-                        mp=cp
+                        xp=cp
                     )
 
                     stats["computational_spot"] = self._calculate_stats(
                         cp.sqrt(pwr_feedback),
                         self.spot_amp,
-                        mp=cp,
+                        xp=cp,
                         efficiency_compensation=False,
                         total=cp.sum(pwr_ff),
                         raw="raw_stats" in self.flags and self.flags["raw_stats"]
@@ -3226,7 +3226,7 @@ class SpotHologram(FeedbackHologram):
                     stats["computational_spot"] = self._calculate_stats(
                         np.sqrt(pwr_feedback),
                         self.spot_amp,
-                        mp=np,
+                        xp=np,
                         efficiency_compensation=False,
                         total=np.sum(pwr_ff),
                         raw="raw_stats" in self.flags and self.flags["raw_stats"]
@@ -3248,7 +3248,7 @@ class SpotHologram(FeedbackHologram):
             stats["experimental_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
-                mp=np,
+                xp=np,
                 efficiency_compensation=False,
                 total=np.sum(pwr_img),
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]
@@ -3259,7 +3259,7 @@ class SpotHologram(FeedbackHologram):
             stats["external_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
-                mp=np,
+                xp=np,
                 efficiency_compensation=False,
                 total=np.sum(pwr_feedback),
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]

@@ -169,7 +169,8 @@ def zernike(grid, n, m, aperture=None, return_mask=False):
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
         See :meth:`.zernike_sum()`.
     return_mask : bool
-        Whether or not to return the 2D mask showing where Zernikes are computed.
+        Whether or not to return the 2D mask showing where Zernikes are computed
+        instead of the phase.
 
     Returns
     -------
@@ -224,7 +225,7 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     weights : list of ((int, int), float)
-        Which Zernike polynomials to sum. The ``(int, int)`` is the index ``(n, m)``, 
+        Which Zernike polynomials to sum. The ``(int, int)`` is the index ``(n, m)``,
         which correspond to the azimuthal degree and order of the polynomial.
         The ``float`` is the weight for the given index.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
@@ -245,7 +246,8 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False):
           directly, respectively. The edge of the pupil corresponds to where
           ``x_grid**2 + y_grid**2 = 1``.
     return_mask : bool
-        Whether or not to return the 2D mask showing where Zernikes are computed.
+        Whether or not to return the 2D mask showing where Zernikes are computed
+        instead of the phase.
 
     Returns
     -------
@@ -280,6 +282,8 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False):
     # At the end, we're going to set the values outside the aperture to zero.
     # Make a mask for this if it's necessary.
     mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
+    if return_mask:
+        return mask
     use_mask = np.any(mask == 0)
 
     if use_mask:
@@ -320,10 +324,7 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False):
                 else:
                     canvas += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
 
-    if return_mask:
-        return canvas, mask
-    else:
-        return canvas
+    return canvas
 
 _zernike_cache = {}
 

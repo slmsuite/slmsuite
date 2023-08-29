@@ -11,6 +11,9 @@ from slmsuite.holography.toolbox import format_2vectors
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.fitfunctions import gaussian2d
 
+# Clustering tools for lattice fitting
+from sklearn.cluster import AgglomerativeClustering, KMeans
+from sklearn.metrics import silhouette_score
 
 def take(
         images, vectors, size,
@@ -1041,6 +1044,7 @@ def blob_array_detect(
     orientation_check=True,
     dft_threshold=50,
     dft_padding=0,
+    technique="four",
     plot=False,
 ):
     r"""
@@ -1077,6 +1081,11 @@ def blob_array_detect(
         is `None`. Dimensions are increased by a factor of `2 ** dft_padding`.
         Increasing this value increases the k-space resolution of the DFT,
         and can improve orientation detection.
+    technique : str
+        Technique used to find primative lattice vectors of the calibration grid.
+        If ``"Four"``, fits using four first-order diffraction peaks.
+        Alternatively, ``"lattice"`` fits using all diffraction orders and clustering
+        techniques.
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
 
@@ -1091,10 +1100,13 @@ def blob_array_detect(
     """
     img_8it = _make_8bit(img)
 
-    if orientation is not None:     # If an orientation was provided, use this as a guess.
+    # If an orientation was provided, use this as a guess.
+    if orientation is not None:
         M = orientation["M"]
-    else:                           # Otherwise, find a guess orientation.
-        # FFT to find array pitch and orientation.
+
+    # Otherwise, find a guess orientation.
+    else:                           
+        # 1) FFT to find array pitch and orientation.
         # Take the largest dimension rounded up to nearest power of 2.
         # Future: clean this up to behave like other parts of the package.
         fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img))))) * 2 ** dft_padding
@@ -1105,6 +1117,7 @@ def blob_array_detect(
 
         dft_amp = cv2.GaussianBlur(np.abs(dft), (fft_blur_size, fft_blur_size), 0)
 
+        # 2) Detect and plot FFT peaks
         # Need copy for some reason:
         # https://github.com/opencv/opencv/issues/18120
         thresholdStep = 10
@@ -1193,66 +1206,86 @@ def blob_array_detect(
                 "- decreasing `dft_threshold`"
             )
 
-        # Future: Revamp to improve this part of the algorithm.
-        #
-        # Failure paths include:
-        # - Accidentally finding 5 points in a line on one axis instead of 5 points
-        #   making a plus sign.
-        # - Adjacent points being drowned out by the strength of the 0th order.
-        # - etc.
-        #
-        # Potential paths for revamp:
-        # - fit a Bravais lattice more directly
-        # - e.g. using np.fft.fftfreq and np.fft.fftshift
+        # 3) Fit the primitive lattice vectors
+        if technique == "four":
+            # 2.1) Get the max point (DTF 0th order) and its next four neighbors.
+            blob_dist = np.zeros(len(blobs))
+            k = np.zeros((len(blobs), 2))
+            for i, blob in enumerate(blobs):
+                k[i, 0] = -1 / 2 + blob.pt[0] / dft_amp.shape[1]
+                k[i, 1] = -1 / 2 + blob.pt[1] / dft_amp.shape[0]
 
-        # 2.1) Get the max point (DTF 0th order) and its next four neighbors.
-        blob_dist = np.zeros(len(blobs))
-        k = np.zeros((len(blobs), 2))
-        for i, blob in enumerate(blobs):
-            k[i, 0] = -1 / 2 + blob.pt[0] / dft_amp.shape[1]
-            k[i, 1] = -1 / 2 + blob.pt[1] / dft_amp.shape[0]
+                # Assumes max at 0th order.
+                blob_dist[i] = np.linalg.norm(
+                    np.array([k[i, 0], k[i, 1]])
+                )
 
-            # Assumes max at 0th order.
-            blob_dist[i] = np.linalg.norm(
-                np.array([k[i, 0], k[i, 1]])
-            )
+            sort_ind = np.argsort(blob_dist)[:5]
+            blobs = blobs[sort_ind]
+            blob_dist = blob_dist[sort_ind]
+            k = k[sort_ind]
 
-        sort_ind = np.argsort(blob_dist)[:5]
-        blobs = blobs[sort_ind]
-        blob_dist = blob_dist[sort_ind]
-        k = k[sort_ind]
+            # 2.2) Calculate array metrics.
+            left =   np.argmin([k[:, 0]])  # Smallest x
+            right =  np.argmax([k[:, 0]])  # Largest x
+            bottom = np.argmin([k[:, 1]])  # Smallest y
+            top =    np.argmax([k[:, 1]])  # Largest y
 
-        # 2.2) Calculate array metrics.
-        left =   np.argmin([k[:, 0]])  # Smallest x
-        right =  np.argmax([k[:, 0]])  # Largest x
-        bottom = np.argmin([k[:, 1]])  # Smallest y
-        top =    np.argmax([k[:, 1]])  # Largest y
+            # 2.3) Calculate the vectors in the imaging domain.
+            x = 2 * (k[right, :] - k[left, :]) / (blob_dist[right] + blob_dist[left]) ** 2
+            y = 2 * (k[top, :] - k[bottom, :]) / (blob_dist[top] + blob_dist[bottom]) ** 2
 
-        # 2.3) Calculate the vectors in the imaging domain.
-        x = 2 * (k[right, :] - k[left, :]) / (blob_dist[right] + blob_dist[left]) ** 2
-        y = 2 * (k[top, :] - k[bottom, :]) / (blob_dist[top] + blob_dist[bottom]) ** 2
+            M = np.array([[x[0], y[0]], [x[1], y[1]]])
 
-        M = np.array([[x[0], y[0]], [x[1], y[1]]])
+        elif technique == "lattice":
+            # 3.1) Make a list of displacements to each peak's 4 nearest neighbors
+            def get_kNN(x, k):
+                "Return list of k closest points for each x"
+                points = np.array([np.array(blob.pt) for blob in blobs])
+                dx = points[:,0][:,np.newaxis] - points[:,0][:,np.newaxis].T
+                dy = points[:,1][:,np.newaxis] - points[:,1][:,np.newaxis].T
+                d = np.sqrt(dx**2+dy**2)
+                inds = np.argsort(d,axis=0)
+                kNN = points[inds[1:k+1,:]]-points
+                kNN = kNN.reshape((points.shape[0]*k, 2))
+                kNN[kNN[:,0]<0] = -kNN[kNN[:,0]<0] #* np.array([-1,1])
+                return kNN
+            points = [blob.pt for blob in blobs]
+            kNN = get_kNN(points,4)
+            
+            # 3.2) Cluster into lattice vectors.
+            def cluster(points, k):
+                "Cluster points from k nearest neighbors into groups and return the centers"
+                score = 0
+                best = 0
+                N = k-1
+                while score >= best:
+                    clusters = AgglomerativeClustering(n_clusters=N).fit(points)
+                    score = silhouette_score(points, clusters.labels_)
+                    if score > best:
+                        best = score
+                        labels = clusters.labels_
+                    N = N+1
+                centers = np.array([np.mean(points[labels == l],axis=0) for l in range(N-2)])
+                return centers
+            centers = cluster(kNN,4)
+        
+            # 3.3) Primitive lattice vectors are the shortest two
+            lv = centers[np.argsort(np.linalg.norm(centers, axis=1))[:2]]
 
-    # 3) Make the array kernel for convolutional detection of the array center.
+            # 3.4) Convert to image space (dx = 1/dk)
+            M = fftsize*(lv/np.linalg.norm(lv,axis=0)**2).T
+
+        else:
+            raise ValueError("Unrecognized method \"{}\".".format(method))
+
+    # 4) Make the array kernel for convolutional detection of the array center.
     # Make lists that we will use to make the kernel: the array...
     x_list = np.arange(-(size[0] - 1) / 2.0, (size[0] + 1) / 2.0)
     y_list = np.arange(-(size[1] - 1) / 2.0, (size[1] + 1) / 2.0)
 
     x_centergrid, y_centergrid = np.meshgrid(x_list, y_list)
     centers = np.vstack((x_centergrid.ravel(), y_centergrid.ravel()))
-
-    # ...and the array padded by one.
-    pad = 1
-    p = int(pad * 2)
-
-    x_list_larger = np.arange(-(size[0] + p - 1) / 2.0, (size[0] + p + 1) / 2.0)
-    y_list_larger = np.arange(-(size[1] + p - 1) / 2.0, (size[1] + p + 1) / 2.0)
-
-    x_centergrid_larger, y_centergrid_larger = np.meshgrid(x_list_larger, y_list_larger)
-    centers_larger = np.vstack(
-        (x_centergrid_larger.ravel(), y_centergrid_larger.ravel())
-    )
 
     # If we're not sure about how things are flipped, consider alternatives...
     if size[0] != size[1] and orientation is None:
@@ -1267,7 +1300,6 @@ def blob_array_detect(
     for M_trial in M_options:
         # Find the position of the centers for this trial matrix.
         rotated_centers = np.matmul(M_trial, centers)
-        rotated_centers_larger = np.matmul(M_trial, centers_larger)
 
         # Make the kernel
         max_pitch = int(
@@ -1277,40 +1309,27 @@ def blob_array_detect(
         mask = np.zeros(
             (
                 int(
-                    np.amax(rotated_centers_larger[1, :])
-                    - np.amin(rotated_centers_larger[1, :])
+                    np.amax(rotated_centers[1, :])
+                    - np.amin(rotated_centers[1, :])
                     + max_pitch
                 ),
                 int(
-                    np.amax(rotated_centers_larger[0, :])
-                    - np.amin(rotated_centers_larger[0, :])
+                    np.amax(rotated_centers[0, :])
+                    - np.amin(rotated_centers[0, :])
                     + max_pitch
                 ),
             )
         )
 
         rotated_centers += np.flip(mask.shape)[:, np.newaxis] / 2
-        rotated_centers_larger += np.flip(mask.shape)[:, np.newaxis] / 2
 
         # Pixels to use for the kernel.
         x_array = np.around(rotated_centers[0, :]).astype(int)
         y_array = np.around(rotated_centers[1, :]).astype(int)
-
-        x_larger = np.around(rotated_centers_larger[0, :]).astype(int)
-        y_larger = np.around(rotated_centers_larger[1, :]).astype(int)
-
-        # Make a mask with negative power at the border, positive
-        # at the array, with integrated intensity of 0.
-        # Future: use MRAF to minimize ghost spot amp around border
-        area = size[0] * size[1]
-        perimeter = 2 * (size[0] + size[1]) + 4
-
-        mask[y_larger, x_larger] = -area
-        mask[y_array, x_array] = perimeter
-
+        mask[y_array, x_array] = 1
         mask = _make_8bit(mask)
 
-        # 4) Do the autocorrelation
+        # 5) Do the autocorrelation
         try:
             res = cv2.matchTemplate(img_8it, mask, cv2.TM_CCOEFF)
             _, max_val, _, max_loc = cv2.minMaxLoc(res)

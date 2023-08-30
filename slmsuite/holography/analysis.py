@@ -1130,67 +1130,6 @@ def blob_array_detect(
         blobs = np.array(blobs)
         dft_fit_failed = len(blobs) < 5
 
-        if plot:
-            fig, axs = plt.subplots(1, 2, figsize=(12, 6), facecolor='white')
-
-            plt_img = _make_8bit(dft_amp.copy())
-
-            # Determine the bounds of the zoom region, padded by zoom_pad
-            zoom_pad = 50
-
-            x = np.array([blob.pt[0] for blob in blobs])
-            xl = [
-                np.clip(np.amin(x) - zoom_pad, 0, dft_amp.shape[1]),
-                np.clip(np.amax(x) + zoom_pad, 0, dft_amp.shape[1]),
-            ]
-
-            y = np.array([blob.pt[1] for blob in blobs])
-            yl = [
-                np.clip(np.amin(y) - zoom_pad, 0, dft_amp.shape[0]),
-                np.clip(np.amax(y) + zoom_pad, 0, dft_amp.shape[0]),
-            ]
-
-            # Plot the unzoomed figure
-            axs[0].imshow(plt_img)
-
-            # Plot a red rectangle to show the extents of the zoom region
-            rect = plt.Rectangle(
-                (float(xl[0]), float(yl[0])),
-                float(np.diff(xl)), float(np.diff(yl)),
-                ec="r", fc="none"
-            )
-            axs[0].add_patch(rect)
-            axs[0].set_title("DFT Result - Full")
-            axs[0].set_xticks([])
-            axs[0].set_yticks([])
-
-            # Plot the zoomed figure
-            axs[1].imshow(plt_img)
-            axs[1].scatter(
-                x,
-                y,
-                facecolors="none",
-                edgecolors="r",
-                marker="o",
-                s=1000,
-                linewidths=1,
-            )
-            for spine in ["top", "bottom", "right", "left"]:
-                axs[1].spines[spine].set_color("r")
-                axs[1].spines[spine].set_linewidth(1.5)
-            axs[1].set_title("DFT Result - Zoom")
-            axs[1].set_xticks([])
-            axs[1].set_yticks([])
-            axs[1].set_xlim(xl)
-            axs[1].set_ylim(np.flip(yl))
-
-            for ax in axs:
-                ax.set_xlabel("Image Reciprocal $x$ [1/pix]")
-                ax.set_ylabel("Image Reciprocal $y$ [1/pix]")
-            fig.tight_layout(pad=4.0)
-
-            plt.show()
-
         if dft_fit_failed:
             blobs, _ = blob_detect(
                 dft_amp.copy(),
@@ -1276,8 +1215,70 @@ def blob_array_detect(
             # 3.4) Convert to image space (dx = 1/dk)
             M = fftsize*(lv/np.linalg.norm(lv,axis=0)**2).T
 
+        # Plot which diffraction orders we used
+        if plot:
+            fig, axs = plt.subplots(1, 2, figsize=(12, 6), facecolor='white')
+
+            plt_img = _make_8bit(dft_amp.copy())
+
+            # Determine the bounds of the zoom region, padded by zoom_pad
+            zoom_pad = 50
+
+            x = np.array([blob.pt[0] for blob in blobs])
+            xl = [
+                np.clip(np.amin(x) - zoom_pad, 0, dft_amp.shape[1]),
+                np.clip(np.amax(x) + zoom_pad, 0, dft_amp.shape[1]),
+            ]
+
+            y = np.array([blob.pt[1] for blob in blobs])
+            yl = [
+                np.clip(np.amin(y) - zoom_pad, 0, dft_amp.shape[0]),
+                np.clip(np.amax(y) + zoom_pad, 0, dft_amp.shape[0]),
+            ]
+
+            # Plot the unzoomed figure
+            axs[0].imshow(plt_img)
+
+            # Plot a red rectangle to show the extents of the zoom region
+            rect = plt.Rectangle(
+                (float(xl[0]), float(yl[0])),
+                float(np.diff(xl)), float(np.diff(yl)),
+                ec="r", fc="none"
+            )
+            axs[0].add_patch(rect)
+            axs[0].set_title("DFT Result - Full")
+            axs[0].set_xticks([])
+            axs[0].set_yticks([])
+
+            # Plot the zoomed figure
+            axs[1].imshow(plt_img)
+            axs[1].scatter(
+                x,
+                y,
+                facecolors="none",
+                edgecolors="r",
+                marker="o",
+                s=1000,
+                linewidths=1,
+            )
+            for spine in ["top", "bottom", "right", "left"]:
+                axs[1].spines[spine].set_color("r")
+                axs[1].spines[spine].set_linewidth(1.5)
+            axs[1].set_title("DFT Result - Zoom")
+            axs[1].set_xticks([])
+            axs[1].set_yticks([])
+            axs[1].set_xlim(xl)
+            axs[1].set_ylim(np.flip(yl))
+
+            for ax in axs:
+                ax.set_xlabel("Image Reciprocal $x$ [1/pix]")
+                ax.set_ylabel("Image Reciprocal $y$ [1/pix]")
+            fig.tight_layout(pad=4.0)
+
+            plt.show()
+
         else:
-            raise ValueError("Unrecognized method \"{}\".".format(method))
+            raise ValueError("Unrecognized technique \"{}\".".format(technique))
 
     # 4) Make the array kernel for convolutional detection of the array center.
     # Make lists that we will use to make the kernel: the array...

@@ -1040,7 +1040,6 @@ def blob_array_detect(
     orientation_check=True,
     dft_threshold=50,
     dft_padding=0,
-    technique="four",
     plot=False,
 ):
     r"""
@@ -1077,11 +1076,6 @@ def blob_array_detect(
         is `None`. Dimensions are increased by a factor of `2 ** dft_padding`.
         Increasing this value increases the k-space resolution of the DFT,
         and can improve orientation detection.
-    technique : str
-        Technique used to find primative lattice vectors of the calibration grid.
-        If ``"Four"``, fits using four first-order diffraction peaks.
-        Alternatively, ``"lattice"`` fits using all diffraction orders and clustering
-        techniques.
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
 
@@ -1142,107 +1136,73 @@ def blob_array_detect(
             )
 
         # 3) Fit the primitive lattice vectors
-        if technique == "four":
-            # 2.1) Get the max point (DTF 0th order) and its next four neighbors.
-            blob_dist = np.zeros(len(blobs))
-            k = np.zeros((len(blobs), 2))
-            for i, blob in enumerate(blobs):
-                k[i, 0] = -1 / 2 + blob.pt[0] / dft_amp.shape[1]
-                k[i, 1] = -1 / 2 + blob.pt[1] / dft_amp.shape[0]
-
-                # Assumes max at 0th order.
-                blob_dist[i] = np.linalg.norm(
-                    np.array([k[i, 0], k[i, 1]])
-                )
-
-            sort_ind = np.argsort(blob_dist)[:5]
-            blobs = blobs[sort_ind]
-            blob_dist = blob_dist[sort_ind]
-            k = k[sort_ind]
-
-            # 2.2) Calculate array metrics.
-            left =   np.argmin([k[:, 0]])  # Smallest x
-            right =  np.argmax([k[:, 0]])  # Largest x
-            bottom = np.argmin([k[:, 1]])  # Smallest y
-            top =    np.argmax([k[:, 1]])  # Largest y
-
-            # 2.3) Calculate the vectors in the imaging domain.
-            x = 2 * (k[right, :] - k[left, :]) / (blob_dist[right] + blob_dist[left]) ** 2
-            y = 2 * (k[top, :] - k[bottom, :]) / (blob_dist[top] + blob_dist[bottom]) ** 2
-
-            M = np.array([[x[0], y[0]], [x[1], y[1]]])
-
-        elif technique == "lattice":
-            # 3.1) Make a list of displacements to each peak's k nearest neighbors
-            def get_kNN(x, k):
-                "Return list of k closest points for each x"
-                points = np.array([np.array(blob.pt) for blob in blobs])
-                dx = points[:,0][:,np.newaxis] - points[:,0][:,np.newaxis].T
-                dy = points[:,1][:,np.newaxis] - points[:,1][:,np.newaxis].T
-                d = np.sqrt(dx**2+dy**2)
-                inds = np.argsort(d,axis=0)
-                kNN = points[inds[1:k+1,:]]-points
-                kNN = kNN.reshape((points.shape[0]*k, 2))
-                kNN[kNN[:,0]<0] = -kNN[kNN[:,0]<0] #* np.array([-1,1])
-                return kNN
-            
-            points = [blob.pt for blob in blobs]
-            kNN = get_kNN(points,2)
-            
-            # 3.2) Cluster into lattice vectors.
-            def cluster(points, k, tol=0.05, plot=plot):
-                "Cluster points from k nearest neighbors into groups and return the centers"
-
-                # Find matrix of normalized displacements between points
-                dx = points[:,0][:,np.newaxis] - points[:,0][:,np.newaxis].T
-                dy = points[:,1][:,np.newaxis] - points[:,1][:,np.newaxis].T
-                d = np.sqrt(dx**2+dy**2)
-                l = np.linalg.norm(points,axis=1)
-                dnorm = d/l
-
-                # Find groups of points separated by dnorm less than tol
-                group = 1
-                tags = np.zeros(points.shape[0])
-                for i in np.arange(points.shape[0]):
-                    new = (dnorm[i,:] < tol) & np.array(tags==0)
-                    tags[new] = group
-                    if np.any(new):
-                        group = group+1
-
-                # Calc centers of k most populated clusters
-                tag,count = np.unique(tags,return_counts=True)
-                best_groups = np.argsort(-count)[:k]
-                centers = np.array([np.mean(points[tags == tag[group]],axis=0)
-                                    for group in best_groups])
-                
-                if plot:
-                    # Plot the points and the chosen groups
-                    fig, ax = plt.subplots(constrained_layout=True)
-                    ax.scatter(points[:,0],points[:,1],fc='none',ec='k')
-                    
-                    for i in range(k):
-                        cir = matplotlib.patches.Circle((centers[i,0],centers[i,1]),
-                                                        np.linalg.norm(centers[i])*tol,
-                                                        fill=False,ec='r')
-                        ax.add_patch(cir)
-                    ax.set_aspect('equal')
-                    ax.set_title('Reciprocal Lattice Vector Fitting')
-                    ax.legend(['Peak Spacing', '$k$ Clusters'])
-                    ax.grid()
-                    plt.show()
-                
-                return centers
-            
-            centers = cluster(kNN,2)
+        # 3.1) Make a list of displacements to each peak's k nearest neighbors
+        def get_kNN(x, k):
+            "Return list of k closest points for each x"
+            points = np.array([np.array(blob.pt) for blob in blobs])
+            dx = points[:,0][:,np.newaxis] - points[:,0][:,np.newaxis].T
+            dy = points[:,1][:,np.newaxis] - points[:,1][:,np.newaxis].T
+            d = np.sqrt(dx**2+dy**2)
+            inds = np.argsort(d,axis=0)
+            kNN = points[inds[1:k+1,:]]-points
+            kNN = kNN.reshape((points.shape[0]*k, 2))
+            kNN[kNN[:,0]<0] = -kNN[kNN[:,0]<0] #* np.array([-1,1])
+            return kNN
         
-            # 3.3) Primitive lattice vectors are the shortest two
-            lv = centers[np.argsort(np.linalg.norm(centers, axis=1))[:2]]
+        points = [blob.pt for blob in blobs]
+        kNN = get_kNN(points,2)
+        
+        # 3.2) Cluster into lattice vectors.
+        def cluster(points, k, tol=0.05, plot=plot):
+            "Cluster points from k nearest neighbors into groups and return the centers"
 
-            # 3.4) Convert to image space (dx = 1/dk)
-            M = fftsize*(lv/np.linalg.norm(lv,axis=0)**2).T
+            # Find matrix of normalized displacements between points
+            dx = points[:,0][:,np.newaxis] - points[:,0][:,np.newaxis].T
+            dy = points[:,1][:,np.newaxis] - points[:,1][:,np.newaxis].T
+            d = np.sqrt(dx**2+dy**2)
+            l = np.linalg.norm(points,axis=1)
+            dnorm = d/l
 
-        else:
-            raise ValueError("Unrecognized technique \"{}\".".format(technique))
+            # Find groups of points separated by dnorm less than tol
+            group = 1
+            tags = np.zeros(points.shape[0])
+            for i in np.arange(points.shape[0]):
+                new = (dnorm[i,:] < tol) & np.array(tags==0)
+                tags[new] = group
+                if np.any(new):
+                    group = group+1
+
+            # Calc centers of k most populated clusters
+            tag,count = np.unique(tags,return_counts=True)
+            best_groups = np.argsort(-count)[:k]
+            centers = np.array([np.mean(points[tags == tag[group]],axis=0)
+                                for group in best_groups])
+            
+            if plot:
+                # Plot the points and the chosen groups
+                fig, ax = plt.subplots(constrained_layout=True)
+                ax.scatter(points[:,0],points[:,1],fc='none',ec='k')
+                
+                for i in range(k):
+                    cir = matplotlib.patches.Circle((centers[i,0],centers[i,1]),
+                                                    np.linalg.norm(centers[i])*tol,
+                                                    fill=False,ec='r')
+                    ax.add_patch(cir)
+                ax.set_aspect('equal')
+                ax.set_title('Reciprocal Lattice Vector Fitting')
+                ax.legend(['Peak Spacing', '$k$ Clusters'])
+                ax.grid()
+                plt.show()
+            
+            return centers
+        
+        centers = cluster(kNN,2)
+    
+        # 3.3) Primitive lattice vectors are the shortest two
+        lv = centers[np.argsort(np.linalg.norm(centers, axis=1))[:2]]
+
+        # 3.4) Convert to image space (dx = 1/dk)
+        M = fftsize*(lv/np.linalg.norm(lv,axis=0)**2).T
 
         # Plot which diffraction orders we used
         if plot:
@@ -1314,46 +1274,69 @@ def blob_array_detect(
     x_centergrid, y_centergrid = np.meshgrid(x_list, y_list)
     centers = np.vstack((x_centergrid.ravel(), y_centergrid.ravel()))
 
+    # ...and the array padded by one.
+    pad = 1
+    p = int(pad * 2)
+
+    x_list_larger = np.arange(-(size[0] + p - 1) / 2.0, (size[0] + p + 1) / 2.0)
+    y_list_larger = np.arange(-(size[1] + p - 1) / 2.0, (size[1] + p + 1) / 2.0)
+
+    x_centergrid_larger, y_centergrid_larger = np.meshgrid(x_list_larger, y_list_larger)
+    centers_larger = np.vstack(
+        (x_centergrid_larger.ravel(), y_centergrid_larger.ravel())
+    )
+
     # If we're not sure about how things are flipped, consider alternatives...
     if size[0] != size[1] and orientation is None:
         M_alternative = np.array([[M[0, 1], M[0, 0]], [M[1, 1], M[1, 0]]])
         M_options = [M, M_alternative]
     else:
         M_options = [M]
-
     results = []
-
     # Iterate through these alternatives.
     for M_trial in M_options:
         # Find the position of the centers for this trial matrix.
         rotated_centers = np.matmul(M_trial, centers)
+        rotated_centers_larger = np.matmul(M_trial, centers_larger)
 
         # Make the kernel
         max_pitch = int(
             np.amax([np.linalg.norm(M_trial[:, 0]), np.linalg.norm(M_trial[:, 1])])
         )
-
         mask = np.zeros(
             (
                 int(
-                    np.amax(rotated_centers[1, :])
-                    - np.amin(rotated_centers[1, :])
+                    np.amax(rotated_centers_larger[1, :])
+                    - np.amin(rotated_centers_larger[1, :])
                     + max_pitch
                 ),
                 int(
-                    np.amax(rotated_centers[0, :])
-                    - np.amin(rotated_centers[0, :])
+                    np.amax(rotated_centers_larger[0, :])
+                    - np.amin(rotated_centers_larger[0, :])
                     + max_pitch
                 ),
             )
         )
 
         rotated_centers += np.flip(mask.shape)[:, np.newaxis] / 2
+        rotated_centers_larger += np.flip(mask.shape)[:, np.newaxis] / 2
 
         # Pixels to use for the kernel.
         x_array = np.around(rotated_centers[0, :]).astype(int)
         y_array = np.around(rotated_centers[1, :]).astype(int)
-        mask[y_array, x_array] = 1
+
+        x_larger = np.around(rotated_centers_larger[0, :]).astype(int)
+        y_larger = np.around(rotated_centers_larger[1, :]).astype(int)
+
+        # Make a mask with negative power at the border, positive
+        # at the array, with integrated intensity of 0.
+        # FUTURE: use MRAF to minimize ghost spot amp around border
+        area = size[0] * size[1]
+        perimeter = 2 * (size[0] + size[1]) + 4
+
+        mask[y_larger, x_larger] = -area
+        mask[y_array, x_array] = perimeter
+        
         mask = _make_8bit(mask)
 
         # 5) Do the autocorrelation

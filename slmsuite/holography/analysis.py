@@ -1201,19 +1201,18 @@ def blob_array_detect(
                 dnorm = d/l
 
                 # Find groups of points separated by dnorm less than tol
-                group = 0
+                group = 1
                 tags = np.zeros(points.shape[0])
                 for i in np.arange(points.shape[0]):
                     new = (dnorm[i,:] < tol) & np.array(tags==0)
                     tags[new] = group
                     if np.any(new):
                         group = group+1
-                tags[0] = 0
 
                 # Calc centers of k most populated clusters
-                _,counts = np.unique(tags,return_counts=True)
-                best_groups = np.argsort(-counts)[:k]
-                centers = np.array([np.mean(points[tags == group],axis=0)
+                tag,count = np.unique(tags,return_counts=True)
+                best_groups = np.argsort(-count)[:k]
+                centers = np.array([np.mean(points[tags == tag[group]],axis=0)
                                     for group in best_groups])
                 
                 if plot:

@@ -177,6 +177,7 @@ class FourierSLM(CameraSLM):
         plot=False,
         autofocus=False,
         autoexposure=False,
+        technique="four",
         **kwargs
     ):
         """
@@ -216,6 +217,9 @@ class FourierSLM(CameraSLM):
             If a dictionary is passed, autoexposure is performed,
             and the dictionary is passed to
             :meth:`~slmsuite.hardware.cameras.camera.Camera.autoexposure()`.
+        technique : string
+            Method for diffraction order fitting when locating the calibration grid.
+            See :meth:`~slmsuite.holography.analysis.blob_array_detect()`.
         **kwargs : dict
             Passed to :meth:`.project_fourier_grid()`.
 
@@ -273,7 +277,7 @@ class FourierSLM(CameraSLM):
         img = self.cam.get_image()
 
         # Get orientation of projected array
-        orientation = analysis.blob_array_detect(img, array_shape, plot=plot)
+        orientation = analysis.blob_array_detect(img, array_shape, plot=plot, technique=technique)
 
         a = format_2vectors(array_center)
         M = np.array(orientation["M"])

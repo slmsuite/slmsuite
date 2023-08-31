@@ -202,7 +202,7 @@ class SimulatedCam(Camera):
         # FUTURE: in the case where sim is being used inside a GS loop, there should be
         # something clever here to use the existing Hologram's data.
         self._hologram.reset_phase(self._slm.phase + self._slm.phase_offset)
-        ff = self._hologram.extract_farfield()
+        ff = self._hologram.extract_farfield(get = True if (cp==np) else False)
 
         # Use map_coordinates for fastest interpolation; but need to reshape pixel dimensions
         # to account for additional padding.

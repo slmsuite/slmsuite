@@ -11,10 +11,6 @@ from slmsuite.holography.toolbox import format_2vectors
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.fitfunctions import gaussian2d
 
-# Clustering tools for lattice fitting
-from sklearn.cluster import AgglomerativeClustering, KMeans
-from sklearn.metrics import silhouette_score
-
 def take(
         images, vectors, size,
         centered=True, integrate=False, clip=False,
@@ -1177,7 +1173,7 @@ def blob_array_detect(
             M = np.array([[x[0], y[0]], [x[1], y[1]]])
 
         elif technique == "lattice":
-            # 3.1) Make a list of displacements to each peak's 4 nearest neighbors
+            # 3.1) Make a list of displacements to each peak's k nearest neighbors
             def get_kNN(x, k):
                 "Return list of k closest points for each x"
                 points = np.array([np.array(blob.pt) for blob in blobs])
@@ -1189,31 +1185,65 @@ def blob_array_detect(
                 kNN = kNN.reshape((points.shape[0]*k, 2))
                 kNN[kNN[:,0]<0] = -kNN[kNN[:,0]<0] #* np.array([-1,1])
                 return kNN
+            
             points = [blob.pt for blob in blobs]
-            kNN = get_kNN(points,4)
+            kNN = get_kNN(points,2)
             
             # 3.2) Cluster into lattice vectors.
-            def cluster(points, k):
+            def cluster(points, k, tol=0.05, plot=plot):
                 "Cluster points from k nearest neighbors into groups and return the centers"
-                score = 0
-                best = 0
-                N = k-1
-                while score >= best:
-                    clusters = AgglomerativeClustering(n_clusters=N).fit(points)
-                    score = silhouette_score(points, clusters.labels_)
-                    if score > best:
-                        best = score
-                        labels = clusters.labels_
-                    N = N+1
-                centers = np.array([np.mean(points[labels == l],axis=0) for l in range(N-2)])
+
+                # Find matrix of normalized displacements between points
+                dx = points[:,0][:,np.newaxis] - points[:,0][:,np.newaxis].T
+                dy = points[:,1][:,np.newaxis] - points[:,1][:,np.newaxis].T
+                d = np.sqrt(dx**2+dy**2)
+                l = np.linalg.norm(points,axis=1)
+                dnorm = d/l
+
+                # Find groups of points separated by dnorm less than tol
+                group = 0
+                tags = np.zeros(points.shape[0])
+                for i in np.arange(points.shape[0]):
+                    new = (dnorm[i,:] < tol) & np.array(tags==0)
+                    tags[new] = group
+                    if np.any(new):
+                        group = group+1
+                tags[0] = 0
+
+                # Calc centers of k most populated clusters
+                _,counts = np.unique(tags,return_counts=True)
+                best_groups = np.argsort(-counts)[:k]
+                centers = np.array([np.mean(points[tags == group],axis=0)
+                                    for group in best_groups])
+                
+                if plot:
+                    # Plot the points and the chosen groups
+                    fig, ax = plt.subplots(constrained_layout=True)
+                    ax.scatter(points[:,0],points[:,1],fc='none',ec='k')
+                    
+                    for i in range(k):
+                        cir = matplotlib.patches.Circle((centers[i,0],centers[i,1]),
+                                                        np.linalg.norm(centers[i])*tol,
+                                                        fill=False,ec='r')
+                        ax.add_patch(cir)
+                    ax.set_aspect('equal')
+                    ax.set_title('Reciprocal Lattice Vector Fitting')
+                    ax.legend(['Peak Spacing', '$k$ Clusters'])
+                    ax.grid()
+                    plt.show()
+                
                 return centers
-            centers = cluster(kNN,4)
+            
+            centers = cluster(kNN,2)
         
             # 3.3) Primitive lattice vectors are the shortest two
             lv = centers[np.argsort(np.linalg.norm(centers, axis=1))[:2]]
 
             # 3.4) Convert to image space (dx = 1/dk)
             M = fftsize*(lv/np.linalg.norm(lv,axis=0)**2).T
+
+        else:
+            raise ValueError("Unrecognized technique \"{}\".".format(technique))
 
         # Plot which diffraction orders we used
         if plot:
@@ -1276,9 +1306,6 @@ def blob_array_detect(
             fig.tight_layout(pad=4.0)
 
             plt.show()
-
-        else:
-            raise ValueError("Unrecognized technique \"{}\".".format(technique))
 
     # 4) Make the array kernel for convolutional detection of the array center.
     # Make lists that we will use to make the kernel: the array...

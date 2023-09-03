@@ -211,7 +211,7 @@ class FourierSLM(CameraSLM):
             If a dictionary is passed, autofocus is performed,
             and the dictionary is passed to
             :meth:`~slmsuite.hardware.cameras.camera.Camera.autofocus()`.
-        autoexpose : bool OR dict
+        autoexposure : bool OR dict
             Whether or not to automatically set the camera exposure.
             If a dictionary is passed, autoexposure is performed,
             and the dictionary is passed to

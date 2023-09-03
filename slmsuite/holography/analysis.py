@@ -6,6 +6,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from functools import reduce
 from scipy.optimize import curve_fit, minimize
+import warnings
 
 from slmsuite.holography.toolbox import format_2vectors
 from slmsuite.misc.math import REAL_TYPES
@@ -908,7 +909,7 @@ def blob_detect(
     detector : :class:`cv2.SimpleBlobDetector`
         A blob detector with customized parameters.
     """
-    img_8it = _make_8bit(np.copy(img))
+    img_8bit = _make_8bit(np.copy(img))
     params = cv2.SimpleBlobDetector_Params()
 
     # Configure default parameters
@@ -928,7 +929,7 @@ def blob_detect(
 
     # Create the detector and detect blobs
     detector = cv2.SimpleBlobDetector_create(params)
-    blobs = detector.detect(img_8it)
+    blobs = detector.detect(img_8bit)
 
     if len(blobs) == 0:
         raise Exception("No blobs found! Try blurring image.")
@@ -946,7 +947,7 @@ def blob_detect(
             # Try fails when blob is on edge of camera.
             try:
                 blobs[i].response = float(
-                    img_8it[
+                    img_8bit[
                         np.ix_(
                             int(blob.pt[1]) + np.arange(-bin_size, bin_size),
                             int(blob.pt[0]) + np.arange(-bin_size, bin_size),
@@ -988,13 +989,13 @@ def blob_detect(
         fig.suptitle(title)
 
         # Full image.
-        vmin = np.min(img_8it)
-        vmax = np.max(img_8it)
-        im = ax0.imshow(img_8it, vmin=vmin, vmax=vmax)
+        vmin = np.min(img_8bit)
+        vmax = np.max(img_8bit)
+        im = ax0.imshow(img_8bit, vmin=vmin, vmax=vmax)
 
         # Zoomed Image.
         if zoom:
-            ax1.imshow(img_8it, vmin=vmin, vmax=vmax)
+            ax1.imshow(img_8bit, vmin=vmin, vmax=vmax)
             xmax = img.shape[1] + 0.5
             xmin = 0.5
             xlims = (
@@ -1040,6 +1041,8 @@ def blob_array_detect(
     orientation_check=True,
     dft_threshold=50,
     dft_padding=0,
+    k=4,
+    tol=0.05,
     plot=False,
 ):
     r"""
@@ -1076,6 +1079,12 @@ def blob_array_detect(
         is `None`. Dimensions are increased by a factor of `2 ** dft_padding`.
         Increasing this value increases the k-space resolution of the DFT,
         and can improve orientation detection.
+    k : int
+        Number of nearest neighbors to use for each point when lattice matching. Default (2)
+        uses closest neighbors only.
+    tol : float
+        Difference in normalized displacement between reciprocal lattice points to
+        be considered members of the same group when lattice fitting. Defaults to 5%.
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
 
@@ -1088,7 +1097,7 @@ def blob_array_detect(
          - ``"M"`` : ``numpy.ndarray`` (2, 2).
          - ``"b"`` : ``numpy.ndarray`` (2, 1).
     """
-    img_8it = _make_8bit(img)
+    img_8bit = _make_8bit(img)
 
     # If an orientation was provided, use this as a guess.
     if orientation is not None:
@@ -1098,12 +1107,12 @@ def blob_array_detect(
     else:                           
         # 1) FFT to find array pitch and orientation.
         # Take the largest dimension rounded up to nearest power of 2.
-        # Future: clean this up to behave like other parts of the package.
+        # FUTURE: clean this up to behave like other parts of the package.
         fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img))))) * 2 ** dft_padding
-        dft = np.fft.fftshift(np.fft.fft2(img_8it, s=[fftsize, fftsize]))
+        dft = np.fft.fftshift(np.fft.fft2(img_8bit, s=[fftsize, fftsize]))
         fft_blur_size = (
             int(2 * np.ceil(fftsize / 1000)) + 1
-        )  # Future: Make not arbitrary.
+        )
 
         dft_amp = cv2.GaussianBlur(np.abs(dft), (fft_blur_size, fft_blur_size), 0)
 
@@ -1150,10 +1159,10 @@ def blob_array_detect(
             return kNN
         
         points = [blob.pt for blob in blobs]
-        kNN = get_kNN(points,2)
+        kNN = get_kNN(points,k)
         
         # 3.2) Cluster into lattice vectors.
-        def cluster(points, k, tol=0.05, plot=plot):
+        def cluster(points, k, tol=tol):
             "Cluster points from k nearest neighbors into groups and return the centers"
 
             # Find matrix of normalized displacements between points
@@ -1177,32 +1186,36 @@ def blob_array_detect(
             best_groups = np.argsort(-count)[:k]
             centers = np.array([np.mean(points[tags == tag[group]],axis=0)
                                 for group in best_groups])
-            
-            if plot:
-                # Plot the points and the chosen groups
-                fig, ax = plt.subplots(constrained_layout=True)
-                ax.scatter(points[:,0],points[:,1],fc='none',ec='k')
-                
-                for i in range(k):
-                    cir = matplotlib.patches.Circle((centers[i,0],centers[i,1]),
-                                                    np.linalg.norm(centers[i])*tol,
-                                                    fill=False,ec='r')
-                    ax.add_patch(cir)
-                ax.set_aspect('equal')
-                ax.set_title('Reciprocal Lattice Vector Fitting')
-                ax.legend(['Peak Spacing', '$k$ Clusters'])
-                ax.grid()
-                plt.show()
-            
+                        
             return centers
         
-        centers = cluster(kNN,2)
+        centers = cluster(kNN,k).T
     
-        # 3.3) Primitive lattice vectors are the shortest two
-        lv = centers[np.argsort(np.linalg.norm(centers, axis=1))[:2]]
+        # 3.3) Primitive lattice vectors are the shortest orthogonal two
+        centers_norm = centers / np.linalg.norm(centers, axis=0)
+        dot = np.sum(centers_norm * np.roll(centers_norm,-1,axis=1), axis=0)
+        lv = np.array([centers[:,0], centers[:,np.where(dot<1e-2)[0][0]+1]]).T
+        # lv = centers[np.argsort(np.linalg.norm(centers, axis=1))[:2]].T
+
+        if plot:
+            # Plot the points, kNN, and the chosen lattice vecs
+            fig, ax = plt.subplots(constrained_layout=True)
+            kNN_plt = ax.scatter(kNN[:,0],kNN[:,1],fc='none',ec='k')
+            
+            for center in centers.T:
+                cir = matplotlib.patches.Circle((center[0],center[1]),
+                                                np.linalg.norm(center)*tol,
+                                                fill=False,ec='g')
+                circ = ax.add_patch(cir)
+            lv_plt = ax.scatter(lv[0,:],lv[1,:],marker='x',c='r') 
+            ax.set_aspect('equal')
+            ax.set_title('Reciprocal Lattice Vector Fitting')
+            ax.legend([kNN_plt, circ, lv_plt], ['Peak Spacing', '$k$ Clusters', 'Lattice Vecs'])
+            ax.grid()
+            plt.show()
 
         # 3.4) Convert to image space (dx = 1/dk)
-        M = fftsize*(lv/np.linalg.norm(lv,axis=0)**2).T
+        M = fftsize*lv/(np.linalg.norm(lv, axis=0)**2)
 
         # Plot which diffraction orders we used
         if plot:
@@ -1247,8 +1260,8 @@ def blob_array_detect(
                 facecolors="none",
                 edgecolors="r",
                 marker="o",
-                s=1000,
-                linewidths=1,
+                s=100,
+                linewidths=0.5
             )
             for spine in ["top", "bottom", "right", "left"]:
                 axs[1].spines[spine].set_color("r")
@@ -1274,7 +1287,7 @@ def blob_array_detect(
     x_centergrid, y_centergrid = np.meshgrid(x_list, y_list)
     centers = np.vstack((x_centergrid.ravel(), y_centergrid.ravel()))
 
-    # ...and the array padded by one.
+    # ...and the array padded by one (penalize the border to avoid off-by-one errors).
     pad = 1
     p = int(pad * 2)
 
@@ -1330,7 +1343,6 @@ def blob_array_detect(
 
         # Make a mask with negative power at the border, positive
         # at the array, with integrated intensity of 0.
-        # FUTURE: use MRAF to minimize ghost spot amp around border
         area = size[0] * size[1]
         perimeter = 2 * (size[0] + size[1]) + 4
 
@@ -1341,7 +1353,7 @@ def blob_array_detect(
 
         # 5) Do the autocorrelation
         try:
-            res = cv2.matchTemplate(img_8it, mask, cv2.TM_CCOEFF)
+            res = cv2.matchTemplate(img_8bit, mask, cv2.TM_CCOEFF)
             _, max_val, _, max_loc = cv2.minMaxLoc(res)
         except:
             max_val = 0
@@ -1358,7 +1370,7 @@ def blob_array_detect(
                     max_loc[1] + np.arange(mask.shape[0]),
                     max_loc[0] + np.arange(mask.shape[1]),
                 )
-                match = img_8it[cam_array_ind]
+                match = img_8bit[cam_array_ind]
 
                 wmask = 0.1
                 w = np.max([1, int(wmask * max_pitch)])
@@ -1436,7 +1448,7 @@ def blob_array_detect(
 
     # Hone the center of our fit by averaging the positional deviations of spots.
     # We do this multiple times to allow outliers (1 std error above) to stabilize.
-    # Future: Use a more physics-based psf, optimize for speed, maybe remove_field.
+    # FUTURE: Use a more physics-based psf, optimize for speed, maybe remove_field.
     hone_count = 3
     for _ in range(hone_count):
         guess_positions = np.matmul(orientation["M"], centers) + orientation["b"]
@@ -1462,6 +1474,20 @@ def blob_array_detect(
         true_positions = guess_positions + shift
         orientation = fit_affine(centers, true_positions, orientation)
 
+    # Warn the user if the mask was >= (or close to) camera size
+    if np.any(mask.shape > 0.95 * np.array(img_8bit.shape)):
+        warnings.warn(
+            "The computed Fourier grid size exceeds or approaches the camera size; "
+            "calibration results may be improperly centered as a result."
+        )
+    # Also warn if computed postions approach camera FOV boundary
+    elif np.any(np.nanmax(true_positions,axis=1) > 0.95 * np.array(img_8bit.shape)) or \
+         np.any(np.nanmin(true_positions,axis=1) < 0.05 * np.array(img_8bit.shape)):
+        warnings.warn(
+            "The fitted spot array approaches or exceeds the camera FOV; "
+            "calibration results may be improperly centered as a result."
+        )
+
     if plot:
         array_center = orientation["b"]
         true_centers = np.matmul(orientation["M"], centers) + orientation["b"]
@@ -1469,7 +1495,7 @@ def blob_array_detect(
         showmatch = False
 
         fig, axs = plt.subplots(
-            1, 2 + showmatch, constrained_layout=True, figsize=(12, 12)
+            1, 2 + showmatch, figsize=(12, 12)
         )
 
         # Determine the bounds of the zoom region, padded by 50
@@ -1504,7 +1530,7 @@ def blob_array_detect(
             axs[1].spines[spine].set_linewidth(1.5)
 
         # Plot the non-zoom axes.
-        axs[0].imshow(img_8it)
+        axs[0].imshow(img_8bit)
         axs[0].scatter(array_center[0], array_center[1], c="r", marker="x", s=10)
 
         # Plot a red rectangle to show the extents of the zoom region

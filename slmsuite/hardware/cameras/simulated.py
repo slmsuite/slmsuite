@@ -3,6 +3,7 @@ Simulated camera to image the simulated SLM.
 """
 
 import numpy as np
+
 try:
     import cupy as cp
     from cupyx.scipy.ndimage import map_coordinates
@@ -16,6 +17,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from slmsuite.hardware.cameras.camera import Camera
 from slmsuite.holography.algorithms import Hologram
 from slmsuite.holography import toolbox
+
 
 class SimulatedCam(Camera):
     """
@@ -66,7 +68,10 @@ class SimulatedCam(Camera):
         Size of the FFT computational space required to faithfully reproduce the far-field at
         full camera resolution.
     """
-    def __init__(self, slm, resolution=None, f_eff=None, theta=0, offset=None, basis="ij", **kwargs):
+
+    def __init__(
+        self, slm, resolution=None, f_eff=None, theta=0, offset=None, basis="ij", **kwargs
+    ):
         """
         Initialize simulated camera.
 
@@ -100,7 +105,7 @@ class SimulatedCam(Camera):
 
         if resolution is None:
             resolution = slm.shape[::-1]
-        elif any([r != s for r,s in zip(resolution,slm.shape[::-1])]):
+        elif any([r != s for r, s in zip(resolution, slm.shape[::-1])]):
             self._interpolate = True
 
         super().__init__(int(resolution[0]), int(resolution[1]), **kwargs)
@@ -110,19 +115,15 @@ class SimulatedCam(Camera):
 
         # Compute the camera pixel grid in `basis` units (currently "ij")
         self.x_grid, self.y_grid = cp.meshgrid(
-            cp.linspace(-1/2, 1/2, resolution[0]) * resolution[0],
-            cp.linspace(-1/2, 1/2, resolution[1]) * resolution[1]
+            cp.linspace(-1 / 2, 1 / 2, resolution[0]) * resolution[0],
+            cp.linspace(-1 / 2, 1 / 2, resolution[1]) * resolution[1],
         )
         if theta != 0:
             self._interpolate = True
-            rot = cp.array(
-                [[cp.cos(-theta), cp.sin(-theta)], [-cp.sin(-theta), cp.cos(-theta)]]
-            )
+            rot = cp.array([[cp.cos(-theta), cp.sin(-theta)], [-cp.sin(-theta), cp.cos(-theta)]])
             # Rotate
             self.x_grid, self.y_grid = cp.einsum(
-                'ji, mni -> jmn',
-                rot,
-                cp.dstack([self.x_grid, self.y_grid])
+                "ji, mni -> jmn", rot, cp.dstack([self.x_grid, self.y_grid])
             )
         # Translate
         if offset is not None:
@@ -131,15 +132,14 @@ class SimulatedCam(Camera):
             self.y_grid = self.y_grid + offset[1]
 
         # Compute SLM Fourier-space grid in `basis` units (currently "ij")
-        f_min = 2 * max([
-            cp.amax(cp.abs(self.x_grid)) * slm.dx,
-            cp.amax(cp.abs(self.y_grid)) * slm.dy
-        ])
+        f_min = 2 * max(
+            [cp.amax(cp.abs(self.x_grid)) * slm.dx, cp.amax(cp.abs(self.y_grid)) * slm.dy]
+        )
         if f_eff is None:
             self.f_eff = f_min
             print(
                 "Setting f_eff = f_min = %1.2f pix/rad to place"
-                "camera within accessible SLM k-space."%(self.f_eff)
+                "camera within accessible SLM k-space." % (self.f_eff)
             )
         elif f_eff < f_min:
             raise RuntimeError("Camera extends beyond SLM's accessible Fourier space!")
@@ -148,16 +148,16 @@ class SimulatedCam(Camera):
 
         # Fourier space must be sufficiently padded to resolve the camera pixels.
         # FUTURE: account for anisotropic x,y resolution when non-square pixel is rotated.
-        self.shape_padded = Hologram.calculate_padded_shape(slm, precision=1/self.f_eff)
+        self.shape_padded = Hologram.calculate_padded_shape(slm, precision=1 / self.f_eff)
         self._hologram = Hologram(
             self.shape_padded,
-            amp=self._slm.amp_profile,
-            phase=self._slm.phase + self._slm.phase_offset,
+            amp=self._slm.source["amplitude_sim"],
+            phase=self._slm.phase + self._slm.source["phase_sim"],
             slm_shape=self._slm,
         )
         print(
             "Padded SLM k-space shape set to (%d,%d) to achieve required"
-            "imaging resolution."%(self.shape_padded[1], self.shape_padded[0])
+            "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
         )
 
     def flush(self):
@@ -201,22 +201,26 @@ class SimulatedCam(Camera):
         # Update phase; calculate the far-field (keep on GPU if using cupy for follow-on interp)
         # FUTURE: in the case where sim is being used inside a GS loop, there should be
         # something clever here to use the existing Hologram's data.
-        self._hologram.reset_phase(self._slm.phase + self._slm.phase_offset)
-        ff = self._hologram.extract_farfield(get = True if (cp==np) else False)
+        self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
+        ff = self._hologram.extract_farfield(get=True if (cp == np) else False)
 
         # Use map_coordinates for fastest interpolation; but need to reshape pixel dimensions
         # to account for additional padding.
         if self._interpolate:
             img = map_coordinates(
-                cp.abs(ff)**2,
-                cp.array([
-                    self.shape_padded[0] / (self.f_eff/self._slm.dy) * self.y_grid + self.shape_padded[0]/2,
-                    self.shape_padded[1] / (self.f_eff/self._slm.dx) * self.x_grid + self.shape_padded[1]/2
-                ]),
-                order=0
+                cp.abs(ff) ** 2,
+                cp.array(
+                    [
+                        self.shape_padded[0] / (self.f_eff / self._slm.dy) * self.y_grid
+                        + self.shape_padded[0] / 2,
+                        self.shape_padded[1] / (self.f_eff / self._slm.dx) * self.x_grid
+                        + self.shape_padded[1] / 2,
+                    ]
+                ),
+                order=0,
             )
         else:
-            img = cp.abs(ff)**2
+            img = cp.abs(ff) ** 2
             img = toolbox.unpad(img, self.shape)
         if cp != np:
             img = img.get()
@@ -226,10 +230,10 @@ class SimulatedCam(Camera):
 
         if plot:
             # Note simulated cam currently has infinite dynamic range.
-            fig, ax = plt.subplots(1,1)
+            fig, ax = plt.subplots(1, 1)
             im = ax.imshow(img, clim=[0, img.max()], interpolation="none")
-            cax = make_axes_locatable(ax).append_axes('right', size='5%', pad=0.05)
-            fig.colorbar(im, cax=cax, orientation='vertical')
+            cax = make_axes_locatable(ax).append_axes("right", size="5%", pad=0.05)
+            fig.colorbar(im, cax=cax, orientation="vertical")
             ax.set_title("Simulated Image")
             cax.set_ylabel("Intensity")
 

@@ -12,7 +12,6 @@ except:
     from scipy.ndimage import map_coordinates
 
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from slmsuite.hardware.cameras.camera import Camera
 from slmsuite.holography.algorithms import Hologram
@@ -230,11 +229,6 @@ class SimulatedCam(Camera):
 
         if plot:
             # Note simulated cam currently has infinite dynamic range.
-            fig, ax = plt.subplots(1, 1)
-            im = ax.imshow(img, clim=[0, img.max()], interpolation="none")
-            cax = make_axes_locatable(ax).append_axes("right", size="5%", pad=0.05)
-            fig.colorbar(im, cax=cax, orientation="vertical")
-            ax.set_title("Simulated Image")
-            cax.set_ylabel("Intensity")
+            self.plot_image(img)
 
         return img

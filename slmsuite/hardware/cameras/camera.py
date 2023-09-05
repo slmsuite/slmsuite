@@ -5,10 +5,12 @@ Abstract camera functionality.
 import time
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import curve_fit
 
 from slmsuite.holography import analysis
 from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
+
 
 class Camera:
     """
@@ -52,7 +54,7 @@ class Camera:
         rot="0",
         fliplr=False,
         flipud=False,
-        name="camera"
+        name="camera",
     ):
         """
         Initializes a camera.
@@ -102,7 +104,7 @@ class Camera:
 
         # Set other useful parameters
         self.bitdepth = bitdepth
-        self.bitresolution = 2 ** bitdepth
+        self.bitresolution = 2**bitdepth
 
         # Spatial dimensions
         self.dx_um = dx_um
@@ -134,7 +136,8 @@ class Camera:
         list
             An empty list.
         """
-        if verbose: print(".info() NotImplemented.")
+        if verbose:
+            print(".info() NotImplemented.")
         return []
 
     def reset(self):
@@ -245,6 +248,15 @@ class Camera:
 
         return imlist
 
+    @staticmethod
+    def plot_image(img):
+        fig, ax = plt.subplots(1, 1)
+        im = ax.imshow(img, clim=[0, img.max()], interpolation="none")
+        cax = make_axes_locatable(ax).append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(im, cax=cax, orientation="vertical")
+        ax.set_title("Captured Image")
+        cax.set_ylabel("Intensity")
+
     def autoexposure(
         self,
         set_fraction=0.5,
@@ -253,7 +265,7 @@ class Camera:
         window=None,
         average_count=5,
         timeout_s=5,
-        verbose=True
+        verbose=True,
     ):
         """
         Sets the exposure of the camera such that the maximum value is at ``set_fraction``
@@ -324,7 +336,7 @@ class Camera:
             err = np.abs(im_max - set_val) / self.bitresolution
 
             if verbose:
-                print("Reset exposure to %1.2fs; maximum image value = %d."%(exp, im_max))
+                print("Reset exposure to %1.2fs; maximum image value = %d." % (exp, im_max))
 
         exp_fin = exp * 2 * set_fraction
 
@@ -386,9 +398,7 @@ class Camera:
                 axs[0].set_xticks([])
                 axs[0].set_yticks([])
                 axs[1].imshow(dft_norm)
-                axs[1].set_title(
-                    "FFT\nFoM$ = \\int\\int $|FFT|$ / $max|FFT|$ = {}$".format(fom_)
-                )
+                axs[1].set_title("FFT\nFoM$ = \\int\\int $|FFT|$ / $max|FFT|$ = {}$".format(fom_))
                 axs[1].set_xticks([])
                 axs[1].set_yticks([])
                 plt.show()
@@ -396,7 +406,7 @@ class Camera:
         counts[0] = counts[1]
 
         popt0 = np.array(
-            [z_list[np.argmax(counts)], np.max(counts)-np.min(counts), np.min(counts), 100]
+            [z_list[np.argmax(counts)], np.max(counts) - np.min(counts), np.min(counts), 100]
         )
 
         try:
@@ -443,6 +453,7 @@ class Camera:
 
         return z_opt, imlist
 
+
 def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
     """
     Continuously get camera frames and plot them. Intended for use in jupyter notebooks.
@@ -468,7 +479,7 @@ def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
     # Get camera information.
     cam_count = len(cameras)
     cams_max_height = cams_max_width = 0
-    for (cam_idx, cam) in enumerate(cameras):
+    for cam_idx, cam in enumerate(cameras):
         cam_height = cam.shape[0]
         cam_width = cam.shape[1]
         cams_max_height = max(cams_max_height, cam_height)
@@ -476,10 +487,8 @@ def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
 
     # Create figure.
     plt.ion()
-    figsize = np.array((cam_count * cams_max_width, cams_max_height)) * 2 ** -9
-    fig, axs = plt.subplots(
-        1, cam_count, figsize=figsize, facecolor=facecolor, dpi=dpi
-    )
+    figsize = np.array((cam_count * cams_max_width, cams_max_height)) * 2**-9
+    fig, axs = plt.subplots(1, cam_count, figsize=figsize, facecolor=facecolor, dpi=dpi)
     axs = np.reshape(axs, cam_count)
     fig.tight_layout()
     fig.show()

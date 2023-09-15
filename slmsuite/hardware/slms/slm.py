@@ -557,14 +557,8 @@ class SLM:
             dy = self.y_grid.ptp() / self.dy_um
         # Physical units
         else:
-            if units == "m":
-                factor = 1e6
-            elif units == "mm":
-                factor = 1e3
-            elif units == "um":
-                factor = 1
-            elif units == "nm":
-                factor = 1e-3
+            if units in toolbox.LENGTH_FACTORS.keys():
+                factor = toolbox.LENGTH_FACTORS[units]
             else:
                 raise RuntimeError("Did not recognize units '{}'".format(units))
             dx = factor * self.dx / self.dx_um

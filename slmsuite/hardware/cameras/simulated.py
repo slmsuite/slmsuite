@@ -3,6 +3,7 @@ Simulated camera to image the simulated SLM.
 """
 
 import numpy as np
+import warnings
 
 try:
     import cupy as cp
@@ -16,6 +17,7 @@ import matplotlib.pyplot as plt
 from slmsuite.hardware.cameras.camera import Camera
 from slmsuite.holography.algorithms import Hologram
 from slmsuite.holography import toolbox
+from slmsuite.misc.math import REAL_TYPES
 
 
 class SimulatedCam(Camera):
@@ -47,30 +49,12 @@ class SimulatedCam(Camera):
         Pixel column number (``"ij"`` basis) used for far-field interpolation.
     y_grid : ndarray
         Pixel row number (``"ij"`` basis) used for far-field interpolation.
-    f_eff : float
-        Effective focal length (in `basis` units) of the
-        optical train separating the Fourier-domain SLM from the camera.
-
-        Important
-        ~~~~~~~~~
-        The normalized unit for `f_eff` is pixels/radian, i.e. the units of :math:`M` matrix
-        elements required to convert normalized angles/:math:`k`-space coordinates to camera
-        pixels in the ``"ij"`` basis.
-        See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam` for additional
-        details. To convert to true distance units (e.g., `"um"`), multiply `f_eff` by the the
-        pixel size in the same dimensions.
-        As noted in :meth:`~slmsuite.hardware.cameraslms.get_effective_focal_length`, non-square
-        pixels therefore imply different effective focal lengths along each axis when using
-        true distance units.
-
     shape_padded : (int, int)
         Size of the FFT computational space required to faithfully reproduce the far-field at
         full camera resolution.
     """
 
-    def __init__(
-        self, slm, resolution=None, f_eff=None, theta=0, offset=None, basis="ij", **kwargs
-    ):
+    def __init__(self, slm, resolution=None, M=None, b=None, **kwargs):
         """
         Initialize simulated camera.
 
@@ -80,18 +64,13 @@ class SimulatedCam(Camera):
             Simulated SLM creating the image.
         resolution : tuple
             See :attr:`resolution`. If ``None``, defaults to the resolution of `slm`.
-        f_eff : float
-            See :attr:`f_eff`. If `None`, defaults to the minimum focal length for
-            which the camera is fully contained within the SLM's accessible Fourier space.
-        theta : float
-            Rotation angle (in radians, ccw) of the camera from the SLM axis.
-            Defaults to 0 (i.e., aligned with the SLM).
-        offset : tuple
-            Lateral displacement (in `basis` units) of the camera center from `slm`'s
+        M : ndarray
+            2 x 2 affine transform matrix to convert between `slm`'s k-space and the
+            simulated camera's pixel (``"ij"``) basis. If ``None``, defaults to the
+            identity matrix.
+        b : tuple
+            Lateral displacement (in pixels) of the camera center from `slm`'s
             optical axis. If ``None``, defaults to 0 offset.
-        basis : str
-            Sets the units for `f_eff` and `offset`. Currently, only `"ij"` is supported.
-            Future releases will also support `"um"`.
         kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
@@ -117,47 +96,123 @@ class SimulatedCam(Camera):
             np.linspace(-1 / 2, 1 / 2, resolution[0]) * resolution[0],
             np.linspace(-1 / 2, 1 / 2, resolution[1]) * resolution[1],
         )
-        if theta != 0:
-            self._interpolate = True
-            rot = np.array([[np.cos(-theta), np.sin(-theta)], [-np.sin(-theta), np.cos(-theta)]])
-            # Rotate
-            self.x_grid, self.y_grid = np.einsum(
-                "ji, mni -> jmn", rot, np.dstack([self.x_grid, self.y_grid])
-            )
-        # Translate
-        if offset is not None:
-            self._interpolate = True
-            self.x_grid = self.x_grid + offset[0]
-            self.y_grid = self.y_grid + offset[1]
 
-        # Compute SLM Fourier-space grid in `basis` units (currently "ij")
-        f_min = 2 * max(
-            [np.amax(np.abs(self.x_grid)) * slm.dx, np.amax(np.abs(self.y_grid)) * slm.dy]
-        )
-        if f_eff is None:
-            self.f_eff = f_min
-            print(
-                "Setting f_eff = f_min = %1.2f pix/rad to place"
-                "camera within accessible SLM k-space." % (self.f_eff)
-            )
-        elif f_eff < f_min:
-            raise RuntimeError("Camera extends beyond SLM's accessible Fourier space!")
-        else:
-            self.f_eff = f_eff
+        # Affine transform the camera grid ("ij"->"kxy")
+        if M is not None or b is not None:
+            self._interpolate = True
+            (self.x_grid, self.y_grid) = toolbox.transform_grid(self, M, b, direction="rev")
 
         # Fourier space must be sufficiently padded to resolve the camera pixels.
-        # FUTURE: account for anisotropic x,y resolution when non-square pixel is rotated.
-        self.shape_padded = Hologram.calculate_padded_shape(slm, precision=1 / self.f_eff)
+        dkxy = cp.sqrt(
+            (self.x_grid[:2, :2] - self.x_grid[0, 0]) ** 2
+            + (self.y_grid[:2, :2] - self.y_grid[0, 0]) ** 2
+        )
+        dkxy_min = dkxy.ravel()[1:].min()
+
+        self.shape_padded = Hologram.calculate_padded_shape(slm, precision=dkxy_min)
+        print(
+            "Padded SLM k-space shape set to (%d,%d) to achieve required "
+            "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
+        )
         self._hologram = Hologram(
             self.shape_padded,
             amp=self._slm.source["amplitude_sim"],
             phase=self._slm.phase + self._slm.source["phase_sim"],
             slm_shape=self._slm,
         )
-        print(
-            "Padded SLM k-space shape set to (%d,%d) to achieve required"
-            "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
+
+        # Convert kxy -> knm (0,0 at corner): 1/dx -> Npx
+        self.knm_cam = cp.array(
+            [
+                self.shape_padded[0] * self._slm.dy * self.y_grid + self.shape_padded[0] / 2,
+                self.shape_padded[1] * self._slm.dx * self.x_grid + self.shape_padded[1] / 2,
+            ]
         )
+
+        if (
+            cp.amax(cp.abs(self.knm_cam[0])) > self.shape_padded[1] / 2
+            or cp.amax(cp.abs(self.knm_cam[1])) > self.shape_padded[0] / 2
+        ):
+            warnings.warn(
+                "Camera extends beyond the accessible SLM k-space;"
+                " some pixels may not be targetable."
+            )
+
+    @staticmethod
+    def build_affine(f_eff=1, theta=0, shear_angle=0, offset=(0, 0), basis="ij", pitch_um=None):
+        """
+        Build an affine transform defining the SLM -> camera transformation as
+        detailed in :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam`.
+
+        Parameters
+        ----------
+        f_eff : float or (float, float)
+            Effective focal length (in `basis` units) of the
+            optical train separating the Fourier-domain SLM from the camera. If a float is provided,
+            `f_eff` is isotropic; otherwise, `f_eff` is defined along the SLM's x and y axes.
+
+            Important
+            ~~~~~~~~~
+            The default unit for `f_eff` is pixels/radian, i.e. the units of :math:`M` matrix
+            elements required to convert normalized angles/:math:`k`-space coordinates to camera
+            pixels in the ``"ij"`` basis.
+            See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam` for additional
+            details. To convert to true distance units (e.g., `"um"`), multiply `f_eff` by the the
+            pixel size in the same dimensions.
+            As noted in :meth:`~slmsuite.hardware.cameraslms.get_effective_focal_length`, non-square
+            pixels therefore imply different effective focal lengths along each axis when using
+            true distance units.
+        theta : float
+            Rotation angle (in radians, ccw) of the camera relative to the SLM orientation.
+            Defaults to 0 (i.e., aligned with the SLM).
+        shear_angle : float or (float, float)
+            Shearing angles (in radians) along the SLM's x and y axes. If a float is provided,
+            shear is applied isotropically.
+        offset : tuple
+            Lateral displacement (in pixels units) of the camera center from `slm`'s
+            optical axis. If ``None``, defaults to 0 offset.
+        basis : str
+            Sets the units for `f_eff` and `offset`. Defaults to ``"ij"``, the camera pixel basis.
+        pitch_um : float or (float, float)
+            Camera pixel pitch in microns. Must be provided if ``basis != "ij"``. A square pixel
+            is assumed if a single float is provided.
+
+        Returns
+        -------
+        ndarray
+            2 x 2 affine matrix :math:`M`
+        tuple
+            Affine vector :math:`b`
+        """
+
+        if isinstance(f_eff, REAL_TYPES):
+            f_eff = [f_eff, f_eff]
+        if isinstance(pitch_um, REAL_TYPES):
+            pitch_um = [pitch_um, pitch_um]
+        if isinstance(shear_angle, REAL_TYPES):
+            shear_angle = [shear_angle, shear_angle]
+
+        if basis != "ij":
+            assert pitch_um is not None, "Must provide pixel pitch when using real units!"
+
+            if basis in toolbox.LENGTH_FACTORS.keys():
+                factor = toolbox.LENGTH_FACTORS[basis]
+            else:
+                raise RuntimeError("Did not recognize units '{}'".format(basis))
+
+            f_eff = [(factor * f) / p for f, p in zip(f_eff, pitch_um)]
+            b = [(factor * o) / p for o, p in zip(offset, pitch_um)]
+
+        else:
+            b = offset
+
+        mag = np.array([[f_eff[0], 0], [0, f_eff[1]]])
+        shear = np.array([[1, np.tan(shear_angle[0])], [np.tan(shear_angle[1]), 1]])
+        rot = np.array([[np.cos(-theta), np.sin(-theta)], [-np.sin(-theta), np.cos(-theta)]])
+
+        M = mag @ shear @ rot
+
+        return M, b
 
     def flush(self):
         """
@@ -203,21 +258,10 @@ class SimulatedCam(Camera):
         self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
         ff = self._hologram.extract_farfield()
 
-        # Use map_coordinates for fastest interpolation; but need to reshape pixel dimensions
-        # to account for additional padding.
+        # Use map_coordinates for fastest interpolation
+        # Note: by default, map_coordinates sets pixels outside the SLM k-space to 0 as desired
         if self._interpolate:
-            img = map_coordinates(
-                cp.abs(ff) ** 2,
-                cp.array(
-                    [
-                        (self.shape_padded[0] / (self.f_eff / self._slm.dy)) * self.y_grid
-                        + self.shape_padded[0] / 2,
-                        (self.shape_padded[1] / (self.f_eff / self._slm.dx)) * self.x_grid
-                        + self.shape_padded[1] / 2,
-                    ]
-                ),
-                order=0,
-            )
+            img = map_coordinates(cp.abs(ff) ** 2, self.knm_cam, order=0)
         else:
             img = cp.abs(ff) ** 2
             img = toolbox.unpad(img, self.shape)

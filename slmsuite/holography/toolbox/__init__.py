@@ -1003,35 +1003,48 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
     shift : (float, float) OR None
         Translational shift of the grid in normalized :math:`\frac{x}{\lambda}` coordinates.
         Defaults to no shift if ``None``.
-    direction : str in ``["fwd", "rev"]``
+    direction : str in ``{"fwd", "rev"}``
         Defines the direction of the transform: forward (``"fwd"``) transforms then shifts;
         reverse (``"rev"``) undoes the shift then applies the inverse transform.
         For standard affine transforms, forward (reverse) mode transforms ``"kxy"`` to ``"ij"``
         (``"ij"`` to ``"kxy"``).
+
     Returns
     -------
     grid : (array_like, array_like)
-        The shifted grid
+        The shifted grid. In the case where the transform is the identity, a copy is
+        returned not the original grids.
     """
-    # Parse arguments.
+    # Parse grid.
     (x_grid, y_grid) = _process_grid(grid)
+
+    # Parse transform.
+    if transform is None:
+        transform = 0
+    if not np.isscalar(transform):
+        transform = np.squeeze(transform)
+        if transform.shape != (2,2):
+            raise ValueError("Expected transform to be None, scalar or a 2x2 matrix.")
+
+    # Parse shift.
+    if shift is None:
+        shift = (0, 0)
+    shift = np.array(shift)
 
     # TODO: check that order of ops is as desired for fwd.
     if direction == "rev":
-        shift = [-s for s in shift]
-        if transform is not None:
+        shift = -shift
+
+        if np.isscalar(transform):
+            transform = -transform
+        else:
             transform = np.linalg.inv(transform)
 
-    if transform is None:
-        transform = 0
-
-    if shift is None:
-        shift = (0, 0)
-
+    # Return the transformed grids.
     if np.isscalar(transform) and transform == 0:  # The trivial case
         return (
-            x_grid if shift[0] == 0 else (x_grid - shift[0]),
-            y_grid if shift[1] == 0 else (y_grid - shift[1]),
+            x_grid.copy() if shift[0] == 0 else (x_grid - shift[0]),
+            y_grid.copy() if shift[1] == 0 else (y_grid - shift[1]),
         )
     else:  # transform is not trivial.
         # Interpret angular transform as a matrix.
@@ -1039,10 +1052,6 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
             s = np.sin(transform)
             c = np.cos(transform)
             transform = np.array([[c, -s], [s, c]])
-        else:
-            transform = np.squeeze(transform)
-
-        assert transform.ndim == 2
 
         # Use the matrix to transform the grid.
         return (

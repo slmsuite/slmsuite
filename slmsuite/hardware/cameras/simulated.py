@@ -113,16 +113,16 @@ class SimulatedCam(Camera):
         self.exposure = 1
 
         # Compute the camera pixel grid in `basis` units (currently "ij")
-        self.x_grid, self.y_grid = cp.meshgrid(
-            cp.linspace(-1 / 2, 1 / 2, resolution[0]) * resolution[0],
-            cp.linspace(-1 / 2, 1 / 2, resolution[1]) * resolution[1],
+        self.x_grid, self.y_grid = np.meshgrid(
+            np.linspace(-1 / 2, 1 / 2, resolution[0]) * resolution[0],
+            np.linspace(-1 / 2, 1 / 2, resolution[1]) * resolution[1],
         )
         if theta != 0:
             self._interpolate = True
-            rot = cp.array([[cp.cos(-theta), cp.sin(-theta)], [-cp.sin(-theta), cp.cos(-theta)]])
+            rot = np.array([[np.cos(-theta), np.sin(-theta)], [-np.sin(-theta), np.cos(-theta)]])
             # Rotate
-            self.x_grid, self.y_grid = cp.einsum(
-                "ji, mni -> jmn", rot, cp.dstack([self.x_grid, self.y_grid])
+            self.x_grid, self.y_grid = np.einsum(
+                "ji, mni -> jmn", rot, np.dstack([self.x_grid, self.y_grid])
             )
         # Translate
         if offset is not None:
@@ -132,7 +132,7 @@ class SimulatedCam(Camera):
 
         # Compute SLM Fourier-space grid in `basis` units (currently "ij")
         f_min = 2 * max(
-            [cp.amax(cp.abs(self.x_grid)) * slm.dx, cp.amax(cp.abs(self.y_grid)) * slm.dy]
+            [np.amax(np.abs(self.x_grid)) * slm.dx, np.amax(np.abs(self.y_grid)) * slm.dy]
         )
         if f_eff is None:
             self.f_eff = f_min
@@ -201,7 +201,7 @@ class SimulatedCam(Camera):
         # FUTURE: in the case where sim is being used inside a GS loop, there should be
         # something clever here to use the existing Hologram's data.
         self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
-        ff = self._hologram.extract_farfield(get=True if (cp == np) else False)
+        ff = self._hologram.extract_farfield()
 
         # Use map_coordinates for fastest interpolation; but need to reshape pixel dimensions
         # to account for additional padding.
@@ -210,9 +210,9 @@ class SimulatedCam(Camera):
                 cp.abs(ff) ** 2,
                 cp.array(
                     [
-                        self.shape_padded[0] / (self.f_eff / self._slm.dy) * self.y_grid
+                        (self.shape_padded[0] / (self.f_eff / self._slm.dy)) * self.y_grid
                         + self.shape_padded[0] / 2,
-                        self.shape_padded[1] / (self.f_eff / self._slm.dx) * self.x_grid
+                        (self.shape_padded[1] / (self.f_eff / self._slm.dx)) * self.x_grid
                         + self.shape_padded[1] / 2,
                     ]
                 ),

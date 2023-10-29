@@ -52,9 +52,27 @@ class SimulatedCam(Camera):
     shape_padded : (int, int)
         Size of the FFT computational space required to faithfully reproduce the far-field at
         full camera resolution.
+    noise : dict
+        Dictionary of single-argument functions (returning the normalized noise amplitude 
+        for any normalized input pixel amplitude) to simulate various noise sources. Currently,
+        ``'dark'`` and ``'read'``, representing exposure-dependent dark current/background noise
+        and exposure-independent readout noise, respectively, are the only accepted keys.
+
+        Example
+        ~~~~~~~
+        The following code adds a Gaussian background with 50% mean and 5% standard
+        deviation (relative to the dynamic range at the default ``self.exposure = 1``) and
+        a Poisson readout noise (independent of ``self.exposure``) with an average value
+        of 20% of the camera's dynamic range.
+
+        .. code-block:: python
+            
+            self.noise = {'dark': lambda img: np.random.normal(0.5*img, 0.05*img),
+                          'read': lambda img: np.random.poisson(0.2*img)}
+
     """
 
-    def __init__(self, slm, resolution=None, M=None, b=None, **kwargs):
+    def __init__(self, slm, resolution=None, M=None, b=None, noise=None, **kwargs):
         """
         Initialize simulated camera.
 
@@ -71,6 +89,8 @@ class SimulatedCam(Camera):
         b : tuple
             Lateral displacement (in pixels) of the camera center from `slm`'s
             optical axis. If ``None``, defaults to 0 offset.
+        noise : dict
+            See :attr:`noise`.
         kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
@@ -91,6 +111,9 @@ class SimulatedCam(Camera):
         # Digital gain emulates exposure
         self.exposure = 1
 
+        # Add user-defined noise dictionary
+        self.noise = noise
+
         # Compute the camera pixel grid in `basis` units (currently "ij")
         self.x_grid, self.y_grid = np.meshgrid(
             np.linspace(-1 / 2, 1 / 2, resolution[0]) * resolution[0],
@@ -103,7 +126,7 @@ class SimulatedCam(Camera):
             (self.x_grid, self.y_grid) = toolbox.transform_grid(self, M, b, direction="rev")
 
         # Fourier space must be sufficiently padded to resolve the camera pixels.
-        dkxy = cp.sqrt(
+        dkxy = np.sqrt(
             (self.x_grid[:2, :2] - self.x_grid[0, 0]) ** 2
             + (self.y_grid[:2, :2] - self.y_grid[0, 0]) ** 2
         )
@@ -256,7 +279,7 @@ class SimulatedCam(Camera):
         # FUTURE: in the case where sim is being used inside a GS loop, there should be
         # something clever here to use the existing Hologram's data.
         self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
-        ff = self._hologram.extract_farfield()
+        ff = self._hologram.extract_farfield(get=True if (cp == np) else False)
 
         # Use map_coordinates for fastest interpolation
         # Note: by default, map_coordinates sets pixels outside the SLM k-space to 0 as desired
@@ -268,11 +291,27 @@ class SimulatedCam(Camera):
         if cp != np:
             img = img.get()
 
-        # TODO: dark current, readout noise, limited bits.
-        img = self.exposure * img
+        # Quantize: all power in one pixel (img=1) -> maximum readout value at base exposure=1
+        img = np.floor(img * self.exposure * self.bitresolution).astype(int)
+
+        # Basic noise sources. 
+        if self.noise is not None:
+            for key in self.noise.keys():
+                if key == 'dark':
+                    # Background/dark current - exposure dependent
+                    dark = self.noise['dark'](np.ones_like(img) * self.bitresolution)/self.exposure
+                    img = img + dark
+                elif key == 'read':
+                    # Readout noise - exposure independent
+                    read = self.noise['read'](np.ones_like(img) * self.bitresolution)
+                    img = img + read
+                else: 
+                    raise RuntimeError('Unknown noise source %s specified!'%(key))
+
+        # Truncate to maximum readout value
+        img[img > self.bitresolution] = self.bitresolution
 
         if plot:
-            # Note simulated cam currently has infinite dynamic range.
             self.plot_image(img)
 
         return img

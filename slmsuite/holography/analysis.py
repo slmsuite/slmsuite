@@ -1097,6 +1097,7 @@ def blob_array_detect(
          - ``"M"`` : ``numpy.ndarray`` (2, 2).
          - ``"b"`` : ``numpy.ndarray`` (2, 1).
     """
+    
     img_8bit = _make_8bit(img)
 
     # If an orientation was provided, use this as a guess.
@@ -1115,6 +1116,12 @@ def blob_array_detect(
         )
 
         dft_amp = cv2.GaussianBlur(np.abs(dft), (fft_blur_size, fft_blur_size), 0)
+
+        # Filter 0 order (dominates in the presence of a slowly varying background)
+        x,y = np.meshgrid(np.linspace(-fftsize/2,fftsize/2,fftsize), 
+                          np.linspace(-fftsize/2,fftsize/2,fftsize))
+        filter = gaussian2d([x,y], 0, 0, -1, 1, 2*fft_blur_size, 2*fft_blur_size)
+        dft_amp = dft_amp * filter
 
         # 2) Detect and plot FFT peaks
         # Need copy for some reason:

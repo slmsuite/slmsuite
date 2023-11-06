@@ -260,14 +260,9 @@ class SimulatedCam(Camera):
         """
         return self.exposure
 
-    def get_image(self, plot=False):
+    def _get_image_hw(self, timeout_s=None):
         """
-        See :meth:`.Camera.get_image`. Computes and samples the affine-transformed SLM far-field.
-
-        Parameters
-        ----------
-        plot : bool
-            Whether to plot the output.
+        See :meth:`.Camera._get_image_hw`. Computes and samples the affine-transformed SLM far-field.
 
         Returns
         -------
@@ -292,7 +287,7 @@ class SimulatedCam(Camera):
             img = img.get()
 
         # Quantize: all power in one pixel (img=1) -> maximum readout value at base exposure=1
-        img = np.floor(img * self.exposure * self.bitresolution).astype(int)
+        img = np.rint(img * self.exposure * self.bitresolution)
 
         # Basic noise sources. 
         if self.noise is not None:
@@ -310,8 +305,5 @@ class SimulatedCam(Camera):
 
         # Truncate to maximum readout value
         img[img > self.bitresolution] = self.bitresolution
-
-        if plot:
-            self.plot_image(img)
 
         return img

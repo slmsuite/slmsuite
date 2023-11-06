@@ -103,9 +103,9 @@ class FLIR(Camera):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def get_image(self, blocking=True):
+    def _get_image_hw(self, blocking=True):
         """
-        See :meth:`.Camera.get_image`.
+        See :meth:`.Camera._get_image_hw`.
 
         Parameters
         ----------
@@ -116,4 +116,4 @@ class FLIR(Camera):
             PySpin.EVENT_TIMEOUT_INFINITE if blocking else PySpin.EVENT_TIMEOUT_NONE
         )
 
-        return self.transform(frame.GetNDArray())
+        return frame.GetNDArray()

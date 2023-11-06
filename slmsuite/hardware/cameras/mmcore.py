@@ -92,6 +92,6 @@ class MMCore(Camera):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def get_image(self, timeout_s=1):
-        """See :meth:`.Camera.get_image`."""
-        return self.transform(self.cam.getImage())
+    def _get_image_hw(self, timeout_s=1):
+        """See :meth:`.Camera._get_image_hw`."""
+        return self.cam.getImage()

@@ -887,6 +887,7 @@ class FourierSLM(CameraSLM):
             try:
                 popt, _ = optimize.curve_fit(cos, phases, intensities, p0=guess)
             except BaseException:
+                warnings.warn("Curve fitting failed; nulling response from this superpixel.")
                 return 0, 0, 0, 0
 
             # Extract phase and amplitude from fit.
@@ -1008,7 +1009,12 @@ class FourierSLM(CameraSLM):
             guess[2] = phases[int(np.min(np.argmin(differences)))]
 
             # Try the fit!
-            popt, _ = optimize.curve_fit(sinc2d_local, xyr, img.ravel(), p0=guess, bounds=(lb, ub))
+            try:
+                popt, _ = optimize.curve_fit(sinc2d_local, xyr, img.ravel(), p0=guess, bounds=(lb, ub), maxfev=20)
+            except:
+                # Failures indicate low source power on the superpixel
+                warnings.warn("Image fitting failed; nulling response from this superpixel.")
+                popt = np.zeros(8)
 
             # Extract phase and amplitude from fit.
             best_phase = popt[2]
@@ -1127,7 +1133,8 @@ class FourierSLM(CameraSLM):
                 else:
                     step = 1
 
-                bitresolution_list = np.power(2, np.arange(0, self.cam.bitdepth + 1, step))
+                bitresolution_list = np.power(2, np.arange(0, self.cam.bitdepth + 1, step),
+                                              dtype=np.int64)
 
                 cbar = fig.colorbar(im, ax=axs[2])
                 cbar.ax.set_yticks(np.log10(bitresolution_list))

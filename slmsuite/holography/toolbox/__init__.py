@@ -1001,8 +1001,8 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
         If a 2x2 matrix is passed, transforms the :math:`x` and :math:`y` grids
         according to :math:`x' = M_{00}x + M_{01}y`,  :math:`y' = M_{10}y + M_{11}y`.
     shift : (float, float) OR None
-        Translational shift of the grid in normalized :math:`\frac{x}{\lambda}` coordinates.
-        Defaults to no shift if ``None``.
+        Translational shift of the grid in normalized :math:`\frac{x}{\lambda}` coordinates
+        ("fwd" direction). Defaults to no shift if ``None``.
     direction : str in ``{"fwd", "rev"}``
         Defines the direction of the transform: forward (``"fwd"``) transforms then shifts;
         reverse (``"rev"``) undoes the shift then applies the inverse transform.
@@ -1031,15 +1031,6 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
         shift = (0, 0)
     shift = np.array(shift)
 
-    # TODO: check that order of ops is as desired for fwd.
-    if direction == "rev":
-        shift = -shift
-
-        if np.isscalar(transform):
-            transform = -transform
-        else:
-            transform = np.linalg.inv(transform)
-
     # Return the transformed grids.
     if np.isscalar(transform) and transform == 0:  # The trivial case
         return (
@@ -1054,14 +1045,19 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
             transform = np.array([[c, -s], [s, c]])
 
         # Use the matrix to transform the grid.
-        return (
-            transform[0, 0] * (x_grid - shift[0]) + transform[0, 1] * (y_grid - shift[1]),
-            transform[1, 0] * (x_grid - shift[0]) + transform[1, 1] * (y_grid - shift[1]),
-        )
-
+        if direction == "fwd":
+            return (
+                transform[0, 0] * x_grid + shift[0] + transform[0, 1] * y_grid + shift[1],
+                transform[1, 0] * x_grid + shift[0] + transform[1, 1] * y_grid + shift[1],
+            )
+        elif direction == "rev":
+            transform = np.linalg.inv(transform)
+            return (
+                transform[0, 0] * (x_grid - shift[0]) + transform[0, 1] * (y_grid - shift[1]),
+                transform[1, 0] * (x_grid - shift[0]) + transform[1, 1] * (y_grid - shift[1]),
+            )
 
 # Padding functions.
-
 
 def pad(matrix, shape):
     """

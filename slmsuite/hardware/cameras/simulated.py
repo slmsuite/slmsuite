@@ -116,8 +116,8 @@ class SimulatedCam(Camera):
 
         # Compute the camera pixel grid in `basis` units (currently "ij")
         self.x_grid, self.y_grid = np.meshgrid(
-            np.linspace(-1 / 2, 1 / 2, resolution[0]) * resolution[0],
-            np.linspace(-1 / 2, 1 / 2, resolution[1]) * resolution[1],
+            np.arange(resolution[0]),
+            np.arange(resolution[1]),
         )
 
         # Affine transform the camera grid ("ij"->"kxy")
@@ -137,11 +137,14 @@ class SimulatedCam(Camera):
             "Padded SLM k-space shape set to (%d,%d) to achieve required "
             "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
         )
+
+        phase = -self._slm.display.astype(float)/self._slm.bitresolution*(2*np.pi)
         self._hologram = Hologram(
             self.shape_padded,
-            amp=self._slm.source["amplitude_sim"],
-            phase=self._slm.phase + self._slm.source["phase_sim"],
-            slm_shape=self._slm,
+            amp = self._slm.source["amplitude_sim"],
+            # phase = self._slm.phase + self._slm.source["phase_sim"],
+            phase = phase - phase.min() + self._slm.source["phase_sim"],
+            slm_shape = self._slm,
         )
 
         # Convert kxy -> knm (0,0 at corner): 1/dx -> Npx
@@ -153,8 +156,8 @@ class SimulatedCam(Camera):
         )
 
         if (
-            cp.amax(cp.abs(self.knm_cam[0])) > self.shape_padded[1] / 2
-            or cp.amax(cp.abs(self.knm_cam[1])) > self.shape_padded[0] / 2
+            cp.amax(cp.abs(self.knm_cam[0] - self.shape_padded[0]/2)) > self.shape_padded[1]/2
+            or cp.amax(cp.abs(self.knm_cam[1] - self.shape_padded[1]/2)) > self.shape_padded[0]/2
         ):
             warnings.warn(
                 "Camera extends beyond the accessible SLM k-space;"
@@ -271,9 +274,14 @@ class SimulatedCam(Camera):
         """
 
         # Update phase; calculate the far-field (keep on GPU if using cupy for follow-on interp)
-        # FUTURE: in the case where sim is being used inside a GS loop, there should be
+        # FUTURE: in the case where sim is being used inside a GS loop, there could be
         # something clever here to use the existing Hologram's data.
-        self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
+        # Analog phase
+        # self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
+        # Quantized phase
+        phase = -self._slm.display.astype(float)/self._slm.bitresolution*(2*np.pi)
+        self._hologram.reset_phase(phase - phase.min() + self._slm.source["phase_sim"])
+
         ff = self._hologram.extract_farfield(get=True if (cp == np) else False)
 
         # Use map_coordinates for fastest interpolation

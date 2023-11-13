@@ -362,7 +362,7 @@ class Camera():
             Axis of the plotted image.
         """
         fig, ax = plt.subplots(1, 1)
-        im = ax.imshow(img, clim=[0, img.max()], interpolation="none")
+        im = ax.imshow(img, clim=[0, img.max()])
         cax = make_axes_locatable(ax).append_axes("right", size="5%", pad=0.05)
         fig.colorbar(im, cax=cax, orientation="vertical")
         ax.set_title("Captured Image")

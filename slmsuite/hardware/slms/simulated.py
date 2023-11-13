@@ -5,7 +5,6 @@ Simulated SLM.
 import numpy as np
 from .slm import SLM
 
-
 class SimulatedSLM(SLM):
     """
     A simulated SLM to emulate physical artifacts of actual SLMs.
@@ -40,20 +39,23 @@ class SimulatedSLM(SLM):
         super().__init__(int(resolution[0]), int(resolution[1]), settle_time_s=0, **kwargs)
 
         if source is None:
-            self.source["amplitude_sim"] = np.ones(resolution[::-1])
+            self.source["amplitude_sim"] = np.ones_like(self.x_grid)
             self.source["phase_sim"] = np.zeros_like(self.x_grid)
         else:
-            assert np.all(source["phase_sim"].shape == np.array(resolution)[::-1]) and np.all(
-                source["amplitude_sim"].shape == np.array(resolution)[::-1]
-            ), "The shape of the provided phase profile must match the SLM resolution!"
+            # assert np.all([source[kw].shape == self.shape for kw in source.keys()]
+            # ), "The shape of the provided phase profile must match the SLM resolution!"
             self.source.update(source)
+
+            # Handle case where `source` only has real values from experiment
+            if "amplitude_sim" not in source.keys():
+                self.source["amplitude_sim"] = self.source["amplitude"]
+                self.source["phase_sim"] = -self.source["phase"]
 
         self.write(None)
 
     def _write_hw(self, phase):
         """Updates SLM.display to implement various physical artifacts of SLMs."""
 
-        # Apply the SLM phase (added to the simulated source phase)
-        self.display = self._phase2gray(self.phase + self.source["phase_sim"], out=self.display)
+        # FUTURE: apply physical effects directly to SLM.display
 
         return

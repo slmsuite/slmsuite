@@ -120,6 +120,34 @@ class SimulatedCam(Camera):
             np.arange(resolution[1]),
         )
 
+        self.set_affine(M,b)
+
+    def set_affine(self, M=None, b=None, **kwargs):
+        """
+        Set the camera's placement in the SLM's k-space. `M` and/or `b`, if provided,
+        are used to transform the :class:`SimulatedCam`'s ``"ij"`` grid to a ``"knm"`` grid
+        for interpolation against the :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`'s
+        ``"knm"`` grid. Keyword arguments, if provided, are passed to :meth:`build_affine`
+        to build `M` and `b`.
+
+        Parameters
+        ----------
+        M : ndarray
+            2 x 2 affine transform matrix to convert between `slm`'s k-space and the
+            simulated camera's pixel (``"ij"``) basis. If ``None``, defaults to the
+            identity matrix.
+        b : tuple
+            Lateral displacement (in pixels) of the camera center from `slm`'s
+            optical axis. If ``None``, defaults to 0 offset.
+        **kwargs : dict, optional
+            Various orientation parameters passed to :meth:`build_affine` to build
+            `M` and `b`, if not provided. See options documented in the method.
+        """
+
+        # If kwargs are passed instead of M/b, use these to build M, b
+        if M is None and b is None and len(kwargs) > 0:
+            M, b = self.build_affine(**kwargs)
+
         # Affine transform the camera grid ("ij"->"kxy")
         if M is not None or b is not None:
             self._interpolate = True
@@ -132,7 +160,7 @@ class SimulatedCam(Camera):
         )
         dkxy_min = dkxy.ravel()[1:].min()
 
-        self.shape_padded = Hologram.calculate_padded_shape(slm, precision=dkxy_min)
+        self.shape_padded = Hologram.calculate_padded_shape(self._slm, precision=dkxy_min)
         print(
             "Padded SLM k-space shape set to (%d,%d) to achieve required "
             "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
@@ -142,7 +170,6 @@ class SimulatedCam(Camera):
         self._hologram = Hologram(
             self.shape_padded,
             amp = self._slm.source["amplitude_sim"],
-            # phase = self._slm.phase + self._slm.source["phase_sim"],
             phase = phase - phase.min() + self._slm.source["phase_sim"],
             slm_shape = self._slm,
         )
@@ -164,8 +191,13 @@ class SimulatedCam(Camera):
                 " some pixels may not be targetable."
             )
 
-    @staticmethod
-    def build_affine(f_eff=1, theta=0, shear_angle=0, offset=(0, 0), basis="ij", pitch_um=None):
+    def build_affine(self,
+                     f_eff=1,
+                     theta=0,
+                     shear_angle=0,
+                     offset=(0, 0),
+                     basis="ij",
+                     pitch_um=None):
         """
         Build an affine transform defining the SLM -> camera transformation as
         detailed in :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam`.
@@ -174,8 +206,9 @@ class SimulatedCam(Camera):
         ----------
         f_eff : float or (float, float)
             Effective focal length (in `basis` units) of the
-            optical train separating the Fourier-domain SLM from the camera. If a float is provided,
-            `f_eff` is isotropic; otherwise, `f_eff` is defined along the SLM's x and y axes.
+            optical train separating the Fourier-domain SLM from the camera. If a float is
+            provided, `f_eff` is isotropic; otherwise, `f_eff` is defined along the SLM's
+            x and y axes.
 
             Important
             ~~~~~~~~~
@@ -185,9 +218,9 @@ class SimulatedCam(Camera):
             See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam` for additional
             details. To convert to true distance units (e.g., `"um"`), multiply `f_eff` by the the
             pixel size in the same dimensions.
-            As noted in :meth:`~slmsuite.hardware.cameraslms.get_effective_focal_length`, non-square
-            pixels therefore imply different effective focal lengths along each axis when using
-            true distance units.
+            As noted in :meth:`~slmsuite.hardware.cameraslms.get_effective_focal_length`,
+            non-square pixels therefore imply different effective focal lengths along each axis
+            when using true distance units.
         theta : float
             Rotation angle (in radians, ccw) of the camera relative to the SLM orientation.
             Defaults to 0 (i.e., aligned with the SLM).
@@ -231,6 +264,9 @@ class SimulatedCam(Camera):
 
         else:
             b = offset
+
+        # Define offset relative to zero in k-space if camera shape is accessible.
+        b = b + np.array([r/2. for r in self.shape])[::-1]
 
         mag = np.array([[f_eff[0], 0], [0, f_eff[1]]])
         shear = np.array([[1, np.tan(shear_angle[0])], [np.tan(shear_angle[1]), 1]])

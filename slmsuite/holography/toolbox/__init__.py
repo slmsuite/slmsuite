@@ -609,7 +609,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
         M-vector or array of M-vectors to process. Desires shape of ``(M, N)``.
     expected_dimension : int
         Dimension of the system, i.e. ``M``.
-    handle_3vectors : {"error", "crop", "pass"}
+    handle_dimension : {"error", "crop", "pass"}
         If a 3D array of vectors is provided, decides how to handle these:
 
         - ``"error"`` Raises an error if not ``(M, N)``.
@@ -671,7 +671,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
     return vectors
 
 
-def format_2vectors(vectors, handle_dimension="error"):
+def format_2vectors(vectors):
     """
     Validates that an array of 2-dimensional vectors is a ``numpy.ndarray`` of shape ``(2, N)``.
     Handles shaping and transposing if, for instance, tuples or row vectors are passed.
@@ -681,14 +681,6 @@ def format_2vectors(vectors, handle_dimension="error"):
     ----------
     vectors : array_like
         2-vector or array of 2-vectors to process. Desires shape of ``(2, N)``.
-    handle_3vectors : {"error", "crop", "pass"}
-        If a 3D array of vectors is provided, decides how to handle these:
-
-        - ``"error"`` Raises an error if not ``(2, N)``.
-
-        - ``"crop"`` Crops the higher dimensions and returns ``(2, N)``.
-
-        - ``"pass"`` Raises an error only if dimension is smaller than ``(2, N)``.
 
     Returns
     -------
@@ -700,7 +692,7 @@ def format_2vectors(vectors, handle_dimension="error"):
     ValueError
         If the vector input was inappropriate.
     """
-    return format_vectors(vectors, expected_dimension=2, handle_dimension=handle_dimension)
+    return format_vectors(vectors, expected_dimension=2, handle_dimension="error")
 
 
 def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_check=False):

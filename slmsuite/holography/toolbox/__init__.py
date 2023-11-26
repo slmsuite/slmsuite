@@ -91,10 +91,10 @@ def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, s
         Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
     """
     if not (from_units in BLAZE_UNITS):
-        raise ValueError(f"Unit '{from_units}' not recognized 
+        raise ValueError(f"Unit '{from_units}' not recognized \
                          as a valid unit. Options: {BLAZE_UNITS}")
     if not (to_units in BLAZE_UNITS):
-        raise ValueError(f"Unit '{to_units}' not recognized 
+        raise ValueError(f"Unit '{to_units}' not recognized \
                          as a valid unit. Options: {BLAZE_UNITS}")
 
     vector = format_2vectors(vector).astype(float)

@@ -16,7 +16,7 @@ def _center(width):
     """
     Center of an index range with length `width`.
     """
-    return width / 2
+    return (width - 1) / 2 if width % 2 else width / 2
 
 
 def _coordinates(width, centered=False):

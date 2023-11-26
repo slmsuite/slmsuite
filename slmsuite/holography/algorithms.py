@@ -1232,10 +1232,7 @@ class Hologram:
         numpy.ndarray
             Current farfield computed by GS.
         """
-        if shape is None:
-            shape = self.shape
-
-        nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), shape)
+        nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), self.shape)
         farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
         self.amp_ff = cp.abs(farfield)
         self.phase_ff = cp.angle(farfield)
@@ -1315,7 +1312,7 @@ class Hologram:
 
             if nan_checks:
                 feedback_corrected[feedback_corrected == np.inf] = 1
-                feedback_corrected[mp.array(target_amp, copy=False) == 0] = 1
+                feedback_corrected[xp.array(target_amp, copy=False) == 0] = 1
 
                 xp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
@@ -1346,7 +1343,7 @@ class Hologram:
             weight_amp[weight_amp == np.inf] = 1
 
         # Normalize amp, as methods may have broken conservation.
-        weight_amp *= (1 / Hologram._norm(weight_amp, mp=mp))
+        weight_amp *= (1 / Hologram._norm(weight_amp, xp=xp))
 
         return weight_amp
 
@@ -1411,8 +1408,7 @@ class Hologram:
         target_pwr = xp.square(target_amp)
 
         if total is not None:
-            efficiency = mp.sum(feedback_pwr) / total
-            # self._stats_pinned[0] 
+            efficiency = xp.sum(feedback_pwr) / total
 
         # Normalize.
         feedback_pwr_sum = xp.sum(feedback_pwr)
@@ -1425,10 +1421,10 @@ class Hologram:
 
         if total is None:
             # Efficiency overlap integral.
-            efficiency_intermediate = mp.sum(
-                mp.multiply(target_amp, feedback_amp)
+            efficiency_intermediate = xp.sum(
+                xp.multiply(target_amp, feedback_amp)
             )
-            efficiency = np.square(float(efficiency_intermediate))
+            efficiency = xp.square(float(efficiency_intermediate))
             if efficiency_compensation:
                 feedback_pwr *= 1 / efficiency
 
@@ -1463,7 +1459,7 @@ class Hologram:
                 final_stats["raw_pwr"] = np.square(feedback_amp)
                 ratio_pwr_full[mask] = ratio_pwr
             else:
-                final_stats["raw_pwr"] = mp.square(feedback_amp).get()
+                final_stats["raw_pwr"] = xp.square(feedback_amp).get()
                 ratio_pwr_full[mask] = ratio_pwr.get()
 
             final_stats["raw_pwr_ratio"] = ratio_pwr_full
@@ -2612,13 +2608,17 @@ class FreeSpotHologram(FeedbackHologram):
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
         # Parse vectors.
-        self.spot_kxy = toolbox.format_2vectors(spot_kxy, handle_dimension="pass")
+        self.spot_kxy = toolbox.format_vectors(spot_kxy, handle_dimension="pass")
         if self.spot_kxy.shape[0] > 3:
             raise ValueError("Cannot interpret greater dimension than three.")
 
+        # Parse spot_amp.
         if spot_amp is not None:
             assert self.spot_kxy.shape[1] == len(spot_amp.ravel()), \
                 "spot_amp must have the same length as the provided spots."
+            self.spot_amp = np.ravel(spot_amp)
+        else:
+            self.spot_amp = np.full(self.spot_kxy.shape[1], 1.0 / np.sqrt(self.spot_kxy.shape[1]))            
 
         # Check to make sure spots are within bounds
         kmax = 1    # TODO: replace with correct value.
@@ -2627,7 +2627,7 @@ class FreeSpotHologram(FeedbackHologram):
 
         # Generate ij point spread function (psf)
         if cameraslm is not None:
-            psf_kxy = cameraslm.slm.spot_radius_kxy()
+            psf_kxy = np.mean(cameraslm.slm.spot_radius_kxy())
             self.spot_ij = cameraslm.kxyslm_to_ijcam(self.spot_kxy)
             psf_ij = toolbox.convert_blaze_radius(psf_kxy, "kxy", "ij", cameraslm)
         else:
@@ -2981,7 +2981,7 @@ class FreeSpotHologram(FeedbackHologram):
 
         # Sum over all the blocks to get the final answers using optimized cupy methods.
         farfield_out = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=farfield_out)
-        farfield_out *= (1 / Hologram._norm(farfield_out, mp=cp))
+        farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
 
         return farfield_out
 
@@ -3023,7 +3023,7 @@ class FreeSpotHologram(FeedbackHologram):
 
                 collapse_kernel(self.kernel[:, kernel_slice], out=farfield_out[batch_slice])
 
-        farfield_out *= (1 / Hologram._norm(farfield_out, mp=cp))
+        farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
 
         # unconjugate nearfield (leave it unchanged).
         nearfield = cp.conj(nearfield, out=nearfield)
@@ -3238,7 +3238,7 @@ class FreeSpotHologram(FeedbackHologram):
             stats["experimental_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
-                mp=np,
+                xp=np,
                 efficiency_compensation=False,
                 total=np.sum(pwr_img),
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]
@@ -3249,7 +3249,7 @@ class FreeSpotHologram(FeedbackHologram):
             stats["external_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
-                mp=np,
+                xp=np,
                 efficiency_compensation=False,
                 total=np.sum(pwr_feedback),
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]

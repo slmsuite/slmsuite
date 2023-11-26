@@ -15,7 +15,7 @@ import warnings
 from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import SpotHologram
-from slmsuite.holography.toolbox import imprint, format_2vectors
+from slmsuite.holography.toolbox import imprint, format_2vectors, format_vectors
 from slmsuite.holography.toolbox.phase import blaze
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
 from slmsuite.misc.fitfunctions import cos, sinc2d
@@ -487,7 +487,7 @@ class FourierSLM(CameraSLM):
         ----------
         kxy : array_like
             Vector or array of vectors to convert. Can be 2D or 3D.
-            Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
+            Cleaned with :meth:`~slmsuite.holography.toolbox.format_vectors()`.
 
         Returns
         -------
@@ -502,7 +502,7 @@ class FourierSLM(CameraSLM):
         if self.fourier_calibration is None:
             raise RuntimeError("Fourier calibration must exist to be used.")
 
-        kxy = format_2vectors(kxy, handle_dimension="pass")
+        kxy = format_vectors(kxy, handle_dimension="pass")
 
         # Apply the xy transformation.
         ij = np.matmul(
@@ -555,7 +555,7 @@ class FourierSLM(CameraSLM):
         if self.fourier_calibration is None:
             raise RuntimeError("Fourier calibration must exist to be used.")
 
-        ij = format_2vectors(ij, handle_dimension="pass")
+        ij = format_vectors(ij, handle_dimension="pass")
 
         # Apply the xy transformation.
         kxy = np.matmul(

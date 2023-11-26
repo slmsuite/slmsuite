@@ -154,7 +154,7 @@ def axicon(grid, f=(np.inf, np.inf), w=None):
         return 2 * np.pi * np.sqrt(np.square(x_grid * angle[0]) + np.square(y_grid * angle[1]))
 
 
-def zernike(grid, n, m, aperture=None):
+def zernike(grid, n, m, aperture=None, return_mask=False):
     r"""
     Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
 
@@ -169,16 +169,19 @@ def zernike(grid, n, m, aperture=None):
         Cartesian Zernike index defining the polynomial.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
         See :meth:`.zernike_sum()`.
+    return_mask : bool
+        Whether or not to return the 2D mask showing where Zernikes are computed
+        instead of the phase.
 
     Returns
     -------
     numpy.ndarray
         The phase for this function.
     """
-    return zernike_sum(grid, (((n, m), 1), ), aperture=aperture)
+    return zernike_sum(grid, (((n, m), 1), ), aperture=aperture, return_mask=return_mask)
 
 
-def zernike_sum(grid, weights, aperture=None):
+def zernike_sum(grid, weights, aperture=None, return_mask=False):
     r"""
     Returns a summation of
     `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
@@ -223,7 +226,7 @@ def zernike_sum(grid, weights, aperture=None):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     weights : list of ((int, int), float)
-        Which Zernike polynomials to sum. The ``(int, int)`` is the index ``(n, m)``, 
+        Which Zernike polynomials to sum. The ``(int, int)`` is the index ``(n, m)``,
         which correspond to the azimuthal degree and order of the polynomial.
         The ``float`` is the weight for the given index.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
@@ -243,11 +246,17 @@ def zernike_sum(grid, weights, aperture=None):
           Custom scaling. These values are multiplied to the ``x_grid`` and ``y_grid``
           directly, respectively. The edge of the pupil corresponds to where
           ``x_grid**2 + y_grid**2 = 1``.
+    return_mask : bool
+        Whether or not to return the 2D mask showing where Zernikes are computed
+        instead of the phase.
 
     Returns
     -------
     numpy.ndarray
         The phase for this function.
+
+    numpy.ndarray
+        Optional return for the 2D Zernike mask.
     """
     # Parse passed values
     (x_grid, y_grid) = _process_grid(grid)
@@ -274,6 +283,8 @@ def zernike_sum(grid, weights, aperture=None):
     # At the end, we're going to set the values outside the aperture to zero.
     # Make a mask for this if it's necessary.
     mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
+    if return_mask:
+        return mask
     use_mask = np.any(mask == 0)
 
     if use_mask:

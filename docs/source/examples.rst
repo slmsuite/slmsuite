@@ -9,4 +9,5 @@ Examples
    _examples/computational_holography.ipynb
    _examples/experimental_holography.ipynb
    _examples/wavefront_calibration.ipynb
+   _examples/simulation.ipynb
    _examples/structured_light.ipynb

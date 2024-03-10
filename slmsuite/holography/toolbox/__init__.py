@@ -1024,7 +1024,7 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
     if not np.isscalar(transform):
         transform = np.squeeze(transform)
         if transform.shape != (2,2):
-            raise ValueError("Expected transform to be None, scalar or a 2x2 matrix.")
+            raise ValueError("Expected transform to be None, scalar, or a 2x2 matrix.")
 
     # Parse shift.
     if shift is None:

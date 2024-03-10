@@ -264,8 +264,8 @@ class AlliedVision(Camera):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def get_image(self, timeout_s=1):
-        """See :meth:`.Camera.get_image`."""
+    def _get_image_hw(self, timeout_s=1):
+        """See :meth:`.Camera._get_image_hw`."""
         t = time.time()
 
         # Convert timeout_s to ms
@@ -280,7 +280,7 @@ class AlliedVision(Camera):
             frame = self.cam.get_frame(timeout_ms=int(1e3 * timeout_s))
             frame = frame.as_numpy_ndarray()
 
-        return self.transform(np.squeeze(frame))
+        return np.squeeze(frame)
 
     def flush(self, timeout_s=1e-3):
         """See :meth:`.Camera.flush`."""

@@ -1,16 +1,17 @@
 """
 Abstract camera functionality.
 """
-
 import time
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import curve_fit
 
 from slmsuite.holography import analysis
 from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
 
-class Camera:
+
+class Camera():
     """
     Abstract class for cameras. Comes with transformations and helper functions like autoexpose.
 
@@ -19,7 +20,8 @@ class Camera:
     name : str
         Camera identifier.
     shape : (int, int)
-        Stores ``(height, width)`` of the camera in pixels, the same convention as :meth:`numpy.shape`.
+        Stores ``(height, width)`` of the camera in pixels, the same convention as
+        :meth:`numpy.shape`.
     bitdepth : int
         Depth of a camera pixel well in bits.
     bitresolution : int
@@ -47,12 +49,13 @@ class Camera:
         width,
         height,
         bitdepth=8,
+        averaging=None,
         dx_um=None,
         dy_um=None,
         rot="0",
         fliplr=False,
         flipud=False,
-        name="camera"
+        name="camera",
     ):
         """
         Initializes a camera.
@@ -68,6 +71,10 @@ class Camera:
             See :attr:`shape`.
         bitdepth
             See :attr:`bitdepth`.
+        averaging : int or None
+            Number of frames to average. Used to increase the effective bit depth of a camera by using
+            pre-quantization noise (e.g. dark current, read-noise, etc.) to "dither" the pixel output
+            signal. If ``None``, no averaging is performed.
         dx_um
             See :attr:`dx_um`.
         dy_um
@@ -96,13 +103,19 @@ class Camera:
         # Create image transformation.
         self.transform = analysis.get_orientation_transformation(rot, fliplr, flipud)
 
+        # Frame averaging
+        self.set_averaging(averaging)
+
         # Update WOI information.
         self.woi = (0, width, 0, height)
-        self.set_woi()
-
+        try:
+            self.set_woi()
+        except NotImplementedError:
+            pass
+            
         # Set other useful parameters
         self.bitdepth = bitdepth
-        self.bitresolution = 2 ** bitdepth
+        self.bitresolution = 2**bitdepth
 
         # Spatial dimensions
         self.dx_um = dx_um
@@ -134,7 +147,8 @@ class Camera:
         list
             An empty list.
         """
-        if verbose: print(".info() NotImplemented.")
+        if verbose:
+            print(".info() NotImplemented.")
         return []
 
     def reset(self):
@@ -183,8 +197,7 @@ class Camera:
         woi : list
             :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        return
-        # raise NotImplementedError()
+        raise NotImplementedError()
 
     def flush(self, timeout_s=1):
         """
@@ -199,9 +212,9 @@ class Camera:
         """
         raise NotImplementedError()
 
-    def get_image(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s=1):
         """
-        Abstract method to pull an image from the camera and return.
+        Abstract method to capture camera images.
 
         Parameters
         ----------
@@ -214,11 +227,85 @@ class Camera:
             Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.
         """
         raise NotImplementedError()
-
-    def get_images(self, image_count, flush=False):
+    
+    def _get_images_hw(self, image_count, timeout_s=1):
         """
-        Grab ``image_count`` images in succession. Overwrite this
-        implementation if a camera supports faster batch acquisition.
+        Abstract method to capture a series of image_count images using camera-specific
+        batch acquisition features.
+
+        Parameters
+        ----------
+        image_count : int
+            Number of frames to batch collect.
+        timeout_s : float
+            The time in seconds to wait for the frame to be fetched.
+
+        Returns
+        -------
+        numpy.ndarray
+            Array of shape (n_frames, :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`).
+        """
+        raise NotImplementedError()
+    
+    def set_averaging(self, image_count=None):
+        """
+        Enables/disables frame averaging with a specified number of frames.
+
+        Parameters
+        ----------
+        image_count : int, None
+            See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
+            If ``None``, no averaging is performed.
+        """
+        if isinstance(image_count, int):
+            self._buffer = np.empty((image_count, self.shape[0], self.shape[1]))
+        elif image_count is None:
+            self._buffer = None
+        else:
+            RuntimeError("Unexpected value {} passed for image count.".format(image_count))
+    
+    def get_image(self, timeout_s=1, transform=True, plot=False):
+        """
+        Capture, process, and return images from a camera.
+
+        Parameters
+        ----------
+        timeout_s : float
+            The time in seconds to wait for the frame to be fetched.
+        transform : bool
+            Whether or not to transform the output image according to 
+            :attr:`~slmsuite.hardware.cameras.camera.Camera.transform`.
+            Defaults to True.
+        plot : bool
+            Whether to plot the output.
+
+        Returns
+        -------
+        numpy.ndarray
+            Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.
+        """
+
+        # Grab image (with averaging if enabled).
+        if self._buffer is not None:
+            self.get_images(self._buffer.shape[0], out=self._buffer, transform=False)
+            img = np.average(self._buffer, axis=0)
+        else:
+            img = self._get_image_hw(timeout_s)
+
+        # self.transform implements the flipping and rotating keywords passed to the
+        # superclass constructor.
+        if transform:
+            img = self.transform(img)
+
+        # Plot if desired
+        if plot:
+            self.plot_image(img)
+
+        return img
+
+    def get_images(self, image_count, out=None, transform=True, flush=False):
+        """
+        Grab ``image_count`` images in succession.
 
         Parameters
         ----------
@@ -232,18 +319,58 @@ class Camera:
         numpy.ndarray
             Array of shape ``(image_count, height, width)``.
         """
-        # Preallocate memory.
-        imlist = np.empty((int(image_count), self.shape[0], self.shape[1]))
+        # Preallocate memory if necessary
+        if out is None:
+            imlist = np.empty((int(image_count), self.shape[0], self.shape[1]))
+        else:
+            imlist = out
 
         # Flush if desired.
         if flush:
             self.flush()
 
         # Grab images.
-        for i in range(image_count):
-            imlist[i] = self.get_image()
+        try:
+            # Using the camera-specific method if available
+            imlist = self._get_images_hw(image_count)
+        except NotImplementedError:
+            # Brute-force collection as a backup
+            for i in range(image_count):
+                imlist[i] = self._get_image_hw()
+
+        if transform:
+            for i in range(image_count):
+                imlist[i] = self.transform(imlist[i])
 
         return imlist
+
+    @staticmethod
+    def plot_image(img, show=True):
+        """
+        Plots the provided image.
+
+        Parameters
+        ----------
+        img : ndarray
+            Image to be plotted.
+        show : bool
+            Whether or not to immediately plot the image.
+
+        Returns
+        -------
+        matplotlib.pyplot.axis
+            Axis of the plotted image.
+        """
+        fig, ax = plt.subplots(1, 1)
+        im = ax.imshow(img, clim=[0, img.max()])
+        cax = make_axes_locatable(ax).append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(im, cax=cax, orientation="vertical")
+        ax.set_title("Captured Image")
+        cax.set_ylabel("Intensity")
+        if show:
+            plt.show()
+        
+        return ax
 
     def autoexposure(
         self,
@@ -253,7 +380,7 @@ class Camera:
         window=None,
         average_count=5,
         timeout_s=5,
-        verbose=True
+        verbose=True,
     ):
         """
         Sets the exposure of the camera such that the maximum value is at ``set_fraction``
@@ -324,7 +451,7 @@ class Camera:
             err = np.abs(im_max - set_val) / self.bitresolution
 
             if verbose:
-                print("Reset exposure to %1.2fs; maximum image value = %d."%(exp, im_max))
+                print("Reset exposure to %1.2fs; maximum image value = %d." % (exp, im_max))
 
         exp_fin = exp * 2 * set_fraction
 
@@ -386,9 +513,7 @@ class Camera:
                 axs[0].set_xticks([])
                 axs[0].set_yticks([])
                 axs[1].imshow(dft_norm)
-                axs[1].set_title(
-                    "FFT\nFoM$ = \\int\\int $|FFT|$ / $max|FFT|$ = {}$".format(fom_)
-                )
+                axs[1].set_title("FFT\nFoM$ = \\int\\int $|FFT|$ / $max|FFT|$ = {}$".format(fom_))
                 axs[1].set_xticks([])
                 axs[1].set_yticks([])
                 plt.show()
@@ -396,7 +521,7 @@ class Camera:
         counts[0] = counts[1]
 
         popt0 = np.array(
-            [z_list[np.argmax(counts)], np.max(counts)-np.min(counts), np.min(counts), 100]
+            [z_list[np.argmax(counts)], np.max(counts) - np.min(counts), np.min(counts), 100]
         )
 
         try:
@@ -443,6 +568,7 @@ class Camera:
 
         return z_opt, imlist
 
+
 def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
     """
     Continuously get camera frames and plot them. Intended for use in jupyter notebooks.
@@ -468,7 +594,7 @@ def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
     # Get camera information.
     cam_count = len(cameras)
     cams_max_height = cams_max_width = 0
-    for (cam_idx, cam) in enumerate(cameras):
+    for cam_idx, cam in enumerate(cameras):
         cam_height = cam.shape[0]
         cam_width = cam.shape[1]
         cams_max_height = max(cams_max_height, cam_height)
@@ -476,10 +602,8 @@ def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
 
     # Create figure.
     plt.ion()
-    figsize = np.array((cam_count * cams_max_width, cams_max_height)) * 2 ** -9
-    fig, axs = plt.subplots(
-        1, cam_count, figsize=figsize, facecolor=facecolor, dpi=dpi
-    )
+    figsize = np.array((cam_count * cams_max_width, cams_max_height)) * 2**-9
+    fig, axs = plt.subplots(1, cam_count, figsize=figsize, facecolor=facecolor, dpi=dpi)
     axs = np.reshape(axs, cam_count)
     fig.tight_layout()
     fig.show()

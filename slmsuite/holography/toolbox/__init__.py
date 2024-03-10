@@ -8,30 +8,27 @@ from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
 
-from slmsuite.misc.math import (
-    INTEGER_TYPES, REAL_TYPES
-)
+from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 
 # Unit definitions.
 
 BLAZE_LABELS = {
-    "norm" : (r"$k_x/k$",               r"$k_y/k$"),
-    "kxy" :  (r"$k_x/k$",               r"$k_y/k$"),
-    "rad" :  (r"$\theta_x$ [rad]",      r"$\theta_y$ [rad]"),
-    "knm" :  (r"$n$ [pix]",             r"$m$ [pix]"),
-    "ij" :   (r"Camera $x$ [pix]",      r"Camera $y$ [pix]"),
-    "freq" : (r"$f_x$ [1/pix]",         r"$f_y$ [1/pix]"),
-    "lpmm" : (r"$k_x/2\pi$ [1/mm]",     r"$k_y/2\pi$ [1/mm]"),
-    "mrad" : (r"$\theta_x$ [mrad]",     r"$\theta_y$ [mrad]"),
-    "deg" :  (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]")
+    "norm": (r"$k_x/k$", r"$k_y/k$"),
+    "kxy": (r"$k_x/k$", r"$k_y/k$"),
+    "rad": (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
+    "knm": (r"$n$ [pix]", r"$m$ [pix]"),
+    "ij": (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
+    "freq": (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
+    "lpmm": (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
+    "mrad": (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
+    "deg": (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]"),
 }
 BLAZE_UNITS = list(BLAZE_LABELS.keys())
 
 # Unit helper functions.
 
-def convert_blaze_vector(
-    vector, from_units="norm", to_units="norm", slm=None, shape=None
-):
+
+def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, shape=None):
     r"""
     Helper function for vector unit conversions.
 
@@ -94,9 +91,11 @@ def convert_blaze_vector(
         Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
     """
     if not (from_units in BLAZE_UNITS):
-        raise ValueError(f"Unit '{from_units}' not recognized as a valid unit. Options: {BLAZE_UNITS}")
+        raise ValueError(f"Unit '{from_units}' not recognized \
+                         as a valid unit. Options: {BLAZE_UNITS}")
     if not (to_units in BLAZE_UNITS):
-        raise ValueError(f"Unit '{to_units}' not recognized as a valid unit. Options: {BLAZE_UNITS}")
+        raise ValueError(f"Unit '{to_units}' not recognized \
+                         as a valid unit. Options: {BLAZE_UNITS}")
 
     vector = format_2vectors(vector).astype(float)
 
@@ -188,9 +187,7 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
         Passed to :meth:`convert_blaze_vector()`.
     """
     for unit in BLAZE_UNITS:
-        result = convert_blaze_vector(
-            vector, from_units=from_units, to_units=unit, **kwargs
-        )
+        result = convert_blaze_vector(vector, from_units=from_units, to_units=unit, **kwargs)
 
         print("'{}' : {}".format(unit, tuple(result.T[0])))
 
@@ -225,6 +222,7 @@ def convert_blaze_radius(radius, from_units="norm", to_units="norm", slm=None, s
 
 
 # Windows creation functions. Windows are views into 2D arrays.
+
 
 def window_slice(window, shape=None, centered=False, circular=False):
     """
@@ -267,7 +265,7 @@ def window_slice(window, shape=None, centered=False, circular=False):
             [xi, xf] = np.clip([xi, xf], 0, shape[1] - 1)
             [yi, yf] = np.clip([yi, yf], 0, shape[0] - 1)
 
-        if circular:    # If a circular window is desired, compute this.
+        if circular:  # If a circular window is desired, compute this.
             x_list = np.arange(xi, xf)
             y_list = np.arange(yi, yf)
             x_grid, y_grid = np.meshgrid(x_list, y_list)
@@ -275,15 +273,14 @@ def window_slice(window, shape=None, centered=False, circular=False):
             xc = xi + int((window[1] - 1) / 2)
             yc = yi + int((window[3] - 1) / 2)
 
-            rr_grid = (
-                (window[3] ** 2) * np.square(x_grid.astype(float) - xc) +
-                (window[1] ** 2) * np.square(y_grid.astype(float) - yc)
-            )
+            rr_grid = (window[3] ** 2) * np.square(x_grid.astype(float) - xc) + (
+                window[1] ** 2
+            ) * np.square(y_grid.astype(float) - yc)
 
-            mask_grid = rr_grid <= (window[1] ** 2) * (window[3] ** 2) / 4.
+            mask_grid = rr_grid <= (window[1] ** 2) * (window[3] ** 2) / 4.0
 
             return window_slice((y_grid[mask_grid], x_grid[mask_grid]), shape=shape)
-        else:           # Otherwise, return square slices
+        else:  # Otherwise, return square slices
             slice_ = (slice(yi, yf), slice(xi, xf))
     # (y_ind, x_ind) format
     elif len(window) == 2:
@@ -328,11 +325,11 @@ def window_square(window, padding_frac=0, padding_pix=0):
 
     # For each axis...
     for a in [0, 1]:
-        if len(window) == 2:        # Handle two list case
-            limit = np.array([np.amin(window[a]), np.amax(window[a])+1])
+        if len(window) == 2:  # Handle two list case
+            limit = np.array([np.amin(window[a]), np.amax(window[a]) + 1])
         elif np.ndim(window) == 2:  # Handle the boolean array case
             collapsed = np.where(np.any(window, axis=a))  # Collapse the other axis
-            limit = np.array([np.amin(collapsed), np.amax(collapsed)+1])
+            limit = np.array([np.amin(collapsed), np.amax(collapsed) + 1])
         else:
             raise ValueError("Unrecognized format for `window`.")
 
@@ -342,15 +339,12 @@ def window_square(window, padding_frac=0, padding_pix=0):
 
         # Clip the padding to shape.
         if np.ndim(window) == 2:
-            limit = np.clip(limit, 0, window.shape[1-a])
+            limit = np.clip(limit, 0, window.shape[1 - a])
 
         limits.append(tuple(limit))
 
     # Return desired format.
-    return (
-        limits[0][0], limits[0][1] - limits[0][0],
-        limits[1][0], limits[1][1] - limits[1][0]
-    )
+    return (limits[0][0], limits[0][1] - limits[0][0], limits[1][0], limits[1][1] - limits[1][0])
 
 
 def voronoi_windows(grid, vectors, radius=None, plot=False):
@@ -406,10 +400,12 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
         x_list = x_grid[0, :]
         y_list = y_grid[:, 0]
 
-        vectors = np.vstack((
-            np.interp(vectors[0, :], x_list, np.arange(shape[1])),
-            np.interp(vectors[1, :], y_list, np.arange(shape[0])),
-        ))
+        vectors = np.vstack(
+            (
+                np.interp(vectors[0, :], x_list, np.arange(shape[1])),
+                np.interp(vectors[1, :], y_list, np.arange(shape[0])),
+            )
+        )
 
     # Half shape data.
     hsx = shape[1] / 2
@@ -417,12 +413,12 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     # Add additional points in a diamond outside the shape of interest to cause all
     # windows of interest to be finite.
-    vectors_voronoi = np.concatenate((
-        vectors.T,
-        np.array(
-            [[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]
-        ),
-    ))
+    vectors_voronoi = np.concatenate(
+        (
+            vectors.T,
+            np.array([[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]),
+        )
+    )
 
     vor = Voronoi(vectors_voronoi, furthest_site=False)
 
@@ -439,7 +435,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
         # Format and show the plot.
         plt.xlim(-0.05 * sx, 1.05 * sx)
         plt.ylim(1.05 * sy, -0.05 * sy)
-        plt.gca().set_aspect('equal')
+        plt.gca().set_aspect("equal")
         plt.title("Voronoi Cells")
         plt.show()
 
@@ -459,9 +455,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
         # Crop the window to with a given radius, if desired.
         if radius is not None and radius > 0:
             canvas2 = np.zeros(shape, dtype=np.uint8)
-            cv2.circle(
-                canvas2, point, int(np.ceil(radius)), 255, -1
-            )
+            cv2.circle(canvas2, point, int(np.ceil(radius)), 255, -1)
 
             filled_regions.append((canvas1 > 0) & (canvas2 > 0) & np.logical_not(already_filled))
         else:
@@ -474,6 +468,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
 # Phase pattern collation and manipulation. Uses windows.
 
+
 def imprint(
     matrix,
     window,
@@ -484,8 +479,8 @@ def imprint(
     circular=False,
     clip=True,
     transform=0,
-    shift=(0,0),
-    **kwargs
+    shift=(0, 0),
+    **kwargs,
 ):
     r"""
     Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
@@ -536,15 +531,15 @@ def imprint(
         If ``False``, then an error is raised when the size is exceeded.
         If ``True``, then the out-of-range pixels are instead filled with ``numpy.nan``.
     transform : float or ((float, float), (float, float))
-       Passed to :meth:`shift_grid`, operating on the cropped imprint grid.
+       Passed to :meth:`transform_grid`, operating on the cropped imprint grid.
        This is left as an option such that the user does not have to transform the
        entire ``grid`` to satisfy a tiny imprinted patch.
-       See :meth:`shift_grid` for more details.
+       See :meth:`transform_grid` for more details.
     shift : (float, float)
-       Passed to :meth:`shift_grid`, operating on the cropped imprint grid.
+       Passed to :meth:`transform_grid`, operating on the cropped imprint grid.
        This is left as an option such that the user does not have to transform the
        entire ``grid`` to satisfy a tiny imprinted patch.
-       See :meth:`shift_grid` for more details.
+       See :meth:`transform_grid` for more details.
     **kwargs :
         For passing additional arguments accepted by ``function``.
 
@@ -579,16 +574,14 @@ def imprint(
             matrix[slice_] = function
         else:
             matrix[slice_] = function(
-                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift),
-                **kwargs
+                transform_grid((x_grid[slice_], y_grid[slice_]), transform, shift), **kwargs
             )
     elif imprint_operation == "add":
         if is_float:
             matrix[slice_] += function
         else:
             matrix[slice_] += function(
-                shift_grid((x_grid[slice_], y_grid[slice_]), transform, shift),
-                **kwargs
+                transform_grid((x_grid[slice_], y_grid[slice_]), transform, shift), **kwargs
             )
     else:
         raise ValueError("Unrecognized imprint operation {}.".format(imprint_operation))
@@ -609,7 +602,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
         M-vector or array of M-vectors to process. Desires shape of ``(M, N)``.
     expected_dimension : int
         Dimension of the system, i.e. ``M``.
-    handle_3vectors : {"error", "crop", "pass"}
+    handle_dimension : {"error", "crop", "pass"}
         If a 3D array of vectors is provided, decides how to handle these:
 
         - ``"error"`` Raises an error if not ``(M, N)``.
@@ -671,7 +664,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
     return vectors
 
 
-def format_2vectors(vectors, handle_dimension="error"):
+def format_2vectors(vectors):
     """
     Validates that an array of 2-dimensional vectors is a ``numpy.ndarray`` of shape ``(2, N)``.
     Handles shaping and transposing if, for instance, tuples or row vectors are passed.
@@ -681,14 +674,6 @@ def format_2vectors(vectors, handle_dimension="error"):
     ----------
     vectors : array_like
         2-vector or array of 2-vectors to process. Desires shape of ``(2, N)``.
-    handle_3vectors : {"error", "crop", "pass"}
-        If a 3D array of vectors is provided, decides how to handle these:
-
-        - ``"error"`` Raises an error if not ``(2, N)``.
-
-        - ``"crop"`` Crops the higher dimensions and returns ``(2, N)``.
-
-        - ``"pass"`` Raises an error only if dimension is smaller than ``(2, N)``.
 
     Returns
     -------
@@ -700,7 +685,7 @@ def format_2vectors(vectors, handle_dimension="error"):
     ValueError
         If the vector input was inappropriate.
     """
-    return format_vectors(vectors, expected_dimension=2, handle_dimension=handle_dimension)
+    return format_vectors(vectors, expected_dimension=2, handle_dimension="error")
 
 
 def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_check=False):
@@ -819,9 +804,7 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
     dx2 = x2 - x0
 
     # Invert the index matrix.
-    colinear = np.abs(np.sum(dx1 * dx2)) == np.sqrt(
-        np.sum(dx1 * dx1) * np.sum(dx2 * dx2)
-    )
+    colinear = np.abs(np.sum(dx1 * dx2)) == np.sqrt(np.sum(dx1 * dx1) * np.sum(dx2 * dx2))
     assert not colinear, "Indices must not be colinear."
 
     J = np.linalg.inv(np.squeeze(np.array([[dx1[0], dx2[0]], [dx1[1], dx2[1]]])))
@@ -842,8 +825,10 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
         else:
             N = (N, N)
     elif (
-        not np.isscalar(N) and len(N) == 2 and
-        isinstance(N[0], INTEGER_TYPES) and isinstance(N[1], INTEGER_TYPES)
+        not np.isscalar(N)
+        and len(N) == 2
+        and isinstance(N[0], INTEGER_TYPES)
+        and isinstance(N[1], INTEGER_TYPES)
     ):
         if N[0] <= 0 or N[1] <= 0:
             affine_return = True
@@ -940,14 +925,14 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
             if np.any(window):
                 centroid_x = np.mean(x_grid[window])
                 centroid_y = np.mean(y_grid[window])
-            else:   # If the window is empty (point overlap, etc), then reset this point.
+            else:  # If the window is empty (point overlap, etc), then reset this point.
                 centroid_x = np.random.choice(x_grid.ravel())
                 centroid_y = np.random.choice(x_grid.ravel())
 
             # Iterate
             if (
-                np.abs(centroid_x - result[0, index]) < 1 and
-                np.abs(centroid_y - result[1, index]) < 1
+                np.abs(centroid_x - result[0, index]) < 1
+                and np.abs(centroid_y - result[1, index]) < 1
             ):
                 pass
             else:
@@ -994,17 +979,15 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
         (x_grid, y_grid) = _process_grid(grid)
         shape = x_grid.shape
 
-    vectors = np.vstack((
-        np.random.randint(0, shape[1], n_points),
-        np.random.randint(0, shape[0], n_points)
-    ))
+    vectors = np.vstack(
+        (np.random.randint(0, shape[1], n_points), np.random.randint(0, shape[0], n_points))
+    )
 
     # Regenerate until no overlaps (improve for performance?)
     while smallest_distance(vectors) < 1:
-        vectors = np.vstack((
-            np.random.randint(0, shape[1], n_points),
-            np.random.randint(0, shape[0], n_points)
-        ))
+        vectors = np.vstack(
+            (np.random.randint(0, shape[1], n_points), np.random.randint(0, shape[0], n_points))
+        )
 
     grid2 = np.meshgrid(range(shape[1]), range(shape[0]))
 
@@ -1042,6 +1025,7 @@ def assign_vectors(vectors, assignment_options):
 
 # Grid functions.
 
+
 def _process_grid(grid):
     r"""
     Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
@@ -1071,10 +1055,7 @@ def _process_grid(grid):
     return grid
 
 
-import slmsuite.holography.toolbox.phase as phase
-
-
-def shift_grid(grid, transform=None, shift=None):
+def transform_grid(grid, transform=None, shift=None, direction="fwd"):
     r"""
     Returns a copy of a coordinate basis ``grid`` with a given ``shift`` and
     ``transformation``. These can be the :math:`\vec{b}` and :math:`M` of a standard
@@ -1095,45 +1076,61 @@ def shift_grid(grid, transform=None, shift=None):
         If a 2x2 matrix is passed, transforms the :math:`x` and :math:`y` grids
         according to :math:`x' = M_{00}x + M_{01}y`,  :math:`y' = M_{10}y + M_{11}y`.
     shift : (float, float) OR None
-        Translational shift of the grid in normalized :math:`\frac{x}{\lambda}` coordinates.
-        Defaults to no shift if ``None``.
+        Translational shift of the grid in normalized :math:`\frac{x}{\lambda}` coordinates
+        ("fwd" direction). Defaults to no shift if ``None``.
+    direction : str in ``{"fwd", "rev"}``
+        Defines the direction of the transform: forward (``"fwd"``) transforms then shifts;
+        reverse (``"rev"``) undoes the shift then applies the inverse transform.
+        For standard affine transforms, forward (reverse) mode transforms ``"kxy"`` to ``"ij"``
+        (``"ij"`` to ``"kxy"``).
 
     Returns
     -------
     grid : (array_like, array_like)
-        The shifted grid
+        The shifted grid. In the case where the transform is the identity, a copy is
+        returned not the original grids.
     """
-    # Parse arguments.
+    # Parse grid.
     (x_grid, y_grid) = _process_grid(grid)
 
+    # Parse transform.
     if transform is None:
         transform = 0
+    if not np.isscalar(transform):
+        transform = np.squeeze(transform)
+        if transform.shape != (2,2):
+            raise ValueError("Expected transform to be None, scalar or a 2x2 matrix.")
 
+    # Parse shift.
     if shift is None:
         shift = (0, 0)
+    shift = np.array(shift)
 
-    if np.isscalar(transform) and transform == 0:   # The trivial case
+    # Return the transformed grids.
+    if np.isscalar(transform) and transform == 0:  # The trivial case
         return (
-            x_grid if shift[0] == 0 else (x_grid - shift[0]),
-            y_grid if shift[1] == 0 else (y_grid - shift[1])
+            x_grid.copy() if shift[0] == 0 else (x_grid - shift[0]),
+            y_grid.copy() if shift[1] == 0 else (y_grid - shift[1]),
         )
-    else:                                           # transform is not trivial.
+    else:  # transform is not trivial.
         # Interpret angular transform as a matrix.
         if np.isscalar(transform):
             s = np.sin(transform)
             c = np.cos(transform)
             transform = np.array([[c, -s], [s, c]])
-        else:
-            transform = np.squeeze(transform)
-
-        assert transform.ndim == 2
 
         # Use the matrix to transform the grid.
-        return (
-            transform[0,0] * (x_grid - shift[0]) + transform[0,1] * (y_grid - shift[1]),
-            transform[1,0] * (x_grid - shift[0]) + transform[1,1] * (y_grid - shift[1])
-        )
-
+        if direction == "fwd":
+            return (
+                transform[0, 0] * x_grid + shift[0] + transform[0, 1] * y_grid + shift[1],
+                transform[1, 0] * x_grid + shift[0] + transform[1, 1] * y_grid + shift[1],
+            )
+        elif direction == "rev":
+            transform = np.linalg.inv(transform)
+            return (
+                transform[0, 0] * (x_grid - shift[0]) + transform[0, 1] * (y_grid - shift[1]),
+                transform[1, 0] * (x_grid - shift[0]) + transform[1, 1] * (y_grid - shift[1]),
+            )
 
 # Padding functions.
 
@@ -1172,9 +1169,7 @@ def pad(matrix, shape):
     pad_l = int(np.floor(deltashape[1]))
     pad_r = int(np.ceil(deltashape[1]))
 
-    padded = np.pad(
-        matrix, [(pad_b, pad_t), (pad_l, pad_r)], mode="constant", constant_values=0
-    )
+    padded = np.pad(matrix, [(pad_b, pad_t), (pad_l, pad_r)], mode="constant", constant_values=0)
 
     assert np.all(padded.shape == shape)
 

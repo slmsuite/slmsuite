@@ -1220,6 +1220,7 @@ class FourierSLM(CameraSLM):
             norm = cv2.GaussianBlur(norm, (size_blur_k, size_blur_k), 0)
 
         back = np.copy(data["background"])
+        back[np.isnan(back)] = 0
         average_neighbors(back)
         if smooth:
             back = cv2.GaussianBlur(back, (size_blur_k, size_blur_k), 0)

@@ -5,6 +5,7 @@ Datastructures, methods, and calibrations for an SLM monitored by a camera.
 import os
 import time
 import cv2
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import optimize
@@ -20,6 +21,8 @@ from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
 from slmsuite.misc.fitfunctions import cos, sinc2d
 from slmsuite.misc.math import REAL_TYPES
 
+from slmsuite.hardware.cameras.simulated import SimulatedCam
+from slmsuite.hardware.slms.simulated import SimulatedSLM
 
 class CameraSLM:
     """
@@ -95,7 +98,52 @@ class FourierSLM(CameraSLM):
         self.fourier_calibration = None
         self.wavefront_calibration_raw = None
 
-    ### Settle Time Measurement ###
+    def simulate(self):
+        """
+        Clones the hardware-based experiment into a "digital twin" for simulation.
+
+        Note
+        ~~~~
+        Since simulation mode needs the Fourier relationship between the SLM and 
+        camera, the :class:`~slmsuite.hardware.cameraslms.FourierSLM` should be
+        Fourier-calibrated prior to cloning for simulation.
+
+        Returns
+        -------
+        FourierSLM
+            A :class:`~slmsuite.hardware.cameraslms.FourierSLM` object with simulated
+            hardware.
+        """
+
+        # Make a simulated SLM
+        slm_sim = SimulatedSLM(self.slm.shape[::-1],
+                               source = self.slm.source,
+                               bitdepth = self.slm.bitdepth,
+                               name = self.slm.name+"_sim",
+                               wav_um = self.slm.wav_um,
+                               wav_design_um = self.slm.wav_design_um,
+                               dx_um = self.slm.dx_um,
+                               dy_um = self.slm.dy_um)
+        
+        # Make a simulated camera using the current Fourier calibration
+        cam_sim = SimulatedCam(slm_sim,
+                       resolution = self.cam.shape[::-1],
+                       M = self.fourier_calibration["M"],
+                       b = self.fourier_calibration["b"],
+                       bitdepth = self.cam.bitdepth,
+                       averaging = self.cam._buffer.shape[0]
+                                    if self.cam._buffer is not None else None,
+                       dx_um = self.cam.dx_um,
+                       dy_um = self.cam.dy_um,
+                       name = self.cam.name+"sim")
+        cam_sim.transform = self.cam.transform
+
+        #Combine the two and pass FourierSLM attributes from hardware
+        fs_sim = FourierSLM(cam_sim, slm_sim)
+        fs_sim.fourier_calibration = copy.deepcopy(self.fourier_calibration)
+        fs_sim.wavefront_calibration_raw = copy.deepcopy(self.wavefront_calibration_raw)
+
+        return fs_sim
 
     def measure_settle(
         self, vector=(0.1, 0.1), basis="kxy", size=None, times=None, settle_time_s=1, plot=True
@@ -118,7 +166,7 @@ class FourierSLM(CameraSLM):
         times : array_like
             List of times to sweep over in search of the :math:`1/e` settle time.
         settle_time_s : float
-            Time inbetween measurements to allow the SLM to re-settle without
+            Time between measurements to allow the SLM to re-settle.
         plot : bool
             Whether to print debug plots.
         """
@@ -162,8 +210,6 @@ class FourierSLM(CameraSLM):
             plt.show()
 
         return results
-
-    ### Fourier Calibration ###
 
     def fourier_calibrate(
         self,
@@ -887,6 +933,7 @@ class FourierSLM(CameraSLM):
             try:
                 popt, _ = optimize.curve_fit(cos, phases, intensities, p0=guess)
             except BaseException:
+                warnings.warn("Curve fitting failed; nulling response from this superpixel.")
                 return 0, 0, 0, 0
 
             # Extract phase and amplitude from fit.
@@ -1008,7 +1055,12 @@ class FourierSLM(CameraSLM):
             guess[2] = phases[int(np.min(np.argmin(differences)))]
 
             # Try the fit!
-            popt, _ = optimize.curve_fit(sinc2d_local, xyr, img.ravel(), p0=guess, bounds=(lb, ub))
+            try:
+                popt, _ = optimize.curve_fit(sinc2d_local, xyr, img.ravel(), p0=guess, bounds=(lb, ub), maxfev=20)
+            except:
+                # Failures indicate low source power on the superpixel
+                warnings.warn("Image fitting failed; nulling response from this superpixel.")
+                popt = np.zeros(8)
 
             # Extract phase and amplitude from fit.
             best_phase = popt[2]
@@ -1127,7 +1179,8 @@ class FourierSLM(CameraSLM):
                 else:
                     step = 1
 
-                bitresolution_list = np.power(2, np.arange(0, self.cam.bitdepth + 1, step))
+                bitresolution_list = np.power(2, np.arange(0, self.cam.bitdepth + 1, step),
+                                              dtype=np.int64)
 
                 cbar = fig.colorbar(im, ax=axs[2])
                 cbar.ax.set_yticks(np.log10(bitresolution_list))

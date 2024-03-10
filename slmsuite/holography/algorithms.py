@@ -1931,7 +1931,7 @@ class Hologram:
 
         return limits
 
-    def plot_stats(self, stats_dict=None, stat_groups=[], ylim=None):
+    def plot_stats(self, stats_dict=None, stat_groups=[], ylim=None, show=False):
         """
         Plots the statistics contained in the given dictionary.
 
@@ -1944,6 +1944,8 @@ class Hologram:
         ylim : (int, int) OR None
             Allows the user to pass in desired y limits.
             If ``None``, the default y limits are used.
+        show : bool
+            Whether or not to immediately show the plot. Defaults to false.
         """
         if stats_dict is None:
             stats_dict = self.stats
@@ -2024,7 +2026,8 @@ class Hologram:
 
         ax.set_xlim([-0.75, len(stats_dict["method"]) - 0.25])
 
-        plt.show()
+        if show:
+            plt.show()
 
         return ax
 
@@ -2712,7 +2715,7 @@ class SpotHologram(FeedbackHologram):
         #      (divided by 1 would correspond to the largest non-overlapping integration
         #      regions; 1.5 gives comfortable padding)
         #  - and finally forced to be an odd integer.
-        N = 5  # TODO: non-arbitrary
+        N = 10  # TODO: non-arbitrary
         min_psf = 3
 
         dist_knm = np.max([toolbox.smallest_distance(self.spot_knm) / 1.5, min_psf])

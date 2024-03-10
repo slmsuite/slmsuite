@@ -52,9 +52,27 @@ class SimulatedCam(Camera):
     shape_padded : (int, int)
         Size of the FFT computational space required to faithfully reproduce the far-field at
         full camera resolution.
+    noise : dict
+        Dictionary of single-argument functions (returning the normalized noise amplitude 
+        for any normalized input pixel amplitude) to simulate various noise sources. Currently,
+        ``'dark'`` and ``'read'``, representing exposure-dependent dark current/background noise
+        and exposure-independent readout noise, respectively, are the only accepted keys.
+
+        Example
+        ~~~~~~~
+        The following code adds a Gaussian background with 50% mean and 5% standard
+        deviation (relative to the dynamic range at the default ``self.exposure = 1``) and
+        a Poisson readout noise (independent of ``self.exposure``) with an average value
+        of 20% of the camera's dynamic range.
+
+        .. code-block:: python
+            
+            self.noise = {'dark': lambda img: np.random.normal(0.5*img, 0.05*img),
+                          'read': lambda img: np.random.poisson(0.2*img)}
+
     """
 
-    def __init__(self, slm, resolution=None, M=None, b=None, **kwargs):
+    def __init__(self, slm, resolution=None, M=None, b=None, noise=None, **kwargs):
         """
         Initialize simulated camera.
 
@@ -71,6 +89,8 @@ class SimulatedCam(Camera):
         b : tuple
             Lateral displacement (in pixels) of the camera center from `slm`'s
             optical axis. If ``None``, defaults to 0 offset.
+        noise : dict
+            See :attr:`noise`.
         kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
@@ -91,11 +111,42 @@ class SimulatedCam(Camera):
         # Digital gain emulates exposure
         self.exposure = 1
 
+        # Add user-defined noise dictionary
+        self.noise = noise
+
         # Compute the camera pixel grid in `basis` units (currently "ij")
         self.x_grid, self.y_grid = np.meshgrid(
-            np.linspace(-1 / 2, 1 / 2, resolution[0]) * resolution[0],
-            np.linspace(-1 / 2, 1 / 2, resolution[1]) * resolution[1],
+            np.arange(resolution[0]),
+            np.arange(resolution[1]),
         )
+
+        self.set_affine(M,b)
+
+    def set_affine(self, M=None, b=None, **kwargs):
+        """
+        Set the camera's placement in the SLM's k-space. `M` and/or `b`, if provided,
+        are used to transform the :class:`SimulatedCam`'s ``"ij"`` grid to a ``"knm"`` grid
+        for interpolation against the :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`'s
+        ``"knm"`` grid. Keyword arguments, if provided, are passed to :meth:`build_affine`
+        to build `M` and `b`.
+
+        Parameters
+        ----------
+        M : ndarray
+            2 x 2 affine transform matrix to convert between `slm`'s k-space and the
+            simulated camera's pixel (``"ij"``) basis. If ``None``, defaults to the
+            identity matrix.
+        b : tuple
+            Lateral displacement (in pixels) of the camera center from `slm`'s
+            optical axis. If ``None``, defaults to 0 offset.
+        **kwargs : dict, optional
+            Various orientation parameters passed to :meth:`build_affine` to build
+            `M` and `b`, if not provided. See options documented in the method.
+        """
+
+        # If kwargs are passed instead of M/b, use these to build M, b
+        if M is None and b is None and len(kwargs) > 0:
+            M, b = self.build_affine(**kwargs)
 
         # Affine transform the camera grid ("ij"->"kxy")
         if M is not None or b is not None:
@@ -103,22 +154,24 @@ class SimulatedCam(Camera):
             (self.x_grid, self.y_grid) = toolbox.transform_grid(self, M, b, direction="rev")
 
         # Fourier space must be sufficiently padded to resolve the camera pixels.
-        dkxy = cp.sqrt(
+        dkxy = np.sqrt(
             (self.x_grid[:2, :2] - self.x_grid[0, 0]) ** 2
             + (self.y_grid[:2, :2] - self.y_grid[0, 0]) ** 2
         )
         dkxy_min = dkxy.ravel()[1:].min()
 
-        self.shape_padded = Hologram.calculate_padded_shape(slm, precision=dkxy_min)
+        self.shape_padded = Hologram.calculate_padded_shape(self._slm, precision=dkxy_min)
         print(
             "Padded SLM k-space shape set to (%d,%d) to achieve required "
             "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
         )
+
+        phase = -self._slm.display.astype(float)/self._slm.bitresolution*(2*np.pi)
         self._hologram = Hologram(
             self.shape_padded,
-            amp=self._slm.source["amplitude_sim"],
-            phase=self._slm.phase + self._slm.source["phase_sim"],
-            slm_shape=self._slm,
+            amp = self._slm.source["amplitude_sim"],
+            phase = phase - phase.min() + self._slm.source["phase_sim"],
+            slm_shape = self._slm,
         )
 
         # Convert kxy -> knm (0,0 at corner): 1/dx -> Npx
@@ -130,16 +183,21 @@ class SimulatedCam(Camera):
         )
 
         if (
-            cp.amax(cp.abs(self.knm_cam[0])) > self.shape_padded[1] / 2
-            or cp.amax(cp.abs(self.knm_cam[1])) > self.shape_padded[0] / 2
+            cp.amax(cp.abs(self.knm_cam[0] - self.shape_padded[0]/2)) > self.shape_padded[1]/2
+            or cp.amax(cp.abs(self.knm_cam[1] - self.shape_padded[1]/2)) > self.shape_padded[0]/2
         ):
             warnings.warn(
                 "Camera extends beyond the accessible SLM k-space;"
                 " some pixels may not be targetable."
             )
 
-    @staticmethod
-    def build_affine(f_eff=1, theta=0, shear_angle=0, offset=(0, 0), basis="ij", pitch_um=None):
+    def build_affine(self,
+                     f_eff=1,
+                     theta=0,
+                     shear_angle=0,
+                     offset=(0, 0),
+                     basis="ij",
+                     pitch_um=None):
         """
         Build an affine transform defining the SLM -> camera transformation as
         detailed in :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam`.
@@ -148,8 +206,9 @@ class SimulatedCam(Camera):
         ----------
         f_eff : float or (float, float)
             Effective focal length (in `basis` units) of the
-            optical train separating the Fourier-domain SLM from the camera. If a float is provided,
-            `f_eff` is isotropic; otherwise, `f_eff` is defined along the SLM's x and y axes.
+            optical train separating the Fourier-domain SLM from the camera. If a float is
+            provided, `f_eff` is isotropic; otherwise, `f_eff` is defined along the SLM's
+            x and y axes.
 
             Important
             ~~~~~~~~~
@@ -159,9 +218,9 @@ class SimulatedCam(Camera):
             See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam` for additional
             details. To convert to true distance units (e.g., `"um"`), multiply `f_eff` by the the
             pixel size in the same dimensions.
-            As noted in :meth:`~slmsuite.hardware.cameraslms.get_effective_focal_length`, non-square
-            pixels therefore imply different effective focal lengths along each axis when using
-            true distance units.
+            As noted in :meth:`~slmsuite.hardware.cameraslms.get_effective_focal_length`,
+            non-square pixels therefore imply different effective focal lengths along each axis
+            when using true distance units.
         theta : float
             Rotation angle (in radians, ccw) of the camera relative to the SLM orientation.
             Defaults to 0 (i.e., aligned with the SLM).
@@ -206,6 +265,9 @@ class SimulatedCam(Camera):
         else:
             b = offset
 
+        # Define offset relative to zero in k-space if camera shape is accessible.
+        b = b + np.array([r/2. for r in self.shape])[::-1]
+
         mag = np.array([[f_eff[0], 0], [0, f_eff[1]]])
         shear = np.array([[1, np.tan(shear_angle[0])], [np.tan(shear_angle[1]), 1]])
         rot = np.array([[np.cos(-theta), np.sin(-theta)], [-np.sin(-theta), np.cos(-theta)]])
@@ -237,14 +299,9 @@ class SimulatedCam(Camera):
         """
         return self.exposure
 
-    def get_image(self, plot=False):
+    def _get_image_hw(self, timeout_s=None):
         """
-        See :meth:`.Camera.get_image`. Computes and samples the affine-transformed SLM far-field.
-
-        Parameters
-        ----------
-        plot : bool
-            Whether to plot the output.
+        See :meth:`.Camera._get_image_hw`. Computes and samples the affine-transformed SLM far-field.
 
         Returns
         -------
@@ -253,10 +310,15 @@ class SimulatedCam(Camera):
         """
 
         # Update phase; calculate the far-field (keep on GPU if using cupy for follow-on interp)
-        # FUTURE: in the case where sim is being used inside a GS loop, there should be
+        # FUTURE: in the case where sim is being used inside a GS loop, there could be
         # something clever here to use the existing Hologram's data.
-        self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
-        ff = self._hologram.extract_farfield()
+        # Analog phase
+        # self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
+        # Quantized phase
+        phase = -self._slm.display.astype(float)/self._slm.bitresolution*(2*np.pi)
+        self._hologram.reset_phase(phase - phase.min() + self._slm.source["phase_sim"])
+
+        ff = self._hologram.extract_farfield(get=True if (cp == np) else False)
 
         # Use map_coordinates for fastest interpolation
         # Note: by default, map_coordinates sets pixels outside the SLM k-space to 0 as desired
@@ -268,11 +330,24 @@ class SimulatedCam(Camera):
         if cp != np:
             img = img.get()
 
-        # TODO: dark current, readout noise, limited bits.
-        img = self.exposure * img
+        # Quantize: all power in one pixel (img=1) -> maximum readout value at base exposure=1
+        img = np.rint(img * self.exposure * self.bitresolution)
 
-        if plot:
-            # Note simulated cam currently has infinite dynamic range.
-            self.plot_image(img)
+        # Basic noise sources. 
+        if self.noise is not None:
+            for key in self.noise.keys():
+                if key == 'dark':
+                    # Background/dark current - exposure dependent
+                    dark = self.noise['dark'](np.ones_like(img) * self.bitresolution)/self.exposure
+                    img = img + dark
+                elif key == 'read':
+                    # Readout noise - exposure independent
+                    read = self.noise['read'](np.ones_like(img) * self.bitresolution)
+                    img = img + read
+                else: 
+                    raise RuntimeError('Unknown noise source %s specified!'%(key))
+
+        # Truncate to maximum readout value
+        img[img > self.bitresolution] = self.bitresolution
 
         return img

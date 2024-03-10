@@ -2,13 +2,13 @@
 <svg
    inkscape:export-ydpi="96"
    inkscape:export-xdpi="96"
-   sodipodi:docname="qp-slm.svg"
+   sodipodi:docname="qp-slm-raw.svg"
    inkscape:version="1.2 (dc2aedaf03, 2022-05-15)"
    id="svg8"
    version="1.1"
-   viewBox="0 0 35.329626 19.58322"
+   viewBox="0 0 36.645525 19.58322"
    height="19.58322mm"
-   width="35.329628mm"
+   width="36.645527mm"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -269,7 +269,7 @@
        y1="26.310638"
        x2="64.451889"
        y2="26.310638"
-       gradientTransform="matrix(0.23664852,0,0,0.23664852,-29.658707,-15.74445)" />
+       gradientTransform="matrix(0.23664852,0,0,0.23664852,-28.852113,-15.74445)" />
     <linearGradient
        inkscape:collect="always"
        xlink:href="#linearGradient1247"
@@ -357,16 +357,16 @@
      inkscape:snap-tangential="true"
      inkscape:snap-perpendicular="true"
      inkscape:window-maximized="1"
-     inkscape:window-y="-9"
-     inkscape:window-x="-9"
-     inkscape:window-height="1171"
-     inkscape:window-width="1920"
+     inkscape:window-y="-8"
+     inkscape:window-x="1672"
+     inkscape:window-height="1027"
+     inkscape:window-width="1680"
      showgrid="false"
      inkscape:current-layer="g3285"
      inkscape:document-units="mm"
-     inkscape:cy="42.901786"
-     inkscape:cx="63.616071"
-     inkscape:zoom="11.2"
+     inkscape:cy="49.464286"
+     inkscape:cx="87.053571"
+     inkscape:zoom="5.6"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
      borderopacity="1.0"
@@ -465,14 +465,14 @@
           <text
              id="text941-4"
              y="17.692818"
-             x="53.93449"
+             x="54.741089"
              style="font-size:4.41744px;line-height:1.25;font-family:Raleway;-inkscape-font-specification:Raleway;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke:url(#linearGradient943-2);stroke-width:0.23665"
              xml:space="preserve"><tspan
                y="17.692818"
-               x="53.93449"
+               x="54.741089"
                style="font-style:italic;font-variant:normal;font-weight:600;font-stretch:normal;font-family:Raleway;-inkscape-font-specification:'Raleway Semi-Bold Italic';stroke:url(#linearGradient943-2);stroke-width:0.23665"
                id="tspan939-6"
-               sodipodi:role="line">qp-slm</tspan></text>
+               sodipodi:role="line">slmsuite</tspan></text>
           <g
              transform="matrix(2,0,0,2,-81.967679,-36.439163)"
              id="g1122-1"

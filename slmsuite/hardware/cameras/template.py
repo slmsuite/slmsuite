@@ -116,13 +116,24 @@ class Template(Camera):
         raise NotImplementedError()
         # Use self.cam to crop the window of interest.
 
-    def get_image(self, timeout_s=1):
-        """See :meth:`.Camera.get_image`."""
+    def _get_image_hw(self, timeout_s=1):
+        """See :meth:`.Camera._get_image_hw`."""
         raise NotImplementedError()
         # The core method: grabs an image from the camera.
-        # self.transform implements the flipping and rotating keywords passed to the
-        # superclass constructor. This is handled automatically.
-        return self.transform(self.cam.get_image())     # TODO: Fill in proper function.
+        # Note: the camera superclass' get_image function performs follow-on processing
+        # (similar to how the SLM superclass' write method pairs with _write_hw methods
+        # for each subclass) -- frame averaging, transformations, and so on -- so this
+        # method should be limited to camera-interface specific functions.
+        return self.cam.get_image_function()     # TODO: Fill in proper function.
+    
+    def _get_images_hw(self, timeout_s=1):
+        """See :meth:`.Camera._get_images_hw`."""
+        raise NotImplementedError()
+        # Similar to the core method but for a batch of images.
+        # This should be used if the camera has a hardware-specific method of grabbing
+        # frame batches. If not defined, the superclass captures and averages sequential
+        # _get_image_hw images.
+        return self.cam.get_images_function()     # TODO: Fill in proper function.
 
     def flush(self):
         """See :meth:`.Camera.flush`."""

@@ -2840,140 +2840,280 @@ class FreeSpotHologram(FeedbackHologram):
         # Custom GPU kernels for speed.
         if np != cp:
             try:
-                self._far2near_cuda = cp.RawKernel(
-                    r'''
-                    #include <cupy/complex.cuh>
-                    extern "C"
-                    __global__ void f2n(
-                        const complex<float>* farfield, // Input (N)
-                        const unsigned int WH,          // Size of nearfield
-                        const unsigned int N,           // Size of farfield
-                        const unsigned int D,           // Dimension of spots (2 or 3)
-                        const float* kxyz,              // Spot parameters (D*N)
-                        const complex<float>* X,        // X grid (WH)
-                        const complex<float>* Y,        // Y grid (WH)
-                        const complex<float>* RR,       // RR grid (WH, required when D==3)
-                        const int* m,                   // Map index (M)
-                        const complex<float>* map,      // Maps (M*WH)
-                        const unsigned int M,           // Number of maps
-                        complex<float>* nearfield       // Output (WH)
-                    ) {
-                        // nf is each pixel in the nearfield.
-                        int nf = blockDim.x * blockIdx.x + threadIdx.x;
+                v1 = False
+                if v1:
+                    self._far2near_cuda = cp.RawKernel(
+                        r'''
+                        #include <cupy/complex.cuh>
+                        extern "C"
+                        __global__ void f2n(
+                            const complex<float>* farfield, // Input (N)
+                            const unsigned int WH,          // Size of nearfield
+                            const unsigned int N,           // Size of farfield
+                            const unsigned int D,           // Dimension of spots (2 or 3)
+                            const float* kxyz,              // Spot parameters (D*N)
+                            const complex<float>* X,        // X grid (WH)
+                            const complex<float>* Y,        // Y grid (WH)
+                            const complex<float>* RR,       // RR grid (WH, required when D==3)
+                            const int* m,                   // Map index (M)
+                            const complex<float>* map,      // Maps (M*WH)
+                            const unsigned int M,           // Number of maps
+                            complex<float>* nearfield       // Output (WH)
+                        ) {
+                            // nf is each pixel in the nearfield.
+                            int nf = blockDim.x * blockIdx.x + threadIdx.x;
 
-                        if (nf < WH) {
-                            // Make a local result variable to avoid talking with global memory.
-                            complex<float> result = 0;
+                            if (nf < WH) {
+                                // Make a local result variable to avoid talking with global memory.
+                                complex<float> result = 0;
 
-                            // Copy data that will be used multiple times per thread into local memory (this might not matter though).
-                            complex<float> local_X = X[nf];
-                            complex<float> local_Y = Y[nf];
+                                // Copy data that will be used multiple times per thread into local memory (this might not matter though).
+                                complex<float> local_X = X[nf];
+                                complex<float> local_Y = Y[nf];
 
-                            if (D == 3) {
-                                // Additional copy for 3D spots.
-                                complex<float> local_RR = RR[nf];
+                                if (D == 3) {
+                                    // Additional copy for 3D spots.
+                                    complex<float> local_RR = RR[nf];
 
-                                // Loop over all the spots (compiler should handle optimizing the trinary).
-                                for (int i = 0; i < N; i++) {
-                                    result += farfield[i]
-                                    * ((M > 0) ? map[nf + m[i] * WH] : 1)
-                                    * exp(
-                                        local_X  * kxyz[i] +
-                                        local_Y  * kxyz[i + N] +
-                                        local_RR * kxyz[i + N + N]
-                                    );
+                                    // Loop over all the spots (compiler should handle optimizing the trinary).
+                                    for (int i = 0; i < N; i++) {
+                                        result += farfield[i]
+                                        * ((M > 0) ? map[nf + m[i] * WH] : 1)
+                                        * exp(
+                                            local_X  * kxyz[i] +
+                                            local_Y  * kxyz[i + N] +
+                                            local_RR * kxyz[i + N + N]
+                                        );
+                                    }
+                                } else {
+                                    // Loop over all the spots (compiler should handle optimizing the trinary).
+                                    for (int i = 0; i < N; i++) {
+                                        result += farfield[i]
+                                        * ((M > 0) ? map[nf + m[i] * WH] : 1)
+                                        * exp(
+                                            local_X * kxyz[i] +
+                                            local_Y * kxyz[i + N]
+                                        );
+                                    }
                                 }
+
+                                // Export the result to global memory.
+                                nearfield[nf] = result;
+                            }
+                        }
+                        ''',
+                        'f2n'
+                    )
+
+                    self._near2far_cuda = cp.RawKernel(
+                        r'''
+                        #include <cupy/complex.cuh>
+                        extern "C"  __device__ void warpReduce(
+                            complex<float>* sdata, // volatile
+                            unsigned int tid
+                        ) {
+                            sdata[tid] += sdata[tid + 32]; __syncwarp();
+                            sdata[tid] += sdata[tid + 16]; __syncwarp();
+                            sdata[tid] += sdata[tid + 8];  __syncwarp();
+                            sdata[tid] += sdata[tid + 4];  __syncwarp();
+                            sdata[tid] += sdata[tid + 2];  __syncwarp();
+                            sdata[tid] += sdata[tid + 1];  __syncwarp();
+                        }
+
+                        extern "C" __global__ void n2f(
+                            const complex<float>* nearfield,        // Input (WH)
+                            const unsigned int WH,                  // Size of nearfield
+                            const unsigned int N,                   // Size of farfield
+                            const unsigned int D,                   // Dimension of spots (2 or 3)
+                            const float* kxyz,                      // Spot parameters (D*N)
+                            const complex<float>* X,                // X grid (WH)
+                            const complex<float>* Y,                // Y grid (WH)
+                            const complex<float>* RR,               // RR grid (WH, required when D==3)
+                            const int* m,                           // Map index (M)
+                            const complex<float>* map,              // Maps (M*WH)
+                            const unsigned int M,                   // Number of maps
+                            complex<float>* farfield_intermediate   // Output (blockIdx.x*N)
+                        ) {
+                            // Allocate shared data which will store intermediate results.
+                            // (Hardcoded to 1024 block size).
+                            __shared__ complex<float> sdata[1024];
+
+                            // Make some IDs.
+                            int ff = blockIdx.y;                    // Farfield index  [0, N)
+                            int tid = threadIdx.x;                  // Thread ID
+                            int rid = blockIdx.x + ff * gridDim.x;  // Farfield result ID
+                            int nf = blockDim.x * blockIdx.x + tid; // Nearfield index [0, WH)
+
+                            if (nf < WH) {
+                                // Do the overlap integrand for one nearfield-farfield mapping.
+                                sdata[tid] = conj(nearfield[nf])
+                                * (M > 0 ? map[nf + WH * m[ff]] : 1)
+                                * exp(
+                                    X[nf] * kxyz[ff] +
+                                    Y[nf] * kxyz[ff + N] +
+                                    (D == 3 ? (RR[nf] * kxyz[ff + N + N]) : 0)
+                                );
                             } else {
-                                // Loop over all the spots (compiler should handle optimizing the trinary).
-                                for (int i = 0; i < N; i++) {
-                                    result += farfield[i]
-                                    * ((M > 0) ? map[nf + m[i] * WH] : 1)
-                                    * exp(
-                                        local_X * kxyz[i] +
-                                        local_Y * kxyz[i + N]
-                                    );
-                                }
+                                sdata[tid] = 0;
                             }
 
-                            // Export the result to global memory.
-                            nearfield[nf] = result;
+                            // Now we want to integrate by summing these results.
+                            // Note that we assume 1024 block size and 32 warp size (change this?).
+                            __syncthreads();
+
+                            if (tid < 512) { sdata[tid] += sdata[tid + 512]; } __syncthreads();
+                            if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads();
+                            if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads();
+                            if (tid < 64) {  sdata[tid] += sdata[tid + 64];  } __syncthreads();
+                            if (tid < 32) {
+                                // The last 32 threads don't require __syncthreads() as they can be warped.
+                                warpReduce(sdata, tid);
+
+                                // Save the summed results to global memory.
+                                if (tid == 0) { farfield_intermediate[rid] = sdata[0]; }
+                            }
                         }
-                    }
-                    ''',
-                    'f2n'
-                )
+                        ''',
+                        'n2f'
+                    )
+                else:
+                    self._far2near_cuda = cp.RawKernel(
+                        r'''
+                        #include <cupy/complex.cuh>
+                        extern "C"
+                        __global__ void f2n(
+                            const complex<float>* farfield, // Input (size N)
+                            const unsigned int WH,          // Size of nearfield
+                            const unsigned int N,           // Size of farfield
+                            const unsigned int D,           // Dimension of Zernike basis (2 [xy] for normal spot arrays)
+                            const unsigned int O,           // Dimension of polynomial basis (2 [xy] for normal spot arrays)
+                            const float* a_dn,              // Spot Zernike coefficients (size D*N)
+                            const float* c_do,              // Polynomial coefficients for Zernike (size D*O) [shared]
+                            const int* p_x,                 // Monomial coefficients
+                            const int* p_y,                 // Monomial coefficients
+                            const float* X,                 // X grid (size WH) [these could be integer, but integer is maybe slower]
+                            const float* Y,                 // Y grid (size WH)
+                            complex<float>* nearfield       // Output (size WH)
+                        ) {
+                            // nf is the index of the pixel in the nearfield.
+                            int nf = blockDim.x * blockIdx.x + threadIdx.x;
 
-                self._near2far_cuda = cp.RawKernel(
-                    r'''
-                    #include <cupy/complex.cuh>
-                    extern "C"  __device__ void warpReduce(
-                        complex<float>* sdata, // volatile
-                        unsigned int tid
-                    ) {
-                        sdata[tid] += sdata[tid + 32]; __syncwarp();
-                        sdata[tid] += sdata[tid + 16]; __syncwarp();
-                        sdata[tid] += sdata[tid + 8];  __syncwarp();
-                        sdata[tid] += sdata[tid + 4];  __syncwarp();
-                        sdata[tid] += sdata[tid + 2];  __syncwarp();
-                        sdata[tid] += sdata[tid + 1];  __syncwarp();
-                    }
+                            if (nf < WH) {
+                                // Copy data that will be used multiple times per thread into local memory (this might not matter though).
+                                float local_X = X[nf];
+                                float local_Y = Y[nf];
+                                float l = 0;
+                                float phase_prefix = (2 * M_PI * 1j);
 
-                    extern "C" __global__ void n2f(
-                        const complex<float>* nearfield,        // Input (WH)
-                        const unsigned int WH,                  // Size of nearfield
-                        const unsigned int N,                   // Size of farfield
-                        const unsigned int D,                   // Dimension of spots (2 or 3)
-                        const float* kxyz,                      // Spot parameters (D*N)
-                        const complex<float>* X,                // X grid (WH)
-                        const complex<float>* Y,                // Y grid (WH)
-                        const complex<float>* RR,               // RR grid (WH, required when D==3)
-                        const int* m,                           // Map index (M)
-                        const complex<float>* map,              // Maps (M*WH)
-                        const unsigned int M,                   // Number of maps
-                        complex<float>* farfield_intermediate   // Output (blockIdx.x*N)
-                    ) {
-                        // Allocate shared data which will store intermediate results.
-                        // (Hardcoded to 1024 block size).
-                        __shared__ complex<float> sdata[1024];
+                                // Make local result variables to avoid talking with global memory.
+                                complex<float> result = 0;
+                                complex<float> exponent = 0;
 
-                        // Make some IDs.
-                        int ff = blockIdx.y;                    // Farfield index  [0, N)
-                        int tid = threadIdx.x;                  // Thread ID
-                        int rid = blockIdx.x + ff * gridDim.x;  // Farfield result ID
-                        int nf = blockDim.x * blockIdx.x + tid; // Nearfield index [0, WH)
+                                // Indexing variables.
+                                int i = 0;
+                                int d = 0;
 
-                        if (nf < WH) {
-                            // Do the overlap integrand for one nearfield-farfield mapping.
-                            sdata[tid] = conj(nearfield[nf])
-                            * (M > 0 ? map[nf + WH * m[ff]] : 1)
-                            * exp(
-                                X[nf] * kxyz[ff] +
-                                Y[nf] * kxyz[ff + N] +
-                                (D == 3 ? (RR[nf] * kxyz[ff + N + N]) : 0)
-                            );
-                        } else {
-                            sdata[tid] = 0;
+                                // Prepare local Zernike.
+                                // This is the phase for a given coefficient d at the current pixel.
+                                float local_Z = float[D];
+
+                                // Loop over Zernike indices.
+                                for (d = 0; d < D; d++) {
+                                    l = 0;
+                                    for (i = 0; i < O; i++) {
+                                        l += c_do[d*O + i];
+                                    }
+                                }
+
+                                for (d = 0; d < D; d++) {
+                                    local_Z[d] = phase_prefix * local_Z[d];
+                                }
+
+                                // Loop over all the spots.
+                                for (i = 0; i < N; i++) {
+                                    exponent = 0;
+                                    // Loop over Zernike indices.
+                                    for (d = 0; d < D; d++) {
+                                        if (a_dn[d*N + i]) {
+                                            exponent += local_Z[d] * a_dn[d*N + i];
+                                        }
+                                    }
+                                    result += farfield[i] * exp(exponent);
+                                }
+
+                                // Export the result to global memory.
+                                nearfield[nf] = result;
+                            }
+                        }
+                        ''',
+                        'f2n'
+                    )
+
+                    self._near2far_cuda = cp.RawKernel(
+                        r'''
+                        #include <cupy/complex.cuh>
+                        extern "C"  __device__ void warpReduce(
+                            complex<float>* sdata, // volatile
+                            unsigned int tid
+                        ) {
+                            sdata[tid] += sdata[tid + 32]; __syncwarp();
+                            sdata[tid] += sdata[tid + 16]; __syncwarp();
+                            sdata[tid] += sdata[tid + 8];  __syncwarp();
+                            sdata[tid] += sdata[tid + 4];  __syncwarp();
+                            sdata[tid] += sdata[tid + 2];  __syncwarp();
+                            sdata[tid] += sdata[tid + 1];  __syncwarp();
                         }
 
-                        // Now we want to integrate by summing these results.
-                        // Note that we assume 1024 block size and 32 warp size (change this?).
-                        __syncthreads();
+                        extern "C" __global__ void n2f(
+                            const complex<float>* nearfield,        // Input (WH)
+                            const unsigned int WH,                  // Size of nearfield
+                            const unsigned int N,                   // Size of farfield
+                            const unsigned int D,                   // Dimension of spots (2 or 3)
+                            const float* kxyz,                      // Spot parameters (D*N)
+                            const complex<float>* X,                // X grid (WH)
+                            const complex<float>* Y,                // Y grid (WH)
+                            const complex<float>* RR,               // RR grid (WH, required when D==3)
+                            const int* m,                           // Map index (M)
+                            const complex<float>* map,              // Maps (M*WH)
+                            const unsigned int M,                   // Number of maps
+                            complex<float>* farfield_intermediate   // Output (blockIdx.x*N)
+                        ) {
+                            // Allocate shared data which will store intermediate results.
+                            // (Hardcoded to 1024 block size).
+                            __shared__ complex<float> sdata[1024];
 
-                        if (tid < 512) { sdata[tid] += sdata[tid + 512]; } __syncthreads();
-                        if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads();
-                        if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads();
-                        if (tid < 64) {  sdata[tid] += sdata[tid + 64];  } __syncthreads();
-                        if (tid < 32) {
-                            // The last 32 threads don't require __syncthreads() as they can be warped.
-                            warpReduce(sdata, tid);
+                            // Make some IDs.
+                            int ff = blockIdx.y;                    // Farfield index  [0, N)
+                            int tid = threadIdx.x;                  // Thread ID
+                            int rid = blockIdx.x + ff * gridDim.x;  // Farfield result ID
+                            int nf = blockDim.x * blockIdx.x + tid; // Nearfield index [0, WH)
 
-                            // Save the summed results to global memory.
-                            if (tid == 0) { farfield_intermediate[rid] = sdata[0]; }
+                            if (nf < WH) {
+                                // Do the overlap integrand for one nearfield-farfield mapping.
+                                sdata[tid] = conj(nearfield[nf]) * exp(exponent);
+                            } else {
+                                sdata[tid] = 0;
+                            }
+
+                            // Now we want to integrate by summing these results.
+                            // Note that we assume 1024 block size and 32 warp size (change this?).
+                            __syncthreads();
+
+                            if (tid < 512) { sdata[tid] += sdata[tid + 512]; } __syncthreads();
+                            if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads();
+                            if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads();
+                            if (tid < 64) {  sdata[tid] += sdata[tid + 64];  } __syncthreads();
+                            if (tid < 32) {
+                                // The last 32 threads don't require __syncthreads() as they can be warped.
+                                warpReduce(sdata, tid);
+
+                                // Save the summed results to global memory.
+                                if (tid == 0) { farfield_intermediate[rid] = sdata[0]; }
+                            }
                         }
-                    }
-                    ''',
-                    'n2f'
-                )
+                        ''',
+                        'n2f'
+                    )
 
                 self.cuda = True
                 self._nearfield2farfield_cuda_intermediate = None
@@ -3088,7 +3228,7 @@ class FreeSpotHologram(FeedbackHologram):
         assert self._near2far_cuda.max_threads_per_block >= threads_per_block
         if self._near2far_cuda.max_threads_per_block > threads_per_block:
             warnings.warn(
-                "Threads per block can be larger than the hardcoded limit of 1024."
+                "Threads per block can be larger than the hardcoded limit of 1024. "
                 "Remove this limit for enhanced speed."
             )
         blocksx = WH // threads_per_block
@@ -3417,7 +3557,6 @@ class FreeSpotHologram(FeedbackHologram):
         self._calculate_stats_experimental_spot(stats, stat_groups)
 
         self._update_stats_dictionary(stats)
-
 
 class SpotHologram(FeedbackHologram):
     """

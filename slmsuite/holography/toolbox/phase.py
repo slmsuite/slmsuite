@@ -168,7 +168,7 @@ def axicon(grid, f=(np.inf, np.inf), w=None):
 
 # Zernike
 
-ZERNIKE_INDEXING_DIMENSION = {"polar" : 2, "cartesian" : 2, "ansi" : 1, "noll" : 1, "fringe" : 1, "wyant" : 1}
+ZERNIKE_INDEXING_DIMENSION = {"ansi" : 1, "noll" : 1, "fringe" : 1, "wyant" : 1, "radial" : 2, "cartesian" : 2}
 ZERNIKE_INDEXING = ZERNIKE_INDEXING_DIMENSION.keys()
 ZERNIKE_NAMES = [
     # Oth order
@@ -207,32 +207,63 @@ ZERNIKE_NAMES = [
 
 def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
     """
-    TODO
+    Helper function for converting between Zernike indexing conventions.
+
+    Currently supported conventions:
+
+     -  ``"radial"``
+        The standard :math:`n,l` indexing for Zernike polynomials, where
+        :math:`n` is the radial index and
+        :math:`l` is the azimuthal index.
+
+     -  ``"cartesian"``
+        A modified
+        The standard :math:`n,l`
+
+     -  ``"ansi"``
+        1-dimensional `ANSI indices
+        https://en.wikipedia.org/wiki/Zernike_polynomials#OSA/ANSI_standard_indices>`_.
+        **This is the default slmsuite unit.**
+
+     -  ``"noll"``
+        1-dimensional `Noll indices
+        <https://en.wikipedia.org/wiki/Zernike_polynomials#Noll's_sequential_indices>`_.
+
+     -  ``"fringe"``
+        1-dimensional `Fringe indices
+        <https://en.wikipedia.org/wiki/Zernike_polynomials#Fringe/University_of_Arizona_indices>`_.
+
+     -  ``"wyant"``
+        1-dimensional `Wyant indices
+        <https://en.wikipedia.org/wiki/Zernike_polynomials#Wyant_indices>`_.
+        Equivalent to ``"fringe"``, except with starting with zero instead of one.
+
     """
+    # Parse arguments.
     if from_index not in ZERNIKE_INDEXING:
-        raise ValueError(f"Index '{from_index}' not recognized as a valid unit. Options: {ZERNIKE_INDEXING}")
+        raise ValueError(f"From index '{from_index}' not recognized as a valid unit. \
+                         Options: {ZERNIKE_INDEXING}")
     if to_index not in ZERNIKE_INDEXING:
-        raise ValueError(f"Index '{to_index}' not recognized as a valid unit. Options: {ZERNIKE_INDEXING}")
+        raise ValueError(f"To index '{to_index}' not recognized as a valid unit. \
+                         Options: {ZERNIKE_INDEXING}")
 
     dimension = ZERNIKE_INDEXING_DIMENSION[from_index]
 
     if indices.shape[0] != dimension:
-        raise ValueError()
+        raise ValueError(f"Expected dimension ({dimension}, N); found {indices.shape}")
 
     indices = np.array(indices, dtype=int, copy=False)
 
-    n = l = None
+    # Convert all cases to radial indices n, l.
 
     if from_index == "cartesian":
         n = indices[0, :]
-        l = 2 * indices[1, :] - n
-    elif from_index == "polar":
+        l = 2 * indices[1, :] - n   # 2m - n
+    elif from_index == "radial":
         n = indices[0, :]
         l = indices[1, :]
-    elif from_index == "noll":
-        pass
-    elif from_index == "wyant" or to_index == "fringe":
-        pass
+    elif from_index == "noll" or to_index == "fringe" or from_index == "wyant":
+        raise RuntimeError(f"from_index '{from_index}' is not supported currently")
     elif from_index == "ansi":
         w = np.floor((np.sqrt(8*indices - 1) - 1) // 2).astype(int)
         t = (w*w + w) // 2
@@ -243,9 +274,10 @@ def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
         n = x + y
         l = y - x
 
+    # Convert to the desired indices.
     if to_index == "cartesian":
         result = np.vstack((n, (l - n) // 2))
-    elif to_index == "polar":
+    elif to_index == "radial":
         result = np.vstack((n, l))
     elif to_index == "noll":
         result = (n * (n + 1)) // 2 + np.abs(l)
@@ -264,7 +296,7 @@ def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
 
 
 
-def zernike(grid, n, m, aperture=None, return_mask=False):
+def zernike(grid, i, aperture=None, return_mask=False):
     r"""
     Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
 
@@ -275,8 +307,8 @@ def zernike(grid, n, m, aperture=None, return_mask=False):
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    n, m : int
-        Cartesian Zernike index defining the polynomial.
+    i : int
+        ANSI Zernike index defining the polynomial.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
         See :meth:`.zernike_sum()`.
     return_mask : bool
@@ -288,36 +320,28 @@ def zernike(grid, n, m, aperture=None, return_mask=False):
     numpy.ndarray
         The phase for this function.
     """
-    return zernike_sum(grid, (((n, m), 1), ), aperture=aperture, return_mask=return_mask)
+    return zernike_sum(grid, ((i, 1), ), aperture=aperture, return_mask=return_mask)
 
 
-def zernike_sum(grid, weights, aperture=None, return_mask=False):
+def zernike_sum(grid, weights, aperture=None, return_mask=False, out=None, dx=0, dy=0):
     r"""
     Returns a summation of
-    `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
+    `Zernike polynomials <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
     in a computationally-efficient manner. To improve performance, especially for higher
     order polynomials, we store a cache of Zernike coefficients to avoid regeneration.
-    See the below example to generate :math:`Z_{20} - Z_{21} + Z_{31}`.
+    See the below example to generate
+    :math:`Z_1 - Z_2 + Z_3 = Z_2^{-1} - Z_2^{-1} + Z_2^{-1}`.
 
     .. highlight:: python
     .. code-block:: python
 
         zernike_sum_phase = toolbox.phase.zernike_sum(
             grid=slm,
-            weights=(   ((2, 0),  1),       # Z_20
-                        ((2, 1), -1),       # Z_21
-                        ((3, 1),  1)    ),  # Z_31
+            weights=(   (1,  1),       # Z_20
+                        (2, -1),       # Z_21
+                        (3,  1)    ),  # Z_31
             aperture="circular"
         )
-
-
-    Note
-    ~~~~
-    There are different schemes to index Zernike polynomials.
-    We use the indexing defined in `this paper <https://doi.org/10.1117/12.294412>`_,
-    along with the algorithm defined there.
-    Other packages use different schemes, sometimes defining
-    :math:`m' = l = n - 2m`. Take care to avoid confusion.
 
     Important
     ~~~~~~~~~
@@ -335,9 +359,9 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False):
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    weights : list of ((int, int), float)
-        Which Zernike polynomials to sum. The ``(int, int)`` is the index ``(n, m)``,
-        which correspond to the azimuthal degree and order of the polynomial.
+    weights : list of (int, float)
+        Which Zernike polynomials to sum.
+        The ``int`` is the ANSI index ``i``.
         The ``float`` is the weight for the given index.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
         How to scale the polynomials relative to the grid shape. This is relative
@@ -346,19 +370,28 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False):
         ``"circular"``, ``None``
           The circle is scaled isotropically until the pupil edge touches the grid edge.
           This is the default aperture.
+
         ``"elliptical"``
-          The circle is scaled anisotropically until each cartesian pupil edge touches a grid
+          The circle is scaled anisotropically until each pupil edge touches a grid
           edge. Generally produces and ellipse.
+
         ``"cropped"``
           The circle is scaled isotropically until the rectangle of the grid is
           circumscribed by the circle.
+
         ``(float, float)``
           Custom scaling. These values are multiplied to the ``x_grid`` and ``y_grid``
           directly, respectively. The edge of the pupil corresponds to where
           ``x_grid**2 + y_grid**2 = 1``.
+
     return_mask : bool
         Whether or not to return the 2D mask showing where Zernikes are computed
         instead of the phase.
+    out : array_like
+
+    dx, dy : int
+        If non-zero, returns the Zernike derivative of the given order.
+        For instance, `dx = 1, dy = 0` corresponds to the first derivative in the x direction.
 
     Returns
     -------
@@ -388,7 +421,7 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False):
         x_scale = aperture[0]
         y_scale = aperture[1]
     else:
-        raise ValueError("Type {} not recognized.".format(type(aperture)))
+        raise ValueError("Aperture type {} not recognized.".format(type(aperture)))
 
     # At the end, we're going to set the values outside the aperture to zero.
     # Make a mask for this if it's necessary.
@@ -410,30 +443,46 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False):
     summed_coefficients = {}
 
     for (key, weight) in weights:
-        coefficients = _zernike_coefficients(key[0], key[1])
+        coefficients = _zernike_coefficients(key)
 
         for power_key, factor in coefficients.items():
             power_factor = factor * weight
+
+            if dx != 0 or dy != 0:
+                # Apply the power rule to the coefficient.
+                if dx != 0:
+                    power_factor *= factorial(power_key[0]) / factorial(power_key[0] - dx)
+                if dy != 0:
+                    power_factor *= factorial(power_key[1]) / factorial(power_key[1] - dy)
+
+                # Change the power key based on derivatives.
+                power_key = (power_key[0] - dx, power_key[1] - dy)
+
+            # Add the coefficient to the sum for the given monomial power.
             if power_key in summed_coefficients:
                 summed_coefficients[power_key] += power_factor
             else:
                 summed_coefficients[power_key] = power_factor
 
     # Finally, build the polynomial.
-    canvas = np.zeros(x_grid.shape)
+    if False:
+        canvas = np.zeros(x_grid.shape)
 
-    for power_key, factor in summed_coefficients.items():
-        if factor != 0:
-            if power_key == (0,0):
-                if use_mask:
-                    canvas[mask] += factor
+        for power_key, factor in summed_coefficients.items():
+            if factor != 0:
+                if power_key == (0,0):
+                    if use_mask:
+                        canvas[mask] += factor
+                    else:
+                        canvas += factor
                 else:
-                    canvas += factor
-            else:
-                if use_mask:
-                    canvas[mask] += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
-                else:
-                    canvas += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+                    if use_mask:
+                        canvas[mask] += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+                    else:
+                        canvas += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+    else:
+        pass
+
 
     return canvas
 
@@ -444,27 +493,21 @@ _zernike_cache = {}
 #   N x M, N spans cantor polynomial indices and M spans ansi Zernike indices.
 _zernike_cache_vectorized = np.array([[]])
 
-def _zernike_coefficients(n, m):
+def _zernike_coefficients(i):
     """
-    Returns the coefficients for the :math:`x^ay^b` terms of the real cartesian Zernike polynomial
-    of index `(`n, m)``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
-    Uses the algorithm and indexing given in `this paper <https://doi.org/10.1117/12.294412>`_.
+    Returns the coefficients for the :math:`x^ay^b` terms of the real Zernike polynomial
+    of ANSI index ``i``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
+    Uses `this algorithm <https://doi.org/10.1117/12.294412>`_.
     """
-    n = int(n)
-    m = int(m)
-
-    assert 0 <= m <= n, "Invalid cartesian Zernike index."
+    i = int(i)
 
     # Generate coefficients only if we have not already generated.
-    key = (n, m)
-    ansi = convert_zernike_index(key, "cartesian", "ansi")
-
-    if not key in _zernike_cache:
+    if not i in _zernike_cache:
         zernike_this = {}
 
-        # Define helper variables.
-        l = n - 2 * m
+        (n, l) = convert_zernike_index(i, to_index="radial")
 
+        # Define helper variables.
         if l % 2:   # If even
             q = int((abs(l) - 1) / 2)
         else:
@@ -507,33 +550,69 @@ def _zernike_coefficients(n, m):
                         zernike_this[power_key] = factor
 
         # Update the cache. Remove all factors that have cancelled out (== 0).
-        _zernike_cache[key] = {power_key: factor for power_key, factor in zernike_this.items() if factor != 0}
+        _zernike_cache[i] = {power_key: factor for power_key, factor in zernike_this.items() if factor != 0}
 
-    M = ansi
+        # If we need to, enlarge the vector cache.
+        if _zernike_cache_vectorized.shape[1] < M+1:
+            # Enlarge by a factor of two for padding.
 
-    # If we need to, enlarge the vector cache.
-    if _zernike_cache_vectorized.shape[1] < M+1:
-        # Enlarge by a factor of two for padding.
+            n = convert_zernike_index(ansi, "ansi", "cartesian")[0]
 
-        n = convert_zernike_index(ansi, "ansi", "cartesian")[0]
+            N = factorial(n)
 
-        N = factorial(n)
+            _zernike_cache_vectorized = np.pad(
+                _zernike_cache_vectorized,
+                (
+                    (0, M + 1 - _zernike_cache_vectorized.shape[0]),
+                    (0, N - _zernike_cache_vectorized.shape[1])
+                ),
+                constant_values=0
+            )
 
-        _zernike_cache_vectorized = np.pad(
-            _zernike_cache_vectorized,
-            (
-                (0, M + 1 - _zernike_cache_vectorized.shape[0]),
-                (0, N - _zernike_cache_vectorized.shape[1])
-            ),
-            constant_values=0
-        )
-
-        for power_key, factor in _zernike_cache[key].items():
-            cantor_index = _cantor_pairing(power_key)
-            _zernike_cache_vectorized[ansi, cantor_index] = factor
+            for power_key, factor in _zernike_cache[i].items():
+                cantor_index = _cantor_pairing(power_key)
+                _zernike_cache_vectorized[i, cantor_index] = factor
 
     return _zernike_cache[key]
 
+def zernike_expand(grid, phase, phase_dx=None, phase_dy=None, rsquared=None, order=5, tolerance=.001):
+    r"""
+    Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    phase : array_like
+        Measured phase pattern of the same shape as the grids to expand as a summation
+        of Zernike polynomials.
+    phase_dx, phase_dy : array_like
+        Measured derivatives in the x and y directions of the phase pattern.
+        This helps to pin the accuracy of the fit. Of the same shape as the grids.
+    rsquared : array_like
+        Measured fit r-squared. This helps to ignore parts of the phase pattern (and
+        derivates) which are invalid during measurement. Of the same shape as the grids.
+    order : int
+        TODO
+    tolerance : int
+        TODO
+
+    Returns
+    -------
+    weights : list of ((int, int), float)
+        The coefficients of the Zernike fit. The ``(int, int)`` is the index ``(n, m)``,
+        which correspond to the azimuthal degree and order of the polynomial in ``"asci"``
+        zernike indices.  The ``float`` is the weight for the given index.
+    """
+    # Parse passed values
+    (x_grid, y_grid) = _process_grid(grid)
+
+
+
+    return fit
 
 # Polynomials
 
@@ -573,7 +652,7 @@ def _term_pathing(xy):
     It may also be the case that optimizing for large-step multiplications can yield a
     speedup. (e.g. `x^5 = y * y * x` with `y = x * x` costs three multiplications instead
     of five) However, it is unlikely that users will need the very-high-order
-    polynomials would would experiance an appreciable speedup.
+    polynomials would would experience an appreciable speedup.
     """
     # Prepare helper variables.
     xy = np.array(xy, dtype=int, copy=False)
@@ -674,6 +753,10 @@ try:
 
                         // Add the monomial to the result.
                         result += coefficients[k] * monomial;
+
+                        // Update the state of the monomial
+                        nx0 = nx;
+                        ny0 = ny;
                     }
                 }
 
@@ -689,6 +772,15 @@ except:
 
 def polynomial_sum(grid, weights, terms=None, pathing=None, out=None):
     """
+    Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
 
     """
     # Parse terms
@@ -726,7 +818,7 @@ def polynomial_sum(grid, weights, terms=None, pathing=None, out=None):
             raise RuntimeError("TODO")
 
     # Decide whether to use numpy/cupy or CUDA
-    if _polynomial_sum_kernel is None:  # numpy/cupy
+    if cp == np or _polynomial_sum_kernel is None or cp.get_array_module(x_grid) == np:  # numpy/cupy
         out.fill(0)
         nx0 = ny0 = 0
         if cp == np:

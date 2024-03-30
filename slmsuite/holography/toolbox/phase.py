@@ -553,11 +553,7 @@ def _zernike_coefficients(i):
         _zernike_cache[i] = {power_key: factor for power_key, factor in zernike_this.items() if factor != 0}
 
         # If we need to, enlarge the vector cache.
-        if _zernike_cache_vectorized.shape[1] < M+1:
-            # Enlarge by a factor of two for padding.
-
-            n = convert_zernike_index(ansi, "ansi", "cartesian")[0]
-
+        if _zernike_cache_vectorized.shape[1] < i+1:
             N = factorial(n)
 
             _zernike_cache_vectorized = np.pad(
@@ -573,7 +569,7 @@ def _zernike_coefficients(i):
                 cantor_index = _cantor_pairing(power_key)
                 _zernike_cache_vectorized[i, cantor_index] = factor
 
-    return _zernike_cache[key]
+    return _zernike_cache[i]
 
 def zernike_expand(grid, phase, phase_dx=None, phase_dy=None, rsquared=None, order=5, tolerance=.001):
     r"""

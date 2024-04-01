@@ -140,7 +140,9 @@ html_last_updated_fmt = "%b %d, %Y"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the built-in "default.css".
-html_static_path = [] # ["static"]
+# html_static_path = [] # ["static"]
+# html_static_path = ['static']
+# html_css_files = ['custom.css']
 
 # Add a logo
 # html_theme_options = {"logo_only": True}

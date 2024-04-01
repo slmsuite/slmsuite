@@ -1,18 +1,39 @@
 slmsuite
 ========
 
-|slmsuite|_ is a python package for high-precision
+|slmsuite|_ is a Python package for high-precision
 spatial light modulator (SLM) control and holography.
 
+.. .. sidebar:: Hone Your Spots
+
+..    An advanced GPU kernel enables spot-specific aberration correction.
+
+..    .. image:: /static/ex-onn.png
+..     :class: only-dark
+
+..    .. image:: /static/ex-onn.png
+..       :class: only-light
+
+.. sidebar:: Enhance Your Holography
+
+   Increasing levels of feedback generate
+   crisper approximations of a target pattern.
+
+   .. image:: /static/readme-example-dark.png
+    :class: only-dark
+
+   .. image:: /static/readme-example.png
+      :class: only-light
+
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: Getting Started
 
-   why
+   introduction
    installation
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: User Guide
 
    examples

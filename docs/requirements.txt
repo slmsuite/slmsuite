@@ -1,15 +1,18 @@
 numpy
 scipy
-opencv-python
+# opencv-python
 matplotlib
 h5py
 tqdm
 nbsphinx
 IPython
-docutils <0.17
-sphinx == 5.3.0
+docutils #<0.17
+# sphinx == 5.3.0
+sphinx
 sphinx_copybutton
 sphinx_last_updated_by_git
 sphinx_rtd_theme
 requests
 pandoc
+pydata-sphinx-theme
+sphinx_design

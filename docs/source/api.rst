@@ -5,6 +5,11 @@ API Reference
 This page provides an auto-generated summary of |slmsuite|_'s API. You can
 find the source on `GitHub <https://github.com/QPG-MIT/slmsuite>`_.
 
+|slmsuite|_ is divided into three main modules:
+algorithms and analysis in :mod:`holography`,
+connectivity to physical devices via :mod:`hardware`, and
+other useful functions in :mod:`misc`.
+
 Holography
 ==========
 

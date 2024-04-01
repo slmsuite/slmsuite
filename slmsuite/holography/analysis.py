@@ -11,6 +11,7 @@ from slmsuite.holography.toolbox import format_2vectors
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.fitfunctions import gaussian2d
 
+# Take and associated functions
 
 def take(
         images, vectors, size,
@@ -758,6 +759,8 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
     return result
 
 
+# Array fitting functions.
+
 def fit_affine(x, y, guess_affine=None, plot=False):
     r"""
     For two sets of points with equal length, find the best-fit affine
@@ -1499,6 +1502,8 @@ def blob_array_detect(
 
     return orientation
 
+
+# Other image helper functions.
 
 def _make_8bit(img):
     """

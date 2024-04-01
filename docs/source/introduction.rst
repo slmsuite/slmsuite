@@ -1,7 +1,10 @@
-.. _why:
+.. _introduction:
+
+Introduction
+============
 
 Why :mod:`slmsuite`?
-====================
+--------------------
 
 Because **using** a spatial light modulator (SLM) should be as easy as buying an SLM.
 

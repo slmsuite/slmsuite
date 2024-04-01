@@ -81,11 +81,12 @@ def cos(x, b, a, c, k=1):
 
 def lorentzian(x, x0, a, c, Q):
     r"""
-    For fitting an offset resonance.
+    For fitting a resonance.
+    There are many ways to describe a Lorentzian. Commonly, a full-width-half-maximum
+    definition is used. Here, with roots in photonic crystal cavities, we include a
+    form defined using the quality factor :math:`Q` of the resonance.
 
     .. math:: y(x) = c + \frac{a}{1 + \left[\frac{x - x_0}{x_0/2Q}\right]^2}.
-
-    :math:`Q` is the quality factor of the resonance.
 
     Parameters
     ----------
@@ -96,7 +97,7 @@ def lorentzian(x, x0, a, c, Q):
     a : float
         Amplitude.
     c : float
-        constant offset.
+        Constant offset.
     Q : float
         Quality factor.
 
@@ -183,16 +184,19 @@ def gaussian(x, x0, a, c, w):
 def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     r"""
     For fitting a 2D Gaussian.
+    There are two cases which depend on the shear variance ``wxy``
+    (equivalent to :math:`M_{11}`;
+    see :meth:`~slmsuite.holography.analysis.image_moment()`).
 
-    When the shear variance ``wxy`` (equivalent to :math:`M_{11}`;
-    see :meth:`~slmsuite.holography.analysis.image_moment()`) is zero,
+    When ``wxy`` is zero,
+    then we have the usual form of a Gaussian:
 
     .. math:: z(x,y) = c + a \exp \left[
                                 \frac{(x-x_0)^2}{2w_x^2} +
                                 \frac{(y-y_0)^2}{2w_y^2}
                                 \right].
 
-    When ``wxy`` is nonzero, we want to find the Gaussian which will have second
+    When ``wxy`` is nonzero, the 2D Gaussian to have second
     order central moments (equivalent to variance;
     see :meth:`~slmsuite.holography.analysis.image_variances()`) satisfying:
 
@@ -207,7 +211,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
                     w_{xy} & w_y^2
                 \end{bmatrix}.
 
-    The equation satisfying this condition is:
+    The following satisfies satisfying the above condition:
 
     .. math:: z(x,y) = c + a \exp \left[
                                 -\frac{1}{2}\left(
@@ -229,7 +233,8 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     Caution
     ~~~~~~~
     The shear variance :math:`w_{xy}` does not have the same units as the widths
-    :math:`w_x` and :math:`w_y`.
+    :math:`w_x` and :math:`w_y`. The widths have units of space, whereas the shear
+    variance has units of squared space.
 
     Note
     ~~~~
@@ -280,7 +285,12 @@ def tophat2d(xy, x0, y0, r, a=1, c=0):
     r"""
     For fitting a 2D tophat distribution.
 
-    .. math:: z(x,y) = c.
+    .. math:: z(x,y) =  \left\{
+                            \begin{array}{ll}
+                                a + c, & x^2 + y^2 < r^2 \\
+                                c, & \text{ otherwise}.
+                            \end{array}
+                        \right.
 
     Parameters
     ----------

@@ -5,7 +5,7 @@ Tested with Santec LCoS SLM-200, SLM-210, and SLM-300.
 Note
 ~~~~
 :class:`.Santec` requires dynamically linked libraries from Santec to be present in the
-:mod:`~slmsuite.hardware.slms` directory:
+runtime directory:
 
  - SLMFunc.dll
  - FTD3XX.dll
@@ -29,12 +29,12 @@ try:                        # Load Santec's header file.
     from . import _slm_win as slm_funcs
 except BaseException as e:  # Provide an informative error should something go wrong.
     print("santec.py: Santec DLLs not installed. Install these to use Santec SLMs.")
-    print(  "  Dynamically linked libraries from Santec (usually provided via USB) must be present in the slms directory:\n"
+    print(  "  Dynamically linked libraries from Santec (usually provided via USB) "
+            "must be present in the runtime directory:\n"
             "  - SLMFunc.dll\n  - FTD3XX.dll\n"
-            "  You can find the slms directory at '{}'\n"
-            "  Check that theses files are present and are error-free.\nOriginal error: {}".format(
-                os.path.dirname(os.path.abspath(__file__)), e
-    ))
+            "  Check that theses files are present and are error-free.\n"
+            "Original error: {}".format(e)
+    )
 
 
 class Santec(SLM):

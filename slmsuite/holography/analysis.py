@@ -71,7 +71,10 @@ def take(
     """
     # Clean variables.
     if isinstance(size, REAL_TYPES):
+        size = int(size)
         size = (size, size)
+    else:
+        size = (int(size[0]), int(size[1]))
 
     vectors = format_2vectors(vectors)
 
@@ -137,6 +140,10 @@ def take(
         if integrate:  # Sum over the integration axis.
             return mp.squeeze(mp.sum(result, axis=-1))
         else:  # Reshape the integration axis.
+            # print(result.shape)
+            # print(result.size)
+            # print((vectors.shape[1], size[1], size[0]))
+            # print(np.prod((vectors.shape[1], size[1], size[0])))
             return mp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 

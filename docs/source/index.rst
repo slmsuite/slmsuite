@@ -1,3 +1,6 @@
+slmsuite
+========
+
 .. .. sidebar:: Hone Your Spots
 
 ..    An advanced GPU kernel enables spot-specific aberration correction.
@@ -7,6 +10,9 @@
 
 ..    .. image:: /static/ex-onn.png
 ..       :class: only-light
+
+|slmsuite|_ is a Python package for high-precision
+spatial light modulator (SLM) control and holography.
 
 .. sidebar:: Enhance Your Holography
 
@@ -18,12 +24,6 @@
 
    .. image:: /static/readme-example.png
       :class: only-light
-
-slmsuite
-========
-
-|slmsuite|_ is a Python package for high-precision
-spatial light modulator (SLM) control and holography.
 
 .. toctree::
    :maxdepth: 2

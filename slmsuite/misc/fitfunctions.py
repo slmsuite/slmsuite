@@ -325,7 +325,7 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
 
     where
 
-    .. math:: \text{sinc}(t) = \frac{\sin(x)}{x}
+    .. math:: \text{sinc}(x) = \frac{\sin(x)}{x}
 
     Parameters
     ----------
@@ -334,7 +334,7 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     x0, y0 : float
         Vector offset.
     R : float
-        Square radius of the sinc (diameter of the first zero).
+        Square radius of the sinc (radius of the first zero).
     a : float
         Peak amplitude.
     b : float
@@ -357,4 +357,204 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
         np.square(np.sinc((1 / R) * x) * np.sinc((1 / R) * y))
         * (a * 0.5 * (1 + np.cos(kx * x + ky * y - b)) + c) + d
     )
+
+def sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
+    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+    r"""
+    For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
+
+    .. math:: z(x,y) =  d + a * \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
+
+    where
+
+    .. math:: \text{sinc}(x) = \frac{\sin(x)}{x}
+
+    Parameters
+    ----------
+    xy : numpy.ndarray
+        Points to fit upon (x, y).
+    x0, y0 : float
+        Vector offset.
+    R : float
+        Square radius of the sinc (radius of the first zero).
+    a : float
+        Peak amplitude.
+    d : float
+        Global offset.
+
+    Returns
+    -------
+    z : numpy.ndarray
+        Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
+    """
+    return (
+        a * np.square(np.sinc((1 / R) * (xy[0] - x0)) * np.sinc((1 / R) * (xy[1] - y0))) + d
+    )
+
+def sinc2d_nomod_taylor(xy, x0, y0, R, a=1, d=0):
+    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+    r"""
+    For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
+
+    .. math:: z(x,y) =  d + a * \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
+
+    where
+
+    .. math:: \text{sinc}(x) = \frac{\sin(x)}{x}
+
+    Parameters
+    ----------
+    xy : numpy.ndarray
+        Points to fit upon (x, y).
+    x0, y0 : float
+        Vector offset.
+    R : float
+        Square radius of the sinc (radius of the first zero).
+    a : float
+        Peak amplitude.
+    d : float
+        Global offset.
+
+    Returns
+    -------
+    z : numpy.ndarray
+        Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
+    """
+    return (
+        a * np.square(_sinc_taylor((1 / R) * (xy[0] - x0)) * _sinc_taylor((1 / R) * (xy[1] - y0))) + d
+    )
+
+def sinc2d_centered(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
+    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+    r"""
+    For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
+
+    .. math:: z(x,y) =  d + \left(c + \frac{a}{2} \left[1+\cos(k_xx+k_yy-b) \right]\right) *
+                        \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
+
+    where
+
+    .. math:: \text{sinc}(x) = \frac{\sin(x)}{x}
+
+    Parameters
+    ----------
+    xy : numpy.ndarray
+        Points to fit upon (x, y).
+    R : float
+        Square radius of the sinc (radius of the first zero).
+    a : float
+        Peak amplitude.
+    b : float
+        Phase offset.
+    c : float
+        Sinusoidal amplitude offset.
+    d : float
+        Global offset.
+    kx, ky : float
+        Vector phase scale factor. Default is 1.
+
+    Returns
+    -------
+    z : numpy.ndarray
+        Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
+    """
+    return (
+        np.square(np.sinc((1 / R) * xy[0]) * np.sinc((1 / R) * xy[1]))
+        * (a * 0.5 * (1 + np.cos(kx * xy[0] + ky * xy[1] - b)) + c) + d
+    )
+
+def sinc2d_centered_taylor(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
+    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+    r"""
+    For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
+
+    .. math:: z(x,y) =  d + \left(c + \frac{a}{2} \left[1+\cos(k_xx+k_yy-b) \right]\right) *
+                        \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
+
+    where
+
+    .. math:: \text{sinc}(x) = \frac{\sin(x)}{x}
+
+    Parameters
+    ----------
+    xy : numpy.ndarray
+        Points to fit upon (x, y).
+    R : float
+        Square radius of the sinc (radius of the first zero).
+    a : float
+        Peak amplitude.
+    b : float
+        Phase offset.
+    c : float
+        Sinusoidal amplitude offset.
+    d : float
+        Global offset.
+    kx, ky : float
+        Vector phase scale factor. Default is 1.
+
+    Returns
+    -------
+    z : numpy.ndarray
+        Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
+    """
+    return (
+        np.square(_sinc_taylor((1 / R) * xy[0]) * _sinc_taylor((1 / R) * xy[1]))
+        * (a * 0.5 * (1 + np.cos(kx * xy[0] + ky * xy[1] - b)) + c) + d
+    )
+
+def _sinc_taylor(x, order=12):
+    """
+    Taylor series approximation for sinc. We use the numpy normalization.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        Array to approximate sinc(x) upon.
+    order : int
+        Order of 12 approximates well up to the second zero.
+    """
+    squared = np.square(np.pi * x)
+    monomial = squared.copy()
+    result = 1
+
+    for n in range(2, order+2, 2):
+        if n != 2:
+            monomial *= squared
+        result += monomial * ((-1 if n % 4 == 2 else 1) / np.math.factorial(n+1))
+
+    return result
+
+
+def sinc2d_centered_jacobian(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
+    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+    r"""
+    Returns
+    -------
+    z : numpy.ndarray
+        Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
+    """
+    scx = np.sinc((1 / R) * xy[0])
+    scy = np.sinc((1 / R) * xy[1])
+    cx = np.cos((1 / R) * xy[0])
+    cy = np.cos((1 / R) * xy[1])
+    sinc_term = np.square(scx * scy)
+    cos_term = 0.5 * (1 + np.cos(kx * xy[0] + ky * xy[1] - b))
+    dcos_term = -0.5 * np.sin(kx * xy[0] + ky * xy[1] - b)
+    return np.vstack((
+        # R
+        (2 / R) * scx * scy * (scx * (scy - cy) + scy * (scx - cx))
+        * (a * cos_term + c),
+        # a
+        sinc_term * cos_term,
+        # b
+        -sinc_term * a * dcos_term,
+        # c
+        sinc_term,
+        # d
+        np.full_like(xy[0], 1),
+        # kx
+        xy[0] * sinc_term * a * dcos_term,
+        # ky
+        xy[1] * sinc_term * a * dcos_term,
+    )).T
 

@@ -610,30 +610,33 @@ def image_ellipticity_angle(variances):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
-def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=False):
+def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, bounds=None, plot=False):
     """
     Fit each image in a stack of images to a 2D ``function``.
 
     Parameters
     ----------
-    images : numpy.ndarray (image_count, height, width)
+    images : numpy.ndarray (``image_count``, ``height``, ``width``)
         An image or array of images to fit. A single image is interpreted correctly as
         ``(1, h, w)`` even if ``(h, w)`` is passed.
-    grid_ravel : 2-tuple of array_like of reals (height * width)
+    grid_ravel : 2-tuple of array_like of reals (``height`` * ``width``) OR None
         Raveled components of the meshgrid describing coordinates over the images.
+        If ``None``, makes a grid with unit pitch centered on the images.
     function : lambda ((float, float), ... ) -> float
         Some fitfunction which accepts ``(x,y)`` coordinates as first argument.
         Defaults to :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`.
-    guess : None OR numpy.ndarray (parameter_count, image_count)
+    guess : None OR numpy.ndarray (``image_count``, ``parameter_count``)
         - If ``guess`` is ``None``, will construct a guess based on the ``function`` passed.
           Functions for which guesses are implemented include:
 
-          - :meth:`~~slmsuite.misc.fitfunctions.gaussian2d()`
+          - :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`
 
         - If ``guess`` is ``None`` and ``function`` does not have a guess
           implemented, no guess will be provided to the optimizer.
-        - If ``guess`` is a ``numpy.ndarray``, a slice of the array will be provided
+        - If ``guess`` is a ``numpy.ndarray``, a column of the array will be provided
           to the optimizer as a guess for the fit parameters for each image.
+    bounds : None or (numpy.ndarray, numpy.ndarray)
+        TODO
     plot : bool
         Whether to create a plot for each fit.
     show : bool
@@ -642,7 +645,7 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
 
     Returns
     -------
-    numpy.ndarray (``result_count``, ``image_count``)
+    numpy.ndarray (``image_count``, ``result_count``)
         A matrix with the fit results. The first row
         contains the rsquared quality of each fit.
         The values in the remaining rows correspond to the parameters
@@ -668,12 +671,12 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
         grid = np.meshgrid(edge_x, edge_y)
         grid_ravel = (grid[0].ravel(), grid[1].ravel())
 
-    # Number of fit parameters the function accepts.
+    # Number of fit parameters the function accepts (minus 1 for xy).
     param_count =  function.__code__.co_argcount - 1
 
-    # Number of parameters to return.
+    # Number of parameters to return (plus 1 for rsquared).
     result_count = param_count + 1
-    result = np.full((result_count, image_count), np.nan)
+    result = np.full((image_count, result_count), np.nan)
 
     # Construct guesses.
     if guess is None:
@@ -690,22 +693,16 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
                 mins,
                 np.sqrt(variances[0:2, :]),
                 variances[2, :]
-            ))
-
-            guess_raw = np.vstack((
-                centers,
-                maxs - mins,
-                mins,
-                variances[0:2, :],
-                variances[2, :]
-            ))
+            )).transpose()
+        else:
+            raise NotImplementedError("Default guess for function not implemented.")
 
     # Fit and plot each image.
     for img_idx in range(image_count):
         img = images[img_idx, :, :].ravel()
 
         # Get guess.
-        p0 = None if guess is None else guess[:, img_idx]
+        p0 = None if guess is None else guess[img_idx]
 
         # Attempt fit.
         fit_succeeded = True
@@ -727,8 +724,8 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
             popt = p0 if p0 is not None else np.full(param_count, np.nan)
             r2 = np.nan
 
-        result[0, img_idx] = r2
-        result[1:, img_idx] = popt
+        result[img_idx, 0] = r2
+        result[img_idx, 1:] = popt
 
         # Plot.
         if plot:

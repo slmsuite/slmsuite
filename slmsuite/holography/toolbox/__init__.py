@@ -886,11 +886,20 @@ def smallest_distance(vectors, metric=chebyshev):
         Function to use to compare.
         Defaults to :meth:`scipy.spatial.distance.chebyshev()`.
         :meth:`scipy.spatial.distance.euclidean()` is also common.
+
+    Returns
+    -------
+    float
+        Minimum distance between any pair of points under the given metric.
+        If fewer than two points are given, then ``np.inf`` is returned.
     """
     vectors = format_2vectors(vectors)
     N = vectors.shape[1]
 
     minimum = np.inf
+
+    if N <= 1:
+        return minimum
 
     for x in range(N - 1):
         for y in range(x + 1, N):

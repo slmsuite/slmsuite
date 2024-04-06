@@ -4,9 +4,12 @@ Abstract functionality for SLMs.
 
 import time
 import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from PIL import Image
 
 from slmsuite.holography import toolbox
+from slmsuite.misc import fitfunctions
 from slmsuite.misc.math import INTEGER_TYPES
 from slmsuite.holography import analysis
 
@@ -66,21 +69,27 @@ class SLM:
         Of size :attr:`shape`. Produced by :meth:`numpy.meshgrid`.
     y_grid
         See :attr:`x_grid`.
-    measured_amplitude : numpy.ndarray or None
-        Amplitude measured on the SLM via
-        :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate()`.
-        Of size :attr:`shape`.
-        Also see :meth:`set_measured_amplitude_analytic()` to set :attr:`measured_amplitude`
-        without wavefront calibration. Defaults to ``None`` when no correction is provided.
-    phase_correction : numpy.ndarray or None
-        Phase correction devised for the SLM by
-        :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
-        Of size :attr:`shape`. Defaults to ``None`` when no correction is provided.
+    source : dict
+        Stores data describing measured, simulated, or estimated properties of the source,
+        such as amplitude and phase.
+        Typical keys include:
+            'amplitude' : numpy.ndarray
+                Source amplitude (with the dimensions of :attr:`shape`) measured on the SLM via
+                :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate()`.
+                Also see :meth:`set_source_analytic()` to set without wavefront calibration.
+            'phase' : numpy.ndarray
+                Source phase (with the dimensions of :attr:`shape`) measured on the SLM via
+                :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
+                Also see :meth:`set_source_analytic()` to set without wavefront calibration.
+        For a :class:`.SimulatedSLM()`, 'amplitude_sim' and 'phase_sim' keywords
+        store the true source properties (defined by the user) used to simulate the SLM's
+        far-field.
     phase : numpy.ndarray
         Displayed data in units of phase delay (normalized).
     display : numpy.ndarray
         Displayed data in SLM units (integers).
     """
+
     def __init__(
         self,
         width,
@@ -130,7 +139,7 @@ class SLM:
 
         # Resolution of the SLM.
         self.bitdepth = bitdepth
-        self.bitresolution = 2 ** bitdepth
+        self.bitresolution = 2**bitdepth
 
         # time to delay after writing (allows SLM to stabilize).
         self.settle_time_s = settle_time_s
@@ -143,13 +152,12 @@ class SLM:
         self.dy = dy_um / self.wav_um
 
         # Make normalized coordinate grids.
-        xpix = (width - 1) *  np.linspace(-.5, .5, width)
-        ypix = (height - 1) * np.linspace(-.5, .5, height)
+        xpix = (width - 1) * np.linspace(-0.5, 0.5, width)
+        ypix = (height - 1) * np.linspace(-0.5, 0.5, height)
         self.x_grid, self.y_grid = np.meshgrid(self.dx * xpix, self.dy * ypix)
 
-        # Phase and amplitude corrections.
-        self.phase_correction = None
-        self.measured_amplitude = None
+        # Source profile dictionary
+        self.source = {}
 
         # Decide dtype
         if self.bitdepth <= 8:
@@ -180,13 +188,14 @@ class SLM:
         list
             An empty list.
         """
-        if verbose: print(".info() NotImplemented.")
+        if verbose:
+            print(".info() NotImplemented.")
         return []
 
     def load_vendor_phase_correction(self, file_path):
         """
         Loads vendor-provided phase correction from file,
-        setting :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`.
+        setting :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]`.
         By default, this is interpreted as an image file and is padded or unpadded to
         the shape of the SLM.
         Subclasses should implement vendor-specific routines for loading and
@@ -200,7 +209,7 @@ class SLM:
         Returns
         ----------
         numpy.ndarray
-            :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction`,
+            :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]`,
             the vendor-provided phase correction.
         """
         # Load an invert the image file (see phase sign convention rules in write).
@@ -217,18 +226,19 @@ class SLM:
 
         if np.abs(np.diff(file_shape_error)) > 1:
             raise ValueError(
-                "Note sure how to pad or unpad correction shape {} to SLM shape {}."
-                .format(phase_correction.shape, self.shape)
+                "Note sure how to pad or unpad correction shape {} to SLM shape {}.".format(
+                    phase_correction.shape, self.shape
+                )
             )
 
         if np.any(file_shape_error > 1):
-            self.phase_correction = toolbox.unpad(phase_correction, self.shape)
+            self.source["phase"] = toolbox.unpad(phase_correction, self.shape)
         elif np.any(file_shape_error < 1):
-            self.phase_correction = toolbox.pad(phase_correction, self.shape)
+            self.source["phase"] = toolbox.pad(phase_correction, self.shape)
         else:
-            self.phase_correction = phase_correction
+            self.source["phase"] = phase_correction
 
-        return self.phase_correction
+        return self.source["phase"]
 
     def _write_hw(self, phase):
         """
@@ -333,7 +343,7 @@ class SLM:
             cropped, then the cropped data is stored, etc. If integer data was passed, the
             equivalent floating point phase is computed and stored in the attribute :attr:`phase`.
         phase_correct : bool
-            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.phase_correction` to ``phase``.
+            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]` to ``phase``.
         settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
 
@@ -359,15 +369,23 @@ class SLM:
         else:
             # Make sure the array is an ndarray.
             phase = np.array(phase)
-
-        if phase is not None and isinstance(phase, INTEGER_TYPES):
+        # TODO: everything goes to .issubdtype
+        if phase is not None and np.issubdtype(phase.dtype, np.integer):
             # Check the type.
             if phase.dtype != self.display.dtype:
-                raise TypeError("Unexpected integer type {}. Expected {}.".format(phase.dtype, self.display.dtype))
+                raise TypeError(
+                    "Unexpected integer type {}. Expected {}.".format(
+                        phase.dtype, self.display.dtype
+                    )
+                )
 
             # If integer data was passed, check that we are not out of range.
             if np.any(phase >= self.bitresolution):
-                raise TypeError("Integer data must be within the bitdepth ({}-bit) of the SLM.".format(self.bitdepth))
+                raise TypeError(
+                    "Integer data must be within the bitdepth ({}-bit) of the SLM.".format(
+                        self.bitdepth
+                    )
+                )
 
             # Copy the pattern and unpad if necessary.
             if phase.shape != self.shape:
@@ -376,7 +394,9 @@ class SLM:
                 np.copyto(self.display, phase)
 
             # Update the phase variable with the integer data that we displayed.
-            self.phase = 2 * np.pi - self.display * (2 * np.pi / self.phase_scaling / self.bitresolution)
+            self.phase = 2 * np.pi - self.display * (
+                2 * np.pi / self.phase_scaling / self.bitresolution
+            )
         else:
             # If float data was passed (or the None case).
             # Copy the pattern and unpad if necessary.
@@ -387,8 +407,8 @@ class SLM:
                     np.copyto(self.phase, phase)
 
             # Add phase correction if requested.
-            if phase_correct and self.phase_correction is not None:
-                self.phase += self.phase_correction
+            if phase_correct and ("phase" in self.source):
+                self.phase += self.source["phase"]
                 zero_phase = False
 
             # Pass the data to self.display.
@@ -471,14 +491,14 @@ class SLM:
                 # generate checks for the conversion to long integer / etc before the final
                 # conversion to dtype of uint8 or uint16.
                 np.mod(phase, self.bitresolution * self.phase_scaling, out=phase)
-                phase +=  self.bitresolution * (1-self.phase_scaling)
+                phase += self.bitresolution * (1 - self.phase_scaling)
 
                 # Set values still out of range to zero.
                 if self.phase_scaling > 1:
-                    phase[phase < 0] = self.bitresolution-1
+                    phase[phase < 0] = self.bitresolution - 1
             else:
                 # Go from negative to positive.
-                phase += self.bitresolution-1
+                phase += self.bitresolution - 1
 
             # Copy and case the data to the output (usually self.display)
             np.copyto(out, phase, casting="unsafe")
@@ -488,64 +508,146 @@ class SLM:
 
         return out
 
-    def set_measured_amplitude_analytic(self, radius, units="norm"):
+    def set_source_analytic(self, fit_function, units="norm", phase_offset=0, sim=False, **kwargs):
         """
-        Sets :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude` used
-        for hologram generation in the absence of a proper wavefront calibration.
+        In the absence of a proper wavefront calibration, sets
+        :attr:`~slmsuite.hardware.slms.slm.SLM.source` amplitude and phase using a
+        `fit_function` from :mod:`~slmsuite.misc.fitfunctions`.
+
+        Note
+        ~~~~
         :class:`~slmsuite.hardware.cameraslms.FourierSLM` includes
         capabilities for wavefront calibration via
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
         This process also measures the amplitude of the source on the SLM
-        and stores this in :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude`.
-        :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude`
-        is used for better refinement of holograms during numerical
-        optimization. If one does not have a camera to use for
+        and stores this in :attr:`source`. :attr:`source` keywords
+        are also used for better refinement of holograms during numerical
+        optimization. If unable to run
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`,
-        this method allows the user to set an approximation of the source amplitude
-        based on an assumed :math:`1/e` amplitude (:math:`1/e^2` power) Gaussian beam radius.
+        this method allows the user to set an approximation of the complex source.
 
         Parameters
         ----------
-        radius : float
-            Radius in normalized units to assume for the source Gaussian beam.
-        units : str in {"norm", "nm", "um", "mm", "m"}
-            Units for the given radius.
+        fit_function : str
+            Function name from :mod:`~slmsuite.misc.fitfunctions` used to set the
+            source profile.
+        units : str in {"norm", "frac", "nm", "um", "mm", "m"}
+            Units for the :math:`(x,y)` grid passed to `fit_function`.
+        sim : bool
+            Sets the simulated source distribution if ``True`` or the approximate
+            experimental source distribution (in absence of wavefront calibration)
+            if ``False``.
+        phase_offset : ndarray
+            Additional phase (of shape :attr:`shape`)added to :attr:`source`.
+        kwargs
+            Arguments passed to `fit_function`.
 
         Returns
         --------
-        numpy.ndarray
-            :attr:`~slmsuite.hardware.slms.slm.SLM.measured_amplitude`.
+        dict
+            :attr:`~slmsuite.hardware.slms.slm.SLM.source`.
         """
-        # Convert the x and y grid to normalized units.
-        if "norm" in units:
+        # Wavelength normalized
+        if units == "norm":
             dx = 1
             dy = 1
+        # Fractions of the display
+        elif units == "frac":
+            dx = self.x_grid.ptp() / self.dx_um
+            dy = self.y_grid.ptp() / self.dy_um
+        # Physical units
         else:
-            if units == "m":
-                factor = 1e6
-            elif units == "mm":
-                factor = 1e3
-            elif units == "um":
-                factor = 1
-            elif units == "nm":
-                factor = 1e-3
+            if units in toolbox.LENGTH_FACTORS.keys():
+                factor = toolbox.LENGTH_FACTORS[units]
             else:
                 raise RuntimeError("Did not recognize units '{}'".format(units))
             dx = factor * self.dx / self.dx_um
             dy = factor * self.dy / self.dy_um
 
-        r2_grid = np.square(self.x_grid / dx) + np.square(self.y_grid / dy)
+        xy = [self.x_grid / dx, self.y_grid / dy]
+        source = getattr(fitfunctions, fit_function)(xy, **kwargs)
 
-        self.measured_amplitude = np.exp(-r2_grid * (1 / radius ** 2))
+        self.source["amplitude_sim" if sim else "amplitude"] = np.abs(source)
+        self.source["phase_sim" if sim else "phase"] = np.angle(source) + phase_offset
 
-        return self.measured_amplitude
+        return self.source
 
-    def _get_measured_amplitude(self):
-        """Deals with the None case of measured_amplitude"""
-        if self.measured_amplitude is None:
-            return np.ones_like(self.shape)
+    def _get_source_amplitude(self):
+        """Deals with the case of an unmeasured source amplitude."""
+        if "amplitude" in self.source:
+            return self.source["amplitude"]
         else:
-            return self.measured_amplitude
+            return np.ones(self.shape)
+
+    def _get_source_phase(self):
+        """Deals with the case of an unmeasured source phase."""
+        if "phase" in self.source:
+            return self.source["phase"]
+        else:
+            return np.zeros(self.shape)
+
+    def plot_source(self, sim=False):
+        """
+        Plots measured or simulated amplitude and phase distribution
+        of the SLM illumination.
+
+        Parameters
+        ----------
+        sim : bool
+            Plots the simulated source distribution if ``True`` or the measured
+            source distribution if ``False``.
+
+        Returns
+        --------
+        matplotlib.pyplot.axis
+            Axis handles for the generated plot.
+        """
+
+        # Check if proper source keywords are present
+        if sim and not np.all([k in self.source for k in ("amplitude_sim", "phase_sim")]):
+            raise RuntimeError("Simulated amplitude and/or phase keywords missing from slm.source!")
+        elif not sim and not np.all([k in self.source for k in ("amplitude", "phase")]):
+            raise RuntimeError(
+                "Amplitude, phase, or r2 keywords missing from slm.source! Run "
+                "fourier_calibration to measure source profile."
+            )
+
+        fig, axs = plt.subplots(1, 2 if sim else 3, figsize=(10, 6))
+
+        im = axs[0].imshow(
+            self._phase2gray(self.source["phase_sim" if sim else "phase"]),
+            cmap=plt.get_cmap("twilight"),
+            interpolation="none",
+        )
+        axs[0].set_title("Simulated Source Phase" if sim else "Measured Source Phase")
+        axs[0].set_xlabel("SLM $x$ [pix]")
+        axs[0].set_ylabel("SLM $y$ [pix]")
+        divider = make_axes_locatable(axs[0])
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        plt.colorbar(im, cax=cax)
+
+        im = axs[1].imshow(self.source["amplitude_sim" if sim else "amplitude"], clim=(0, 1))
+        axs[1].set_title("Simulated Source Amplitude" if sim else "Measured Source Amplitude")
+        axs[1].set_xlabel("SLM $x$ [pix]")
+        axs[1].set_ylabel("SLM $y$ [pix]")
+        # axs[1].set_yticks([])
+        divider = make_axes_locatable(axs[1])
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        plt.colorbar(im, cax=cax)
+
+        if not sim:
+            im = axs[2].imshow(self.source["r2"], clim=(0, 1))
+            axs[2].set_title("Cal Fitting $R^2$")
+            axs[2].set_xlabel("SLM $x$ [superpix]")
+            axs[2].set_ylabel("SLM $y$ [superpix]")
+            divider = make_axes_locatable(axs[2])
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            plt.colorbar(im, cax=cax)
+
+        plt.tight_layout()
+        plt.show()
+
+        return axs
 
     def point_spread_function_knm(self, padded_shape=None):
         """
@@ -564,31 +666,35 @@ class SLM:
         numpy.ndarray
             The point spread function of shape ``padded_shape``.
         """
-        nearfield = toolbox.pad(self._get_measured_amplitude(), padded_shape)
+        nearfield = toolbox.pad(self._get_source_amplitude(), padded_shape)
         farfield = np.abs(np.fft.fftshift(np.fft.fft2(np.fft.fftshift(nearfield), norm="ortho")))
 
         return farfield
 
     def spot_radius_kxy(self):
         """
-        Approximates the expected radius of farfield spots in the ``"kxy"`` basis based on the near-field amplitude distribution :attr:`measured_amplitude`.
+        Approximates the expected radius of farfield spots in the ``"kxy"`` basis based on
+        the near-field amplitude distribution stored in :attr:`source`.
 
         Returns
         -------
         float
             Average radius of the farfield spot.
         """
+        # If SLM amplitude profile is measured (i.e., SLM has been wavefront calibrated)
         try:
-            psf_nm = np.sqrt(analysis.image_variances(self._get_measured_amplitude())[:2])
-
-            psf_kxy = np.mean(toolbox.convert_blaze_vector(
-                np.reciprocal(8 * psf_nm),
+            psf_nm = np.sqrt(analysis.image_variances(self._get_source_amplitude())[:2])
+            fwhm = 2 * np.sqrt(2 * np.log(2)) * psf_nm
+            psf_kxy = toolbox.convert_blaze_vector(
+                np.reciprocal(fwhm),
                 from_units="freq",
                 to_units="kxy",
                 slm=self,
-                shape=self.shape
-            ))
-        except:
-            psf_kxy = np.mean([1 / self.dx / self.shape[1], 1 / self.dy / self.shape[0]])
+                shape=self.shape,
+            )
 
-        return psf_kxy
+        # No amplitude profile present
+        except:
+            psf_kxy = [1 / self.dx / self.shape[1], 1 / self.dy / self.shape[0]]
+
+        return toolbox.format_2vectors(psf_kxy)

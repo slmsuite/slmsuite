@@ -363,9 +363,9 @@ class ThorCam(Camera):
 
             self.profile = profile
 
-    def get_image(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
+    def _get_image_hw(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
         """
-        See :meth:`.Camera.get_image`. By default ``trigger=True`` and ``grab=True`` which
+        See :meth:`.Camera._get_image_hw`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
         For non-blocking acquisition,
         set ``trigger=True`` and ``grab=False`` to issue a software trigger;
@@ -403,7 +403,7 @@ class ThorCam(Camera):
                 while time.time() - t < timeout_s and frame is None:
                     frame = self.cam.get_pending_frame_or_null()
 
-                ret = self.transform(np.copy(frame.image_buffer)) if frame is not None else None
+                ret = np.copy(frame.image_buffer) if frame is not None else None
 
                 if ret is not None:
                     break

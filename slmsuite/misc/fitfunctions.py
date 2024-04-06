@@ -316,7 +316,6 @@ def tophat2d(xy, x0, y0, r, a=1, c=0):
 
 
 def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
-    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
     r"""
     For fitting a 2D rectangular :math:`\text{sinc}^2` distribution, potentially with a sinusoidal modulation.
 
@@ -353,10 +352,9 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     """
     x = xy[0] - x0
     y = xy[1] - y0
-    return (
-        np.square(np.sinc((1 / R) * x) * np.sinc((1 / R) * y))
-        * (a * 0.5 * (1 + np.cos(kx * x + ky * y - b)) + c) + d
-    )
+    
+    return np.square(np.sinc((1 / R) * x) * np.sinc((1 / R) * y)) \
+            * (a * 0.5 * (1 + np.cos(kx * x + ky * y - b)) + c) + d
 
 def sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
     # TODO: the sinc will also need a rotation. Not sure how to make this clean.

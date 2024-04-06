@@ -318,7 +318,7 @@ def tophat2d(xy, x0, y0, r, a=1, c=0):
 def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     # TODO: the sinc will also need a rotation. Not sure how to make this clean.
     r"""
-    For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
+    For fitting a 2D rectangular :math:`\text{sinc}^2` distribution, potentially with a sinusoidal modulation.
 
     .. math:: z(x,y) =  d + \left(c + \frac{a}{2} \left[1+\cos(k_xx+k_yy-b) \right]\right) *
                         \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
@@ -344,7 +344,7 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     d : float
         Global offset.
     kx, ky : float
-        Vector phase scale factor. Default is 1.
+        Vector phase scale factor. Default is 0.
 
     Returns
     -------

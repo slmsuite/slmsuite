@@ -146,16 +146,16 @@ html_last_updated_fmt = "%b %d, %Y"
 
 # Add a logo
 # html_theme_options = {"logo_only": True}
-html_logo = "static/qp-slm.svg"
+html_logo = "static/slmsuite.svg"
 
 # Add a favicon
-html_favicon = "static/qp-slm-notext-32x32.ico"
+html_favicon = "static/slmsuite-notext-32x32.ico"
 
 html_theme = "pydata_sphinx_theme"
 html_theme_options = {
     "logo": {
-        "image_light": "static/qp-slm.svg",
-        "image_dark": "static/qp-slm-dark.svg",
+        "image_light": "static/slmsuite.svg",
+        "image_dark": "static/slmsuite-dark.svg",
     },
     # "show_prev_next": False,
     "navbar_end": ["theme-switcher", "navbar-icon-links"], #, "search-field.html"

@@ -1,6 +1,6 @@
 numpy
 scipy
-# opencv-python
+opencv-python
 matplotlib
 h5py
 tqdm

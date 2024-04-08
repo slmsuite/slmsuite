@@ -11,8 +11,6 @@ class SimulatedSLM(SLM):
 
     Attributes
     ----------
-    resolution : tuple
-        (width, height) of the SLM in pixels.
     source : dict
         For a :class:`SimulatedSLM()`, :attr:`source` stores 'amplitude_sim' and 'phase_sim',
         which are used to compute the SLM's simulated far-field.
@@ -22,21 +20,22 @@ class SimulatedSLM(SLM):
                 User-defined source phase (with the dimensions of :attr:`shape`) on the SLM.
     """
 
-    def __init__(self, resolution, source=None, **kwargs):
+    def __init__(self, width, height, source=None, **kwargs):
         r"""
         Initialize simulated slm.
 
-        Arguments
-        ------
-        resolution : tuple
-            See :attr:`resolution`.
+        Parameters
+        ----------
+        width : int
+            Width of the SLM in pixels.
+        height : int
+            Height of the SLM in pixels
         source : dict
             See :attr:`source`. Defaults to uniform illumination with a flat phase if ``None``.
         kwargs
             See :meth:`.SLM.__init__` for permissible options.
         """
-
-        super().__init__(int(resolution[0]), int(resolution[1]), settle_time_s=0, **kwargs)
+        super().__init__(width, height, settle_time_s=0, **kwargs)
 
         if source is None:
             self.source["amplitude_sim"] = np.ones_like(self.x_grid)

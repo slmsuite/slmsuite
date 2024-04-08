@@ -87,7 +87,7 @@ def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, s
 
     Returns
     --------
-    numpy.ndarray
+    vector_converted : numpy.ndarray
         Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
     """
     if not (from_units in BLAZE_UNITS):
@@ -98,6 +98,9 @@ def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, s
                          as a valid unit. Options: {BLAZE_UNITS}")
 
     vector = format_2vectors(vector).astype(float)
+
+    if from_units == to_units:
+        return vector
 
     # Determine whether a CameraSLM was passed (to enable "ij" units)
     if hasattr(slm, "slm"):

@@ -1,5 +1,5 @@
 <p align="center">
-<img alt="qp-slm" src="https://raw.githubusercontent.com/QPG-MIT/slmsuite/main/docs/source/static/qp-slm.svg" width="256">
+<img alt="slmsuite" src="https://raw.githubusercontent.com/QPG-MIT/slmsuite/main/docs/source/static/slmsuite-raw.svg" width="256">
 </p>
 
 <h2 align="center">High-Performance Spatial Light Modulator Control and Holography</h2>

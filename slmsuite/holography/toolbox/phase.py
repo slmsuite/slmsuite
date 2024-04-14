@@ -9,6 +9,7 @@ except ImportError:
     cp = np
 from scipy import special
 from math import factorial
+import matplotlib.pyplot as plt
 
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography.toolbox import _process_grid
@@ -118,7 +119,7 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
 
     .. math:: \phi(\vec{x}) =   \left\{
                                     \begin{array}{ll}
-                                        a+b, & \vec{k}_{norm} \cdot \vec{x}_{norm} + o \text{ mod } 2\pi < 2\pi*d \\
+                                        a+b, & (\vec{k}_{norm} \cdot \vec{x}_{norm} + o) \text{ mod } 2\pi < 2\pi*d \\
                                         b, & \text{ otherwise}.
                                     \end{array}
                                 \right.
@@ -126,9 +127,9 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
     Note
     ----
     When parameters are chosen to produce integer period,
-    this function uses speed optimizations.
+    this function uses speed optimizations **(implementation incomplete)**.
     Otherwise, this function uses ``np.mod`` on top of
-    :meth:`~slmsuite.holography.toolbox.phase.blaze()` to computing gratings.
+    :meth:`~slmsuite.holography.toolbox.phase.blaze()` to compute gratings.
 
     Parameters
     ----------
@@ -210,10 +211,10 @@ def lens(grid, f=(np.inf, np.inf)):
         such a class can be passed instead of the grids directly.
     f : float OR (float, float)
         Focus in normalized :math:`\frac{x}{\lambda}` units.
+        Defaults to infinity (no lens).
         Scalars are interpreted as a non-cylindrical isotropic lens.
         Future: add a ``convert_focal_length`` method to parallel
-        :meth:`.convert_blaze_vector()`
-        Defaults to infinity (no lens).
+        :meth:`.convert_blaze_vector()`.
 
     Returns
     -------
@@ -340,26 +341,27 @@ def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
 
     Currently supported conventions:
 
-     -  ``"radial"``
-        The standard 2-dimensional :math:`n,l` indexing for Zernike polynomials, where
-        :math:`n` is the radial index and
-        :math:`l` is the azimuthal index.
+     - ``"radial"``
+        The standard 2-dimensional :math:`n,l` indexing for
+        `Zernike polynomials <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.,
+        where :math:`n` is the radial index
+        and :math:`l` is the azimuthal index.
 
-     -  ``"ansi"``
-        1-dimensional `ANSI indices
-        https://en.wikipedia.org/wiki/Zernike_polynomials#OSA/ANSI_standard_indices>`_.
-        **This is the default slmsuite unit.**
+     - ``"ansi"``
+        1-dimensional (0-indexed) `ANSI indices
+        <https://en.wikipedia.org/wiki/Zernike_polynomials#OSA/ANSI_standard_indices>`_.
+        **This is the default** :mod:`slmsuite` **index.**
 
-     -  ``"noll"``
-        1-dimensional `Noll indices
+     - ``"noll"``
+        1-dimensional (1-indexed) `Noll indices
         <https://en.wikipedia.org/wiki/Zernike_polynomials#Noll's_sequential_indices>`_.
 
-     -  ``"fringe"``
-        1-dimensional `Fringe indices
+     - ``"fringe"``
+        1-dimensional (1-indexed) `Fringe indices
         <https://en.wikipedia.org/wiki/Zernike_polynomials#Fringe/University_of_Arizona_indices>`_.
 
-     -  ``"wyant"``
-        1-dimensional `Wyant indices
+     - ``"wyant"``
+        1-dimensional (0-indexed) `Wyant indices
         <https://en.wikipedia.org/wiki/Zernike_polynomials#Wyant_indices>`_.
         Equivalent to ``"fringe"``, except with starting with zero instead of one.
 
@@ -425,7 +427,59 @@ def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
     return result
 
 
-def zernike(grid, i, weight=1, aperture=None, return_mask=False):
+def scale_zernike_aperture(grid, aperture=None):
+    """
+
+    Parameters
+    ----------
+    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
+        How to scale the polynomials relative to the grid shape. This is relative
+        to the :math:`R = 1` edge of a standard Zernike pupil.
+
+        ``"circular"``, ``None``
+          The circle is scaled isotropically until the pupil edge touches one set
+          of opposite grid edges. This is the default aperture.
+
+        ``"elliptical"``
+          The circle is scaled anisotropically until each pupil edge touches a grid
+          edge. Generally produces an ellipse.
+
+        ``"cropped"``
+          The circle is scaled isotropically until the rectangle of the grid is
+          circumscribed by the circle.
+
+        ``(float, float)``
+          Custom scaling. These values are multiplied to the ``x_grid`` and ``y_grid``
+          directly, respectively. The edge of the pupil corresponds to where
+          ``x_grid**2 + y_grid**2 = 1``.
+    """
+    # Parse grid.
+    (x_grid, y_grid) = _process_grid(grid)
+
+    # Parse aperture.
+    if aperture is None:
+        aperture = "circular"
+
+    if isinstance(aperture, str):
+        if aperture == "elliptical":
+            x_scale = 1 / np.nanmax(x_grid)
+            y_scale = 1 / np.nanmax(y_grid)
+        elif aperture == "circular":
+            x_scale = y_scale = 1 / np.amin([np.nanmax(x_grid), np.nanmax(y_grid)])
+        elif aperture == "cropped":
+            x_scale = y_scale = 1 / np.sqrt(np.nanmax(np.square(x_grid) + np.square(y_grid)))
+        else:
+            raise ValueError("NotImplemented")
+    elif isinstance(aperture, (list, tuple)) and len(aperture) == 2:
+        x_scale = aperture[0]
+        y_scale = aperture[1]
+    else:
+        raise ValueError("Aperture type {} not recognized.".format(type(aperture)))
+
+    return (x_scale, y_scale)
+
+
+def zernike(grid, i, weight=1, **kwargs):
     r"""
     Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
 
@@ -436,41 +490,41 @@ def zernike(grid, i, weight=1, aperture=None, return_mask=False):
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    weight : float
-        Amplitude of the polynomial.
     i : int
         ANSI Zernike index defining the polynomial.
-    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
-        See :meth:`.zernike_sum()`.
-    return_mask : bool
-        Whether or not to return the 2D mask showing where Zernikes are computed
-        instead of the phase.
+    weight : float
+        Amplitude of the polynomial.
+    **kwargs
+        Passed to :meth:`.zernike_sum()`.
 
     Returns
     -------
     numpy.ndarray
         The phase for this function.
     """
-    return zernike_sum(grid, ((i, weight), ), aperture=aperture, return_mask=return_mask)
+    return zernike_sum(grid, ((i, weight), ), **kwargs)
 
 
-def zernike_sum(grid, weights, aperture=None, return_mask=False, out=None, dx=0, dy=0):
+def zernike_sum(grid, weights, aperture=None, use_mask=True, dx=0, dy=0, out=None):
     r"""
     Returns a summation of
     `Zernike polynomials <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
     in a computationally-efficient manner. To improve performance, especially for higher
     order polynomials, we store a cache of Zernike coefficients to avoid regeneration.
     See the below example to generate
-    :math:`Z_1 - Z_2 + Z_3 = Z_2^{-1} - Z_2^{-1} + Z_2^{-1}`.
+    :math:`Z_1 - Z_2 + Z_3 = Z_2^{-1} - Z_2^{-1} + Z_2^{-1}`,
+    where :math:`Z_n^l` is represented by the ansi index :math:`i` as :math:`Z_i`.
 
     .. highlight:: python
     .. code-block:: python
 
         zernike_sum_phase = toolbox.phase.zernike_sum(
             grid=slm,
-            weights=(   (1,  1),       # Z_20
-                        (2, -1),       # Z_21
-                        (3,  1)    ),  # Z_31
+            weights=(
+                (1,  1),       # Z_1
+                (2, -1),       # Z_2
+                (3,  1)        # Z_3
+            ),
             aperture="circular"
         )
 
@@ -495,71 +549,34 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False, out=None, dx=0,
         The ``int`` is the ANSI index ``i``.
         The ``float`` is the weight for the given index.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
-        How to scale the polynomials relative to the grid shape. This is relative
-        to the :math:`R = 1` edge of a standard Zernike pupil.
-
-        ``"circular"``, ``None``
-          The circle is scaled isotropically until the pupil edge touches the grid edge.
-          This is the default aperture.
-
-        ``"elliptical"``
-          The circle is scaled anisotropically until each pupil edge touches a grid
-          edge. Generally produces and ellipse.
-
-        ``"cropped"``
-          The circle is scaled isotropically until the rectangle of the grid is
-          circumscribed by the circle.
-
-        ``(float, float)``
-          Custom scaling. These values are multiplied to the ``x_grid`` and ``y_grid``
-          directly, respectively. The edge of the pupil corresponds to where
-          ``x_grid**2 + y_grid**2 = 1``.
-
-    return_mask : bool
-        Whether or not to return the 2D mask showing where Zernikes are computed
-        instead of the phase.
-    out : array_like
-
+        Passed to :meth:`.scale_zernike_aperture()`.
+    use_mask : bool OR "return"
+        If ``True``, sets the area where standard Zernike polynomials are undefined to zero.
+        If ``False``, the polynomial is not cropped. This should be used carefully, as
+        the wavefront correction outside the unit circle quickly explodes with
+        :math:`r^O` for terms of high order :math:`O`.
+        If ``"return"``, returns the 2D mask ``x_grid**2 + y_grid**2 <= 1``.
     dx, dy : int
-        If non-zero, returns the Zernike derivative of the given order.
-        For instance, `dx = 1, dy = 0` corresponds to the first derivative in the x direction.
+        If non-zero, returns the Zernike derivative of the given order. For instance,
+        ``dx = 1, dy = 0`` corresponds to the first derivative in the :math:`x` direction.
+    out : array_like OR None
+        Memory to be used for the phase output. Allocated separately if ``None``.
 
     Returns
     -------
     numpy.ndarray
-        The phase for this function.
-
-    numpy.ndarray
-        Optional return for the 2D Zernike mask.
+        The phase for this function. Optionally returns the 2D Zernike mask.
     """
     # Parse passed values
     (x_grid, y_grid) = _process_grid(grid)
-
-    if aperture is None:
-        aperture = "circular"
-
-    if isinstance(aperture, str):
-        if aperture == "elliptical":
-            x_scale = 1 / np.nanmax(x_grid)
-            y_scale = 1 / np.nanmax(y_grid)
-        elif aperture == "circular":
-            x_scale = y_scale = 1 / np.amin([np.nanmax(x_grid), np.nanmax(y_grid)])
-        elif aperture == "cropped":
-            x_scale = y_scale = 1 / np.sqrt(np.nanmax(np.square(x_grid) + np.square(y_grid)))
-        else:
-            raise ValueError("NotImplemented")
-    elif isinstance(aperture, (list, tuple)) and len(aperture) == 2:
-        x_scale = aperture[0]
-        y_scale = aperture[1]
-    else:
-        raise ValueError("Aperture type {} not recognized.".format(type(aperture)))
+    (x_scale, y_scale) = scale_zernike_aperture(grid, aperture)
 
     # At the end, we're going to set the values outside the aperture to zero.
     # Make a mask for this if it's necessary.
     mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
-    if return_mask:
+    if use_mask == "return":
         return mask
-    use_mask = np.any(mask == 0)
+    use_mask = use_mask and np.any(mask == 0)
 
     if use_mask:
         x_grid_scaled = x_grid[mask] * x_scale
@@ -584,12 +601,18 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False, out=None, dx=0,
                 if dx == 1:
                     power_factor *= power_key[0]
                 elif dx != 0:
-                    power_factor *= factorial(power_key[0]) / factorial(power_key[0] - dx)
+                    if power_key[0] >= dx:
+                        power_factor *= factorial(power_key[0]) / factorial(power_key[0] - dx)
+                    else:
+                        power_factor = 0
 
                 if dy == 1:
                     power_factor *= power_key[1]
                 elif dy != 0:
-                    power_factor *= factorial(power_key[1]) / factorial(power_key[1] - dy)
+                    if power_key[1] >= dy:
+                        power_factor *= factorial(power_key[1]) / factorial(power_key[1] - dy)
+                    else:
+                        power_factor = 0
 
                 # Change the power key based on derivatives.
                 power_key = (power_key[0] - dx, power_key[1] - dy)
@@ -621,6 +644,43 @@ def zernike_sum(grid, weights, aperture=None, return_mask=False, out=None, dx=0,
 
 
     return canvas
+
+
+def _plot_zernike_pyramid(grid, order, scale=1, **kwargs):
+    """
+    Plots :meth:`.zernike()` on a pyramid of subplots corresponding to the radial and
+    azimuthal order. The user can resize the figure with ``plt.figure()`` beforehand
+    and force ``plt.show()`` afterward.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    order : int
+        Maximum radial order to plot.
+    scale : float
+        Scales the subplots to ``[-scale, scale]``.
+    **kwargs
+        Passed to :meth:`.zernike()`.
+    """
+    indices_ansi = np.arange((order * (order + 1)) // 2)
+    indices_radial = convert_zernike_index(indices_ansi, from_index="ansi", to_index="radial")
+
+    for i in indices_ansi:
+        n, l = indices_radial[i, :]
+        m = (n + l) // 2
+
+        phase = zernike(grid, i, 1, **kwargs)
+
+        plt.subplot(order, order, 1 + m + n*order)
+        plt.imshow(phase)
+        plt.clim([-scale, scale])
+        plt.xticks([])
+        plt.yticks([])
+
 
 # Old style dictionary.
 #   {(n,m) : {(nx, ny) : w, ... }, ... }

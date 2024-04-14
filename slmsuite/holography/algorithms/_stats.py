@@ -505,12 +505,13 @@ class _HologramStats(object):
                 npsource = np.abs(source)
 
         # Check units
-        assert (
-            units in toolbox.BLAZE_UNITS
-        ), "algorithms.py: Unit {} is not recognized as a valid blaze unit.".format(units)
-        assert (
-            units != "ij"
-        ), "algorithms.py: 'ij' is not a valid unit for plot_farfield() because of the associated rotation."
+        if not units in toolbox.BLAZE_UNITS:
+            raise ValueError(f"'{units}' is not recognized as a valid blaze unit.")
+        if units in toolbox.CAMERA_UNITS:
+            raise ValueError(
+                f"'{units}' is not a valid unit for plot_farfield() "
+                "because of the potential associated rotation."
+            )
 
         # Determine the bounds of the zoom region, padded by limit_padding
         if limits is None:

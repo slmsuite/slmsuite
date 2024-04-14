@@ -1,16 +1,18 @@
 """
 An SLM mirrored onto a display, using the :mod:`pyglet` library.
 """
-import numpy as np
-import ctypes
 import os
+import ctypes
+import warnings
+import numpy as np
+
 from slmsuite.hardware.slms.slm import SLM
 
 try:
     import pyglet
     import pyglet.gl as gl
 except ImportError:
-    print("screenmirrored.py: pyglet not installed. Install to use ScreenMirrored SLMs.")
+    warnings.warn("pyglet not installed. Install to use ScreenMirrored SLMs.")
 
 
 class ScreenMirrored(SLM):

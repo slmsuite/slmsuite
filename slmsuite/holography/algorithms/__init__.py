@@ -70,7 +70,7 @@ from slmsuite.holography.algorithms._header import *
 from slmsuite.holography.algorithms._hologram import Hologram as _Hologram
 from slmsuite.holography.algorithms._feedback import FeedbackHologram as _FeedbackHologram
 from slmsuite.holography.algorithms._spots import SpotHologram as _SpotHologram
-from slmsuite.holography.algorithms._spots import FreeSpotHologram as _FreeSpotHologram
+from slmsuite.holography.algorithms._spots import CompressedSpotHologram as _CompressedSpotHologram
 
 # Hack to get automodule to put the classes in the correct location.
 class Hologram(_Hologram):
@@ -82,5 +82,5 @@ class FeedbackHologram(_FeedbackHologram):
 class SpotHologram(_SpotHologram):
     pass
 
-class FreeSpotHologram(_FreeSpotHologram):
+class CompressedSpotHologram(_CompressedSpotHologram):
     pass

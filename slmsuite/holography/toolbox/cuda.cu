@@ -96,11 +96,11 @@ extern "C" __global__ void compressed_nearfield2farfield(
         exponent = x * kxyz[ff] + y * kxyz[ff + N];
 
         if (D == 3) {
-            exponent += (x * x + y * y) * kxyz[ff + N + N];
+            exponent += .5 * (x * x + y * y) * kxyz[ff + N + N];
         }
 
         // Do the overlap integrand for one nearfield-farfield mapping.
-        sdata[tid] = conj(nearfield[nf]) * exp(1j * exponent);
+        sdata[tid] = conj(nearfield[nf]) * exp(2j * PI * exponent);
     } else {
         sdata[tid] = 0;
     }

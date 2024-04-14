@@ -1,4 +1,6 @@
-"""Helper functions for processing images."""
+r"""
+Helper functions for processing images.
+"""
 
 import cv2
 import numpy as np
@@ -10,7 +12,7 @@ import warnings
 
 from slmsuite.holography.toolbox import format_2vectors
 from slmsuite.misc.math import REAL_TYPES
-from slmsuite.misc.fitfunctions import gaussian2d
+from slmsuite.holography.analysis.fitfunctions import gaussian2d
 
 # Take and associated functions.
 
@@ -791,7 +793,7 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, bounds=N
 
 def fit_affine(x, y, guess_affine=None, plot=False):
     r"""
-    For two sets of points with equal length, find the best-fit affine
+    For two sets of ordered points with equal length, find the best-fit affine
     transformation that transforms from the first basis to the second.
     Best fit is defined as minimization on the least squares euclidean norm.
 
@@ -801,6 +803,10 @@ def fit_affine(x, y, guess_affine=None, plot=False):
     ----------
     x, y : array_like
         Array of vectors of shape ``(2, N)`` in the style of :meth:`format_2vectors()`.
+    guess_affine : dict OR None
+        The user may provide a guess to immediately proceed with least squares fitting.
+        This guess must be in the form of a dictionary with fields ``"M"`` and ``"b"``.
+        If ``None``, a guess is computed based on centroiding and moment matching.
     plot : bool
         Whether to produce a debug plot.
 
@@ -813,12 +819,13 @@ def fit_affine(x, y, guess_affine=None, plot=False):
     y = format_2vectors(y)
     assert x.shape == y.shape
 
+    # If the user does not provide a guess, compute one based on centroiding and moment matching.
     if guess_affine is None:
         # Calculate the centroids and the centered coordinates.
         xc = np.nanmean(x, axis=1)[:, np.newaxis]
         yc = np.nanmean(y, axis=1)[:, np.newaxis]
 
-        if np.all(np.isnan(xc)) or np.all(np.isnan(yc)):
+        if np.any(np.isnan(xc)) or np.any(np.isnan(yc)):
             raise ValueError("analysis.py: vectors cannot contain a row of all-nan values")
 
         x_ = x - xc

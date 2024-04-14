@@ -10,13 +10,14 @@ for reference.
 
 import time
 import numpy as np
+import warnings
 
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
     import vimba
 except ImportError:
-    print("alliedvision.py: vimba not installed. Install to use AlliedVision cameras.")
+    warnings.warn("vimba not installed. Install to use AlliedVision cameras.")
 
 
 class AlliedVision(Camera):

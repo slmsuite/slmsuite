@@ -7,66 +7,156 @@ from scipy.spatial.distance import chebyshev, euclidean
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
+import warnings
 
 from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 
 # Unit definitions.
 
+LENGTH_FACTORS = {
+    "m": 1e6,
+    "cm": 1e4,
+    "mm": 1e3,
+    "um": 1,
+    "nm": 1e-3,
+}
+LENGTH_LABELS = {k : k for k in LENGTH_FACTORS.keys()}
+LENGTH_LABELS["um"] = r"$\mu$m"
+
+CAMERA_UNITS = ["ij"]
+
 BLAZE_LABELS = {
-    "norm": (r"$k_x/k$", r"$k_y/k$"),
-    "kxy": (r"$k_x/k$", r"$k_y/k$"),
     "rad": (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
-    "knm": (r"$n$ [pix]", r"$m$ [pix]"),
-    "ij": (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
-    "freq": (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
-    "lpmm": (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
     "mrad": (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
     "deg": (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]"),
+    "norm": (r"$k_x/k$", r"$k_y/k$"),
+    "kxy": (r"$k_x/k$", r"$k_y/k$"),
+    "knm": (r"$n$ [pix]", r"$m$ [pix]"),
+    "freq": (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
+    "lpmm": (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
+    "ij": (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
+    "zernike": (r"$Z_1^{-1}$ [zernike rad]", r"$Z_1^1$ [zernike rad]"),
 }
+for k in LENGTH_FACTORS.keys():
+    u = LENGTH_LABELS[k]
+
+    BLAZE_LABELS[k] = (f"Camera $x$ [{u}]", f"Camera $y$ [{u}]"),
+    BLAZE_LABELS["mag_"+k] = (f"Experiment $x$ [{u}]", f"Experiment $y$ [{u}]"),
+
+    CAMERA_UNITS.append(k)
+    CAMERA_UNITS.append("mag_"+k)
+
 BLAZE_UNITS = list(BLAZE_LABELS.keys())
 
 # Unit helper functions.
 
 
-def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, shape=None):
+def convert_blaze_vector(**kwargs):
+    """
+    Alias for :meth:`~slmsuite.holography.toolbox.convert_vector()`
+    for backwards compatibility.
+    """
+    return convert_blaze_vector(**kwargs)
+
+
+def convert_blaze_radius(**kwargs):
+    """
+    Alias for :meth:`~slmsuite.holography.toolbox.convert_radius()`
+    for backwards compatibility.
+    """
+    return convert_blaze_radius(**kwargs)
+
+
+def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=None):
     r"""
-    Helper function for vector unit conversions.
+    Helper function for vector unit conversions in the :math:`k`-space of the SLM.
 
     Currently supported units:
 
-     -  ``"norm"``, ``"kxy"``
-        Blaze :math:`k_x` normalized to wavenumber :math:`k`, i.e. :math:`\frac{k_x}{k}`.
-        Equivalent to radians in the small angle approximation.
-        This is the default unit for :mod:`slmsuite`.
+     - ``"rad"``, ``"mrad"``, ``"deg"``
+        Angle at which light is blazed in various units.
+        The small angle approximation is assumed.
 
-     -  ``"knm"``
+     - ``"norm"``, ``"kxy"``
+        Blaze :math:`k_x` normalized to wavenumber :math:`k`, i.e. :math:`\frac{k_x}{k}`.
+        Equivalent to radians ``"rad"`` in the small angle approximation.
+        **This is the default** :mod:`slmsuite` **unit.**
+
+     - ``"knm"``
         Computational blaze units for a given Fourier domain ``shape``.
         This corresponds to integer points on the grid of this
         (potentially padded) SLM's Fourier transform.
         See :class:`~slmsuite.holography.Hologram`.
         The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
 
-     -  ``"ij"``
-        Camera pixel units.
-
-     -  ``"freq"``
+     - ``"freq"``
         Pixel frequency of a grating producing the blaze.
         e.g. 1/16 is a grating with a period of 16 pixels.
 
-     -  ``"lpmm"``
+     - ``"lpmm"``
         Line pairs per mm or lines per mm of a grating producing the blaze.
+        This unit is commonly used to define static diffraction gratings used in spectrometers.
 
-     -  ``"rad"``, ``"mrad"``, ``"deg"``
-        Angle at which light is blazed in various units. The small angle approximation is assumed.
+     - ``"ij"``
+        Camera pixel units, relative to the origin of the camera.
+        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
+        See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam`
+        and :meth:`~slmsuite.hardware.cameraslms.FourierSLM.ijcam_to_kxyslm`.
+
+     - ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
+        Camera position in metric length units, relative to the origin of the camera.
+        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
+
+     - ``"mag_m"``, ``"mag_cm"``, ``"mag_mm"``, ``"mag_um"``, ``"mag_nm"``
+        Scales the corresponding metric length unit according to the value stored in
+        :attr:`~slmsuite.hardware.cameraslms.FourierSLM.mag` to match the true
+        dimensions of the experiment plane, apposed to the camera plane.
+        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
+
+     - ``"zernike"``
+        The phase coefficients of the tilt zernike terms
+        :math:`x = Z_1 = Z_1^{-1}` and
+        :math:`y = Z_2 = Z_1^1` necessary to produce a given blaze.
+        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
+
+    Important
+    ~~~~~~~~~
+    If an array of 3D vectors is given, then the depth (:math:`z`) direction is handled
+    differently than the field (:math:`xy`).
+    Most units use the **normalized focal power** :math:`\frac{\lambda}{f}` on the SLM
+    necessary to produce a spot at the defined depth relative to the focal plane.
+    There are a few units where this differs:
+
+     - ``"ij"``
+        True cartesian distance relative to the camera plane in pixels.
+
+     - ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
+        True cartesian distance relative to the **camera plane** in metric units.
+
+     - ``"mag_m"``, ``"mag_cm"``, ``"mag_mm"``, ``"mag_um"``, ``"mag_nm"``
+        True cartesian distance relative to the **experiment plane** in metric units.
+        Importantly, :math:`x` and :math:`y` are divided by
+        :attr:`~slmsuite.hardware.cameraslms.FourierSLM.mag`,
+        while :math:`z` is multiplied by it.
+
+     - ``"zernike"``
+        The phase coefficient of the :math:`Z_4 = Z_2^0` zernike focus term necessary to
+        focus at the given depth.
+
+    Some of these units will not make sense in a system with anisotropic focusing, for
+    instance due to cylindrical lenses in the optical train.
 
     Warning
     ~~~~~~~
     The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
     so a ``slm`` should be passed (otherwise returns an array of ``nan`` values).
-    The unit ``"ij"``, camera pixels, requires calibration data stored in a CameraSLM, so
-    this must be passed in place of ``slm``.
+    The unit ``"zernike"`` also requires an SLM.
     The unit ``"knm"`` additionally requires the ``shape`` of the computational space.
     If not included when an slm is passed, ``shape=slm.shape`` is assumed.
+    The units ``"ij"``, ``"um"``, ``"mag_um"``, and related refer to distance on the
+    camera and require calibration data stored in a
+    :class:`~slmsuite.hardware.cameraslms.FourierSLM`,
+    so this must be passed in place of ``slm``.
 
     Parameters
     ----------
@@ -76,20 +166,21 @@ def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, s
     from_units, to_units : str
         Units which we are converting between. See the listed units above for options.
         Defaults to ``"norm"``.
-    slm : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.CameraSLM` OR None
+    slm : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.FourierSLM` OR None
         Relevant SLM to pull data from in the case of
         ``"freq"``, ``"knm"``, or ``"lpmm"``.
-        If :class:`~slmsuite.hardware.cameraslms.CameraSLM`, the unit ``"ij"`` can be
-        processed too.
+        If :class:`~slmsuite.hardware.cameraslms.FourierSLM`, the unit ``"ij"`` and other
+        length units can be processed too.
     shape : (int, int) OR None
-        Shape of the computational SLM space. Defaults to ``slm.shape`` if ``slm``
-        is not ``None``.
+        Shape of the computational SLM space. Needed for ``"knm"``.
+        Defaults to ``slm.shape`` if ``slm`` is not ``None``.
 
     Returns
     --------
     vector_converted : numpy.ndarray
         Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
     """
+    # Parse units.
     if not (from_units in BLAZE_UNITS):
         raise ValueError(f"From unit '{from_units}' not recognized \
                          as a valid unit. Options: {BLAZE_UNITS}")
@@ -97,31 +188,50 @@ def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, s
         raise ValueError(f"To unit '{to_units}' not recognized \
                          as a valid unit. Options: {BLAZE_UNITS}")
 
-    vector = format_2vectors(vector).astype(float)
+    # Parse vectors.
+    vector_parsed = format_vectors(
+        vector,
+        expected_dimension=2,
+        handle_dimension="pass"
+    ).astype(float)
 
     if from_units == to_units:
-        return vector
+        return vector_parsed
 
-    # Determine whether a CameraSLM was passed (to enable "ij" units)
+    vector_xy = vector_parsed[:, :2]
+    if vector_parsed.shape[1] > 2:
+        vector_z =  vector_parsed[:, [2]]
+    else:
+        vector_z = None
+
+    # Determine whether a CameraSLM was passed (to enable "ij" units and related).
     if hasattr(slm, "slm"):
         cameraslm = slm
         slm = cameraslm.slm
     else:
         cameraslm = None
 
-    if from_units == "ij" or to_units == "ij":
+    if from_units in CAMERA_UNITS or to_units in CAMERA_UNITS:
         if cameraslm is None or cameraslm.fourier_calibration is None:
-            return np.full_like(vector, np.nan)
+            warnings.warn(
+                "CameraSLM must be passed to slm for conversion '{}' to '{}'"
+                .format(from_units, to_units)
+            )
+            return np.full_like(vector_parsed, np.nan)
 
-    # Generate conversion factors for various units
+    # Generate conversion factors for various units.
     if from_units == "freq" or to_units == "freq":
         if slm is None:
+            warnings.warn("slm is required for unit 'freq'")
             pitch_um = np.nan
+            wav_um = np.nan
         else:
             pitch_um = format_2vectors([slm.dx_um, slm.dy_um])
+            wav_um = slm.wav_um
 
-    if from_units in ["freq", "lpmm"] or to_units in ["freq", "lpmm"]:
+    if from_units == "lpmm" or to_units == "lpmm":
         if slm is None:
+            warnings.warn("slm is required for units 'lpmm'")
             wav_um = np.nan
         else:
             wav_um = slm.wav_um
@@ -134,6 +244,7 @@ def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, s
 
         if shape is None:
             if slm is None:
+                warnings.warn("shape or slm is required for unit 'knm'")
                 shape = np.nan
             else:
                 shape = slm.shape
@@ -141,44 +252,96 @@ def convert_blaze_vector(vector, from_units="norm", to_units="norm", slm=None, s
 
         knm_conv = pitch * shape
 
-    # Convert the input to normalized "kxy" units.
-    if from_units == "norm" or from_units == "kxy" or from_units == "rad":
-        rad = vector
-    elif from_units == "knm":
-        rad = (vector - shape / 2.0) / knm_conv
-    elif from_units == "ij":
-        rad = cameraslm.ijcam_to_kxyslm(vector)
-    elif from_units == "freq":
-        rad = vector * wav_um / pitch_um
-    elif from_units == "lpmm":
-        rad = vector * wav_um / 1000
-    elif from_units == "mrad":
-        rad = vector / 1000
-    elif from_units == "deg":
-        rad = vector * np.pi / 180
+    if from_units == "zernike":
+        zernike_scale = slm.get_zernike_scale()
 
-    # Convert from normalized "kxy" units to the desired output units.
+    # XY
+
+    # Convert the xy input to normalized "kxy" units.
+    if from_units == "norm" or from_units == "kxy" or from_units == "rad":
+        rad = vector_xy
+    elif from_units == "mrad":
+        rad = vector_xy / 1000
+    elif from_units == "deg":
+        rad = vector_xy * np.pi / 180
+    elif from_units == "knm":
+        rad = (vector_xy - shape / 2.0) / knm_conv
+    elif from_units == "freq":
+        rad = vector_xy * wav_um / pitch_um
+    elif from_units == "lpmm":
+        rad = vector_xy * wav_um / 1000
+    elif from_units == "ij":
+        rad = cameraslm.ijcam_to_kxyslm(vector_xy)
+    elif from_units in CAMERA_UNITS:
+        unit = from_units.split("_")[-1]
+        rad = cameraslm.ijcam_to_kxyslm(vector_xy) * LENGTH_FACTORS[unit] / cam_pitch_um
+        if "mag_" in from_units: rad *= cameraslm.mag
+    elif from_units == "zernike":
+        rad = vector_xy / zernike_scale
+
+    # Convert from normalized "kxy" units to the desired xy output units.
     if to_units == "norm" or to_units == "kxy" or to_units == "rad":
-        return rad
-    elif to_units == "knm":
-        return rad * knm_conv + shape / 2.0
-    elif to_units == "ij":
-        return cameraslm.kxyslm_to_ijcam(vector)
-    elif to_units == "freq":
-        return rad * pitch_um / wav_um
-    elif to_units == "lpmm":
-        return rad * 1000 / wav_um
+        vector_xy = rad
     elif to_units == "mrad":
-        return rad * 1000
+        vector_xy = rad * 1000
     elif to_units == "deg":
-        return rad * 180 / np.pi
+        vector_xy = rad * 180 / np.pi
+    elif to_units == "knm":
+        vector_xy = rad * knm_conv + shape / 2.0
+    elif to_units == "freq":
+        vector_xy = rad * pitch_um / wav_um
+    elif to_units == "lpmm":
+        vector_xy = rad * 1000 / wav_um
+    elif to_units == "ij":
+        vector_xy = cameraslm.kxyslm_to_ijcam(rad)
+    elif to_units in CAMERA_UNITS:
+        unit = to_units.split("_")[-1]
+        vector_xy = cameraslm.kxyslm_to_ijcam(rad) * cameraslm._get_camera_pitch_um() / LENGTH_FACTORS[unit]
+        if "mag_" in to_units: vector_xy /= cameraslm.mag
+    elif to_units == "zernike":
+        vector_xy = rad * zernike_scale
+
+    # Z
+
+    if vector_z is not None:
+        # Convert the z input to normalized "focal power" units.
+        if from_units in CAMERA_UNITS:
+            if from_units != "ij":
+                unit = from_units.split("_")[-1]
+                vector_z /= np.mean(cameraslm._get_camera_pitch_um()) / LENGTH_FACTORS[unit]
+                if "mag_" in from_units: vector_z /= cameraslm.mag
+
+            focal_power = cameraslm._ijcam_to_kxyslm_depth(vector_z)
+
+        elif from_units == "zernike":
+            focal_power = vector_z * zernike_scale * zernike_scale
+        else:
+            focal_power = vector_z
+
+        # Convert the normalized "focal power" units to the desired z output units.
+        if to_units in CAMERA_UNITS:
+            vector_z = cameraslm._kxyslm_to_ijcam_depth(focal_power)
+
+            if to_units != "ij":
+                unit = to_units.split("_")[-1]
+                vector_z *= LENGTH_FACTORS[unit] / np.mean(cameraslm._get_camera_pitch_um())
+                if "mag_" in to_units: vector_z *= cameraslm.mag
+
+        elif to_units == "zernike":
+            vector_z = focal_power / (zernike_scale * zernike_scale)
+        else:
+            vector_z = focal_power
+
+        return np.vstack((vector_xy, vector_z))
+    else:
+        return vector_xy
 
 
 def print_blaze_conversions(vector, from_units="norm", **kwargs):
     """
     Helper function to understand unit conversions.
     Prints all the supported unit conversions for a given vector.
-    See :meth:`convert_blaze_vector()`.
+    See :meth:`convert_vector()`.
 
     Parameters
     ----------
@@ -187,18 +350,18 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
     from_units : str
         Units of ``vector``, i.e. units to convert from.
     **kwargs
-        Passed to :meth:`convert_blaze_vector()`.
+        Passed to :meth:`convert_vector()`.
     """
     for unit in BLAZE_UNITS:
-        result = convert_blaze_vector(vector, from_units=from_units, to_units=unit, **kwargs)
+        result = convert_vector(vector, from_units=from_units, to_units=unit, **kwargs)
 
         print("'{}' : {}".format(unit, tuple(result.T[0])))
 
 
-def convert_blaze_radius(radius, from_units="norm", to_units="norm", slm=None, shape=None):
+def convert_radius(radius, from_units="norm", to_units="norm", slm=None, shape=None):
     """
     Helper function for scalar unit conversions.
-    Uses :meth:`convert_blaze_vector` to deduce the (average, in the case of an
+    Uses :meth:`convert_vector` to deduce the (average, in the case of an
     anisotropic transformation) scalar radius when going between sets of units.
 
     Parameters
@@ -206,19 +369,19 @@ def convert_blaze_radius(radius, from_units="norm", to_units="norm", slm=None, s
     radius : float
         The scalar radius to convert.
     from_units, to_units : str
-        Passed to :meth:`convert_blaze_vector`.
+        Passed to :meth:`convert_vector`.
     slm : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.CameraSLM` OR None
-        Passed to :meth:`convert_blaze_vector`.
+        Passed to :meth:`convert_vector`.
     shape : (int, int) OR None
-        Passed to :meth:`convert_blaze_vector`.
+        Passed to :meth:`convert_vector`.
     """
-    v0 = convert_blaze_vector(
+    v0 = convert_vector(
         (0, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
     )
-    vx = convert_blaze_vector(
+    vx = convert_vector(
         (radius, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
     )
-    vy = convert_blaze_vector(
+    vy = convert_vector(
         (0, radius), from_units=from_units, to_units=to_units, slm=slm, shape=shape
     )
     return np.mean([np.linalg.norm(vx - v0), np.linalg.norm(vy - v0)])
@@ -606,13 +769,16 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
     expected_dimension : int
         Dimension of the system, i.e. ``M``.
     handle_dimension : {"error", "crop", "pass"}
-        If a 3D array of vectors is provided, decides how to handle these:
+        If an array of vectors with larger dimensionality than
+        ``expected_dimension = M`` is provided, decides how to handle these:
 
         - ``"error"`` Raises an error if not ``(M, N)``.
 
         - ``"crop"`` Crops the higher dimensions and returns ``(M, N)``.
 
         - ``"pass"`` Returns ``(K, N)`` if ``K`` is greater than or equal to ``M``.
+
+        ``"crop"`` and ``"pass"`` raise an error if ``K`` is less than ``M``.
 
     Returns
     -------
@@ -864,6 +1030,11 @@ def smallest_distance(vectors, metric=chebyshev):
     An :math:`\mathcal{O}(N^2)` brute force approach is currently implemented.
     Future work will involve an :math:`\mathcal{O}(N\log(N))`
     divide and conquer algorithm.
+
+    Caution
+    ~~~~~~~
+    Unsigned vectors can lead to unexpected results when evaluating a distance metric.
+    Be sure that your vectors are signed.
 
     Parameters
     ----------

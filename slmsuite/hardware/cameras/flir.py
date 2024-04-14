@@ -8,13 +8,14 @@ Warning
 ~~~~~~~~
 Implementation unfinished and untested. Consider using ``simple_pyspin`` as a dependency instead.
 """
+import warnings
 
 from .camera import Camera
 
 try:
     import PySpin
 except ImportError:
-    print("filr.py: PySpin not installed. Install to use FLIR cameras.")
+    warnings.warn("PySpin not installed. Install to use FLIR cameras.")
 
 
 class FLIR(Camera):

@@ -21,8 +21,8 @@ Install the latest version of |slmsuite|_ from `GitHub <https://github.com/QPG-M
 
     pip install git+https://github.com/QPG-MIT/slmsuite
 
-You can also clone |slmsuite|_ directly and add its directory to the Python path.
-Remember to install the dependencies (next sections).
+One can also clone |slmsuite|_ directly and add its directory to the Python path.
+*Remember to install the dependencies (next sections)*.
 
 .. code-block:: console
 
@@ -32,8 +32,7 @@ Required Dependencies
 ---------------------
 
 The following python packages are necessary to run |slmsuite|_. These are listed as PyPi
-dependencies and thus are installed automatically if ``pip`` is used to install. One can
-also use ``pip install -r requirements.txt`` to instead install these dependencies directly.
+dependencies and thus are installed automatically if PyPi (``pip``) is used to install.
 
 - `python <https://www.python.org/>`_
 - `numpy <https://numpy.org/>`_
@@ -43,6 +42,12 @@ also use ``pip install -r requirements.txt`` to instead install these dependenci
 - `h5py <https://www.h5py.org/>`_
 - `tqdm <https://github.com/tqdm/tqdm>`_
 
+One can also install these dependencies directly.
+
+.. code-block:: console
+
+    pip install -r requirements.txt
+
 Hardware Dependencies
 ---------------------
 
@@ -50,9 +55,7 @@ The following python packages are optional acceleration or hardware requirements
 the user can install selectively.
 
 - GPU
-    - `cupy <https://cupy.dev/>`_ (highly recommended for GPU-accelerated holography)
-        - Installation via ``conda install -c conda-forge cupy`` is
-          `recommended <https://docs.cupy.dev/en/stable/install.html>`_.
+    - `cupy <https://cupy.dev/>`_, highly recommended for GPU-accelerated holography.
 - Cameras
     - `instrumental-lib <https://github.com/mabuchilab/Instrumental>`_
     - `pymmcore <https://github.com/micro-manager/pymmcore>`_
@@ -74,7 +77,6 @@ and also list useful packages for code profiling which can be included via
 `IPython <https://ipython.org/>`_
 `magic <https://ipython.readthedocs.io/en/stable/interactive/tutorial.html#magics-explained>`_,
 along with other features like |autoreload|_ or |matplotlibs|_ which are packaged with IPython.
-To install recommended jupyter-related packages, use ``pip install -r requirements_ipython.txt``.
 
 - `jupyter <https://jupyter.org>`_
     - `line-profiler <https://github.com/pyutils/line_profiler>`_
@@ -83,6 +85,13 @@ To install recommended jupyter-related packages, use ``pip install -r requiremen
 If Jupyter is not used, the default :mod:`matplotlib` plots will block further
 execution, so the user should avoid plotting with ``plot=False`` flags on functions
 or develop a workaround.
+
+Use the following to install recommended jupyter-related packages.
+
+.. code-block:: console
+
+    pip install -r requirements_ipython.txt
+
 
 .. |slmsuite| replace:: :mod:`slmsuite`
 .. _slmsuite: https://github.com/QPG-MIT/slmsuite

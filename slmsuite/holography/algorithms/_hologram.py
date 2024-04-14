@@ -88,7 +88,7 @@ class Hologram(_HologramStats):
     phase_ff : numpy.ndarray OR cupy.ndarray
         Algorithm-constrained **far-field** phase in the ``"knm"`` basis.
         Stored for certain computational algorithms.
-        (see :meth:`~slmsuite.holography.algorithms.Hologram.GS`).
+        (see :meth:`~slmsuite.holography.algorithms.Hologram.optimize_gs`).
         This is of shape :attr:`shape`.
     amp_ff : numpy.ndarray OR cupy.ndarray OR None
         **Far-field** amplitude in the ``"knm"`` basis.
@@ -123,7 +123,7 @@ class Hologram(_HologramStats):
             See :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
          - ``"fixed_phase"`` : ``bool``
             Fixes the far-field phase as mandated by certain weighted algorithms
-            (see :meth:`~slmsuite.holography.algorithms.Hologram.GS()`).
+            (see :meth:`~slmsuite.holography.algorithms.Hologram.optimize_gs()`).
          - ``"feedback"`` : ``str``
             Stores the values passed to
             :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
@@ -562,7 +562,7 @@ class Hologram(_HologramStats):
         Returns
         -------
         numpy.ndarray
-            Current nearfield phase computed by GS.
+            Current nearfield phase of the optimization.
         """
         if cp != np:
             return self.phase.get() + np.pi
@@ -584,7 +584,7 @@ class Hologram(_HologramStats):
         Returns
         -------
         numpy.ndarray
-            Current farfield computed by GS.
+            Current farfield of the optimization.
         """
         nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), self.shape)
         farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
@@ -637,19 +637,20 @@ class Hologram(_HologramStats):
 
         - Gerchberg-Saxton (GS) phase retrieval.
 
-            ``'GS'``
+            - ``'GS'``
 
               `An iterative algorithm for phase retrieval
               <http://www.u.arizona.edu/~ppoon/GerchbergandSaxton1972.pdf>`_,
               accomplished by moving back and forth between the imaging and Fourier domains,
               with amplitude corrections applied to each.
-              This is implemented using fast Fourier transforms, potentially GPU-accelerated.
+              This is usually implemented using fast discrete Fourier transforms,
+              potentially GPU-accelerated.
 
         - Weighted Gerchberg-Saxton (WGS) phase retrieval algorithms of various flavors.
           Improves the uniformity of GS-computed focus arrays using weighting methods and
           techniques from literature. The ``method`` keywords are:
 
-            ``'WGS-Leonardo'``
+            - ``'WGS-Leonardo'``
 
               `The original WGS algorithm <https://doi.org/10.1364/OE.15.001913>`_.
               Weights the target amplitudes by the ratio of mean amplitude to computed
@@ -667,7 +668,7 @@ class Hologram(_HologramStats):
               The power :math:`p` defaults to .9 if not passed. In general, smaller
               :math:`p` will lead to slower yet more stable optimization.
 
-            ``'WGS-Kim'``
+            - ``'WGS-Kim'``
 
               `Improves the convergence <https://doi.org/10.1364/OL.44.003178>`_
               of ``WGS-Leonardo`` by fixing the far-field phase
@@ -677,7 +678,7 @@ class Hologram(_HologramStats):
               (fraction of far-field energy at the desired points)
               specified by ``"fix_phase_efficiency"``
 
-            ``'WGS-Nogrette'``
+            - ``'WGS-Nogrette'``
 
               Weights target intensities by `a tunable gain factor <https://doi.org/10.1103/PhysRevX.4.021034>`_.
 
@@ -690,7 +691,7 @@ class Hologram(_HologramStats):
               Note that while Nogrette et al compares powers, this implementation
               compares amplitudes for speed. These are identical to first order.
 
-            ``'WGS-Wu'``
+            - ``'WGS-Wu'``
 
               `exponential <https://doi.org/10.1364/OE.413723>`_
 
@@ -856,10 +857,10 @@ class Hologram(_HologramStats):
 
         # 3) Switch between optimization methods (currently only GS- or WGS-type is supported).
         if "GS" in method:
-            self.GS(iterations, callback)
+            self.optimize_gs(iterations, callback)
 
     # Optimization methods (currently only GS- or WGS-type is supported).
-    def GS(self, iterations, callback):
+    def optimize_gs(self, iterations, callback):
         """
         GPU-accelerated Gerchberg-Saxton (GS) iterative phase retrieval.
 
@@ -925,7 +926,7 @@ class Hologram(_HologramStats):
 
             # Evaluate method-specific routines, stats, etc.
             # If you want to add new functionality to GS, do so here to keep the main loop clean.
-            self._GS_farfield_routines(self.farfield, mraf_variables)
+            self._gs_farfield_routines(self.farfield, mraf_variables)
 
             # (C) Farfield -> nearfield.
             nearfield = self._farfield2nearfield(self.farfield, nearfield_out=nearfield)
@@ -1016,7 +1017,7 @@ class Hologram(_HologramStats):
         if hasattr(self, "img_knm"):
             self.img_knm = None
 
-    def _GS_farfield_routines(self, farfield, mraf_variables):
+    def _gs_farfield_routines(self, farfield, mraf_variables):
         # Update statistics
         self.update_stats(self.flags["stat_groups"])
 

@@ -27,7 +27,7 @@ conditions!) using the latest algorithms from research. It features:
 * Automated Fourier- to image-space coordinate transformations: point to a camera pixel, and
   the Fourier-domain SLM will direct light there!
 * Automated wavefront calibration to compensate for aberrations along the SLM imaging train,
-* A growing suite of GPU-accelerated iterative phase retreival algorithms
+* A growing suite of GPU-accelerated iterative phase retrieval algorithms
   (e.g. weighted Gerchberg-Saxton) **with experimental feedback**,
 * Automated evaluation metrics to monitor diffraction efficiency and image tolerances,
 * ... and more to come!
@@ -74,7 +74,7 @@ With easy-to-learn syntax and good readability, Python is ideal for scientists a
 experimentalists interested in quick development and refinement.
 Itself being `open-source <https://github.com/python/cpython>`_,
 Python is a goto language for open-source projects, to the point that it is the
-`most pull-requested language <https://madnight.github.io/githut/#/pull_requests/2022/1>`_
+`most pull-requested language <https://madnight.github.io/githut/#/pull_requests/2024/1>`_
 on GitHub.
 
 .. Fast and hardware-compatible due to C backend.

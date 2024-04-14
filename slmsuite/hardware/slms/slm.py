@@ -73,15 +73,15 @@ class SLM:
         Stores data describing measured, simulated, or estimated properties of the source,
         such as amplitude and phase.
         Typical keys include:
-            'amplitude' : numpy.ndarray
+            ``"amplitude"`` : numpy.ndarray
                 Source amplitude (with the dimensions of :attr:`shape`) measured on the SLM via
                 :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate()`.
                 Also see :meth:`set_source_analytic()` to set without wavefront calibration.
-            'phase' : numpy.ndarray
+            ``"phase"`` : numpy.ndarray
                 Source phase (with the dimensions of :attr:`shape`) measured on the SLM via
                 :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
                 Also see :meth:`set_source_analytic()` to set without wavefront calibration.
-        For a :class:`.SimulatedSLM()`, 'amplitude_sim' and 'phase_sim' keywords
+        For a :class:`.SimulatedSLM()`, ``"amplitude_sim"`` and ``"phase_sim"`` keywords
         store the true source properties (defined by the user) used to simulate the SLM's
         far-field.
     phase : numpy.ndarray
@@ -508,7 +508,7 @@ class SLM:
 
         return out
 
-    def set_source_analytic(self, fit_function, units="norm", phase_offset=0, sim=False, **kwargs):
+    def set_source_analytic(self, fit_function="gaussian2d", units="norm", phase_offset=0, sim=False, **kwargs):
         """
         In the absence of a proper wavefront calibration, sets
         :attr:`~slmsuite.hardware.slms.slm.SLM.source` amplitude and phase using a
@@ -528,19 +528,22 @@ class SLM:
 
         Parameters
         ----------
-        fit_function : str
+        fit_function : str OR lambda
             Function name from :mod:`~slmsuite.misc.fitfunctions` used to set the
-            source profile.
+            source profile. The function can also be passed directly.
+            Defaults to ``"gaussian2d"``.
         units : str in {"norm", "frac", "nm", "um", "mm", "m"}
-            Units for the :math:`(x,y)` grid passed to `fit_function`.
+            Units for the :math:`(x,y)` grid passed to ``fit_function``. This essentially
+            determines the scaling on the normalized grid stored in the SLM which is
+            passed to the ``fit_function``.
         sim : bool
             Sets the simulated source distribution if ``True`` or the approximate
             experimental source distribution (in absence of wavefront calibration)
             if ``False``.
-        phase_offset : ndarray
-            Additional phase (of shape :attr:`shape`)added to :attr:`source`.
+        phase_offset : float OR numpy.ndarray
+            Additional phase (of shape :attr:`shape`) added to :attr:`source`.
         kwargs
-            Arguments passed to `fit_function`.
+            Arguments passed to ``fit_function``.
 
         Returns
         --------
@@ -564,13 +567,19 @@ class SLM:
             dx = factor * self.dx / self.dx_um
             dy = factor * self.dy / self.dy_um
 
+        if isinstance(fit_function, str):
+            fit_function = getattr(fitfunctions, fit_function)
+
         xy = [self.x_grid / dx, self.y_grid / dy]
-        source = getattr(fitfunctions, fit_function)(xy, **kwargs)
+        source = fit_function(xy, **kwargs)
 
         self.source["amplitude_sim" if sim else "amplitude"] = np.abs(source)
         self.source["phase_sim" if sim else "phase"] = np.angle(source) + phase_offset
 
         return self.source
+
+    def get_zernike_scaling(self):
+        pass
 
     def _get_source_amplitude(self):
         """Deals with the case of an unmeasured source amplitude."""
@@ -612,7 +621,9 @@ class SLM:
                 "fourier_calibration to measure source profile."
             )
 
-        fig, axs = plt.subplots(1, 2 if sim else 3, figsize=(10, 6))
+        plot_r2 = not sim and "r2" in self.source
+
+        fig, axs = plt.subplots(1, 3 if plot_r2 else 2, figsize=(10, 6))
 
         im = axs[0].imshow(
             self._phase2gray(self.source["phase_sim" if sim else "phase"]),
@@ -635,7 +646,7 @@ class SLM:
         cax = divider.append_axes("right", size="5%", pad=0.05)
         plt.colorbar(im, cax=cax)
 
-        if not sim:
+        if plot_r2:
             im = axs[2].imshow(self.source["r2"], clim=(0, 1))
             axs[2].set_title("Cal Fitting $R^2$")
             axs[2].set_xlabel("SLM $x$ [superpix]")
@@ -652,7 +663,7 @@ class SLM:
     def point_spread_function_knm(self, padded_shape=None):
         """
         Fourier transforms the wavefront calibration's measured amplitude to find
-        the expected diffraction-limited perfomance of the system in ``"knm"`` space.
+        the expected diffraction-limited performance of the system in ``"knm"`` space.
 
         Parameters
         ----------
@@ -681,8 +692,7 @@ class SLM:
         float
             Average radius of the farfield spot.
         """
-        # If SLM amplitude profile is measured (i.e., SLM has been wavefront calibrated)
-        try:
+        try:    # If SLM amplitude profile is measured (i.e., SLM has been wavefront calibrated)
             psf_nm = np.sqrt(analysis.image_variances(self._get_source_amplitude())[:2])
             fwhm = 2 * np.sqrt(2 * np.log(2)) * psf_nm
             psf_kxy = toolbox.convert_blaze_vector(
@@ -692,9 +702,7 @@ class SLM:
                 slm=self,
                 shape=self.shape,
             )
-
-        # No amplitude profile present
-        except:
+        except:  # No amplitude profile present
             psf_kxy = [1 / self.dx / self.shape[1], 1 / self.dy / self.shape[0]]
 
         return toolbox.format_2vectors(psf_kxy)

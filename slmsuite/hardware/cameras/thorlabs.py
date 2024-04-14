@@ -16,6 +16,7 @@ import os
 import sys
 import time
 import numpy as np
+import warnings
 
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -49,8 +50,8 @@ def configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
             os.add_dll_directory(dll_path)
         except:
             if DEFAULT_DLL_PATH == dll_path:
-                print(
-                    "thorlabs.py: thorlabs_tsi_sdk DLLs not found at default path. "
+                warnings.warn(
+                    "thorlabs_tsi_sdk DLLs not found at default path. "
                     "Resolve to use Thorlabs cameras.\nDefault path: '{}'".format(DEFAULT_DLL_PATH)
                 )
     else:
@@ -61,7 +62,7 @@ configure_tlcam_dll_path()
 try:
     from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, ROI
 except ImportError:
-    print("thorlabs.py: thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
+    warnings.warn("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
 
 
 class ThorCam(Camera):

@@ -1,26 +1,135 @@
 from slmsuite.holography.algorithms._header import *
+from slmsuite.holography.algorithms._hologram import Hologram
 from slmsuite.holography.algorithms._feedback import FeedbackHologram
 
 
-class FreeSpotHologram(FeedbackHologram):
+class _AbstractSpotHologram(FeedbackHologram):
     """
-    Holography optimized for the generation of optical focal arrays.
+    Abstract class to handle refine_offset for SpotHologram and CompressedSpotHologram.
+
+    Attributes
+    ----------
+
+    T
+    """
+
+    def refine_offset(self, img=None, basis="kxy", force_affine=True, plot=False):
+        """
+        Hones the positions of the produced spots toward the desired targets to compensate for
+        Fourier calibration imperfections. Works either by moving camera integration
+        regions to the positions where the spots ended up (``basis="ij"``) or by moving
+        the :math:`k`-space targets to target the desired camera pixels
+        (``basis="knm"``/``basis="kxy"``). This should be run at the user's request
+        inbetween :meth:`optimize` iterations.
+
+        Parameters
+        ----------
+        img : numpy.ndarray OR None
+            Image measured by the camera. If ``None``, defaults to :attr:`img_ij` via :meth:`measure()`.
+        basis : str
+            The correction can be in any of the following bases:
+
+            - ``"ij"`` changes the pixel that the spot is expected at,
+            - ``"kxy"``, ``"knm"`` changes the k-vector which the SLM targets.
+
+            Defaults to ``"kxy"``. If basis is set to ``None``, no correction is applied
+            to the data in the :class:`SpotHologram`.
+        force_affine : bool
+            Whether to force the offset refinement to behave as an affine transformation
+            between the original and refined coordinate system. This helps to tame
+            outliers. Defaults to ``True``.
+
+        plot : bool
+            Enables debug plots.
+
+        Returns
+        -------
+        numpy.ndarray
+            Spot shift in the ``"ij"`` basis for each spot.
+        """
+        # If no image was provided, get one from cache.
+        if img is None:
+            self.measure(basis="ij")
+            img = self.img_ij
+
+        # Take regions around each point from the given image.
+        regions = analysis.take(
+            img, self.spot_ij, self.spot_integration_width_ij, centered=True, integrate=False
+        )
+
+        # Fast version; have to iterate for accuracy.
+        shift_vectors = analysis.image_positions(regions)
+        shift_vectors = np.clip(
+            shift_vectors, -self.spot_integration_width_ij / 4, self.spot_integration_width_ij / 4
+        )
+
+        # Store the shift vector before we force_affine.
+        sv1 = self.spot_ij + shift_vectors
+
+        if force_affine:
+            affine = analysis.fit_affine(self.spot_ij, self.spot_ij + shift_vectors, plot=plot)
+            shift_vectors = (np.matmul(affine["M"], self.spot_ij) + affine["b"]) - self.spot_ij
+
+        # Record the shift vector after we force_affine.
+        sv2 = self.spot_ij + shift_vectors
+
+        # Plot the above if desired.
+        if plot:
+            mask = analysis.take(
+                img,
+                self.spot_ij,
+                self.spot_integration_width_ij,
+                centered=True,
+                integrate=False,
+                return_mask=True,
+            )
+
+            plt.figure(figsize=(12, 12))
+            plt.imshow(img * mask)
+            plt.scatter(sv1[0, :], sv1[1, :], s=200, fc="none", ec="r")
+            plt.scatter(sv2[0, :], sv2[1, :], s=300, fc="none", ec="b")
+            plt.show()
+
+        # Handle the feedback applied from this refinement.
+        if basis is not None:
+            if basis == "kxy" or basis == "knm":
+                # Modify k-space targets. Don't modify any camera spots.
+                self.spot_kxy = self.spot_kxy - (
+                    self.cameraslm.ijcam_to_kxyslm(shift_vectors)
+                    - self.cameraslm.ijcam_to_kxyslm((0, 0))
+                )
+                self.spot_knm = toolbox.convert_blaze_vector(
+                    self.spot_kxy, "kxy", "knm", self.cameraslm.slm, self.shape
+                )
+                self.update_target(reset_weights=True)
+                self.reset_phase()
+            elif basis == "ij":
+                # Modify camera targets. Don't modify any k-vectors.
+                self.spot_ij = self.spot_ij + shift_vectors
+            else:
+                raise Exception("Unrecognized basis '{}'.".format(basis))
+
+        return shift_vectors
+
+
+class CompressedSpotHologram(_AbstractSpotHologram):
+    """
+    Holography optimized for the generation of optical focal arrays, making use of
+    kernels not bound to the grid of a discrete Fourier transform.
 
     Is a subclass of :class:`FeedbackHologram`, but falls back to non-camera-feedback
     routines if :attr:`cameraslm` is not passed.
 
-    Note
-    ----
-    Three levels of kernels.
-
     Attributes
     ----------
-    spot_kxy, spot_ij : array_like of float OR None
+    spot_kxy : array_like of float OR None
         Spot position vectors with shape ``(2, N)`` or ``(3, N)``.
         These vectors are floats.
         The subscript refers to the basis of the vectors, the transformations between
         which are autocomputed.
         If necessary transformations do not exist, :attr:`spot_ij` is set to ``None``.
+    spot_ij : array_like of float OR None
+        Lateral spot position vectors with shape ``(2, N)``.
     external_spot_amp : array_like of float
         When using ``"external_spot"`` feedback or the ``"external_spot"`` stat group,
         the user must supply external data. This data is transferred through this
@@ -31,38 +140,90 @@ class FreeSpotHologram(FeedbackHologram):
         For spot-specific feedback methods, better SNR is achieved when integrating over
         many camera pixels. This variable stores the width of the integration region
         in ``"ij"`` (camera) space.
-    stack : TODO
-        TODO
-    kernel : TODO
+    cuda : bool
         TODO
     """
 
     def __init__(
         self,
-        spot_kxy,
+        spot_vectors,
+        basis="knm",
         spot_amp=None,
-        spot_extra=None,
-        extra_basis=None,
+        zernike_basis=None,
         cameraslm=None,
         **kwargs
     ):
         """
-        Initializes a :class:`SpotHologram` targeting given spots at ``spot_vectors``.
+        Initializes a :class:`CompressedSpotHologram` targeting given spots at ``spot_vectors``.
+        This class makes use of so-called 'compressed' methods. Instead of
+        effectively evaluating a blazing nearfield-farfield transformation kernel
+        :math:`\phi(x,y,k_x,k_y) = k_xx + k_yy` at every
+        point in the grid of a discrete Fourier transform, this class 'compresses' the
+        effort to evaluate such kernels **only when the target farfield amplitude is
+        non-zero.**
+
+        For focal arrays, the majority of the DFT grid is zero, so only
+        processing the non-zero points can be faster. Importantly, each kernel is
+        no longer bound to a grid, so :math:`k_x, k_y` can be defined as free floating
+        points. More importantly, we are not restricted to the linear shearing that the
+        standard Fourier kernel imposes. Rather, quadratic focusing terms or more
+        complicated summations of Zernike polynomials can be employed.
+
+        Important
+        ---------
+        This class supports three different options for generating compressed spot
+        arrays.
+
+         -  First, a :mod:`numpy`/:mod:`cupy` method is implemented.
+            This method makes ample use of memory and is inefficient for very large spot arrays.
+            This method works by playing tricks to vectorize operations.
+            More general or complicated functionality requires full use of the GPU.
+            The following two methods require :mod:`cupy`.
+
+         -  Second, a custom CUDA kernel loaded into :mod:`cupy` focussing on 2D and 3D
+            arrays of spots.
+
+         -  Lastly, a custom CUDA kernel loaded into :mod:`cupy` focussing on arrays of
+            spots, **each spot having an individualized zernike calibration**. Saving
+            and transporting a set of zernike polynomials up to a large order would
+            consume unacceptable  amounts of memory and memory bandwidth.
+            Instead, this kernel dynamically constructs all the zernike polynomials in the
+            given basis locally on the GPU, using this data to
+            apply the nearfield-farfield transformation before returning only the result
+            of the transformation. Such computation requires only the data of the input
+            and output, along with highly efficient information defining the
+            construction of the polynomials.
+
+        The chosen option is selected dynamically.
 
         Parameters
         ----------
-        spot_kxy : array_like
-            Spot position vectors with shape ``(2, N)`` or ``(3, N)``.
+        spot_vectors : array_like
+            Spot position vectors with shape ``(D, N)``, where ``D`` is the dimension of
+            the parameters of each spot defined by ``zernike_basis``.
+        basis : str
+            pass
         spot_amp : array_like OR None
             The amplitude to target for each spot.
             See :attr:`SpotHologram.spot_amp`.
             If ``None``, all spots are assumed to have the same amplitude.
             Normalization is performed automatically; the user is not required to
             normalize.
-        spot_extra : array_like OR None
-            TODO
-        extra_basis : array_like OR None
-            TODO
+            MRAF functions still work. TODO
+        zernike_basis : array_like OR None
+            List of ``D`` indices corresponding to Zernike polynomials using ANSI indexing.
+            See :meth:`~slmsuite.holography.toolbox.phase.convert_zernike_index()`.
+            If ``None``, and ``D == 2``, then the basis is assumed to be``[1,2]``
+            corresponding to the :math:`x = Z_1 = Z_1^{-1}`
+            and :math:`y = Z_2 = Z_1^1` tilt terms.
+            If ``None``, and ``D == 3``, then the basis is assumed to be ``[1,2,4]``
+            corresponding to the previous, with the addition of the
+            :math:`Z_4 = Z_2^0` focus term.
+            If ``None``, and otherwise, then the basis is assumed to be ``[1,...,D]``.
+            The piston (Zernike index 0) term is ignored as this constant phase is
+            optimized against.
+            The index ``-1`` (outside Zernike indexing) is used as a special case to add
+            a vortex waveplate to the system.
         cameraslm : slmsuite.hardware.cameraslms.FourierSLM OR None
             If the ``"ij"`` basis is chosen, and/or if the user wants to make use of camera
             feedback, a cameraslm must be provided.
@@ -70,22 +231,50 @@ class FreeSpotHologram(FeedbackHologram):
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
         # Parse vectors.
-        self.spot_kxy = toolbox.format_vectors(spot_kxy, handle_dimension="pass")
-        if self.spot_kxy.shape[0] > 3:
-            raise ValueError("Cannot interpret greater dimension than three.")
+        if spot_kxy is not None:
+            self.spot_kxy = toolbox.format_vectors(spot_kxy, handle_dimension="pass")
+            (D, N) = self.spot_kxy.shape
+        else:
+            N = self.spot_kxy.shape
 
         # Parse spot_amp.
         if spot_amp is not None:
-            assert self.spot_kxy.shape[1] == len(spot_amp.ravel()), \
-                "spot_amp must have the same length as the provided spots."
-            self.spot_amp = np.ravel(spot_amp)
+            self.spot_amp = np.array(spot_amp, copy=False)
+            if self.spot_amp.size != N:
+                raise ValueError("spot_amp must have the same length as the provided spots.")
         else:
-            self.spot_amp = np.full(self.spot_kxy.shape[1], 1.0 / np.sqrt(self.spot_kxy.shape[1]))
+            self.spot_amp = np.full(N, 1.0 / np.sqrt(N))
+
+        # Parse zernike_basis.
+        if zernike_basis is None:
+            # Assume the ANSI basis (slmsuite default), but start without piston.
+            self.zernike_basis = np.arange(1, D+1)
+        else:
+            # Make sure we are a 1D list.
+            self.zernike_basis = np.ravel(zernike_basis)
+            if len(self.zernike_basis) != D:
+                raise ValueError("zernike_basis must have the same dimension as the provided spots.")
+
+            # Warn the user that the piston is useless.
+            if 0 in self.zernike_basis:
+                warnings.warn(
+                    "Found ANSI index '0' (Zernike piston) in the zernike_basis, "
+                    "but spot phase is controlled externally."
+                )
+
+        # Make some helper variables to use the spot_basis.
+        if not np.any(self.zernike_basis == 1) or not np.any(self.zernike_basis == 2):
+            raise ValueError("Compressed basis must include x/y (Zernike ANSI indices 1, 2)")
+        self.zernike_basis_cartesian = [
+            np.argwhere(self.zernike_basis == 1)[0], np.argwhere(self.zernike_basis == 2)[0]
+        ]
+        if np.any(self.zernike_basis == 4):
+            self.zernike_basis_cartesian.append(np.argwhere(self.zernike_basis == 4)[0])
 
         # Check to make sure spots are within bounds
         kmax = 1    # TODO: replace with correct value.
-        if np.any(np.abs(self.spot_kxy[:2]) > kmax):
-            raise ValueError("Spots outside the bounds of the farfield")
+        if np.any(np.abs(self.spot_kxy[self.zernike_basis_lateral]) > kmax):
+            raise ValueError("Spots laterally outside the bounds of the farfield")
 
         # Generate ij point spread function (psf)
         if cameraslm is not None:
@@ -96,7 +285,7 @@ class FreeSpotHologram(FeedbackHologram):
             psf_ij = np.nan
             self.spot_ij = None
 
-        if np.isnan(psf_ij):    psf_ij = 0
+        if np.isnan(psf_ij): psf_ij = 0
 
         # Use semi-arbitrary values to determine integration widths. The default width is:
         #  - six times the psf,
@@ -106,8 +295,6 @@ class FreeSpotHologram(FeedbackHologram):
         #      (divided by 1 would correspond to the largest non-overlapping integration
         #      regions; 1.5 gives comfortable padding)
         #  - and finally forced to be an odd integer.
-
-        # TODO: unify with SpotHologram
         min_psf = 3
 
         if self.spot_ij is not None:
@@ -149,14 +336,17 @@ class FreeSpotHologram(FeedbackHologram):
         self.external_spot_amp = np.ones(self.target.shape)
 
         # Default helper variables.
-        self.kernel = None
-        self.stack = None
+        self._cupy_kernel = None
+        self._cupy_stack = None
         self.cuda = False
+
+        # Storage variable to use cp.sum on the intermediate sum.
+        self._nearfield2farfield_cuda_intermediate = None
 
         # Custom GPU kernels for speed.
         if np != cp:
             try:
-                v1 = False
+                v1 = D == 2 or (D == 3 and len(self.zernike_basis_cartesian) == 3)
                 if v1:
                     self._far2near_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_farfield2nearfield')
                     self._near2far_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_nearfield2farfield')
@@ -165,7 +355,6 @@ class FreeSpotHologram(FeedbackHologram):
                     self._near2far_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_nearfield2farfield_v2')
 
                 self.cuda = True
-                self._nearfield2farfield_cuda_intermediate = None
             except:
                 warnings.warn("Raw CUDA kernels failed to compile. Falling back to cupy.")
 
@@ -178,7 +367,15 @@ class FreeSpotHologram(FeedbackHologram):
         int
             The length of :attr:`spot_amp`.
         """
-        return self.spot_kxy.shape[1]
+        return self.spot_amp.size
+
+    def calculate_padded_shape(self):
+        """
+        Vestigial from :class:`slmsuite.holography.algorithms.Hologram`, but unneeded here.
+        :class:`slmsuite.holography.algorithms.CompressedSpotHologram`
+        does not use a DFT grid and does not need padding.
+        """
+        raise NameError("CompressedSpotHologram does not use a DFT grid and does not need padding.")
 
     # Projection backend helper functions.
     def _build_stack(self, D=2):
@@ -194,19 +391,19 @@ class FreeSpotHologram(FeedbackHologram):
         Y = (2 * cp.pi) * cp.array(self.cameraslm.slm.y_grid, dtype=self.dtype_complex).ravel()
 
         if D == 2:      # 2D spots
-            self.stack = cp.stack((X, Y), axis=-1)       # Shape (H*W, 2)
+            self._cupy_stack = cp.stack((X, Y), axis=-1)       # Shape (H*W, 2)
         elif D == 3:    # 3D spots
             # Currently restricted to non-cylindrical focusing.
-            # This is a good assumption if the SLM has square pixel size.
-            # And the optical train does not include cylindrical optics.
+            # This is a good assumption if the SLM has square pixel size
+            # and the optical train does not include cylindrical optics.
             # RR = pi * (x_grid ^2 + y_grid ^ 2)
             RR = (1 / (4 * cp.pi)) * (cp.square(X) + cp.square(Y))
-            self.stack = cp.stack((X, Y, RR), axis=-1)   # Shape (H*W, 3)
+            self._cupy_stack = cp.stack((X, Y, RR), axis=-1)   # Shape (H*W, 3)
         else:
             raise ValueError(f"Expected spots to be 2D or 3D. Found {D}D")
 
         # Rotate to imaginary afterward (not before so we can square X and Y when calculating RR).
-        self.stack *= 1j
+        self._cupy_stack *= 1j
 
     def _build_kernel_batched(self, spot_kxy, out=None):
         """
@@ -224,7 +421,7 @@ class FreeSpotHologram(FeedbackHologram):
         (D, N) = spot_kxy.shape                         # Shape (2|3, N)
 
         # Parse stack.
-        if self.stack is None:
+        if self._cupy_stack is None:
             self._build_stack(D)                        # Shape (H*W, 2|3)
 
         # Parse out.
@@ -235,43 +432,36 @@ class FreeSpotHologram(FeedbackHologram):
             raise ValueError(f"out shape {out.shape} does not matched the expected {out_shape}")
 
         # Evaluate the result in a (hopefully) memory and compute efficient way.
-        out = cp.matmul(self.stack, spot_kxy, out=out)  # (H*W, 2|3) x (2|3, N) = (H*W, N)
+        out = cp.matmul(self._cupy_stack, spot_kxy, out=out)  # (H*W, 2|3) x (2|3, N) = (H*W, N)
 
         # Convert from phase to complex amplitude.
         out = cp.exp(out, out=out)
 
         return out
 
-    def _nearfield2farfield(self, nearfield, farfield_out=None, cuda=None):
+    def _nearfield2farfield(self, nearfield, farfield_out=None):
         """
         Maps the ``(H,W)`` nearfield (complex value on the SLM)
         onto the ``(N,1)`` farfield (complex value for each spot).
         """
         if farfield_out is None:
-            N = self.spot_kxy.shape[1]
-            farfield_out = cp.zeros((N,), dtype=self.dtype_complex)
+            farfield_out = cp.zeros((len(self),), dtype=self.dtype_complex)
 
-        if cuda is None: cuda = self.cuda
-
-        if cuda:
+        if self.cuda:
             try:
                 farfield_out = self._nearfield2farfield_cuda(nearfield, farfield_out)
             except Exception as err:    # Fallback to cupy upon error.
-                warnings.warn("Falling back to cupy: " + str(err))
-                self.cuda = cuda = False
+                warnings.warn("Falling back to cupy:\n" + str(err))
+                self.cuda = False
 
-        if not cuda:
+        if not self.cuda:
             farfield_out = self._nearfield2farfield_cupy(nearfield, farfield_out)
 
         return farfield_out
 
     def _nearfield2farfield_cuda(self, nearfield, farfield_out):
-        WH = int(self.slm_shape[0] * self.slm_shape[1])
-        N = int(self.spot_kxy.shape[1])
-        D = int(self.spot_kxy.shape[0])
-
-        if self.stack is None:
-            self._build_stack(D)
+        H, W = self.slm_shape
+        D, N = self.spot_kxy.shape
 
         threads_per_block = int(1024)
         assert self._near2far_cuda.max_threads_per_block >= threads_per_block
@@ -280,7 +470,7 @@ class FreeSpotHologram(FeedbackHologram):
                 "Threads per block can be larger than the hardcoded limit of 1024. "
                 "Remove this limit for enhanced speed."
             )
-        blocksx = WH // threads_per_block
+        blocksx = int(np.ceil(float(W*H) / threads_per_block))
         blocksy = N
 
         print((blocksx, blocksy))
@@ -296,19 +486,62 @@ class FreeSpotHologram(FeedbackHologram):
             (threads_per_block, 1),
             (
                 nearfield.ravel(),
-                WH, N, D,
+                W, H, N, D,
                 spot_kxy_float,
-                self.stack[:, 0],
-                self.stack[:, 1],
-                self.stack[:, 2] if D == 3 else 0,
-                0, 0, 0,
+                0, 0, float(self.cameraslm.slm.dx), float(self.cameraslm.slm.dy),
+                self._nearfield2farfield_cuda_intermediate.ravel()
+            )
+        )
+
+        print(W*H)
+        print(self._cupy_stack.shape)
+        print(self._cupy_stack[0, :])
+        print(self._nearfield2farfield_cuda_intermediate)
+        print(cp.abs(self._nearfield2farfield_cuda_intermediate))
+        print(self._nearfield2farfield_cuda_intermediate.shape)
+        print(farfield_out.shape)
+
+        # Sum over all the blocks to get the final answers using optimized cupy methods.
+        farfield_out = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=farfield_out)
+        farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
+
+        return farfield_out
+
+    def _nearfield2farfield_cuda_v2(self, nearfield, farfield_out):
+        H, W = self.slm_shape
+        D, N = self.spot_kxy.shape
+
+        threads_per_block = int(1024)
+        assert self._near2far_cuda.max_threads_per_block >= threads_per_block
+        if self._near2far_cuda.max_threads_per_block > threads_per_block:
+            warnings.warn(
+                "Threads per block can be larger than the hardcoded limit of 1024. "
+                "Remove this limit for enhanced speed."
+            )
+        blocksx = int(np.ceil(float(W*H) / threads_per_block))
+        blocksy = N
+
+        print((blocksx, blocksy))
+
+        if self._nearfield2farfield_cuda_intermediate is None:
+            self._nearfield2farfield_cuda_intermediate = cp.zeros((blocksy, blocksx), dtype=self.dtype_complex)
+
+        # Call the RawKernel.
+        self._near2far_cuda(
+            (blocksx,),
+            (threads_per_block, 1),
+            (
+                nearfield.ravel(),
+                W, H, N, D, M,
+                a_nd, c_md, i_md, pxy_m,
+                0, 0, float(self.cameraslm.slm.dx), float(self.cameraslm.slm.dy),
                 self._nearfield2farfield_cuda_intermediate.ravel()
             )
         )
 
         print(WH)
-        print(self.stack.shape)
-        print(self.stack[0, :])
+        print(self._cupy_stack.shape)
+        print(self._cupy_stack[0, :])
         print(self._nearfield2farfield_cuda_intermediate)
         print(cp.abs(self._nearfield2farfield_cuda_intermediate))
         print(self._nearfield2farfield_cuda_intermediate.shape)
@@ -331,42 +564,45 @@ class FreeSpotHologram(FeedbackHologram):
         if farfield_out is None:
             farfield_out = cp.zeros((N, ), dtype=self.dtype_complex)
 
+        # Do some prep work
         def collapse_kernel(kernel, out):
             # (1,H*W) x (H*W, N) = (N,1)^T
             cp.matmul(nearfield.ravel()[np.newaxis, :], kernel, out=out[np.newaxis, :])
 
-        if self.kernel is None:
+        if self._cupy_kernel is None:
             self.spot_kxy_complex = cp.array(self.spot_kxy, self.dtype_complex)
 
+        # Evaluate the kernel.
         if N <= N_batch_max:
-            if self.kernel is None:
-                self.kernel = self._build_kernel_batched(self.spot_kxy_complex, out=self.kernel)
+            if self._cupy_kernel is None:
+                self._cupy_kernel = self._build_kernel_batched(self.spot_kxy_complex, out=self._cupy_kernel)
 
-            collapse_kernel(self.kernel, out=farfield_out)
+            collapse_kernel(self._cupy_kernel, out=farfield_out)
         else:
-            if self.kernel is None:
-                self.kernel = cp.zeros((np.prod(self.slm_shape), N_batch_max), dtype=self.dtype_complex)
+            if self._cupy_kernel is None:
+                self._cupy_kernel = cp.zeros((np.prod(self.slm_shape), N_batch_max), dtype=self.dtype_complex)
 
             batches = 1 + N // N_batch_max
             for batch in range(batches):
                 batch_slice = slice(batch * N_batch_max, np.clip((batch+1) * N_batch_max, 0, N))
                 kernel_slice = slice(0, batch_slice.stop - batch_slice.start)
-                self.kernel[:, kernel_slice] = self._build_kernel_batched(
+                self._cupy_kernel[:, kernel_slice] = self._build_kernel_batched(
                     self.spot_kxy_complex[:, batch_slice],
-                    out=self.kernel[:, kernel_slice]
+                    out=self._cupy_kernel[:, kernel_slice]
                 )
 
-                collapse_kernel(self.kernel[:, kernel_slice], out=farfield_out[batch_slice])
+                collapse_kernel(self._cupy_kernel[:, kernel_slice], out=farfield_out[batch_slice])
 
+        # Normalize.
         farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
         farfield_out = cp.conj(farfield_out, out=farfield_out)
 
-        # unconjugate nearfield (leave it unchanged).
+        # Unconjugate nearfield (leave it unchanged).
         nearfield = cp.conj(nearfield, out=nearfield)
 
         return farfield_out
 
-    def _farfield2nearfield(self, farfield, nearfield_out=None, cuda=None):
+    def _farfield2nearfield(self, farfield, nearfield_out=None):
         """
         Maps the ``(N,1)`` farfield (complex value for each spot)
         onto the ``(H,W)`` nearfield (complex value on the SLM).
@@ -374,16 +610,14 @@ class FreeSpotHologram(FeedbackHologram):
         if nearfield_out is None:
             nearfield_out = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
 
-        if cuda is None: cuda = self.cuda
-
-        if cuda:
+        if self.cuda:
             try:
                 nearfield_out = self._farfield2nearfield_cuda(farfield, nearfield_out)
             except Exception as err:    # Fallback to cupy upon error.
-                warnings.warn("Falling back to cupy: " + str(err))
-                self.cuda = cuda = False
+                warnings.warn("Falling back to cupy:\n" + str(err))
+                self.cuda = False
 
-        if not cuda:
+        if not self.cuda:
             nearfield_out = self._farfield2nearfield_cupy(farfield, nearfield_out)
 
         return nearfield_out
@@ -393,7 +627,7 @@ class FreeSpotHologram(FeedbackHologram):
         N = int(self.spot_kxy.shape[1])
         D = int(self.spot_kxy.shape[0])
 
-        if self.stack is None:
+        if self._cupy_stack is None:
             self._build_stack(D)
 
         threads_per_block = int(self._far2near_cuda.max_threads_per_block)
@@ -409,9 +643,9 @@ class FreeSpotHologram(FeedbackHologram):
                 farfield,
                 WH, N, D,
                 spot_kxy_float,
-                self.stack[:, 0],
-                self.stack[:, 1],
-                self.stack[:, 2] if D == 3 else 0,
+                self._cupy_stack[:, 0],
+                self._cupy_stack[:, 1],
+                self._cupy_stack[:, 2] if D == 3 else 0,
                 0, 0, 0,
                 nearfield_out.ravel()
             )
@@ -428,17 +662,17 @@ class FreeSpotHologram(FeedbackHologram):
             # (H*W, N) x (N,1) = (H*W, 1)   ===reshape===>   (H,W)
             return cp.matmul(kernel, farfield[:, np.newaxis], out=out[:, np.newaxis])
 
-        if self.kernel is None:
+        if self._cupy_kernel is None:
             self.spot_kxy_complex = cp.array(self.spot_kxy, self.dtype_complex)
 
         if N <= N_batch_max:
-            if self.kernel is None:
-                self.kernel = self._build_kernel_batched(self.spot_kxy_complex, out=self.kernel)
+            if self._cupy_kernel is None:
+                self._cupy_kernel = self._build_kernel_batched(self.spot_kxy_complex, out=self._cupy_kernel)
 
-            expand_kernel(self.kernel, farfield, out=nearfield_out.ravel())
+            expand_kernel(self._cupy_kernel, farfield, out=nearfield_out.ravel())
         else:
-            if self.kernel is None:
-                self.kernel = cp.zeros((np.prod(self.slm_shape), N_batch_max), dtype=self.dtype_complex)
+            if self._cupy_kernel is None:
+                self._cupy_kernel = cp.zeros((np.prod(self.slm_shape), N_batch_max), dtype=self.dtype_complex)
 
             nearfield_out_temp = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
 
@@ -453,17 +687,17 @@ class FreeSpotHologram(FeedbackHologram):
                 # print(batch)
                 # print(batch_slice)
                 # print(kernel_slice)
-                # print(self.kernel.shape)
-                self.kernel[:, kernel_slice] = self._build_kernel_batched(
+                # print(self._cupy_kernel.shape)
+                self._cupy_kernel[:, kernel_slice] = self._build_kernel_batched(
                     self.spot_kxy_complex[:, batch_slice],
-                    out=self.kernel[:, kernel_slice]
+                    out=self._cupy_kernel[:, kernel_slice]
                 )
-                # print(self.kernel[:, batch_slice].shape)
+                # print(self._cupy_kernel[:, batch_slice].shape)
 
                 if batch == 0:
-                    expand_kernel(self.kernel[:, kernel_slice], farfield[batch_slice], out=nearfield_out.ravel())
+                    expand_kernel(self._cupy_kernel[:, kernel_slice], farfield[batch_slice], out=nearfield_out.ravel())
                 else:
-                    expand_kernel(self.kernel[:, kernel_slice], farfield[batch_slice], out=nearfield_out_temp.ravel())
+                    expand_kernel(self._cupy_kernel[:, kernel_slice], farfield[batch_slice], out=nearfield_out_temp.ravel())
                     nearfield_out += nearfield_out_temp
 
         return nearfield_out
@@ -608,7 +842,7 @@ class FreeSpotHologram(FeedbackHologram):
         self._update_stats_dictionary(stats)
 
 
-class SpotHologram(FeedbackHologram):
+class SpotHologram(_AbstractSpotHologram):
     """
     Holography optimized for the generation of optical focal arrays.
 
@@ -739,18 +973,24 @@ class SpotHologram(FeedbackHologram):
         """
         # Parse vectors.
         vectors = toolbox.format_2vectors(spot_vectors)
+        N = vectors.shape[1]
 
+        # Parse spot_amp.
         if spot_amp is not None:
-            assert np.shape(vectors)[1] == len(
-                spot_amp.ravel()
-            ), "spot_amp must have the same length as the provided spots."
+            self.spot_amp = np.ravel(spot_amp)
+            if len(self.spot_amp) != N:
+                raise ValueError("spot_amp must have the same length as the provided spots.")
+        else:
+            self.spot_amp = np.full(N, 1.0 / np.sqrt(N))
+
+        # Set the external amp variable to be perfect by default.
+        self.external_spot_amp = np.copy(self.spot_amp)
 
         # Parse null_vectors
         if null_vectors is not None:
             null_vectors = toolbox.format_2vectors(null_vectors)
-            assert np.all(
-                np.shape(null_vectors) == np.shape(null_vectors)
-            ), "spot_amp must have the same length as the provided spots."
+            if not np.all(np.shape(null_vectors) == np.shape(null_vectors)):
+                raise ValueError("null_vectors must have the same length as the provided spots.")
         else:
             self.null_knm = None
             self.null_radius_knm = None
@@ -892,15 +1132,6 @@ class SpotHologram(FeedbackHologram):
                         self.spot_ij, cam_shape
                     )
                 )
-
-        # Parse spot_amp.
-        if spot_amp is None:
-            self.spot_amp = np.full(len(vectors[0]), 1.0 / np.sqrt(len(vectors[0])))
-        else:
-            self.spot_amp = np.ravel(spot_amp)
-
-        # Set the external amp variable to be perfect by default.
-        self.external_spot_amp = np.copy(self.spot_amp)
 
         # Decide the null_radius (if necessary)
         if self.null_knm is not None:
@@ -1134,104 +1365,6 @@ class SpotHologram(FeedbackHologram):
             shape of the camera and slm.
         """
         self._update_target_spots(reset_weights=reset_weights, plot=plot)
-
-    def refine_offset(self, img=None, basis="kxy", force_affine=True, plot=False):
-        """
-        Hones the positions of the produced spots toward the desired targets to compensate for
-        Fourier calibration imperfections. Works either by moving camera integration
-        regions to the positions where the spots ended up (``basis="ij"``) or by moving
-        the :math:`k`-space targets to target the desired camera pixels
-        (``basis="knm"``/``basis="kxy"``). This should be run at the user's request
-        inbetween :meth:`optimize` iterations.
-
-        Parameters
-        ----------
-        img : numpy.ndarray OR None
-            Image measured by the camera. If ``None``, defaults to :attr:`img_ij` via :meth:`measure()`.
-        basis : str
-            The correction can be in any of the following bases:
-
-            - ``"ij"`` changes the pixel that the spot is expected at,
-            - ``"kxy"``, ``"knm"`` changes the k-vector which the SLM targets.
-
-            Defaults to ``"kxy"``. If basis is set to ``None``, no correction is applied
-            to the data in the :class:`SpotHologram`.
-        force_affine : bool
-            Whether to force the offset refinement to behave as an affine transformation
-            between the original and refined coordinate system. This helps to tame
-            outliers. Defaults to ``True``.
-
-        plot : bool
-            Enables debug plots.
-
-        Returns
-        -------
-        numpy.ndarray
-            Spot shift in the ``"ij"`` basis for each spot.
-        """
-        # If no image was provided, get one from cache.
-        if img is None:
-            self.measure(basis="ij")
-            img = self.img_ij
-
-        # Take regions around each point from the given image.
-        regions = analysis.take(
-            img, self.spot_ij, self.spot_integration_width_ij, centered=True, integrate=False
-        )
-
-        # Fast version; have to iterate for accuracy.
-        shift_vectors = analysis.image_positions(regions)
-        shift_vectors = np.clip(
-            shift_vectors, -self.spot_integration_width_ij / 4, self.spot_integration_width_ij / 4
-        )
-
-        # Store the shift vector before we force_affine.
-        sv1 = self.spot_ij + shift_vectors
-
-        if force_affine:
-            affine = analysis.fit_affine(self.spot_ij, self.spot_ij + shift_vectors, plot=plot)
-            shift_vectors = (np.matmul(affine["M"], self.spot_ij) + affine["b"]) - self.spot_ij
-
-        # Record the shift vector after we force_affine.
-        sv2 = self.spot_ij + shift_vectors
-
-        # Plot the above if desired.
-        if plot:
-            mask = analysis.take(
-                img,
-                self.spot_ij,
-                self.spot_integration_width_ij,
-                centered=True,
-                integrate=False,
-                return_mask=True,
-            )
-
-            plt.figure(figsize=(12, 12))
-            plt.imshow(img * mask)
-            plt.scatter(sv1[0, :], sv1[1, :], s=200, fc="none", ec="r")
-            plt.scatter(sv2[0, :], sv2[1, :], s=300, fc="none", ec="b")
-            plt.show()
-
-        # Handle the feedback applied from this refinement.
-        if basis is not None:
-            if basis == "kxy" or basis == "knm":
-                # Modify k-space targets. Don't modify any camera spots.
-                self.spot_kxy = self.spot_kxy - (
-                    self.cameraslm.ijcam_to_kxyslm(shift_vectors)
-                    - self.cameraslm.ijcam_to_kxyslm((0, 0))
-                )
-                self.spot_knm = toolbox.convert_blaze_vector(
-                    self.spot_kxy, "kxy", "knm", self.cameraslm.slm, self.shape
-                )
-                self.update_target(reset_weights=True)
-                self.reset_phase()
-            elif basis == "ij":
-                # Modify camera targets. Don't modify any k-vectors.
-                self.spot_ij = self.spot_ij + shift_vectors
-            else:
-                raise Exception("Unrecognized basis '{}'.".format(basis))
-
-        return shift_vectors
 
     # Weighting and stats.
     def _update_weights(self):

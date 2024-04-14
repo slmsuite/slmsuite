@@ -20,7 +20,7 @@ from slmsuite.holography import toolbox
 from slmsuite.misc.math import REAL_TYPES
 
 
-class SimulatedCam(Camera):
+class SimulatedCamera(Camera):
     """
     Simulated camera.
 
@@ -31,7 +31,7 @@ class SimulatedCam(Camera):
 
     Note
     ~~~~
-    For fastest simulation, initialize :class:`SimulatedCam` with a
+    For fastest simulation, initialize :class:`SimulatedCamera` with a
     :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM` *only*. Simulated camera images
     will directly sample the (quickly) computed SLM far-field (`"knm"`) via a one-to-one
     mapping instead of interpolating the SLM's far-field intensity at
@@ -42,18 +42,18 @@ class SimulatedCam(Camera):
     Attributes
     ----------
     resolution : (int, int)
-        (width, height) of the SLM in pixels.
+        ``(height, width)`` of the camera in pixels.
     exposure : float
         Digital gain value to simulate exposure time. Directly proportional to imaged power.
-    x_grid : ndarray
+    x_grid : numpy.ndarray
         Pixel column number (``"ij"`` basis) used for far-field interpolation.
-    y_grid : ndarray
+    y_grid : numpy.ndarray
         Pixel row number (``"ij"`` basis) used for far-field interpolation.
     shape_padded : (int, int)
         Size of the FFT computational space required to faithfully reproduce the far-field at
         full camera resolution.
     noise : dict
-        Dictionary of single-argument functions (returning the normalized noise amplitude 
+        Dictionary of single-argument functions (returning the normalized noise amplitude
         for any normalized input pixel amplitude) to simulate various noise sources. Currently,
         ``'dark'`` and ``'read'``, representing exposure-dependent dark current/background noise
         and exposure-independent readout noise, respectively, are the only accepted keys.
@@ -66,9 +66,11 @@ class SimulatedCam(Camera):
         of 20% of the camera's dynamic range.
 
         .. code-block:: python
-            
-            self.noise = {'dark': lambda img: np.random.normal(0.5*img, 0.05*img),
-                          'read': lambda img: np.random.poisson(0.2*img)}
+
+            self.noise = {
+                'dark': lambda img: np.random.normal(0.5*img, 0.05*img),
+                'read': lambda img: np.random.poisson(0.2*img)
+            }
 
     """
 
@@ -125,7 +127,7 @@ class SimulatedCam(Camera):
     def set_affine(self, M=None, b=None, **kwargs):
         """
         Set the camera's placement in the SLM's k-space. `M` and/or `b`, if provided,
-        are used to transform the :class:`SimulatedCam`'s ``"ij"`` grid to a ``"knm"`` grid
+        are used to transform the :class:`SimulatedCamera`'s ``"ij"`` grid to a ``"knm"`` grid
         for interpolation against the :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`'s
         ``"knm"`` grid. Keyword arguments, if provided, are passed to :meth:`build_affine`
         to build `M` and `b`.
@@ -191,13 +193,15 @@ class SimulatedCam(Camera):
                 " some pixels may not be targetable."
             )
 
-    def build_affine(self,
-                     f_eff=1,
-                     theta=0,
-                     shear_angle=0,
-                     offset=(0, 0),
-                     basis="ij",
-                     pitch_um=None):
+    def build_affine(
+            self,
+            f_eff=1,
+            theta=0,
+            shear_angle=0,
+            offset=(0, 0),
+            basis="ij",
+            pitch_um=None
+        ):
         """
         Build an affine transform defining the SLM -> camera transformation as
         detailed in :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam`.
@@ -333,7 +337,7 @@ class SimulatedCam(Camera):
         # Quantize: all power in one pixel (img=1) -> maximum readout value at base exposure=1
         img = np.rint(img * self.exposure * self.bitresolution)
 
-        # Basic noise sources. 
+        # Basic noise sources.
         if self.noise is not None:
             for key in self.noise.keys():
                 if key == 'dark':
@@ -344,7 +348,7 @@ class SimulatedCam(Camera):
                     # Readout noise - exposure independent
                     read = self.noise['read'](np.ones_like(img) * self.bitresolution)
                     img = img + read
-                else: 
+                else:
                     raise RuntimeError('Unknown noise source %s specified!'%(key))
 
         # Truncate to maximum readout value

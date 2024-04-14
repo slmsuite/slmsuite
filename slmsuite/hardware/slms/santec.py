@@ -28,12 +28,13 @@ from .slm import SLM
 try:  # Load Santec's header file.
     from . import _slm_win as slm_funcs
 except BaseException as e:  # Provide an informative error should something go wrong.
-    print("santec.py: Santec DLLs not installed. Install these to use Santec SLMs.")
-    print(  "  Dynamically linked libraries from Santec (usually provided via USB) "
-            "must be present in the runtime directory:\n"
-            "  - SLMFunc.dll\n  - FTD3XX.dll\n"
-            "  Check that theses files are present and are error-free.\n"
-            "Original error: {}".format(e)
+    warnings.warn(
+        "Santec DLLs not installed. Install these to use Santec SLMs."
+        "  Dynamically linked libraries from Santec (usually provided via USB) "
+        "must be present in the runtime directory:\n"
+        "  - SLMFunc.dll\n  - FTD3XX.dll\n"
+        "  Check that theses files are present and are error-free.\n"
+        "Original error: {}".format(e)
     )
 
 

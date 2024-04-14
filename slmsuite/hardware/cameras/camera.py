@@ -103,8 +103,6 @@ class Camera():
         # Create image transformation.
         self.transform = analysis.get_orientation_transformation(rot, fliplr, flipud)
 
-        # Frame averaging
-        self.set_averaging(averaging)
 
         # Update WOI information.
         self.woi = (0, width, 0, height)
@@ -112,10 +110,13 @@ class Camera():
             self.set_woi()
         except NotImplementedError:
             pass
-            
+
         # Set other useful parameters
         self.bitdepth = bitdepth
         self.bitresolution = 2**bitdepth
+
+        # Frame averaging
+        self.set_averaging(averaging)
 
         # Spatial dimensions
         self.dx_um = dx_um
@@ -227,7 +228,7 @@ class Camera():
             Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.
         """
         raise NotImplementedError()
-    
+
     def _get_images_hw(self, image_count, timeout_s=1):
         """
         Abstract method to capture a series of image_count images using camera-specific
@@ -246,7 +247,7 @@ class Camera():
             Array of shape (n_frames, :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`).
         """
         raise NotImplementedError()
-    
+
     def set_averaging(self, image_count=None):
         """
         Enables/disables frame averaging with a specified number of frames.
@@ -258,12 +259,12 @@ class Camera():
             If ``None``, no averaging is performed.
         """
         if isinstance(image_count, int):
-            self._buffer = np.empty((image_count, self.shape[0], self.shape[1]))
+            self._buffer = np.zeros((image_count, self.shape[0], self.shape[1]))
         elif image_count is None:
             self._buffer = None
         else:
             RuntimeError("Unexpected value {} passed for image count.".format(image_count))
-    
+
     def get_image(self, timeout_s=1, transform=True, plot=False):
         """
         Capture, process, and return images from a camera.
@@ -273,7 +274,7 @@ class Camera():
         timeout_s : float
             The time in seconds to wait for the frame to be fetched.
         transform : bool
-            Whether or not to transform the output image according to 
+            Whether or not to transform the output image according to
             :attr:`~slmsuite.hardware.cameras.camera.Camera.transform`.
             Defaults to True.
         plot : bool
@@ -369,7 +370,7 @@ class Camera():
         cax.set_ylabel("Intensity")
         if show:
             plt.show()
-        
+
         return ax
 
     def autoexposure(

@@ -78,7 +78,6 @@ Additional functions to handle minutiae.
    :recursive:
 
    files
-   fitfunctions
 
 .. |slmsuite| replace:: :mod:`slmsuite`
 .. _slmsuite: https://github.com/QPG-MIT/slmsuite

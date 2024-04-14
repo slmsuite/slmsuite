@@ -611,9 +611,9 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
     already_filled = np.zeros(shape, dtype=np.uint8)
 
     for x in range(N):
-        point = tuple(np.around(vor.points[x]).astype(np.int32))
+        point = tuple(np.rint(vor.points[x]).astype(np.int32))
         region = vor.regions[vor.point_region[x]]
-        pts = np.around(vor.vertices[region]).astype(np.int32)
+        pts = np.rint(vor.vertices[region]).astype(np.int32)
 
         canvas1 = np.zeros(shape, dtype=np.uint8)
         cv2.fillConvexPoly(canvas1, pts, 255, cv2.LINE_4)

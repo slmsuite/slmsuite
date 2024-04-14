@@ -119,10 +119,10 @@ def take(
     region_x, region_y = np.meshgrid(edge_x, edge_y)
 
     # Get the lists for the integration regions.
-    integration_x = np.around(np.add(
+    integration_x = np.rint(np.add(
         region_x.ravel()[:, np.newaxis].T, vectors[:][0][:, np.newaxis]
     )).astype(int)
-    integration_y = np.around(np.add(
+    integration_y = np.rint(np.add(
         region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
     )).astype(int)
 
@@ -1380,11 +1380,11 @@ def blob_array_detect(
         rotated_centers_larger += np.flip(mask.shape)[:, np.newaxis] / 2
 
         # Pixels to use for the kernel.
-        x_array = np.around(rotated_centers[0, :]).astype(int)
-        y_array = np.around(rotated_centers[1, :]).astype(int)
+        x_array = np.rint(rotated_centers[0, :]).astype(int)
+        y_array = np.rint(rotated_centers[1, :]).astype(int)
 
-        x_larger = np.around(rotated_centers_larger[0, :]).astype(int)
-        y_larger = np.around(rotated_centers_larger[1, :]).astype(int)
+        x_larger = np.rint(rotated_centers_larger[0, :]).astype(int)
+        y_larger = np.rint(rotated_centers_larger[1, :]).astype(int)
 
         # Make a mask with negative power at the border, positive
         # at the array, with integrated intensity of 0.
@@ -1423,11 +1423,11 @@ def blob_array_detect(
 
                 integration_x, integration_y = np.meshgrid(edge, edge)
 
-                rotated_integration_x = np.around(np.add(
+                rotated_integration_x = np.rint(np.add(
                     integration_x.ravel()[:, np.newaxis].T,
                     rotated_centers[:][0][:, np.newaxis],
                 )).astype(int)
-                rotated_integration_y = np.around(np.add(
+                rotated_integration_y = np.rint(np.add(
                     integration_y.ravel()[:, np.newaxis].T,
                     rotated_centers[:][1][:, np.newaxis],
                 )).astype(int)
@@ -1507,8 +1507,8 @@ def blob_array_detect(
             img, guess_positions, psf, centered=True, integrate=False, clip=True
         )
 
-        # Get the first order moment around each of the guess windows.
-        shift = image_positions(regions) - (guess_positions - np.around(guess_positions))
+        # Get the first order moment rint each of the guess windows.
+        shift = image_positions(regions) - (guess_positions - np.rint(guess_positions))
 
         # Remove outliers.
         shift_error = np.sqrt(np.square(shift[0, :]) + np.square(shift[1, :]))

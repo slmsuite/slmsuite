@@ -778,7 +778,7 @@ class FourierSLM(CameraSLM):
 
             field_point = self.kxyslm_to_ijcam(field_blaze)
 
-        field_point = np.around(format_2vectors(field_point)).astype(int)
+        field_point = np.rint(format_2vectors(field_point), dtype=int)
 
         # Parse field_exclusion
         if field_exclusion is None:
@@ -787,7 +787,7 @@ class FourierSLM(CameraSLM):
             field_exclusion = np.mean(field_exclusion)
 
         # Gather other information
-        base_point = np.around(self.kxyslm_to_ijcam([0, 0])).astype(int)
+        base_point = np.rint(self.kxyslm_to_ijcam([0, 0])).astype(int)
 
         # Generate the intiial grid
         plane = format_2vectors(self.cam.shape[::-1])
@@ -841,7 +841,7 @@ class FourierSLM(CameraSLM):
 
     def get_wavefront_calibration_window(self, superpixel_size):
         """TODO"""
-        interference_size = np.around(np.array(
+        interference_size = np.rint(np.array(
             self.get_farfield_spot_size(
                 (superpixel_size * self.slm.dx, superpixel_size * self.slm.dy),
                 basis="ij"
@@ -1034,12 +1034,12 @@ class FourierSLM(CameraSLM):
                 plot=False
             )
 
-        calibration_points = np.around(format_2vectors(calibration_points)).astype(int)
+        calibration_points = np.rint(format_2vectors(calibration_points)).astype(int)
 
         num_points = calibration_points.shape[1]
 
         # Clean the base and field points.
-        base_point = np.around(self.kxyslm_to_ijcam([0, 0])).astype(int)
+        base_point = np.rint(self.kxyslm_to_ijcam([0, 0])).astype(int)
 
         if field_point_units != "ij":
             field_blaze = toolbox.convert_blaze_vector(
@@ -1058,7 +1058,7 @@ class FourierSLM(CameraSLM):
                 slm=self
             )
 
-        field_point = np.around(format_2vectors(field_point)).astype(int)
+        field_point = np.rint(format_2vectors(field_point)).astype(int)
 
         # Use the Fourier calibration to help find points/sizes in the imaging plane.
         if self.fourier_calibration is None:

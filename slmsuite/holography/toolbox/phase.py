@@ -171,8 +171,8 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
         period = 1/np.sum(vector)
         duty = period*duty_cycle
 
-        period_int = np.around(period)
-        duty_int = np.around(duty)
+        period_int = np.rint(period)
+        duty_int = np.rint(duty)
 
         if np.all(np.isclose(period, period_int)) and np.all(np.isclose(duty, duty_int)):
             pass    # TODO

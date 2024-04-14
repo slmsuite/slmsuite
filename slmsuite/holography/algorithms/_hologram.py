@@ -254,7 +254,7 @@ class Hologram(_HologramStats):
         if np.all(np.isnan(stack)):
             self.slm_shape = self.shape
         else:
-            self.slm_shape = np.around(np.nanmean(stack, axis=0)).astype(int)
+            self.slm_shape = np.rint(np.nanmean(stack, axis=0)).astype(int)
 
             if amp is not None:
                 assert np.all(self.slm_shape == np.array(amp_shape)), (

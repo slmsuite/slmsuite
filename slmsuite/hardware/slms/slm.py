@@ -308,7 +308,7 @@ class SLM:
         Caution
         ~~~~~~~
         After scale conversion, data is ``floor()`` ed to integers with ``np.copyto``, rather than
-        rounded to the nearest integer (``np.around()`` equivalent). While this is
+        rounded to the nearest integer (``np.rint()`` equivalent). While this is
         irrelevant for the average user, it may be significant in some cases.
         If this behavior is undesired consider either: :meth:`write()` integer data
         directly or modifying the behavior of the private method :meth:`_phase2gray()` in

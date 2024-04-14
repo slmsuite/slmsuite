@@ -1283,7 +1283,7 @@ class SpotHologram(_AbstractSpotHologram):
         Wrapped by :meth:`SpotHologram.update_target()`.
         """
         # Round the spot points to the nearest integer coordinates in knm space.
-        self.spot_knm_rounded = np.around(self.spot_knm).astype(int)
+        self.spot_knm_rounded = np.rint(self.spot_knm).astype(int)
 
         # Convert these to the other coordinate systems if possible.
         if self.cameraslm is not None:
@@ -1322,7 +1322,7 @@ class SpotHologram(_AbstractSpotHologram):
                 for ii in range(all_spots.shape[1]):
                     toolbox.imprint(
                         self.target,
-                        (np.around(all_spots[0, ii]), w, np.around(all_spots[1, ii]), w),
+                        (np.rint(all_spots[0, ii]), w, np.rint(all_spots[1, ii]), w),
                         0,
                         centered=True,
                         circular=True,

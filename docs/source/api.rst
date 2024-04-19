@@ -5,10 +5,9 @@ API Reference
 This page provides an auto-generated summary of |slmsuite|_'s API. You can
 find the source on `GitHub <https://github.com/QPG-MIT/slmsuite>`_.
 
-|slmsuite|_ is divided into three main modules:
-algorithms and analysis in :mod:`holography`,
-connectivity to physical devices via :mod:`hardware`, and
-other useful functions in :mod:`misc`.
+|slmsuite|_ is divided into two modules:
+algorithms and analysis in :mod:`~slmsuite.holography` and
+connectivity to physical devices via :mod:`~slmsuite.hardware`.
 
 Holography
 ==========
@@ -65,19 +64,6 @@ The unification of these two categories is stored in:
    :recursive:
 
    cameraslms
-
-Miscellaneous
-=============
-
-Additional functions to handle minutiae.
-
-.. currentmodule:: slmsuite.misc
-.. autosummary::
-   :toctree: _autosummary
-   :template: custom-module-template.rst
-   :recursive:
-
-   files
 
 .. |slmsuite| replace:: :mod:`slmsuite`
 .. _slmsuite: https://github.com/QPG-MIT/slmsuite

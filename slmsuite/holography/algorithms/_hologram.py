@@ -635,7 +635,7 @@ class Hologram(_HologramStats):
         target amplitude.
         Supported optimization methods include:
 
-        - Gerchberg-Saxton (GS) phase retrieval.
+        -   Gerchberg-Saxton (GS) phase retrieval.
 
             - ``'GS'``
 
@@ -646,9 +646,9 @@ class Hologram(_HologramStats):
               This is usually implemented using fast discrete Fourier transforms,
               potentially GPU-accelerated.
 
-        - Weighted Gerchberg-Saxton (WGS) phase retrieval algorithms of various flavors.
-          Improves the uniformity of GS-computed focus arrays using weighting methods and
-          techniques from literature. The ``method`` keywords are:
+        -   Weighted Gerchberg-Saxton (WGS) phase retrieval algorithms of various flavors.
+            Improves the uniformity of GS-computed focus arrays using weighting methods and
+            techniques from literature. The ``method`` keywords are:
 
             - ``'WGS-Leonardo'``
 
@@ -697,23 +697,23 @@ class Hologram(_HologramStats):
 
               .. math:: \mathcal{W} = \mathcal{W}\exp\left( f (\mathcal{T} - \mathcal{F}) \right)
 
-        - The option for `Mixed Region Amplitude Freedom (MRAF)
-          <https://doi.org/10.1007/s10043-018-0456-x>`_ feedback. In standard
-          iterative algorithms, the entire Fourier-domain unpatterned field is replaced with zeros.
-          This is disadvantageous because a desired farfield pattern might not be especially
-          compatible with a given nearfield amplitude, or otherwise. MRAF enables
-          "noise regions" where some fraction of the given farfield is **not** replaced
-          with zeros and instead is allowed to vary. In practice, MRAF is
-          enabled by setting parts of the :attr:`target` to ``nan``; these regions act
-          as the noise regions. The ``"mraf_factor"`` flag in
-          :attr:`~slmsuite.holography.algorithms.Hologram.flags`
-          allows the user to partially attenuate the noise regions.
-          A factor of 0 fully attenuates the noise region (normal WGS behavior).
-          A factor of 1 does not attenuate the noise region at all (the default).
-          Middle ground is recommended, but is application-dependent as a
-          tradeoff between improving pattern fidelity and maintaining pattern efficiency.
+        -   The option for `Mixed Region Amplitude Freedom (MRAF)
+            <https://doi.org/10.1007/s10043-018-0456-x>`_ feedback. In standard
+            iterative algorithms, the entire Fourier-domain unpatterned field is replaced with zeros.
+            This is disadvantageous because a desired farfield pattern might not be especially
+            compatible with a given nearfield amplitude, or otherwise. MRAF enables
+            "noise regions" where some fraction of the given farfield is **not** replaced
+            with zeros and instead is allowed to vary. In practice, MRAF is
+            enabled by setting parts of the :attr:`target` to ``nan``; these regions act
+            as the noise regions. The ``"mraf_factor"`` flag in
+            :attr:`~slmsuite.holography.algorithms.Hologram.flags`
+            allows the user to partially attenuate the noise regions.
+            A factor of 0 fully attenuates the noise region (normal WGS behavior).
+            A factor of 1 does not attenuate the noise region at all (the default).
+            Middle ground is recommended, but is application-dependent as a
+            tradeoff between improving pattern fidelity and maintaining pattern efficiency.
 
-          As examples, consider two cases where MRAF can be useful:
+            As examples, consider two cases where MRAF can be useful:
 
             - **Sloping a top hat.** Suppose we want very flat amplitude on a beam.
               Requesting a sharp edge to this beam can lead to fringing effects at the
@@ -950,11 +950,17 @@ class Hologram(_HologramStats):
         self.phase_ff = cp.angle(self.farfield)
 
     def _nearfield2farfield(self, nearfield, farfield_out=None):
-        """TODO"""
+        """
+        Maps the nearfield to the farfield by a discrete Fourier transform.
+        This function is overloaded by subclasses.
+        """
         return cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
 
     def _farfield2nearfield(self, farfield, nearfield_out=None):
-        """TODO"""
+        """
+        Maps the farfield to the nearfield by a discrete Fourier transform.
+        This function is overloaded by subclasses.
+        """
         return cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho"))
 
     def _mraf_helper_routines(self):
@@ -1159,7 +1165,6 @@ class Hologram(_HologramStats):
             return self._update_weights_generic_cupy(weight_amp, feedback_amp, target_amp, xp, nan_checks)
         else:
             return self._update_weights_generic_cuda(weight_amp, feedback_amp, target_amp)
-
 
     def _update_weights_generic_cupy(
             self, weight_amp, feedback_amp, target_amp=None, xp=cp, nan_checks=True

@@ -129,8 +129,8 @@ extern "C" __device__ void populate_basis(
     const float y,
     const unsigned int D,           // Dimension of Zernike basis (2 [xy] for normal spot arrays)
     const unsigned int M,           // Dimension of polynomial basis (2 [xy] for normal spot arrays)
-    const float* c_md,              // Polynomial coefficients for Zernike (size M*D) [shared]
-    const int* i_md,                // A key for where c_dm is nonzero (size M*D) [shared]
+    const int* c_md,                // Polynomial coefficients for Zernike (size M*D) [shared]
+    const int* i_md,                // A key for where c_dm is nonzero for speed (size M*D) [shared]
     const int* pxy_m,               // Monomial coefficients (size 2*M) [shared]
     float* basis,
 ) {
@@ -142,8 +142,15 @@ extern "C" __device__ void populate_basis(
         nx = pxy_m[i];
         ny = pxy_m[i+M];
 
-        if (nx < 0) {   // Vortex phase plate case
-            monomial = -nx * atan2(x, y);
+        if (nx < 0) {   // Special indices
+            if (nx == -1) {
+                // Vortex phase plate case
+                monomial = -atan2(x, y);
+            } else {
+                monomial = 0;
+            }
+
+            // Force reset next iteration.
             nx0 = ny0 = M;
         } else {        // Monomial case
             // Reset if we're starting a new path.
@@ -168,14 +175,14 @@ extern "C" __device__ void populate_basis(
         // Now we need to add this monomial to all relevant basis states
         j = 0;
         stride = i*D;       // Only mulitply once and find the starting point.
-        d = i_dm[stride];   //
-        while (d >= 0) {
+        d = i_md[stride];   // Get the first term to add.
+        while (d >= 0) {    // d == -1 indicates no further terms to add.
             // Add the monomial to the result.
             basis[d] += c_md[stride + d] * monomial;
 
             // Determine if there's another basis state which needs this monomial
             j++;
-            d = i_md[stride + j];
+            d = i_md[stride + j];   // Keep checking until we find a -1.
         }
     }
 }
@@ -235,7 +242,7 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
 }
 
 extern "C" __global__ void compressed_nearfield2farfield_v2(
-    const complex<float>* nearfield,        // Input (W * H)
+    const complex<float>* nearfield,        // Input (size H*W)
     const unsigned int W,                   // Width of nearfield
     const unsigned int H,                   // Height of nearfield
     const unsigned int N,                   // Size of farfield
@@ -312,15 +319,47 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
     }
 }
 
+extern "C" __global__ void zernike_test(
+    const unsigned int WH,          // Size of nearfield
+    const unsigned int D,           // Dimension of Zernike basis (2 [xy] for normal spot arrays)
+    const unsigned int M,           // Dimension of polynomial basis (2 [xy] for normal spot arrays)
+    const float* c_md,              // Polynomial coefficients for Zernike (size M*D) [shared]
+    const int* i_md,                // A key for where c_dm is nonzero (size M*D) [shared]
+    const int* pxy_m,               // Monomial coefficients (size 2*M) [shared]
+    const float* X,                 // X grid (WH)
+    const float* Y,                 // Y grid (WH)
+    float* out                      // Output (size W*H*D)
+) {
+    // nf is the index of the pixel in the nearfield.
+    int nf = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (nf < WH) {
+        // Prepare local basis.
+        float* basis = float[D];
+
+        populate_basis(
+            X[g],
+            Y[g],
+            D, M, c_md, i_md, pxy_m,
+            basis
+        );
+
+        // Export the result to global memory.
+        int j = 0
+        for (int i = 0; i < D; i++) {
+            nearfield[nf + j] = basis[i];
+            j += WH;
+        }
+    }
+}
+
 // Polynomial sum kernel
 
-extern "C" __global__ void polynomial_sum(
-    const unsigned int N,           // Number of coefficients
-    const int* pathing,             // Path order (1*N)
-    const float* coefficients,      // Spot parameters (1*N)
-    const float* px,                // Spot parameters (1*N)
-    const float* py,                // Spot parameters (1*N)
+extern "C" __global__ void polynomial(
     const unsigned int WH,          // Size of nearfield
+    const unsigned int N,           // Number of coefficients
+    const float* coefficients,      // Monomial coefficients (1*N)
+    const short* pxy,               // Monomial exponents (2*N)
     const float* X,                 // X grid (WH)
     const float* Y,                 // Y grid (WH)
     float* out                      // Output (WH)
@@ -339,17 +378,15 @@ extern "C" __global__ void polynomial_sum(
 
         // Local helper variables.
         float monomial = 1;
-        int nx, ny, nx0, ny0 = 0;
-        int j, k = 0
+        int i, j, nx, ny, nx0, ny0 = 0;
 
         // Loop over all the spots (compiler should handle optimizing the trinary).
-        for (int i = 0; i < N; i++) {
-            k = pathing[i];
-            coefficient = coefficients[k];
+        for (i = 0; i < N; i++) {
+            coefficient = coefficients[i];
 
             if (coefficient != 0) {
-                nx = px[k];
-                ny = py[k];
+                nx = pxy[i];
+                ny = pxy[i+N];
 
                 // Reset if we're starting a new path.
                 if (nx - nx0 < 0 || ny - ny0 < 0) {
@@ -366,7 +403,7 @@ extern "C" __global__ void polynomial_sum(
                 }
 
                 // Add the monomial to the result.
-                result += coefficients[k] * monomial;
+                result += coefficients[i] * monomial;
 
                 // Update the state of the monomial
                 nx0 = nx;
@@ -380,6 +417,7 @@ extern "C" __global__ void polynomial_sum(
 }
 
 // Weighting
+
 extern "C" __global__ void update_weights_generic(
     float* weight_amp,                  // Input (N)
     const float* feedback_amp,          // Measured amplitudes (N)

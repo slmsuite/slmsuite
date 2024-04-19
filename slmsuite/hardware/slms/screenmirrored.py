@@ -35,14 +35,14 @@ class ScreenMirrored(SLM):
     ~~~~
     There are a variety of python packages that support blitting images onto a fullscreen display.
 
-    - `Simple DirectMedia Layer (SDL) <https://www.libsdl.org/>`_ wrappers:
+    -   `Simple DirectMedia Layer (SDL) <https://www.libsdl.org/>`_ wrappers:
 
         - :mod:`pygame` (`link <https://www.pygame.org/docs/>`_),
           which also supports OpenGL. Only supports one screen.
         - :mod:`sdl2` (`readthedocs <https://pysdl2.readthedocs.io/en/latest/>`_)
           through the ``PySDL2`` package. Requires additional libraries.
 
-    - `Open Graphics Library (OpenGL) <https://www.opengl.org/>`_ wrappers:
+    -   `Open Graphics Library (OpenGL) <https://www.opengl.org/>`_ wrappers:
 
         - :mod:`moderngl` (`readthedocs <https://moderngl.readthedocs.io/en/latest/>`_),
           an OpenGL wrapper focusing on a pythonic interface for core OpenGL functions.
@@ -51,7 +51,7 @@ class ScreenMirrored(SLM):
         - :mod:`pyglet` (`readthedocs <https://pyglet.readthedocs.io/en/latest/>`_),
           a light OpenGL wrapper.
 
-    - GUI Library wrappers:
+    -   GUI Library wrappers:
 
         - :mod:`gi` (`readthedocs <https://pygobject.readthedocs.io/en/latest/>`_),
           through the ``PyGObject`` package wrapping ``GTK`` and other GUI libraries.

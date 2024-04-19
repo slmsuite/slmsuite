@@ -5,12 +5,8 @@ from slmsuite.holography.algorithms._feedback import FeedbackHologram
 
 class _AbstractSpotHologram(FeedbackHologram):
     """
-    Abstract class to handle refine_offset for SpotHologram and CompressedSpotHologram.
-
-    Attributes
-    ----------
-
-    T
+    Abstract class to handle ``refine_offset``
+    for ``SpotHologram`` and ``CompressedSpotHologram``.
     """
 
     def refine_offset(self, img=None, basis="kxy", force_affine=True, plot=False):
@@ -38,7 +34,6 @@ class _AbstractSpotHologram(FeedbackHologram):
             Whether to force the offset refinement to behave as an affine transformation
             between the original and refined coordinate system. This helps to tame
             outliers. Defaults to ``True``.
-
         plot : bool
             Enables debug plots.
 
@@ -147,10 +142,10 @@ class CompressedSpotHologram(_AbstractSpotHologram):
     def __init__(
         self,
         spot_vectors,
-        basis="knm",
+        basis="zernike",
         spot_amp=None,
-        zernike_basis=None,
         cameraslm=None,
+        zernike_basis=None,
         **kwargs
     ):
         """
@@ -174,16 +169,16 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         This class supports three different options for generating compressed spot
         arrays.
 
-         -  First, a :mod:`numpy`/:mod:`cupy` method is implemented.
+        #.  First, a :mod:`numpy`/:mod:`cupy` method is implemented.
             This method makes ample use of memory and is inefficient for very large spot arrays.
             This method works by playing tricks to vectorize operations.
-            More general or complicated functionality requires full use of the GPU.
-            The following two methods require :mod:`cupy`.
+            More general or complicated functionality requires full use of the GPU
+            and thus the following two methods require :mod:`cupy`.
 
-         -  Second, a custom CUDA kernel loaded into :mod:`cupy` focussing on 2D and 3D
+        #.  Second, a custom CUDA kernel loaded into :mod:`cupy` focussing on 2D and 3D
             arrays of spots.
 
-         -  Lastly, a custom CUDA kernel loaded into :mod:`cupy` focussing on arrays of
+        #.  Lastly, a custom CUDA kernel loaded into :mod:`cupy` focussing on arrays of
             spots, **each spot having an individualized zernike calibration**. Saving
             and transporting a set of zernike polynomials up to a large order would
             consume unacceptable  amounts of memory and memory bandwidth.
@@ -194,48 +189,62 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             and output, along with highly efficient information defining the
             construction of the polynomials.
 
-        The chosen option is selected dynamically.
+        The chosen option is selected dynamically. Option 2 is the highest preference.
+        If the kernel fails to load or :mod:`cupy` is unavailable, this will downgrade
+        to option 1. If Zernike parameters are provided beyond 3D spots, then this must
+        upgrade to option 3.
 
         Parameters
         ----------
         spot_vectors : array_like
-            Spot position vectors with shape ``(D, N)``, where ``D`` is the dimension of
-            the parameters of each spot defined by ``zernike_basis``.
+            Spot position vectors with shape ``(D, N)``,
+            where ``D`` is the dimension of the parameters of each spot.
         basis : str
-            pass
+            The spots can be in any of the following bases:
+
+            - ``"kxy"`` for centered normalized SLM :math:`k`-space (radians),
+              for dimension ``D`` of 2 and 3,
+            - ``"ij"`` for camera coordinates (pixels),
+              for dimension ``D`` of 2 and 3,
+            - ``"zernike"`` for applying Zernike terms to each spot (radians),
+              for dimension ``D`` equal to the length of ``zernike_basis``.
+
+            Defaults to ``"kxy"``.
         spot_amp : array_like OR None
             The amplitude to target for each spot.
-            See :attr:`SpotHologram.spot_amp`.
+            See :attr:`CompressedSpotHologram.spot_amp`.
             If ``None``, all spots are assumed to have the same amplitude.
             Normalization is performed automatically; the user is not required to
             normalize.
-            MRAF functions still work. TODO
+            MRAF functionality still works by setting ``spot_amp`` to ``np.nan`` to
+            denote 'noise' points where amplitude can be dumped.
+        cameraslm : slmsuite.hardware.cameraslms.FourierSLM ORslmsuite.hardware.slms.slm.SLM OR None
+            Can be ``None`` only if the ``"kxy"`` basis is chosen and the user does not
+            want to make use of camera feedback.
+            Is required for ``"ij"`` for obvious reasons.
+            Is required for ``"zernike"`` to handle scaling calibrations and conversions requiring
         zernike_basis : array_like OR None
             List of ``D`` indices corresponding to Zernike polynomials using ANSI indexing.
             See :meth:`~slmsuite.holography.toolbox.phase.convert_zernike_index()`.
-            If ``None``, and ``D == 2``, then the basis is assumed to be``[1,2]``
-            corresponding to the :math:`x = Z_1 = Z_1^{-1}`
-            and :math:`y = Z_2 = Z_1^1` tilt terms.
-            If ``None``, and ``D == 3``, then the basis is assumed to be ``[1,2,4]``
-            corresponding to the previous, with the addition of the
-            :math:`Z_4 = Z_2^0` focus term.
-            If ``None``, and otherwise, then the basis is assumed to be ``[1,...,D]``.
-            The piston (Zernike index 0) term is ignored as this constant phase is
-            optimized against.
+
+            -   If ``None``, and ``D == 2``, then the basis is assumed to be ``[1,2]``
+                corresponding to the :math:`x = Z_1 = Z_1^{-1}`
+                and :math:`y = Z_2 = Z_1^1` tilt terms.
+            -   If ``None``, and ``D == 3``, then the basis is assumed to be ``[1,2,4]``
+                corresponding to the previous, with the addition of the
+                :math:`Z_4 = Z_2^0` focus term.
+            -   If ``None``, and otherwise, then the basis is assumed to be ``[1,...,D]``.
+                The piston (Zernike index 0) term is ignored as this constant phase is
+                not relevant.
+
             The index ``-1`` (outside Zernike indexing) is used as a special case to add
             a vortex waveplate to the system.
-        cameraslm : slmsuite.hardware.cameraslms.FourierSLM OR None
-            If the ``"ij"`` basis is chosen, and/or if the user wants to make use of camera
-            feedback, a cameraslm must be provided.
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
         # Parse vectors.
-        if spot_kxy is not None:
-            self.spot_kxy = toolbox.format_vectors(spot_kxy, handle_dimension="pass")
-            (D, N) = self.spot_kxy.shape
-        else:
-            N = self.spot_kxy.shape
+        spot_vectors = toolbox.format_vectors(spot_vectors, handle_dimension="pass")
+        (D, N) = spot_vectors.shape
 
         # Parse spot_amp.
         if spot_amp is not None:
@@ -248,7 +257,12 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Parse zernike_basis.
         if zernike_basis is None:
             # Assume the ANSI basis (slmsuite default), but start without piston.
-            self.zernike_basis = np.arange(1, D+1)
+            if D == 2:
+                self.zernike_basis = np.array([1,2])
+            elif D == 3:
+                self.zernike_basis = np.array([1,2,4])
+            else:
+                self.zernike_basis = np.arange(1, D+1)
         else:
             # Make sure we are a 1D list.
             self.zernike_basis = np.ravel(zernike_basis)
@@ -270,6 +284,16 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         ]
         if np.any(self.zernike_basis == 4):
             self.zernike_basis_cartesian.append(np.argwhere(self.zernike_basis == 4)[0])
+
+        # Parse spot_vectors.
+        if basis == "zernike":
+            self.spot_vectors = spot_vectors
+            self.spot_kxy = toolbox.convert_vector(
+                spot_vectors[self.zernike_basis_cartesian],
+                from_units="zernike",
+                to_units="kxy",
+                slm=cameraslm
+            )
 
         # Check to make sure spots are within bounds
         kmax = 1    # TODO: replace with correct value.
@@ -354,6 +378,11 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                     self._far2near_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_farfield2nearfield_v2')
                     self._near2far_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_nearfield2farfield_v2')
 
+                    c_md, i_md, pxy_m = toolbox.phase._zernike_populate_basis_map(self.zernike_basis)
+                    self._c_md = cp.array(c_md)
+                    self._i_md = cp.array(i_md)
+                    self._pxy_m = cp.array(pxy_m)
+
                 self.cuda = True
             except:
                 warnings.warn("Raw CUDA kernels failed to compile. Falling back to cupy.")
@@ -371,8 +400,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     def calculate_padded_shape(self):
         """
-        Vestigial from :class:`slmsuite.holography.algorithms.Hologram`, but unneeded here.
-        :class:`slmsuite.holography.algorithms.CompressedSpotHologram`
+        Vestigial from :class:`~slmsuite.holography.algorithms.Hologram`, but unneeded here.
+        :class:`~slmsuite.holography.algorithms.CompressedSpotHologram`
         does not use a DFT grid and does not need padding.
         """
         raise NameError("CompressedSpotHologram does not use a DFT grid and does not need padding.")
@@ -470,19 +499,19 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 "Threads per block can be larger than the hardcoded limit of 1024. "
                 "Remove this limit for enhanced speed."
             )
-        blocksx = int(np.ceil(float(W*H) / threads_per_block))
-        blocksy = N
+        blocks_x = int(np.ceil(float(W*H) / threads_per_block))
+        blocks_y = N
 
-        print((blocksx, blocksy))
+        print((blocks_x, blocks_y))
 
         if self._nearfield2farfield_cuda_intermediate is None:
-            self._nearfield2farfield_cuda_intermediate = cp.zeros((blocksy, blocksx), dtype=self.dtype_complex)
+            self._nearfield2farfield_cuda_intermediate = cp.zeros((blocks_y, blocks_x), dtype=self.dtype_complex)
 
         spot_kxy_float = cp.array(self.spot_kxy, self.dtype)    # TODO: Make this faster.
 
         # Call the RawKernel.
         self._near2far_cuda(
-            (blocksx, blocksy),
+            (blocks_x, blocks_y),
             (threads_per_block, 1),
             (
                 nearfield.ravel(),
@@ -510,6 +539,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
     def _nearfield2farfield_cuda_v2(self, nearfield, farfield_out):
         H, W = self.slm_shape
         D, N = self.spot_kxy.shape
+        M = self._i_md.shape[0]
 
         threads_per_block = int(1024)
         assert self._near2far_cuda.max_threads_per_block >= threads_per_block
@@ -518,28 +548,31 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 "Threads per block can be larger than the hardcoded limit of 1024. "
                 "Remove this limit for enhanced speed."
             )
-        blocksx = int(np.ceil(float(W*H) / threads_per_block))
-        blocksy = N
+        blocks_x = int(np.ceil(float(W*H) / threads_per_block))
+        blocks_y = N
 
-        print((blocksx, blocksy))
+        print((blocks_x, blocks_y))
 
         if self._nearfield2farfield_cuda_intermediate is None:
-            self._nearfield2farfield_cuda_intermediate = cp.zeros((blocksy, blocksx), dtype=self.dtype_complex)
+            self._nearfield2farfield_cuda_intermediate = cp.zeros((blocks_y, blocks_x), dtype=self.dtype_complex)
 
         # Call the RawKernel.
         self._near2far_cuda(
-            (blocksx,),
+            (blocks_x,),
             (threads_per_block, 1),
             (
                 nearfield.ravel(),
                 W, H, N, D, M,
-                a_nd, c_md, i_md, pxy_m,
+                self.spot_parameters, # a_nd
+                self._c_md,
+                self._i_md,
+                self._pxy_m,
                 0, 0, float(self.cameraslm.slm.dx), float(self.cameraslm.slm.dy),
                 self._nearfield2farfield_cuda_intermediate.ravel()
             )
         )
 
-        print(WH)
+        print(W*H)
         print(self._cupy_stack.shape)
         print(self._cupy_stack[0, :])
         print(self._nearfield2farfield_cuda_intermediate)
@@ -653,6 +686,38 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         return nearfield_out
 
+    def _nearfield2farfield_cuda_v2(self, farfield, nearfield_out):
+        H, W = self.slm_shape
+        D, N = self.spot_kxy.shape
+        M = self._i_md.shape[0]
+
+        threads_per_block = int(1024)
+        assert self._near2far_cuda.max_threads_per_block >= threads_per_block
+        if self._near2far_cuda.max_threads_per_block > threads_per_block:
+            warnings.warn(
+                "Threads per block can be larger than the hardcoded limit of 1024. "
+                "Remove this limit for enhanced speed."
+            )
+        blocks_x = int(np.ceil(float(W*H) / threads_per_block))
+
+        # Call the RawKernel.
+        self._near2far_cuda(
+            (blocks_x,),
+            (threads_per_block, 1),
+            (
+                farfield.ravel(),
+                W, H, N, D, M,
+                self.spot_parameters, # a_nd
+                self._c_md,
+                self._i_md,
+                self._pxy_m,
+                0, 0, float(self.cameraslm.slm.dx), float(self.cameraslm.slm.dy),
+                nearfield_out.ravel()
+            )
+        )
+
+        return nearfield_out
+
     def _farfield2nearfield_cupy(self, farfield, nearfield_out):
         # FYI: Farfield shape is (N,1)
         N = self.spot_kxy.shape[1]
@@ -710,8 +775,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         Parameters
         ----------
         new_target : array_like OR None
-            If ``None``, sets the target to zero. The ``None`` case is used internally
-            by :class:`SpotHologram`.   TODO
+            If ``None``, sets the target spot amplitudes to be uniform.
         reset_weights : bool
             Whether to overwrite ``weights`` with ``target``.
         plot : bool
@@ -914,7 +978,7 @@ class SpotHologram(_AbstractSpotHologram):
         self,
         shape,
         spot_vectors,
-        basis="knm",
+        basis="kxy",
         spot_amp=None,
         cameraslm=None,
         null_vectors=None,
@@ -936,18 +1000,18 @@ class SpotHologram(_AbstractSpotHologram):
         basis : str
             The spots can be in any of the following bases:
 
+            - ``"kxy"`` for centered normalized SLM :math:`k`-space (radians),
+            - ``"knm"`` for computational SLM :math:`k`-space (pixels).
             - ``"ij"`` for camera coordinates (pixels),
-            - ``"kxy"`` for centered normalized SLM k-space (radians).
-            - ``"knm"`` for computational SLM k-space (pixels).
 
-            Defaults to ``"knm"`` if ``None``.
+            Defaults to ``"kxy"``.
         spot_amp : array_like OR None
             The amplitude to target for each spot.
             See :attr:`SpotHologram.spot_amp`.
             If ``None``, all spots are assumed to have the same amplitude.
             Normalization is performed automatically; the user is not required to
             normalize.
-        cameraslm : slmsuite.hardware.cameraslms.FourierSLM OR None
+        cameraslm : slmsuite.hardware.cameraslms.FourierSLM ORslmsuite.hardware.slms.slm.SLM OR None
             If the ``"ij"`` basis is chosen, and/or if the user wants to make use of camera
             feedback, a cameraslm must be provided.
         null_vectors : array_like OR None
@@ -1089,7 +1153,7 @@ class SpotHologram(_AbstractSpotHologram):
         #      (divided by 1 would correspond to the largest non-overlapping integration
         #      regions; 1.5 gives comfortable padding)
         #  - and finally forced to be an odd integer.
-        N = 10  # TODO: non-arbitrary
+        N = 10  # Future: non-arbitrary
         min_psf = 3
 
         dist_knm = np.max([toolbox.smallest_distance(self.spot_knm) / 1.5, min_psf])
@@ -1222,10 +1286,10 @@ class SpotHologram(_AbstractSpotHologram):
             If ``None``, defaults to the position of the zeroth order, converted into the
             relevant basis:
 
-             - If ``"knm"``, this is ``(shape[1], shape[0])/2``.
-             - If ``"kxy"``, this is ``(0,0)``.
-             - If ``"ij"``, this is the pixel position of the zeroth order on the
-               camera (calculated via Fourier calibration).
+            - If ``"knm"``, this is ``(shape[1], shape[0])/2``.
+            - If ``"kxy"``, this is ``(0,0)``.
+            - If ``"ij"``, this is the pixel position of the zeroth order on the
+              camera (calculated via Fourier calibration).
 
         basis : str
             See :meth:`__init__()`.

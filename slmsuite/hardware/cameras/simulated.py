@@ -211,31 +211,32 @@ class SimulatedCamera(Camera):
         f_eff : float or (float, float)
             Effective focal length (in `basis` units) of the
             optical train separating the Fourier-domain SLM from the camera. If a float is
-            provided, `f_eff` is isotropic; otherwise, `f_eff` is defined along the SLM's
+            provided, ``f_eff`` is isotropic; otherwise, ``f_eff`` is defined along the SLM's
             x and y axes.
 
             Important
             ~~~~~~~~~
-            The default unit for `f_eff` is pixels/radian, i.e. the units of :math:`M` matrix
+            The default unit for ``f_eff`` is pixels/radian, i.e. the units of :math:`M` matrix
             elements required to convert normalized angles/:math:`k`-space coordinates to camera
             pixels in the ``"ij"`` basis.
             See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam` for additional
-            details. To convert to true distance units (e.g., `"um"`), multiply `f_eff` by the the
+            details. To convert to true distance units (e.g., ``"um"``), multiply ``f_eff`` by the the
             pixel size in the same dimensions.
             As noted in :meth:`~slmsuite.hardware.cameraslms.get_effective_focal_length`,
             non-square pixels therefore imply different effective focal lengths along each axis
             when using true distance units.
+
         theta : float
             Rotation angle (in radians, ccw) of the camera relative to the SLM orientation.
             Defaults to 0 (i.e., aligned with the SLM).
         shear_angle : float or (float, float)
-            Shearing angles (in radians) along the SLM's x and y axes. If a float is provided,
+            Shearing angles (in radians) along the SLM's :math:`x` and :math:`y` axes. If a float is provided,
             shear is applied isotropically.
         offset : tuple
-            Lateral displacement (in pixels units) of the camera center from `slm`'s
+            Lateral displacement (in pixels units) of the camera center from ``slm``'s
             optical axis. If ``None``, defaults to 0 offset.
         basis : str
-            Sets the units for `f_eff` and `offset`. Defaults to ``"ij"``, the camera pixel basis.
+            Sets the units for ``f_eff`` and ``offset``. Defaults to ``"ij"``, the camera pixel basis.
         pitch_um : float or (float, float)
             Camera pixel pitch in microns. Must be provided if ``basis != "ij"``. A square pixel
             is assumed if a single float is provided.
@@ -255,7 +256,7 @@ class SimulatedCamera(Camera):
         if isinstance(shear_angle, REAL_TYPES):
             shear_angle = [shear_angle, shear_angle]
 
-        if basis != "ij":
+        if basis != "ij":   # TODO: check this!
             assert pitch_um is not None, "Must provide pixel pitch when using real units!"
 
             if basis in toolbox.LENGTH_FACTORS.keys():

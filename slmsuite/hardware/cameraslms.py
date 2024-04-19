@@ -789,7 +789,7 @@ class FourierSLM(CameraSLM):
         # Gather other information
         base_point = np.rint(self.kxyslm_to_ijcam([0, 0])).astype(int)
 
-        # Generate the intiial grid
+        # Generate the initial grid
         plane = format_2vectors(self.cam.shape[::-1])
         grid = np.floor(plane / pitch).astype(int)
         spacing = plane / grid
@@ -1107,7 +1107,7 @@ class FourierSLM(CameraSLM):
         # reference superpixel. Only do this when we are measuring relative phase
         # (if phase_steps is None, then we never write reference superpixels).
         if phase_steps is not None:
-            for i in range(num_points):     # TODO: Make more efficient.
+            for i in range(num_points):     # Future: Make more efficient.
                 # For each calibration point, determine where the reference index is being overwritten.
                 reference_index = reference_superpixels[i]
 
@@ -1128,7 +1128,9 @@ class FourierSLM(CameraSLM):
                     if displaced_index != -1:
                         for k in range(num_active_superpixels-1, num_measurements+1):
                             if k == num_measurements:
-                                raise RuntimeError("TODO")
+                                raise RuntimeError(
+                                    "Some unexpected error happened in calibration scheduling."
+                                )
                             elif (
                                 scheduling[i, k] == -1
                                 and not np.any(scheduling[:, k] == reference_index)
@@ -1762,7 +1764,7 @@ class FourierSLM(CameraSLM):
             results = []
             first_index = np.where(schedule != -1)[0][0]
 
-            # Step 2: Measure interference and find relative phase TODO: vectorize
+            # Step 2: Measure interference and find relative phase. Future: vectorize.
             if phase_steps == 1:
                 # Step 2.1: Gather a single image.
                 result_img = superpixels(schedule, 0, 0, target_blaze=target_blaze_fixed)

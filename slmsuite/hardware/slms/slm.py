@@ -73,19 +73,24 @@ class SLM:
         Stores data describing measured, simulated, or estimated properties of the source,
         such as amplitude and phase.
         Typical keys include:
-            ``"amplitude"`` : numpy.ndarray
-                Source amplitude (with the dimensions of :attr:`shape`) measured on the SLM via
-                :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate()`.
-                Also see :meth:`set_source_analytic()` to set without wavefront calibration.
-            ``"phase"`` : numpy.ndarray
-                Source phase (with the dimensions of :attr:`shape`) measured on the SLM via
-                :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
-                Also see :meth:`set_source_analytic()` to set without wavefront calibration.
+
+        ``"amplitude"`` : numpy.ndarray
+            Source amplitude (with the dimensions of :attr:`shape`) measured on the SLM via
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate()`.
+            Also see :meth:`set_source_analytic()` to set without wavefront calibration.
+
+        ``"phase"`` : numpy.ndarray
+            Source phase (with the dimensions of :attr:`shape`) measured on the SLM via
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
+            Also see :meth:`set_source_analytic()` to set without wavefront calibration.
+
         For a :class:`.SimulatedSLM()`, ``"amplitude_sim"`` and ``"phase_sim"`` keywords
         store the true source properties (defined by the user) used to simulate the SLM's
         far-field.
+
+        When :meth:`.fit_source_amplitude()` is called,
     phase : numpy.ndarray
-        Displayed data in units of phase delay (normalized).
+        Displayed data in units of phase (radians).
     display : numpy.ndarray
         Displayed data in SLM units (integers).
     """
@@ -207,7 +212,7 @@ class SLM:
             File path for the vendor-provided phase correction.
 
         Returns
-        ----------
+        -------
         numpy.ndarray
             :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]`,
             the vendor-provided phase correction.
@@ -286,20 +291,17 @@ class SLM:
         private method :meth:`_phase2gray()`).
         Which routine is used depends on :attr:`phase_scaling`:
 
-         - :attr:`phase_scaling` is one.
-
+        -  :attr:`phase_scaling` is one.
             Fast bitwise integer modulo is used. Much faster than the other routines which
             depend on :meth:`numpy.mod()`.
 
-         - :attr:`phase_scaling` is less than one.
-
+        -  :attr:`phase_scaling` is less than one.
             In this case, the SLM has **more phase tuning range** than necessary.
             If the data is within the SLM range ``[0, 2*pi/phase_scaling]``, then the data is passed directly.
             Otherwise, the data is wrapped by :math:`2\pi` using the very slow :meth:`numpy.mod()`.
             Try to avoid this in applications where speed is important.
 
-         - :attr:`phase_scaling` is more than one.
-
+        -  :attr:`phase_scaling` is more than one.
             In this case, the SLM has **less phase tuning range** than necessary.
             Processed the same way as the :attr:`phase_scaling` is less than one case, with the
             important exception that phases (after wrapping) between ``2*pi/phase_scaling`` and
@@ -321,11 +323,11 @@ class SLM:
             Phase data to display in units of :math:`2\pi`,
             unless the passed data is of integer type and the data is applied directly.
 
-             - If ``None`` is passed to :meth:`.write()`, data is zeroed.
-             - If the array has a larger shape than the SLM shape, then the data is
+            -  If ``None`` is passed to :meth:`.write()`, data is zeroed.
+            -  If the array has a larger shape than the SLM shape, then the data is
                cropped to size in a centered manner
                (:attr:`~slmsuite.holography.toolbox.unpad`).
-             - If integer data is passed with the same type as :attr:`display`
+            -  If integer data is passed with the same type as :attr:`display`
                (``np.uint8`` for <=8-bit SLMs, ``np.uint16`` otherwise),
                then this data is **directly** passed to the
                SLM, without going through the "phase delay to grayscale" conversion
@@ -369,7 +371,7 @@ class SLM:
         else:
             # Make sure the array is an ndarray.
             phase = np.array(phase)
-        # TODO: everything goes to .issubdtype
+
         if phase is not None and np.issubdtype(phase.dtype, np.integer):
             # Check the type.
             if phase.dtype != self.display.dtype:
@@ -578,8 +580,125 @@ class SLM:
 
         return self.source
 
+    def fit_source_amplitude(self, method="fit", extent_threshold=.1, force=True):
+        """
+        Extracts various scalar :attr:`source` parameters from the source for use in
+        analytic functions. This is done by analyzing the :attr:`source` ``["amplitude"]``
+        distribution with ``"moments"`` or least squares ``"fit"``.
+        The scalar parameters include:
+
+        -   ``"amplitude_center_pix"``
+            Pixel corresponding to the center of the source.
+            The grid is also changed to be centered on this pixel.
+        -   ``"amplitude_radius"``
+            The radial standard deviation of the amplitude distribution in normalized units.
+            For a Gaussian source, this is the :math:`1/e` amplitude radius
+            (:math:`1/e^2` power radius).
+            This is scalar and averages the :math:`x` and :math:`y` distributions.
+            This is used to set the source radius for
+            :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`
+            and similar.
+        -   ``"amplitude_extent"``
+            The box radii of the smallest box which covers all amplitude
+            larger than ``extent_threshold``, where the maximum of the distribution is
+            normalized to one.
+        -   ``"amplitude_extent_radius"``
+            Smallest scalar radius about the center of the that covers all amplitude
+            larger than ``extent_threshold``, where the maximum of the distribution is
+            normalized to one.
+            This is used to determine the scaling for
+            :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`:
+            Too small of a scaling is not good because amplitude would
+            overlap outside where Zernike is defined, with divergent phase for higher
+            order Zernike polynomials.
+            Too large of a scaling is not good because one needs to use high order
+            Zernike to attain sufficient spatial resolution at the center of the distribution.
+
+        Important
+        ~~~~~~~~~
+        If :attr:`source` ``["amplitude"]`` is not set, then the parameters are guessed
+        as fractions of the grid:
+
+        -   ``"amplitude_center_pix"``
+            Unchanged from current center.
+        -   ``"amplitude_radius"``
+            Guessed as 1/4 of the smallest extent.
+        -   ``"amplitude_extent"``
+            Guessed as
+        -   ``"amplitude_extent_radius"``
+            Guessed as the the radius that circumscribes the SLM field.
+
+        Parameters
+        ----------
+        method : str {"fit", "moments"}
+            Whether to use moment calculations ``"moments"``
+            or a least squares ``"fit"`` to determine
+            ``"amplitude_center_pix"`` and ``"amplitude_radius"``.
+        extent_threshold : float
+            Fraction of the maximal amplitude to use as
+            the full extent of the amplitude distribution.
+        force : bool
+            If ``False``, does not calculate if these quantities already exist.
+            ``True`` forces recomputation.
+        """
+        # If we have already done a fit, and we don't want to force a new one, then return.
+        if "amplitude_center_pix" in self.source and not force:
+            return
+
+        center_grid = np.array(
+            [np.argmin(self.x_grid[0,:]), np.argmin(self.y_grid[:,0])]
+        )
+
+        if not "amplitude" in self.source:
+            # If there is no measured source amplitude, then make guesses based off of the grid.
+            self.source["amplitude_center_pix"] = center_grid
+            self.source["amplitude_radius"] = .25 * np.min((
+                self.shape[1]*self.dx,
+                self.shape[0]*self.dy
+            ))
+            self.source["amplitude_extent"] = np.array(
+                [np.max(np.abs(self.x_grid)), np.max(np.abs(self.y_grid))]
+            )
+            self.source["amplitude_extent_radius"] = np.sqrt(np.amax(
+                np.square(self.x_grid) + np.square(self.y_grid)
+            ))
+        else:
+            # Otherwise, use the measured amplitude distribution.
+            amp = self.source["amplitude"].copy()
+
+            if method == "fit":
+                result = analysis.image_fit(amp)
+                std = np.array([result[0,5], result[0,6]])
+                center = np.array([result[0,1], result[0,2]])
+            elif method == "moments":
+                center = analysis.image_positions(amp)
+                std_pix = np.sqrt(analysis.image_variances(amp, centers=center)[:2])
+                std_norm = np.array([self.dx, self.dy]) * np.squeeze(std_pix)
+                std = np.mean(std_norm)
+                center = np.squeeze(center)
+
+            self.source["amplitude_center_pix"] = center
+            self.source["amplitude_radius"] = std
+
+            # Handle centering.
+            dcenter = center_grid - center
+
+            self.x_grid -= dcenter[0] * self.dx
+            self.y_grid -= dcenter[1] * self.dy
+
+            extent_mask = amp > (extent_threshold * np.amax(amp))
+
+            self.source["amplitude_extent"] = np.array([
+                np.max(np.abs(self.x_grid[extent_mask])),
+                np.max(np.abs(self.y_grid[extent_mask]))
+            ])
+            self.source["amplitude_extent_radius"] = np.sqrt(np.amax(
+                np.square(self.x_grid[extent_mask]) + np.square(self.y_grid[extent_mask])
+            ))
+
     def get_zernike_scaling(self):
-        pass
+        self.fit_source_amplitude(force=False)
+        return np.reciprocal(self.source["amplitude_extent_radius"])
 
     def _get_source_amplitude(self):
         """Deals with the case of an unmeasured source amplitude."""
@@ -684,25 +803,29 @@ class SLM:
 
     def spot_radius_kxy(self):
         """
-        Approximates the expected radius of farfield spots in the ``"kxy"`` basis based on
-        the near-field amplitude distribution stored in :attr:`source`.
+        Approximates the expected standard deviation radius of farfield spots in the
+        ``"kxy"`` basis based on the near-field amplitude distribution
+        stored in :attr:`source`.
+        For a Gaussian source, this is the :math:`1/e` amplitude radius
+        (:math:`1/e^2` power radius).
 
         Returns
         -------
         float
-            Average radius of the farfield spot.
+            Radius of the farfield spot.
         """
-        try:    # If SLM amplitude profile is measured (i.e., SLM has been wavefront calibrated)
-            psf_nm = np.sqrt(analysis.image_variances(self._get_source_amplitude())[:2])
-            fwhm = 2 * np.sqrt(2 * np.log(2)) * psf_nm
-            psf_kxy = toolbox.convert_blaze_vector(
-                np.reciprocal(fwhm),
-                from_units="freq",
-                to_units="kxy",
-                slm=self,
-                shape=self.shape,
-            )
-        except:  # No amplitude profile present
-            psf_kxy = [1 / self.dx / self.shape[1], 1 / self.dy / self.shape[0]]
+        self.fit_source_amplitude(force=False)
 
-        return toolbox.format_2vectors(psf_kxy)
+        rad_norm = self.source["amplitude_radius"]
+        rad_pix = rad_norm * np.mean([self.dx, self.dy])
+        rad_freq = np.reciprocal(rad_pix)
+
+        psf_kxy = toolbox.convert_blaze_vector(
+            [rad_freq, rad_freq],
+            from_units="freq",
+            to_units="kxy",
+            slm=self,
+            shape=self.shape,
+        )
+
+        return np.mean(psf_kxy)

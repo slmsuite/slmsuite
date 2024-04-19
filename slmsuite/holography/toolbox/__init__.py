@@ -73,47 +73,47 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
 
     Currently supported units:
 
-     - ``"rad"``, ``"mrad"``, ``"deg"``
+    -  ``"rad"``, ``"mrad"``, ``"deg"``
         Angle at which light is blazed in various units.
         The small angle approximation is assumed.
 
-     - ``"norm"``, ``"kxy"``
+    -  ``"norm"``, ``"kxy"``
         Blaze :math:`k_x` normalized to wavenumber :math:`k`, i.e. :math:`\frac{k_x}{k}`.
         Equivalent to radians ``"rad"`` in the small angle approximation.
         **This is the default** :mod:`slmsuite` **unit.**
 
-     - ``"knm"``
+    -  ``"knm"``
         Computational blaze units for a given Fourier domain ``shape``.
         This corresponds to integer points on the grid of this
         (potentially padded) SLM's Fourier transform.
         See :class:`~slmsuite.holography.Hologram`.
         The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
 
-     - ``"freq"``
+    -  ``"freq"``
         Pixel frequency of a grating producing the blaze.
         e.g. 1/16 is a grating with a period of 16 pixels.
 
-     - ``"lpmm"``
+    -  ``"lpmm"``
         Line pairs per mm or lines per mm of a grating producing the blaze.
         This unit is commonly used to define static diffraction gratings used in spectrometers.
 
-     - ``"ij"``
+    -  ``"ij"``
         Camera pixel units, relative to the origin of the camera.
         Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
         See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam`
         and :meth:`~slmsuite.hardware.cameraslms.FourierSLM.ijcam_to_kxyslm`.
 
-     - ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
+    -  ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
         Camera position in metric length units, relative to the origin of the camera.
         Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
 
-     - ``"mag_m"``, ``"mag_cm"``, ``"mag_mm"``, ``"mag_um"``, ``"mag_nm"``
+    -  ``"mag_m"``, ``"mag_cm"``, ``"mag_mm"``, ``"mag_um"``, ``"mag_nm"``
         Scales the corresponding metric length unit according to the value stored in
         :attr:`~slmsuite.hardware.cameraslms.FourierSLM.mag` to match the true
         dimensions of the experiment plane, apposed to the camera plane.
         Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
 
-     - ``"zernike"``
+    -  ``"zernike"``
         The phase coefficients of the tilt zernike terms
         :math:`x = Z_1 = Z_1^{-1}` and
         :math:`y = Z_2 = Z_1^1` necessary to produce a given blaze.
@@ -127,19 +127,19 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
     necessary to produce a spot at the defined depth relative to the focal plane.
     There are a few units where this differs:
 
-     - ``"ij"``
-        True cartesian distance relative to the camera plane in pixels.
+    -  ``"ij"``
+        True cartesian distance relative to the **camera plane** in pixels.
 
-     - ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
+    -  ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
         True cartesian distance relative to the **camera plane** in metric units.
 
-     - ``"mag_m"``, ``"mag_cm"``, ``"mag_mm"``, ``"mag_um"``, ``"mag_nm"``
+    -  ``"mag_m"``, ``"mag_cm"``, ``"mag_mm"``, ``"mag_um"``, ``"mag_nm"``
         True cartesian distance relative to the **experiment plane** in metric units.
         Importantly, :math:`x` and :math:`y` are divided by
         :attr:`~slmsuite.hardware.cameraslms.FourierSLM.mag`,
         while :math:`z` is multiplied by it.
 
-     - ``"zernike"``
+    -  ``"zernike"``
         The phase coefficient of the :math:`Z_4 = Z_2^0` zernike focus term necessary to
         focus at the given depth.
 
@@ -161,8 +161,9 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
     Parameters
     ----------
     vector : array_like
-        2-vectors for which we want to convert units, from ``from_units`` to ``to_units``.
+        Vectors for which we want to convert units, from ``from_units`` to ``to_units``.
         Processed according to :meth:`format_2vectors()`.
+        Can be shape ``(2, N)`` or ``(3, N)``.
     from_units, to_units : str
         Units which we are converting between. See the listed units above for options.
         Defaults to ``"norm"``.
@@ -374,6 +375,11 @@ def convert_radius(radius, from_units="norm", to_units="norm", slm=None, shape=N
         Passed to :meth:`convert_vector`.
     shape : (int, int) OR None
         Passed to :meth:`convert_vector`.
+
+    Returns
+    -------
+    radius : float
+        New scalar radius.
     """
     v0 = convert_vector(
         (0, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
@@ -398,14 +404,18 @@ def window_slice(window, shape=None, centered=False, circular=False):
     ----------
     window : (int, int, int, int) OR (array_like, array_like) OR array_like
         A number of formats are accepted:
+
         - List in ``(x, w, y, h)`` format, where ``w`` and ``h`` are the width and height of
           the region and  ``(x,y)`` is the upper-left coordinate.
-          If ``centered``, then ``(x,y)`` is instead the center of the region to imprint.
-          If ``circular``, then an elliptical region circumscribed by the rectangular region is returned.
+
+          - If ``centered``, then ``(x,y)`` is instead the center of the region to imprint.
+          - If ``circular``, then an elliptical region circumscribed by the rectangular region is returned.
+
         - Tuple containing arrays of identical length corresponding to y and x indices.
           ``centered`` and ``circular`` are ignored.
         - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
           ``centered`` and ``circular`` are ignored.
+
     shape : (int, int) OR None
         The (height, width) of the array that the window is a view into.
         If not ``None``, indices beyond those allowed by ``shape`` will be clipped.
@@ -466,7 +476,7 @@ def window_slice(window, shape=None, centered=False, circular=False):
     return slice_
 
 
-def window_square(window, padding_frac=0, padding_pix=0):
+def window_extent(window, padding_frac=0, padding_pix=0):
     """
     Find a square that covers the active region of ``window``.
 
@@ -474,18 +484,23 @@ def window_square(window, padding_frac=0, padding_pix=0):
     ----------
     window : numpy.ndarray<bool> (height, width)
         Boolean mask.
-    padding : float
-        Fraction of the window width and height to pad these by on all sides.
-        For instance,
-        This result is clipped to be within ``shape`` of the window.
+    padding_frac : float
+        If this default window has width ``w`` and height ``h``,
+        ``padding_frac`` proportionally changes these dimensions all sides.
+        For instance, ``padding_frac=.5`` would modify the dimensions to be
+        ``w = 1.5w`` and ``h = 1.5h``.
+    padding_pix : float
+        Additional padding to add, in pixels.
+        This is applied after ``padding_frac``.
 
     Returns
     -------
-    window_square : (int, int, int, int)
-        A square that covers the active region of ``window``
-        in the format (x, width2, y, height2) where
-        (x, y) is the upper left coordinate, and (width2, height2) define
-        the extent.
+    window_extent : (int, int, int, int)
+        A rectangle that centered on the active region of ``window``
+        in the format ``(x, w, y, h)`` where
+        ``(x, y)`` is the upper left coordinate, and
+        ``(w, h)`` define the extent.
+        This result is clipped to be within ``shape`` of the window.
     """
     limits = []
 
@@ -1033,8 +1048,8 @@ def smallest_distance(vectors, metric=chebyshev):
 
     Caution
     ~~~~~~~
-    Unsigned vectors can lead to unexpected results when evaluating a distance metric.
-    Be sure that your vectors are signed.
+    Vectors using unsigned datatypes can lead to unexpected results when
+    evaluating a distance metric. Be sure that your vectors are signed.
 
     Parameters
     ----------
@@ -1184,19 +1199,20 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
 
 def assign_vectors(vectors, assignment_options):
     """
-    Assigns ``vectors`` to the closest counterpart ``assignment_options``.
+    Assigns ``vectors`` to the closest Euclidean counterpart ``assignment_options``.
 
     Parameters
     ----------
     vectors : array_like
-        M-vector or array of M-vectors.
+        Array of M-vectors of shape ``(M, vector_count)``
     assignment_options : array_like
-        M-vector or array of M-vectors.
+        Array of M-vectors of shape ``(M, option_count)``
 
     Returns
     -------
     numpy.ndarray
         For each vector, the index of the closest ``assignment_options``.
+        Of shape ``(option_count,)``.
     """
     vectors = format_vectors(vectors)[:, np.newaxis, :]
     assignment_options = format_vectors(assignment_options)[:, :, np.newaxis]
@@ -1320,7 +1336,7 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
 def pad(matrix, shape):
     """
     Helper function to pad data with zeros. The padding is centered.
-    This is used to get higher resolution upon Fourier transform.
+    This is used to get higher resolution in the :math:`k`-space upon Fourier transform.
 
     Parameters
     ----------
@@ -1362,7 +1378,7 @@ def pad(matrix, shape):
 def unpad(matrix, shape):
     """
     Helper function to unpad data. The padding is assumed to be centered.
-    This is used to get higher resolution upon Fourier transform.
+    This is used to get higher resolution in the :math:`k`-space upon Fourier transform.
 
     Parameters
     ----------

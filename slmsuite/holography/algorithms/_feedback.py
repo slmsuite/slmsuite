@@ -119,8 +119,8 @@ class FeedbackHologram(Hologram):
         ~~~~
         This includes two transformations:
 
-         - The affine transformation ``"ij"`` -> ``"kxy"`` (camera pixels to normalized k-space).
-         - The scaling ``"kxy"`` -> ``"knm"`` (normalized k-space to computational k-space pixels).
+        - The affine transformation ``"ij"`` -> ``"kxy"`` (camera pixels to normalized k-space).
+        - The scaling ``"kxy"`` -> ``"knm"`` (normalized k-space to computational k-space pixels).
 
         Parameters
         ----------
@@ -195,9 +195,11 @@ class FeedbackHologram(Hologram):
         norm = Hologram._norm(target)
         target *= 1 / norm
 
-        assert (
-            norm != 0
-        ), "FeedbackHologram.ijcam_to_knmslm(): target_ij is out of range of knm space. Check transformations."
+        if norm == 0:
+            raise ValueError(
+                "No power in hologram. Maybe target_ij is out of range of knm space? "
+                "Check transformations."
+            )
 
         return target
 
@@ -214,8 +216,8 @@ class FeedbackHologram(Hologram):
             The cached image to be sure to fill with new data.
             Can be ``"ij"`` or ``"knm"``.
 
-             - If ``"knm"``, then :attr:`img_ij` and :attr:`img_knm` are filled.
-             - If ``"ij"``, then :attr:`img_ij` is filled, and :attr:`img_knm` is ignored.
+            - If ``"knm"``, then :attr:`img_ij` and :attr:`img_knm` are filled.
+            - If ``"ij"``, then :attr:`img_ij` is filled, and :attr:`img_knm` is ignored.
 
             This is useful to avoid (expensive) transformation from the ``"ij"`` to the
             ``"knm"`` basis if :attr:`img_knm` is not needed.

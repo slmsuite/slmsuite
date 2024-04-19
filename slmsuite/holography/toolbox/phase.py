@@ -19,6 +19,7 @@ from slmsuite.holography.toolbox import _process_grid
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuda.cu"), 'r') as file:
     CUDA_KERNELS = file.read()
 
+
 # Basic gratings.
 
 def blaze(grid, vector=(0, 0), offset=0):
@@ -26,17 +27,17 @@ def blaze(grid, vector=(0, 0), offset=0):
     Returns a simple `blazed grating <https://en.wikipedia.org/wiki/Blazed_grating>`_,
     a linear phase ramp, toward a given vector in :math:`k`-space.
 
-    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k}_{norm} \cdot \vec{x}_{norm} + o
+    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k} \cdot \vec{x} + o
 
     Parameters
     ----------
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        :math:`\vec{x}_{norm}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     vector : (float, float)
-        :math:`\vec{k}_{norm}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
+        :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
         See :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`
     offset : float
         Phase offset for this blaze.
@@ -71,21 +72,22 @@ def sinusoid(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=np.pi)
     <https://en.wikipedia.org/wiki/Diffraction_grating#SR_(Surface_Relief)_gratings>`_,
     a sinusoidal grating, toward a given vector in :math:`k`-space.
 
-    .. math:: \phi(\vec{x}) = a \sin(\vec{k}_{norm} \cdot \vec{x}_{norm} + o) + b
+    .. math:: \phi(\vec{x}) = a \sin(\vec{k} \cdot \vec{x} + o) + b
 
     Important
     ---------
-    Half the power will be deflected toward the -1st order at :math:`-\vec{k}_{norm}`.
+    Unlike a blazed grating :meth:`.blaze()`, half the power will be deflected toward
+    the mirror -1st order at :math:`-\vec{k}`, at best.
 
     Parameters
     ----------
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        :math:`\vec{x}_{norm}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     vector : (float, float)
-        :math:`\vec{k}_{norm}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
+        :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
         See :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`
     offset : float
         Grating phase offset.
@@ -102,9 +104,9 @@ def sinusoid(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=np.pi)
     """
     if vector[0] == 0 and vector[1] == 0:
         (x_grid, _) = _process_grid(grid)
-        result = np.full_like(x_grid, np.sin(offset))
+        result = np.full_like(x_grid, amplitude * np.sin(offset))
     else:
-        result = np.sin(blaze(grid, vector, offset))
+        result = amplitude * np.sin(blaze(grid, vector, offset))
 
     # Add offset if provided.
     if outer_offset != 0:
@@ -117,12 +119,15 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
     r"""
     Returns a simple binary grating toward a given vector in :math:`k`-space.
 
-    .. math:: \phi(\vec{x}) =   \left\{
-                                    \begin{array}{ll}
-                                        a+b, & (\vec{k}_{norm} \cdot \vec{x}_{norm} + o) \text{ mod } 2\pi < 2\pi*d \\
-                                        b, & \text{ otherwise}.
-                                    \end{array}
-                                \right.
+    .. math:: \phi(\vec{x}) =
+        \left\{
+            \begin{array}{ll}
+                a+b, & (
+                    [2\pi \cdot \vec{k} \cdot \vec{x} + o] \,\,\,\,\text{mod}\,\,\,\, 2\pi
+                    ) < 2\pi*d \\
+                b, & \text{ otherwise}.
+            \end{array}
+        \right.
 
     Note
     ----
@@ -134,12 +139,12 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
     Parameters
     ----------
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
-        :math:`\vec{x}_{norm}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     vector : (float, float)
-        :math:`\vec{k}_{norm}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
+        :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
         See :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`
     offset : float
         Grating phase offset.
@@ -175,7 +180,7 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
         duty_int = np.rint(duty)
 
         if np.all(np.isclose(period, period_int)) and np.all(np.isclose(duty, duty_int)):
-            pass    # TODO
+            pass    # Future: speed optimization.
 
     # If we have not set result, then we have to use the slow np.mod option.
     if result is None:
@@ -189,6 +194,21 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
 
 # Basic lenses.
 
+def _parse_focal_length(f):
+    """Helper function to parse focal length used by `lens` and `axicon`."""
+    if isinstance(f, REAL_TYPES):
+        f = [f, f]
+    if isinstance(f, (list, tuple, np.ndarray)):
+        f = np.squeeze(f)
+
+        if f.size != 2:
+            raise ValueError("Expected two terms in focal list. Found {}.".format(f))
+        if np.any(f == 0):
+            raise ValueError("Cannot interpret a focal length of zero. Found {}.".format(f))
+
+    return f
+
+
 def lens(grid, f=(np.inf, np.inf)):
     r"""
     Returns a simple
@@ -198,7 +218,7 @@ def lens(grid, f=(np.inf, np.inf)):
 
     .. math:: \phi(\vec{x}) = \frac{\pi}{f}|\vec{x}|^2
 
-    Otherwise :math:`\vec{f}` represents an elliptical lens,
+    Otherwise :math:`\vec{\,f\,}` represents an elliptical lens,
 
     .. math:: \phi(x, y) = \pi \left[\frac{x^2}{f_x} + \frac{y^2}{f_y} \right]
 
@@ -222,15 +242,7 @@ def lens(grid, f=(np.inf, np.inf)):
         The phase for this function.
     """
     (x_grid, y_grid) = _process_grid(grid)
-
-    # Parse focal length.
-    if isinstance(f, REAL_TYPES):
-        f = [f, f]
-    if isinstance(f, (list, tuple, np.ndarray)):
-        f = np.squeeze(f)
-
-        assert f.shape == (2,)
-        assert not np.any(f == 0), "Cannot interpret a focal length of zero."
+    f = _parse_focal_length(f)
 
     # Optimize phase construction based on context (for speed, to avoid square, etc).
     if np.isfinite(f[0]) and np.isfinite(f[1]):
@@ -245,12 +257,13 @@ def lens(grid, f=(np.inf, np.inf)):
 
 def axicon(grid, f=(np.inf, np.inf), w=None):
     r"""
-    Returns an `axicon <https://en.wikipedia.org/wiki/Axicon>`_ lens, the phase farfield for a Bessel beam.
-    A (elliptically)-cylindrical axicon blazes according to :math:`\vec{k}_g = w / \vec{f} / 2` where
+    Returns an `axicon <https://en.wikipedia.org/wiki/Axicon>`_ lens,
+    the phase farfield for a Bessel beam. A (elliptically)-cylindrical axicon blazes
+    according to :math:`\vec{k}_g = w / \vec{\,f\,} / 2` where
     :math:`w` is the radius of the axicon. With a flat input amplitude over
-    :math:`[-w, w]`, this will produce a Bessel beam centered at :math:`z = \vec{f}`.
+    :math:`[-w, w]`, this will produce a Bessel beam focussed at :math:`z = \vec{f}`.
 
-    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k}_g \cdot |\vec{x}|
+    .. math:: \phi(\vec{x}) = 2\pi \cdot |\vec{k}_g \cdot \vec{x}|
 
     Parameters
     ----------
@@ -272,16 +285,8 @@ def axicon(grid, f=(np.inf, np.inf), w=None):
         The phase for this function.
     """
     (x_grid, y_grid) = _process_grid(grid)
-
     w = _determine_source_radius(grid, w)
-
-    if isinstance(f, REAL_TYPES):
-        f = [f, f]
-    if isinstance(f, (list, tuple, np.ndarray)):
-        f = np.squeeze(f)
-
-        assert f.shape == (2,)
-        assert not np.any(f == 0), "Cannot interpret a focal length of zero."
+    f = _parse_focal_length(f)
 
     angle = [w / f[0] / 2, w / f[1] / 2]    # Notice that this fraction is in radians.
 
@@ -322,7 +327,7 @@ ZERNIKE_NAMES = [
     # 4th order
     "Oblique quadrafoil",
     "Oblique secondary astigmatism",
-    "Primary spherical aberration",
+    "Spherical aberration",
     "Vertical secondary astigmatism",
     "Vertical quadrafoil",
 
@@ -333,34 +338,46 @@ ZERNIKE_NAMES = [
     "Horizontal secondary coma",
     "Oblique secondary trefoil",
     "Oblique pentafoil",
+
+    # 6th order
+    "Oblique hexafoil",
+    "Oblique secondary quadrafoil",
+    "Oblique trinary astigmatism",
+    "Secondary spherical aberration",
+    "Vertical trinary astigmatism",
+    "Vertical secondary quadrafoil",
+    "Vertical hexafoil",
 ]
 
-def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
+
+def zernike_convert_index(indices, from_index="ansi", to_index="ansi"):
     """
     Helper function for converting between Zernike indexing conventions.
 
     Currently supported conventions:
 
-     - ``"radial"``
+    -  ``"radial"``
         The standard 2-dimensional :math:`n,l` indexing for
-        `Zernike polynomials <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.,
+        `Zernike polynomials <https://en.wikipedia.org/wiki/Zernike_polynomials>`_,
         where :math:`n` is the radial index
         and :math:`l` is the azimuthal index.
+        Denoted :math:`Z_n^l`.
 
-     - ``"ansi"``
+    -  ``"ansi"``
         1-dimensional (0-indexed) `ANSI indices
         <https://en.wikipedia.org/wiki/Zernike_polynomials#OSA/ANSI_standard_indices>`_.
         **This is the default** :mod:`slmsuite` **index.**
+        Denoted :math:`Z_i`.
 
-     - ``"noll"``
+    -  ``"noll"``
         1-dimensional (1-indexed) `Noll indices
         <https://en.wikipedia.org/wiki/Zernike_polynomials#Noll's_sequential_indices>`_.
 
-     - ``"fringe"``
+    -  ``"fringe"``
         1-dimensional (1-indexed) `Fringe indices
         <https://en.wikipedia.org/wiki/Zernike_polynomials#Fringe/University_of_Arizona_indices>`_.
 
-     - ``"wyant"``
+    -  ``"wyant"``
         1-dimensional (0-indexed) `Wyant indices
         <https://en.wikipedia.org/wiki/Zernike_polynomials#Wyant_indices>`_.
         Equivalent to ``"fringe"``, except with starting with zero instead of one.
@@ -371,13 +388,19 @@ def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
         List of indices of shape ``(N, D)`` where ``D`` is the dimension of the indexing
         (1, apart from ``"radial"`` indexing which has a dimension of 2).
     from_index, to_index : str
-        Index convention. Must be supported.
+        Zernike index convention. Must be supported.
 
     Returns
     -------
     indices_converted : numpy.ndarray
         List of indices of shape ``(N, D)`` where ``D`` is the dimension of the indexing
         (1, apart from ``"radial"`` indexing which has a dimension of 2).
+
+    Raises
+    ------
+    ValueError
+        If an invalid index number or index type is given,
+        or an invalid indices shape is given.
     """
     # Parse arguments.
     if from_index not in ZERNIKE_INDEXING:
@@ -391,9 +414,9 @@ def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
 
     indices = np.array(indices, dtype=int, copy=False)
     if indices.size == dimension:
-        indices = indices.reshape((dimension, 1))
+        indices = indices.reshape((1, dimension))
     if dimension > 1 and indices.shape[1] != dimension:
-        raise ValueError(f"Expected dimension ({dimension}, N); found {indices.shape}")
+        raise ValueError(f"Expected dimension (N, {dimension}); found {indices.shape}")
 
     if from_index == to_index:
         return indices
@@ -407,6 +430,14 @@ def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
     elif from_index == "ansi":
         n = np.floor(.5 * np.sqrt(8*indices + 1) - .5).astype(int)
         l = 2*indices - n*(n+2)
+
+    # Error check n,l
+    if np.any((n + l) % 2):
+        raise ValueError(f"Invalid Zernike index n,l. n+l must be even. n={n}, l={l}.")
+    if np.abs(l) > n:
+        raise ValueError(f"Invalid Zernike index n,l. |l| cannot be larger than n. n={n}, l={l}.")
+    if n < 0:
+        raise ValueError(f"Invalid Zernike index n,l. n must be non-negative. n={n}, l={l}.")
 
     # Convert to the desired indices.
     if to_index == "radial":
@@ -427,38 +458,75 @@ def convert_zernike_index(indices, from_index="ansi", to_index="ansi"):
     return result
 
 
-def scale_zernike_aperture(grid, aperture=None):
+def zernike_aperture(grid, aperture=None):
     """
+    Helper function to find the appropriate scaling for between the normalized units in
+    the grid and the Zernike aperture (the unit disk).
+
+    Important
+    ~~~~~~~~~
+    Zernike polynomials are canonically defined on a circular aperture. However, we may
+    want to use these polynomials on other apertures (e.g. a rectangular SLM).
+    Cropping this aperture breaks the orthogonality and normalization of the set, but
+    this is fine for many applications. While it is possible to orthonormalize the
+    cropped set, we do not do so in :mod:`slmsuite`, as this is not critical for target
+    applications such as aberration correction.
+
+    Caution
+    ~~~~~~~
+    Anisotropic Zernike scaling can lead to unexpected behavior.
+    For instance, the :math:`Z_4 = Z_2^0 = 1 - 2x^2 - 2y^2` Zernike term is commonly
+    used for focusing, but with anisotropic scaling, this becomes an elliptical lens
+    on the SLM which may not behave as expected.
 
     Parameters
     ----------
-    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
+    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR float OR None
         How to scale the polynomials relative to the grid shape. This is relative
         to the :math:`R = 1` edge of a standard Zernike pupil.
 
-        ``"circular"``, ``None``
+        - ``None``
+          If a :class:`~slmsuite.hardware.slms.slm.SLM` is passed for ``grid``, then
+          uses :meth:`~slmsuite.hardware.slms.slm.SLM.get_zernike_scaling()` to
+          determine the scaling most appropriate for the SLM.
+          Otherwise, defaults to ``"cropped"``.
+
+        - ``"circular"``
           The circle is scaled isotropically until the pupil edge touches one set
           of opposite grid edges. This is the default aperture.
 
-        ``"elliptical"``
+        - ``"elliptical"``
           The circle is scaled anisotropically until each pupil edge touches a grid
           edge. Generally produces an ellipse.
 
-        ``"cropped"``
+        - ``"cropped"``
           The circle is scaled isotropically until the rectangle of the grid is
           circumscribed by the circle.
 
-        ``(float, float)``
+        - ``float OR (float, float)``
           Custom scaling. These values are multiplied to the ``x_grid`` and ``y_grid``
-          directly, respectively. The edge of the pupil corresponds to where
-          ``x_grid**2 + y_grid**2 = 1``.
+          directly, respectively. The edge of the Zernike pupil corresponds to where
+          ``(s_x * x_grid)**2 + (s_y * y_grid)**2 = 1``. If a scalar is given, assumes
+          isotropic scaling.
+
+    Returns
+    ~~~~~~~
+    (float, float)
     """
     # Parse grid.
     (x_grid, y_grid) = _process_grid(grid)
 
     # Parse aperture.
     if aperture is None:
-        aperture = "circular"
+        # Check if cameraslm.
+        if hasattr(grid, "slm"):
+            grid = grid.slm
+
+        # Check if slm.
+        if hasattr(grid, "get_zernike_scaling"):
+            aperture = grid.get_zernike_scaling()
+        else:
+            aperture = "cropped"
 
     if isinstance(aperture, str):
         if aperture == "elliptical":
@@ -470,7 +538,9 @@ def scale_zernike_aperture(grid, aperture=None):
             x_scale = y_scale = 1 / np.sqrt(np.nanmax(np.square(x_grid) + np.square(y_grid)))
         else:
             raise ValueError("NotImplemented")
-    elif isinstance(aperture, (list, tuple)) and len(aperture) == 2:
+    elif np.isscalar(aperture):
+        x_scale = y_scale = aperture
+    elif isinstance(aperture, (list, tuple, np.ndarray)) and len(aperture) == 2:
         x_scale = aperture[0]
         y_scale = aperture[1]
     else:
@@ -479,7 +549,7 @@ def scale_zernike_aperture(grid, aperture=None):
     return (x_scale, y_scale)
 
 
-def zernike(grid, i, weight=1, **kwargs):
+def zernike(grid, index, weight=1, **kwargs):
     r"""
     Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
 
@@ -490,7 +560,7 @@ def zernike(grid, i, weight=1, **kwargs):
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    i : int
+    index : int
         ANSI Zernike index defining the polynomial.
     weight : float
         Amplitude of the polynomial.
@@ -502,40 +572,33 @@ def zernike(grid, i, weight=1, **kwargs):
     numpy.ndarray
         The phase for this function.
     """
-    return zernike_sum(grid, ((i, weight), ), **kwargs)
+    return zernike_sum(grid, (index,), (weight,), **kwargs)
 
 
-def zernike_sum(grid, weights, aperture=None, use_mask=True, dx=0, dy=0, out=None):
+def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative=(0,0), out=None):
     r"""
     Returns a summation of
     `Zernike polynomials <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
-    in a computationally-efficient manner. To improve performance, especially for higher
-    order polynomials, we store a cache of Zernike coefficients to avoid regeneration.
+    in a computationally-efficient manner. Specifically,
+
+    .. math:: \phi(\vec{x}) = \sum_i w_i Z_{I_i}(\vec{x}).
+
+    To improve performance, especially for higher order polynomials,
+    we store a cache of Zernike coefficients to avoid regeneration.
     See the below example to generate
-    :math:`Z_1 - Z_2 + Z_3 = Z_2^{-1} - Z_2^{-1} + Z_2^{-1}`,
-    where :math:`Z_n^l` is represented by the ansi index :math:`i` as :math:`Z_i`.
+    :math:`Z_1 - Z_2 + Z_4 = Z_1^{-1} - Z_1^1 + Z_2^0`,
+    where the standard radial Zernike indexing :math:`Z_n^l`
+    is instead represented as :math:`Z_i` by the 1-dimensional ANSI index :math:`i`.
 
     .. highlight:: python
     .. code-block:: python
 
         zernike_sum_phase = toolbox.phase.zernike_sum(
             grid=slm,
-            weights=(
-                (1,  1),       # Z_1
-                (2, -1),       # Z_2
-                (3,  1)        # Z_3
-            ),
+            indices=(1,  2,  4),    # Define Z_1, Z_2, Z_4
+            weights=(1, -1,  1),    # Request Z_1 - Z_2 + Z_4
             aperture="circular"
         )
-
-    Important
-    ~~~~~~~~~
-    Zernike polynomials are canonically defined on a circular aperture. However, we may
-    want to use these polynomials on other apertures (e.g. a rectangular SLM).
-    Cropping this aperture breaks the orthogonality and normalization of the set, but
-    this is fine for many applications. While it is possible to orthonormalize the
-    cropped set, we do not do so in :mod:`slmsuite`, as this is not critical for target
-    applications such as aberration correction.
 
     Parameters
     ----------
@@ -544,21 +607,37 @@ def zernike_sum(grid, weights, aperture=None, use_mask=True, dx=0, dy=0, out=Non
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    weights : list of (int, float)
-        Which Zernike polynomials to sum.
-        The ``int`` is the ANSI index ``i``.
-        The ``float`` is the weight for the given index.
+    indices : list of int
+        Which Zernike polynomials to sum, defined by ANSI indices.
+
+        Tip
+        ~~~
+        Use :meth:`~slmsuite.holography.toolbox.phase.zernike_convert_index()`
+        to convert to ANSI from various other common indexing conventions.
+
+    weights : list of float
+        The weight for each given index.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
-        Passed to :meth:`.scale_zernike_aperture()`.
+        Determines how the Zernike polynomials are laterally scaled.
+        Parsed with :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`.
+
+        Important
+        ~~~~~~~~~
+        Read the documentation and tips in
+        :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`
+        to avoid subtle issues with lateral scaling.
+
     use_mask : bool OR "return"
         If ``True``, sets the area where standard Zernike polynomials are undefined to zero.
         If ``False``, the polynomial is not cropped. This should be used carefully, as
         the wavefront correction outside the unit circle quickly explodes with
         :math:`r^O` for terms of high order :math:`O`.
         If ``"return"``, returns the 2D mask ``x_grid**2 + y_grid**2 <= 1``.
-    dx, dy : int
-        If non-zero, returns the Zernike derivative of the given order. For instance,
-        ``dx = 1, dy = 0`` corresponds to the first derivative in the :math:`x` direction.
+    derivative : (int, int)
+        If non-negative, returns the Zernike derivative of the given order. For instance,
+        ``(1, 0)`` corresponds to the first derivative in the :math:`x` direction.
+        This is fast and accurate because the derivative is computed via power rule before
+        generating Zernike images.
     out : array_like OR None
         Memory to be used for the phase output. Allocated separately if ``None``.
 
@@ -569,7 +648,9 @@ def zernike_sum(grid, weights, aperture=None, use_mask=True, dx=0, dy=0, out=Non
     """
     # Parse passed values
     (x_grid, y_grid) = _process_grid(grid)
-    (x_scale, y_scale) = scale_zernike_aperture(grid, aperture)
+    (x_scale, y_scale) = zernike_aperture(grid, aperture)
+    (dx, dy) = derivative
+    out = _parse_out(x_grid, out)
 
     # At the end, we're going to set the values outside the aperture to zero.
     # Make a mask for this if it's necessary.
@@ -590,7 +671,7 @@ def zernike_sum(grid, weights, aperture=None, use_mask=True, dx=0, dy=0, out=Non
     # the coefficients of the same terms is simple and fast scalar operations.
     summed_coefficients = {}
 
-    for (key, weight) in weights:
+    for key, weight in zip(indices, weights):
         coefficients = _zernike_coefficients(key)
 
         for power_key, factor in coefficients.items():
@@ -625,29 +706,34 @@ def zernike_sum(grid, weights, aperture=None, use_mask=True, dx=0, dy=0, out=Non
 
     # Finally, build the polynomial.
     if True:
-        canvas = np.zeros(x_grid.shape)
+        if out is None:
+            out = np.empty(x_grid.shape)
+        else:
+            out = np.array(out, copy=False)
+
+        out.fill(0)
 
         for power_key, factor in summed_coefficients.items():
             if factor != 0:
                 if power_key == (0,0):
                     if use_mask:
-                        canvas[mask] += factor
+                        out[mask] += factor
                     else:
-                        canvas += factor
+                        out += factor
                 else:
                     if use_mask:
-                        canvas[mask] += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+                        out[mask] += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
                     else:
-                        canvas += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+                        out += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
     else:
         pass
 
 
-    return canvas
+    return out
 
 
 def _plot_zernike_pyramid(grid, order, scale=1, **kwargs):
-    """
+    r"""
     Plots :meth:`.zernike()` on a pyramid of subplots corresponding to the radial and
     azimuthal order. The user can resize the figure with ``plt.figure()`` beforehand
     and force ``plt.show()`` afterward.
@@ -666,8 +752,9 @@ def _plot_zernike_pyramid(grid, order, scale=1, **kwargs):
     **kwargs
         Passed to :meth:`.zernike()`.
     """
+    order += 1
     indices_ansi = np.arange((order * (order + 1)) // 2)
-    indices_radial = convert_zernike_index(indices_ansi, from_index="ansi", to_index="radial")
+    indices_radial = zernike_convert_index(indices_ansi, from_index="ansi", to_index="radial")
 
     for i in indices_ansi:
         n, l = indices_radial[i, :]
@@ -676,24 +763,28 @@ def _plot_zernike_pyramid(grid, order, scale=1, **kwargs):
         phase = zernike(grid, i, 1, **kwargs)
 
         plt.subplot(order, order, 1 + m + n*order)
+        # plt.title((n,l))
+        if i < len(ZERNIKE_NAMES):
+            plt.title(ZERNIKE_NAMES[i])
         plt.imshow(phase)
         plt.clim([-scale, scale])
         plt.xticks([])
         plt.yticks([])
 
 
-# Old style dictionary.
-#   {(n,m) : {(nx, ny) : w, ... }, ... }
+# Old style dictionary.     {(n,m) : {(nx, ny) : w, ... }, ... }
 _zernike_cache = {}
-# New style matrix.
-#   N x M, N spans ansi Zernike indices, M spans cantor polynomial indices.
+
+# New style matrix.         N x M, N: ANSI Zernike, M: cantor polynomial.
 _zernike_cache_vectorized = np.array([[]], dtype=int)
+
 
 def _zernike_build(n):
     """Pre-caches Zernike polynomials up to order :math:`n`."""
     N = (n+1) * (n+2) // 2
     for i in range(N):
         _zernike_coefficients(i)
+
 
 def _zernike_coefficients(index):
     """
@@ -707,7 +798,8 @@ def _zernike_coefficients(index):
     if not index in _zernike_cache:
         zernike_this = {}
 
-        (n, l) = convert_zernike_index(index, to_index="radial")[0]
+        (n, l) = zernike_convert_index(index, to_index="radial")[0]
+        l = -l
 
         # Define helper variables.
         if l % 2:   # If even
@@ -722,6 +814,8 @@ def _zernike_coefficients(index):
             p = 0
         else:
             p = 1
+
+        print(n, l)
 
         l = abs(l)
         m = int((n-l)/2)
@@ -739,8 +833,10 @@ def _zernike_coefficients(index):
                     factor = -1 if (i + j) % 2 else 1
                     factor *= comb(l, 2 * i + p)
                     factor *= comb(m - j, k)
-                    factor *= (float(factorial(n - j))
-                        / (factorial(j) * factorial(m - j) * factorial(n - m - j)))
+                    factor *= (
+                        float(factorial(n - j))
+                        / (factorial(j) * factorial(m - j) * factorial(n - m - j))
+                    )
 
                     power_key = (int(n - 2*(i + j + k) - p), int(2 * (i + k) + p))
 
@@ -779,6 +875,88 @@ def _zernike_coefficients(index):
 
     return _zernike_cache[index]
 
+
+def _zernike_populate_basis_map(indices):
+    """
+    This generates helper maps ``c_md``, ``i_md``, ``pxy_m`` for use in GPU kernels
+    (see ``populate_basis`` in cuda.cu).
+    """
+    indices = np.squeeze(indices)
+    D = len(indices)
+
+    # Omit negative indices (special cases)
+    zernike_indices = indices[indices >= 0]
+    other_indices = indices[indices < 0]
+
+    # Make sure all coefficients are generated.
+    for i in zernike_indices:
+        _zernike_coefficients(i)
+
+    # Determine the cantor indices.
+    nonzero_cantor_indices = np.any(_zernike_cache_vectorized[zernike_indices, :], axis=0)
+    cantor_indices = np.arange(len(nonzero_cantor_indices), dtype=int)[nonzero_cantor_indices]
+
+    M = len(cantor_indices)
+
+    pxy_m = _inverse_cantor_pairing(cantor_indices)
+    msort = _term_pathing(pxy_m)
+    pxy_m = pxy_m[msort, :].astype(int)
+    if len(other_indices) > 0:
+        pxy_m = np.pad(pxy_m, ((0, len(other_indices)), (0,0)))
+        pxy_m[len(zernike_indices):, 0] = other_indices     # Other indices go into nx.
+
+    # Populate the results.
+    c_md = np.transpose(_zernike_cache_vectorized[zernike_indices, :][:, cantor_indices[msort]]).astype(int)
+    i_md = np.full((M, D), -1, dtype=int)
+
+    darange = np.arange(D)
+
+    for m in msort:
+        nonzero = darange[c_md[m, :] != 0]
+        i_md[m, :len(nonzero)] = nonzero
+
+    return c_md, i_md, pxy_m.T
+
+
+try:
+    _zernike_test_kernel = cp.RawKernel(CUDA_KERNELS, 'zernike_test')
+except:
+    _zernike_test_kernel = None
+
+
+def _zernike_test(grid, indices):
+    c_md, i_md, pxy_m = _zernike_populate_basis_map(indices)
+    (x_grid, y_grid) = _process_grid(grid)
+    x_grid = cp.array(x_grid, copy=False)
+    y_grid = cp.array(y_grid, copy=False)
+
+    (H, W) = x_grid.shape
+    WH = int(W*H)
+    (M, D) = c_md.shape
+
+    out = cp.empty((D,H,W))
+
+    threads_per_block = int(_zernike_test_kernel.max_threads_per_block)
+    blocks = WH // threads_per_block
+
+    # Call the RawKernel.
+    _zernike_test_kernel(
+        (blocks,),
+        (threads_per_block,),
+        (
+            WH, D, M,
+            cp.array(c_md, copy=False),
+            cp.array(i_md, copy=False),
+            cp.array(pxy_m, copy=False),
+            x_grid.ravel(),
+            y_grid.ravel(),
+            out.ravel()
+        )
+    )
+
+    return out
+
+
 # Polynomials.
 
 def _cantor_pairing(xy):
@@ -787,7 +965,7 @@ def _cantor_pairing(xy):
     `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
     """
     xy = np.array(xy, dtype=int, copy=False).reshape((-1, 2))
-    return (np.round(.5 * (xy[:,0] + xy[:,1]) * (xy[:,0] + xy[:,1] + 1) + xy[:,1])).astype(int)
+    return np.rint(.5 * (xy[:,0] + xy[:,1]) * (xy[:,0] + xy[:,1] + 1) + xy[:,1]).astype(int)
 
 
 def _inverse_cantor_pairing(z):
@@ -795,7 +973,7 @@ def _inverse_cantor_pairing(z):
     Converts a 1D index to a unique 2D index according to the
     `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
     """
-    z = np.array(z, dtype=int, copy=False)
+    z = np.squeeze(np.array(z, dtype=int, copy=False))
 
     w = np.floor((np.sqrt(8*z + 1) - 1) // 2).astype(int)
     t = (w*w + w) // 2
@@ -803,14 +981,13 @@ def _inverse_cantor_pairing(z):
     y = z-t
     x = w-y
 
-    return np.vstack((x, y))
+    return np.vstack((x, y)).T
 
 
 def _term_pathing(xy):
     """
     Returns the index for term sorting to minimize number of monomial multiplications when summing
-    polynomials (with only one storage variable). This yields a provably-optimal set of paths.
-    The proof is left as an exercise to the reader.
+    polynomials (with only one storage variable).
 
     It may be the case that division could yield a shorter path, but division is
     generally more expensive than multiplication so we omit this scenario.
@@ -819,15 +996,25 @@ def _term_pathing(xy):
     speedup. (e.g. `x^5 = y * y * x` with `y = x * x` costs three multiplications instead
     of five) However, it is unlikely that users will need the very-high-order
     polynomials would would experience an appreciable speedup.
+
+    Parameters
+    ----------
+    xy : array_like
+        Array of shape ``(M, 2)``.
+
+    Returns
+    -------
+    I : numpy.ndarray
+        Array of shape ``(M,)``. Best coefficient order.
     """
     # Prepare helper variables.
     xy = np.array(xy, dtype=int, copy=False)
 
     order = np.sum(xy, axis=1)
-    delta = np.diff(xy, axis=1)
+    delta = np.squeeze(np.diff(xy, axis=1))
 
     cantor = _cantor_pairing(xy)
-    cantor_index = np.argsort(cantor)
+    cantor_index = np.argsort(-cantor)
 
     # Prepare the output data structure.
     I = np.zeros_like(order, dtype=int)
@@ -835,19 +1022,22 @@ def _term_pathing(xy):
     # Helper function to recurse through pathing options.
     def recurse(i0, j0):
         # Fill in the current values.
-        I[j0] = i0
+        I[j0] = cantor_index[i0]
         cantor[cantor_index[i0]] = -1
+
+        if j0 == 0:
+            return 0
 
         # Figure out the distance between the current index and all other indices.
         dd = delta - delta[cantor_index[i0]]
         do = order[cantor_index[i0]] - order
 
         # Find the best candidate for the next index in the thread.
-        nearest = -cantor + np.inf * ((np.abs(dd) >= do) + (do > 0) + cantor >= 0)
-        i = np.argmin(nearest)
+        nearest = -cantor + np.where((np.abs(dd) > do) + (do <= 0) + (cantor < 0), np.inf, 0)
+        i = np.argmin(nearest[cantor_index])
 
         # Either exit or continue this thread.
-        if cantor[cantor_index[i]] == -1:
+        if cantor[cantor_index[i]] != -1:
             return recurse(i, j0-1)
         else:
             return j0-1
@@ -855,20 +1045,46 @@ def _term_pathing(xy):
     # Traverse backwards through the array,
     j = len(I)-1
     for i in range(len(order)):
-        if cantor[cantor_index[i]] >= 0:
+        if cantor[cantor_index[i]] >= 0 and j >= 0:
             j = recurse(i, j)
 
     return I
 
 
-try:
-    _polynomial_sum_kernel = cp.RawKernel(CUDA_KERNELS, 'polynomial_sum')
-except:
-    _polynomial_sum_kernel = None
-
-def polynomial_sum(grid, weights, terms=None, pathing=None, out=None):
+def _parse_out(x_grid, out):
     """
-    TODO
+    Error checks the shape and type of ``out``.
+    """
+    if out is None:
+        # Initialize out to zero.
+        if cp == np:
+            out = np.empty_like(x_grid)
+        else:
+            out = cp.get_array_module(x_grid).empty_like(x_grid)
+    else:
+        # Error check user-provided out.
+        if out.shape != x_grid.shape:
+            raise ValueError("out must have same shape as grid.")
+        if out.dtype != x_grid.dtype:
+            raise ValueError("out must have same type as grid.")
+        if cp != np and cp.get_array_module(x_grid) != cp.get_array_module(out):
+            raise ValueError("out and grid must both be cupy arrays if one is.")
+
+    return out
+
+try:
+    _polynomial_kernel = cp.RawKernel(CUDA_KERNELS, 'polynomial')
+except:
+    _polynomial_kernel = None
+
+
+def polynomial(grid, weights, terms=None, pathing=None, out=None):
+    r"""
+    Returns a summation of monomials. Specifically,
+
+    .. math:: \phi(x, y) = \sum_{n,m \in T} w_{nm}x^ny^m
+
+    where :math:`w_{nm}` are floating-point weights.
 
     Parameters
     ----------
@@ -877,19 +1093,37 @@ def polynomial_sum(grid, weights, terms=None, pathing=None, out=None):
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
+    weights : array_like of float
+        Array of shape ``(N,)`` corresponding to the coefficient of each term.
+    terms : array_like of int OR None
+        Array of shape ``(N, 2)`` corresponding to the :math:`x` and :math:`y` exponents
+        for the ``N`` terms.
+        Otherwise, array of shape ``(N, 1)`` corresponding to the Cantor indices of
+        monomials.
+        If ``None``, assumes the terms are Cantor indices of the range of ``weights``.
+    pathing : array_like of int OR None
+        Array of shape ``(N,)`` corresponding to an order that the terms should be
+        calculated. If ``None``, chooses the path that reduces the number of
+        multiplications when evaluating monomials.
+    out : numpy.ndarray OR cupy.ndarray
+        A location where the result is stored. Use this to avoid allocating new memory.
 
+    Returns
+    -------
+    out : numpy.ndarray OR cupy.ndarray
+        Result of the sum.
     """
     # Parse terms
     if terms is None:
         terms = _inverse_cantor_pairing(np.arange(len(weights)))
-    else:
+    elif terms.size != 2:
         terms = np.squeeze(terms)
 
-    if terms.ndim == 1: # TODO check corner case!
+    if terms.ndim == 1:
         terms = _inverse_cantor_pairing(terms)
 
-    if not terms.shape[1] == 2:
-        raise ValueError("TODO")
+    if not terms.shape[1] == 2 or terms.ndim != 2:
+        raise ValueError("Terms must be of shape (N, 2). Found {}.".format(terms.shape))
 
     # Parse pathing
     if pathing is False:
@@ -899,23 +1133,10 @@ def polynomial_sum(grid, weights, terms=None, pathing=None, out=None):
 
     # Prepare the grids and canvas.
     (x_grid, y_grid) = _process_grid(grid)
-    if out is None:
-        # Initialize out to zero.
-        if cp == np:
-            out = np.zeros_like(x_grid)
-        else:
-            out = cp.get_array_module(x_grid).zeros_like(x_grid)
-    else:
-        # Error check user-provided out.
-        if out.shape != x_grid.shape:
-            raise ValueError("TODO")
-        if out.dtype != x_grid.dtype:
-            raise ValueError("TODO")
-        if cp != np and cp.get_array_module(x_grid) != cp.get_array_module(out):
-            raise ValueError("TODO")
+    out = _parse_out(x_grid, out)
 
     # Decide whether to use numpy/cupy or CUDA
-    if cp == np or _polynomial_sum_kernel is None or cp.get_array_module(x_grid) == np:  # numpy/cupy
+    if cp == np or _polynomial_kernel is None or cp.get_array_module(x_grid) == np:  # numpy/cupy
         out.fill(0)
         nx0 = ny0 = 0
         if cp == np:
@@ -945,20 +1166,17 @@ def polynomial_sum(grid, weights, terms=None, pathing=None, out=None):
         N = int(terms.shape[0])
         WH = int(x_grid.size)
 
-        threads_per_block = int(_polynomial_sum_kernel.max_threads_per_block)
+        threads_per_block = int(_polynomial_kernel.max_threads_per_block)
         blocks = WH // threads_per_block
 
         # Call the RawKernel.
-        _polynomial_sum_kernel(
+        _polynomial_kernel(
             (blocks,),
             (threads_per_block,),
             (
-                N,
-                cp.array(pathing, copy=False),
-                cp.array(weights, copy=False),
-                cp.array(terms[:, 0], copy=False),
-                cp.array(terms[:, 1], copy=False),
-                WH,
+                WH, N,
+                cp.array(weights[pathing], copy=False),
+                cp.array(terms.T[pathing, :], copy=False),
                 x_grid.ravel(),
                 y_grid.ravel(),
                 out.ravel()
@@ -967,22 +1185,17 @@ def polynomial_sum(grid, weights, terms=None, pathing=None, out=None):
 
     return out
 
+
 # Structured light.
 
 def _determine_source_radius(grid, w=None):
     r"""
-    Helper function to determine the assumed Gaussian source radius for various
+    Helper function to determine the assumed Gaussian source :math:`1/e` amplitude
+    radius (:math:`1/e^2` power radius) for various
     structured light conversion functions. This is important because structured light
     conversions need knowledge of the size of the incident Gaussian beam.
     For example, see the ``w`` parameter in
     :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`.
-
-    Note
-    ~~~~
-    Future work: when ``grid`` is a :class:`~slmsuite.hardware.slms.slm.SLM` which has completed
-    :meth:`~slmsuite.hardware.cameraslm.FourierSLM.fourier_calibration()`, this function should fit
-    (and cache?) :attr:`~slmsuite.hardware.slms.slm.amplitude_measured` to a Gaussian
-    and use the resulting width (and center?).
 
     Parameters
     ----------
@@ -1014,7 +1227,7 @@ def laguerre_gaussian(grid, l, p, w=None):
     r"""
     Returns the phase farfield for a
     `Laguerre-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Laguerre-Gaussian_modes>`_
-    beam.
+    beam. Uses the formalism described by `this paper <https://doi.org/10.1364/JOSAA.25.001642>`_.
 
     This function is especially useful to hone and validate SLM alignment. Perfect alignment will
     result in concentric and uniform fringes for higher order beams. Focusing issues, aberration,
@@ -1044,14 +1257,11 @@ def laguerre_gaussian(grid, l, p, w=None):
     w = _determine_source_radius(grid, w)
 
     theta_grid = np.arctan2(x_grid, y_grid)
-    radius_grid = y_grid * y_grid + x_grid * x_grid
+    rr_grid = y_grid * y_grid + x_grid * x_grid
 
-    return np.mod(
+    return (
         l * theta_grid
-        + np.pi
-        * np.heaviside(-special.genlaguerre(p, np.abs(l))(2 * radius_grid / w / w), 0)
-        + np.pi,
-        2 * np.pi,
+        + np.pi * np.heaviside(-special.genlaguerre(p, np.abs(l))(2 * rr_grid / w / w), 0)
     )
 
 
@@ -1069,8 +1279,8 @@ def hermite_gaussian(grid, n, m, w=None):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     n, m : int
-        The horizontal (``n``) and vertical (``m``) wavenumbers. ``n = m = 0`` yields a flat
-        phase or a standard Gaussian beam.
+        The horizontal ``n`` and vertical ``m`` wavenumbers. ``n = m = 0`` yields a flat
+        phase and a Gaussian beam.
     w : float
         See :meth:`~slmsuite.holography.toolbox._determine_source_radius()`.
 
@@ -1137,9 +1347,11 @@ def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
     w = _determine_source_radius(grid, w)
 
     if parity == 1:
-        assert 0 <= m <= p
+        if not 0 <= m <= p:
+            raise ValueError("{} is an invalid Ince polynomial.".format((p,m)))
     else:
-        assert 1 <= m <= p
+        if not 1 <= m <= p:
+            raise ValueError("{} is an invalid Ince polynomial.".format((p,m)))
 
     complex_grid = x_grid + 1j * y_grid
 

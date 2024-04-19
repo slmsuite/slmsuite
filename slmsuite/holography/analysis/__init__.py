@@ -48,9 +48,15 @@ def _generate_grid(w_x, w_y, centered=False):
 
 
 def take(
-        images, vectors, size,
-        centered=True, integrate=False, clip=False,
-        return_mask=False, plot=False, xp=np
+        images,
+        vectors,
+        size,
+        centered=True,
+        integrate=False,
+        clip=False,
+        return_mask=False,
+        plot=False,
+        xp=None
     ):
     """
     Crop integration regions around an array of ``vectors``, yielding an array of images.
@@ -87,10 +93,10 @@ def take(
         from. Defaults to ``False``. The average user will ignore this.
     plot : bool
         Calls :meth:`take_plot()` to visualize the images regions.
-    xp : module
+    xp : module OR None
         If ``images`` are :mod:`cupy` objects, then :mod:`cupy` must be passed as
         ``xp``. Very useful to minimize the cost of moving data between the GPU and CPU.
-        Defaults to :mod:`numpy`.
+        If ``None``, defaults to :mod:`numpy`.
         Indexing variables inside `:meth:`take` still use :mod:`numpy` for speed, no
         matter what module is used.
 
@@ -111,6 +117,9 @@ def take(
         size = (int(size[0]), int(size[1]))
 
     vectors = format_2vectors(vectors)
+
+    if xp is None:
+        xp = np
 
     # Prepare helper variables. Future: consider caching for speed, if not negligible.
     edge_x = _coordinates(size[0], centered)
@@ -300,7 +309,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
     window of size :math:`w_x \times w_y`, and :math:`(c_x, c_y)` is a shift in the
     center of the trial functions.
 
-    Warning
+    Caution
     ~~~~~~~
     This function does not check for or correct for negative values in ``images``.
     Negative values may produce unusual results.
@@ -457,9 +466,9 @@ def image_normalize(images, nansum=False, remove_field=False):
 
 
 def image_positions(images, normalize=True, nansum=False):
-    """
-    Computes the two first order moments, equivalent to spot position relative to image center,
-    for a stack of images.
+    r"""
+    Computes the two first order moments, equivalent to spot position
+    :math:`\left<x\right>` relative to image center, for a stack of images.
     Specifically, returns :math:`M_{10}` and :math:`M_{01}`.
 
     Parameters
@@ -478,7 +487,7 @@ def image_positions(images, normalize=True, nansum=False):
     Returns
     -------
     numpy.ndarray
-        Stack of :math:`M_{10}`, :math:`M_{01}`.
+        Stack of :math:`M_{10}`, :math:`M_{01}` in an array of shape ``(2, image_count)``.
     """
     if normalize:
         images = image_normalize(images, nansum=nansum)
@@ -507,6 +516,13 @@ def image_variances(images, centers=None, normalize=True, nansum=False):
     non-central moments; this function is a helper to access useful quantities
     for analysis of spot size and skewness.
 
+    Note
+    ~~~~
+    The moment :math:`M_{20} = (\Delta x)^2` is the variance in the
+    :math:`x` direction, or the square of the standard deviation :math:`\Delta x`.
+    The standard deviation :math:`\Delta x` is equal to the
+    :math:`1/e` amplitude radius (:math:`1/e^2` power radius) of a Gaussian beam.
+
     Parameters
     ----------
     images : numpy.ndarray
@@ -517,7 +533,7 @@ def image_variances(images, centers=None, normalize=True, nansum=False):
     centers : numpy.ndarray OR None
         If the user has already computed :math:`\left<x\right>`, for example via
         :meth:`image_positions()`, then this can be passed though ``centers``. The default
-        None computes ``centers`` internally.
+        ``None`` computes ``centers`` internally.
     normalize : bool
         Whether to normalize ``images``.
         If ``False``, normalization is assumed to have been precomputed.
@@ -527,7 +543,8 @@ def image_variances(images, centers=None, normalize=True, nansum=False):
     Returns
     -------
     numpy.ndarray
-        Stack of :math:`M_{20}`, :math:`M_{02}`, and :math:`M_{11}`. Shape ``(3, image_count)``.
+        Stack of :math:`M_{20}`, :math:`M_{02}`, and :math:`M_{11}`
+        in an array of shape ``(3, image_count)``.
     """
     if normalize:
         images = image_normalize(images, nansum=nansum)
@@ -536,8 +553,8 @@ def image_variances(images, centers=None, normalize=True, nansum=False):
         centers = image_positions(images, normalize=False, nansum=nansum)
 
     m20 = image_moment(images, (2, 0), centers=centers, normalize=False, nansum=nansum)
-    m11 = image_moment(images, (1, 1), centers=centers, normalize=False, nansum=nansum)
     m02 = image_moment(images, (0, 2), centers=centers, normalize=False, nansum=nansum)
+    m11 = image_moment(images, (1, 1), centers=centers, normalize=False, nansum=nansum)
 
     return np.vstack((m20, m02, m11))
 
@@ -581,7 +598,7 @@ def image_ellipticity(variances):
     Returns
     -------
     numpy.ndarray
-        Array of ellipticities for the given moments. Shape ``(image_count,)``.
+        Array of ellipticities for the given moments in an array of shape ``(image_count,)``.
     """
     m20 = variances[0, :]
     m02 = variances[1, :]
@@ -639,7 +656,7 @@ def image_ellipticity_angle(variances):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
-def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, bounds=None, plot=False):
+def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=False):
     """
     Fit each image in a stack of images to a 2D ``function``.
 
@@ -664,8 +681,6 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, bounds=N
           implemented, no guess will be provided to the optimizer.
         - If ``guess`` is a ``numpy.ndarray``, a column of the array will be provided
           to the optimizer as a guess for the fit parameters for each image.
-    bounds : None or (numpy.ndarray, numpy.ndarray)
-        TODO
     plot : bool
         Whether to create a plot for each fit.
     show : bool
@@ -1110,12 +1125,12 @@ def blob_array_detect(
         Used by :meth:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibrate()`.
         See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.make_rectangular_array()`.
     dft_threshold : float in [0, 255]
-        Minimum value of peak in blob detect of the DFT of `img` when `orientation` is `None`.
-        Passed as kwarg to :meth:`blob_detect` with name `minThreshold`.
+        Minimum value of peak in blob detect of the DFT of ``img`` when ``orientation`` is ``None``.
+        Passed as keyword argument to :meth:`blob_detect` with keyword ``minThreshold``.
     dft_padding : int
-        Increases the dimensions of the padded `img` before the DFT is taken when `orientation`
-        is `None`. Dimensions are increased by a factor of `2 ** dft_padding`.
-        Increasing this value increases the k-space resolution of the DFT,
+        Increases the dimensions of the padded ``img`` before the DFT is taken when ``orientation``
+        is ``None``. Dimensions are increased by a factor of ``2 ** dft_padding``.
+        Increasing this value increases the :math:`k`-space resolution of the DFT,
         and can improve orientation detection.
     k : int
         Number of nearest neighbors to use for each point when lattice matching. Default (2)
@@ -1132,8 +1147,8 @@ def blob_array_detect(
         Orientation dictionary with the following keys, corresponding to
         the affine transformation:
 
-         - ``"M"`` : ``numpy.ndarray`` (2, 2).
-         - ``"b"`` : ``numpy.ndarray`` (2, 1).
+        - ``"M"`` : ``numpy.ndarray`` (2, 2).
+        - ``"b"`` : ``numpy.ndarray`` (2, 1).
     """
 
     img_8bit = _make_8bit(img)

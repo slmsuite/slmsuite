@@ -356,6 +356,9 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     return np.square(np.sinc((1 / R) * x) * np.sinc((1 / R) * y)) \
             * (a * 0.5 * (1 + np.cos(kx * x + ky * y - b)) + c) + d
 
+
+# TODO: Cleanup sinc variations!
+
 def sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
     # TODO: the sinc will also need a rotation. Not sure how to make this clean.
     r"""
@@ -522,10 +525,11 @@ def _sinc_taylor(x, order=12):
 
     return result
 
-
 def sinc2d_centered_jacobian(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     # TODO: the sinc will also need a rotation. Not sure how to make this clean.
     r"""
+    Jacobian of :meth:`.sinc2d_centered()`.
+
     Returns
     -------
     z : numpy.ndarray

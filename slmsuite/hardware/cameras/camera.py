@@ -289,7 +289,7 @@ class Camera():
         # Grab image (with averaging if enabled).
         if self._buffer is not None:
             self.get_images(self._buffer.shape[0], out=self._buffer, transform=False)
-            img = np.average(self._buffer, axis=0)
+            img = np.average(self._buffer, axis=0)  # TODO: check
         else:
             img = self._get_image_hw(timeout_s)
 
@@ -337,11 +337,11 @@ class Camera():
         except NotImplementedError:
             # Brute-force collection as a backup
             for i in range(image_count):
-                imlist[i] = self._get_image_hw()
+                imlist[i, :, :] = self._get_image_hw()
 
         if transform:
             for i in range(image_count):
-                imlist[i] = self.transform(imlist[i])
+                imlist[i, :, :] = self.transform(imlist[i])
 
         return imlist
 

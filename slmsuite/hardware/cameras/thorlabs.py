@@ -26,7 +26,7 @@ DEFAULT_DLL_PATH = (
     "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"
 )
 
-def configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
+def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
     """
     Adds Thorlabs camera DLLs to the DLL path.
     `"32_lib"` or `"64_lib"` is appended to the default .dll path
@@ -57,7 +57,7 @@ def configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
     else:
         os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]
 
-configure_tlcam_dll_path()
+_configure_tlcam_dll_path()
 
 try:
     from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, ROI
@@ -66,7 +66,7 @@ except ImportError:
 
 
 class ThorCam(Camera):
-    """
+    r"""
     Thorlabs camera.
 
     Attributes
@@ -76,11 +76,13 @@ class ThorCam(Camera):
     cam : ThorCam
         Object to talk with the desired camera.
     profile : {'free', 'single', 'single_hardware'} or None
-        Current operation mode.\n
-        'free' means always capturing.\n
-        'single' means only gets frame on command.\n
-        'single_hardware' means only gets frame on hardware trigger or command.\n
-        None means camera is disarmed.
+        Current operation mode.
+
+        - ``'free'`` means always capturing.
+        - ``'single'`` means only gets frame on command.
+        - ``'single_hardware'`` means only gets frame on hardware trigger or command.
+
+        ``None`` means camera is disarmed.
     """
 
     sdk = None
@@ -114,9 +116,9 @@ class ThorCam(Camera):
             except:
                 print("failure")
                 raise RuntimeError(
-                    "thorlabs.py: TLCameraSDK() open failed. "
+                    "TLCameraSDK() open failed. "
                     "Is thorlabs_tsi_sdk installed? "
-                    "Are the .dlls in the directory added by configure_tlcam_dll_path? "
+                    "Are the .dlls in the directory added by _configure_tlcam_dll_path? "
                     "Sometimes adding the .dlls to the working directory can help."
                 )
             if verbose:
@@ -203,9 +205,9 @@ class ThorCam(Camera):
                 ThorCam.sdk = TLCameraSDK()
             except:
                 raise RuntimeError(
-                    "thorlabs.py: TLCameraSDK() open failed. "
+                    "TLCameraSDK() open failed. "
                     "Is thorlabs_tsi_sdk installed? "
-                    "Are the .dlls in the directory added by configure_tlcam_dll_path? "
+                    "Are the .dlls in the directory added by _configure_tlcam_dll_path? "
                     "Sometimes adding the .dlls to the working directory can help."
                 )
             close_sdk = True

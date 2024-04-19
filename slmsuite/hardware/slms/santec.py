@@ -7,8 +7,8 @@ Note
 :class:`.Santec` requires dynamically linked libraries from Santec to be present in the
 runtime directory:
 
- - SLMFunc.dll
- - FTD3XX.dll
+- SLMFunc.dll
+- FTD3XX.dll
 
 These files should be copied in before use.
 
@@ -33,7 +33,7 @@ except BaseException as e:  # Provide an informative error should something go w
         "  Dynamically linked libraries from Santec (usually provided via USB) "
         "must be present in the runtime directory:\n"
         "  - SLMFunc.dll\n  - FTD3XX.dll\n"
-        "  Check that theses files are present and are error-free.\n"
+        "  Check that these files are present and are error-free.\n"
         "Original error: {}".format(e)
     )
 

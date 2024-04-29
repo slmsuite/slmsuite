@@ -14,12 +14,12 @@ from scipy.ndimage import gaussian_filter as sp_gaussian_filter
 
 # Try to import cupy, but revert to base numpy/scipy upon ImportError.
 try:
-    import cupy as cp
-    import cupyx.scipy.fft as cpfft
-    from cupyx import zeros_pinned as cp_zeros_pinned
-    from cupyx.scipy.ndimage import gaussian_filter1d as cp_gaussian_filter1d
-    from cupyx.scipy.ndimage import gaussian_filter as cp_gaussian_filter
-    from cupyx.scipy.ndimage import affine_transform as cp_affine_transform
+    import cupy as cp                                                           # type: ignore
+    import cupyx.scipy.fft as cpfft                                             # type: ignore
+    from cupyx import zeros_pinned as cp_zeros_pinned                           # type: ignore
+    from cupyx.scipy.ndimage import gaussian_filter1d as cp_gaussian_filter1d   # type: ignore
+    from cupyx.scipy.ndimage import gaussian_filter as cp_gaussian_filter       # type: ignore
+    from cupyx.scipy.ndimage import affine_transform as cp_affine_transform     # type: ignore
 except ImportError:
     cp = np
     cpfft = spfft

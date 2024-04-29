@@ -289,7 +289,7 @@ class _HologramStats(object):
         if include_state:
             if len(from_save.keys()) <= 1:
                 raise ValueError(
-                    "algorithms.py: State was not stored in file '{}'"
+                    "State was not stored in file '{}'"
                     "and cannot be imported".format(file_path)
                 )
 
@@ -520,7 +520,7 @@ class _HologramStats(object):
         for a in [0, 1]:
             limits[a] = np.clip(np.array(limits[a], dtype=int), 0, npsource.shape[1-a]-1)
             if np.diff(limits[a]) == 0:
-                raise ValueError("algorithms.py: clipped limit has zero length.")
+                raise ValueError("Clipped limit has zero length.")
 
         # Start making the plot
         fig, axs = plt.subplots(1, 2, figsize=figsize)

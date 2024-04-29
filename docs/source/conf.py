@@ -174,7 +174,7 @@ html_theme_options = {
     "footer_start": ["copyright", "sphinx-version"],
     "footer_end": ["last-updated", "theme-version"],
     # "content_footer_items": ["last-updated"],
-    "navbar_center": ["version-switcher", "navbar-nav"],    # https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/version-dropdown.html
+    "navbar_center": ["navbar-nav"],   # "version-switcher",  # https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/version-dropdown.html
     # "switcher": {
     #     "version_match": switcher_version,
     #     "json_url": "https://numpy.org/doc/_static/versions.json",

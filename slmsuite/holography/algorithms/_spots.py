@@ -208,6 +208,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
               for dimension ``D`` of 2 and 3,
             - ``"zernike"`` for applying Zernike terms to each spot (radians),
               for dimension ``D`` equal to the length of ``zernike_basis``.
+              The provided coefficients are multiplied directly on the the normalized
+              Zernike polynomials on the unit disk. See
+              :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
 
             Defaults to ``"kxy"``.
         spot_amp : array_like OR None
@@ -227,18 +230,21 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             List of ``D`` indices corresponding to Zernike polynomials using ANSI indexing.
             See :meth:`~slmsuite.holography.toolbox.phase.convert_zernike_index()`.
 
-            -   If ``None``, and ``D == 2``, then the basis is assumed to be ``[1,2]``
-                corresponding to the :math:`x = Z_1 = Z_1^{-1}`
-                and :math:`y = Z_2 = Z_1^1` tilt terms.
-            -   If ``None``, and ``D == 3``, then the basis is assumed to be ``[1,2,4]``
+            -   If ``None``, and ``D == 2``, then the basis is assumed to be ``[2,1]``
+                corresponding to the :math:`x = Z_2 = Z_1^1`
+                and :math:`y = Z_1 = Z_1^{-1}` tilt terms.
+            -   If ``None``, and ``D == 3``, then the basis is assumed to be ``[2,1,4]``
                 corresponding to the previous, with the addition of the
                 :math:`Z_4 = Z_2^0` focus term.
-            -   If ``None``, and otherwise, then the basis is assumed to be ``[1,...,D]``.
+            -   If ``None``, and ``D > 3``, then the basis is assumed to be ``[1,...,D]``.
                 The piston (Zernike index 0) term is ignored as this constant phase is
                 not relevant.
 
             The index ``-1`` (outside Zernike indexing) is used as a special case to add
-            a vortex waveplate to the system.
+            a vortex waveplate with amplitude :math:`2\pi` to the system
+            (see :meth:`slmsuite.holography.toolbox.phase.laguerre_gaussian()`).
+        zernike_center_shift : array_like OR None
+
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
@@ -258,9 +264,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         if zernike_basis is None:
             # Assume the ANSI basis (slmsuite default), but start without piston.
             if D == 2:
-                self.zernike_basis = np.array([1,2])
+                self.zernike_basis = np.array([2,1])
             elif D == 3:
-                self.zernike_basis = np.array([1,2,4])
+                self.zernike_basis = np.array([2,1,4])
             else:
                 self.zernike_basis = np.arange(1, D+1)
         else:
@@ -277,10 +283,10 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 )
 
         # Make some helper variables to use the spot_basis.
-        if not np.any(self.zernike_basis == 1) or not np.any(self.zernike_basis == 2):
-            raise ValueError("Compressed basis must include x/y (Zernike ANSI indices 1, 2)")
+        if not np.any(self.zernike_basis == 2) or not np.any(self.zernike_basis == 1):
+            raise ValueError("Compressed basis must include x, y (Zernike ANSI indices 2, 1)")
         self.zernike_basis_cartesian = [
-            np.argwhere(self.zernike_basis == 1)[0], np.argwhere(self.zernike_basis == 2)[0]
+            np.argwhere(self.zernike_basis == 2)[0], np.argwhere(self.zernike_basis == 1)[0]
         ]
         if np.any(self.zernike_basis == 4):
             self.zernike_basis_cartesian.append(np.argwhere(self.zernike_basis == 4)[0])
@@ -517,7 +523,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 nearfield.ravel(),
                 W, H, N, D,
                 spot_kxy_float,
-                0, 0, float(self.cameraslm.slm.dx), float(self.cameraslm.slm.dy),
+                0, 0, float(self.cameraslm.slm.pitch[0]), float(self.cameraslm.slm.pitch[1]),
                 self._nearfield2farfield_cuda_intermediate.ravel()
             )
         )
@@ -567,7 +573,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._c_md,
                 self._i_md,
                 self._pxy_m,
-                0, 0, float(self.cameraslm.slm.dx), float(self.cameraslm.slm.dy),
+                0, 0, float(self.cameraslm.slm.pitch[0]), float(self.cameraslm.slm.pitch[1]),
                 self._nearfield2farfield_cuda_intermediate.ravel()
             )
         )
@@ -711,7 +717,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._c_md,
                 self._i_md,
                 self._pxy_m,
-                0, 0, float(self.cameraslm.slm.dx), float(self.cameraslm.slm.dy),
+                0, 0, float(self.cameraslm.slm.pitch[0]), float(self.cameraslm.slm.pitch[1]),
                 nearfield_out.ravel()
             )
         )
@@ -830,7 +836,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         elif feedback == "external_spot":
             amp_feedback = self.external_spot_amp
         else:
-            raise ValueError("algorithms.py: Feedback '{}' not recognized.".format(feedback))
+            raise ValueError("Feedback '{}' not recognized.".format(feedback))
 
         # Apply weights.
         self._update_weights_generic(
@@ -1108,7 +1114,7 @@ class SpotHologram(_AbstractSpotHologram):
             self.spot_kxy = cameraslm.ijcam_to_kxyslm(vectors)
             self.spot_knm = toolbox.convert_blaze_vector(vectors, "ij", "knm", cameraslm, shape)
         else:
-            raise Exception("algorithms.py: Unrecognized basis for spots '{}'.".format(basis))
+            raise Exception("Unrecognized basis for spots '{}'.".format(basis))
 
         # Handle null conversions in the ij or kxy cases.
         if basis == "ij" or basis == "kxy":
@@ -1468,7 +1474,7 @@ class SpotHologram(_AbstractSpotHologram):
             elif feedback == "external_spot":
                 amp_feedback = self.external_spot_amp
             else:
-                raise ValueError("algorithms.py: Feedback '{}' not recognized.".format(feedback))
+                raise ValueError("Feedback '{}' not recognized.".format(feedback))
 
             # Update the weights of single pixels.
             self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (

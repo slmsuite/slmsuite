@@ -4,7 +4,7 @@ Repository of common analytic phase patterns.
 import os
 import numpy as np
 try:
-    import cupy as cp
+    import cupy as cp   # type: ignore
 except ImportError:
     cp = np
 from scipy import special
@@ -169,7 +169,7 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
         if offset != 0:
             if np.mod(offset, 2*np.pi) < (2 * np.pi * duty_cycle):
                 phase += amplitude
-        result = np.full_like(x_grid, phase)
+        result = np.full(x_grid.shape, phase)
     elif vector[0] != 0 and vector[1] != 0:
         pass    # xor the next case.
     elif vector[0] == 0 or vector[1] == 0:
@@ -184,9 +184,10 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
 
     # If we have not set result, then we have to use the slow np.mod option.
     if result is None:
-        result = np.full_like(x_grid, outer_offset)
-        result += amplitude * (
-            np.mod(blaze(grid, vector, offset), 2*np.pi) < (2 * np.pi * duty_cycle)
+        result = np.where(
+            np.mod(blaze(grid, vector, offset), 2*np.pi) < (2 * np.pi * duty_cycle),
+            offset,
+            offset + amplitude,
         )
 
     return result
@@ -404,11 +405,15 @@ def zernike_convert_index(indices, from_index="ansi", to_index="ansi"):
     """
     # Parse arguments.
     if from_index not in ZERNIKE_INDEXING:
-        raise ValueError(f"From index '{from_index}' not recognized as a valid unit. \
-                         Options: {ZERNIKE_INDEXING}")
+        raise ValueError(
+            f"From index '{from_index}' not recognized as a valid unit. "
+            f"Options: {ZERNIKE_INDEXING}."
+        )
     if to_index not in ZERNIKE_INDEXING:
-        raise ValueError(f"To index '{to_index}' not recognized as a valid unit. \
-                         Options: {ZERNIKE_INDEXING}")
+        raise ValueError(
+            f"To index '{to_index}' not recognized as a valid unit. "
+            f"Options: {ZERNIKE_INDEXING}."
+        )
 
     dimension = ZERNIKE_INDEXING_DIMENSION[from_index]
 
@@ -426,7 +431,8 @@ def zernike_convert_index(indices, from_index="ansi", to_index="ansi"):
         n = indices[:,0]
         l = indices[:,1]
     elif from_index == "noll" or to_index == "fringe" or from_index == "wyant":
-        raise RuntimeError(f"from_index '{from_index}' is not supported currently")
+        # Inverse functions have not been implemented.
+        raise NotImplementedError(f"from_index '{from_index}' is not supported currently.")
     elif from_index == "ansi":
         n = np.floor(.5 * np.sqrt(8*indices + 1) - .5).astype(int)
         l = 2*indices - n*(n+2)
@@ -434,9 +440,9 @@ def zernike_convert_index(indices, from_index="ansi", to_index="ansi"):
     # Error check n,l
     if np.any((n + l) % 2):
         raise ValueError(f"Invalid Zernike index n,l. n+l must be even. n={n}, l={l}.")
-    if np.abs(l) > n:
+    if np.any(np.abs(l) > n):
         raise ValueError(f"Invalid Zernike index n,l. |l| cannot be larger than n. n={n}, l={l}.")
-    if n < 0:
+    if np.any(n < 0):
         raise ValueError(f"Invalid Zernike index n,l. n must be non-negative. n={n}, l={l}.")
 
     # Convert to the desired indices.
@@ -780,7 +786,7 @@ _zernike_cache_vectorized = np.array([[]], dtype=int)
 
 
 def _zernike_build(n):
-    """Pre-caches Zernike polynomials up to order :math:`n`."""
+    """Pre-caches Zernike polynomial coefficients up to order :math:`n`."""
     N = (n+1) * (n+2) // 2
     for i in range(N):
         _zernike_coefficients(i)
@@ -814,8 +820,6 @@ def _zernike_coefficients(index):
             p = 0
         else:
             p = 1
-
-        print(n, l)
 
         l = abs(l)
         m = int((n-l)/2)
@@ -874,6 +878,10 @@ def _zernike_coefficients(index):
             _zernike_cache_vectorized[index, cantor_index] = factor
 
     return _zernike_cache[index]
+
+
+def _zernike2cantor(indices, coefficients):
+    pass
 
 
 def _zernike_populate_basis_map(indices):
@@ -1053,7 +1061,7 @@ def _term_pathing(xy):
 
 def _parse_out(x_grid, out):
     """
-    Error checks the shape and type of ``out``.
+    Helper fucntion to error check the shape and type of ``out``.
     """
     if out is None:
         # Initialize out to zero.
@@ -1227,8 +1235,17 @@ def laguerre_gaussian(grid, l, p, w=None):
     r"""
     Returns the phase farfield for a
     `Laguerre-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Laguerre-Gaussian_modes>`_
-    beam. Uses the formalism described by `this paper <https://doi.org/10.1364/JOSAA.25.001642>`_.
+    beam. Uses the formalism described by
+    `this paper <https://doi.org/10.1364/JOSAA.25.001642>`_.
 
+    Note
+    ~~~~
+    Without radial order (``p = 0``), this function distills to a
+    `vortex waveplate <https://en.wikipedia.org/wiki/Optical_vortex>`_
+    of given azimuthal order ``l``.
+
+    Tip
+    ~~~
     This function is especially useful to hone and validate SLM alignment. Perfect alignment will
     result in concentric and uniform fringes for higher order beams. Focusing issues, aberration,
     or pointing misalignment will mitigate this.

@@ -3,15 +3,19 @@ Abstract functionality for SLMs.
 """
 
 import time
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from PIL import Image
+import warnings
 
+from slmsuite import __version__
 from slmsuite.holography import toolbox
 from slmsuite.misc import fitfunctions
-from slmsuite.misc.math import INTEGER_TYPES
+from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 from slmsuite.holography import analysis
+from slmsuite.misc.files import generate_path, latest_path, write_h5, read_h5
 
 
 class SLM:
@@ -54,21 +58,16 @@ class SLM:
         Delay in seconds to allow the SLM to settle. This is mostly useful for applications
         requiring high precision. This delay is applied if the user flags ``settle``
         in :meth:`write()`. Defaults to .3 sec for precision.
-    dx_um : float
-        x pixel pitch in um.
-    dy_um : float
-        See :attr:`dx_um`.
-    dx : float
-        Normalized x pixel pitch ``dx_um / wav_um``.
-    dy : float
-        See :attr:`dx`.
-    x_grid : numpy.ndarray<float> (height, width)
-        Coordinates of the SLM's pixels in wavelengths
-        (see :attr:`wav_um`, :attr:`dx`, :attr:`dy`)
+    pitch_um : (float, float)
+        Pixel pitch in microns.
+    pitch : float
+        Pixel pitch normalized to wavelengths ``pitch_um / wav_um``. This value is more
+        useful than ``pitch_um`` when considering conversions to :math:`k`-space.
+    grid : (numpy.ndarray<float> (height, width), numpy.ndarray<float> (height, width))
+        :math:`x` and :math:`y` coordinates of the SLM's pixels in wavelengths
+        (see :attr:`wav_um`, :attr:`pitch_um`)
         measured from the center of the SLM.
         Of size :attr:`shape`. Produced by :meth:`numpy.meshgrid`.
-    y_grid
-        See :attr:`x_grid`.
     source : dict
         Stores data describing measured, simulated, or estimated properties of the source,
         such as amplitude and phase.
@@ -97,14 +96,12 @@ class SLM:
 
     def __init__(
         self,
-        width,
-        height,
+        resolution,
         bitdepth=8,
         name="SLM",
         wav_um=1,
         wav_design_um=None,
-        dx_um=1,
-        dy_um=1,
+        pitch_um=(8,8),
         settle_time_s=0.3,
     ):
         """
@@ -112,8 +109,13 @@ class SLM:
 
         Parameters
         ----------
-        width, height
-            See :attr:`shape`.
+        resolution
+            The width and height of the camera in ``(width, height)`` form.
+
+            Important
+            ~~~~~~~~~
+            This is the opposite of the numpy ``(height, width)``
+            convention stored in :attr:`shape`.
         bitdepth
             See :attr:`bitdepth`. Defaults to 8.
         name
@@ -122,44 +124,46 @@ class SLM:
             See :attr:`wav_um`.
         wav_design_um
             See :attr:`wav_design_um`.
-        dx_um
-            See :attr:`dx_um`.
-        dy_um
-            See :attr:`dy_um`.
+        pitch_um
+            See :attr:`pitch_um`. Defaults to 8 micron square pixels.
         settle_time_s
             See :attr:`settle_time_s`.
         """
-        self.name = name
+        self.name = str(name)
+        width, height = resolution
         self.shape = (int(height), int(width))
 
         # By default, target wavelength is the design wavelength
-        self.wav_um = wav_um
+        self.wav_um = float(wav_um)
         if wav_design_um is None:
             self.wav_design_um = wav_um
         else:
-            self.wav_design_um = wav_design_um
+            self.wav_design_um = float(wav_design_um)
 
         # Multiplier for when the target wavelengths differ from the design wavelength.
         self.phase_scaling = self.wav_um / self.wav_design_um
 
         # Resolution of the SLM.
-        self.bitdepth = bitdepth
+        self.bitdepth = int(bitdepth)
         self.bitresolution = 2**bitdepth
 
         # time to delay after writing (allows SLM to stabilize).
-        self.settle_time_s = settle_time_s
+        self.settle_time_s = float(settle_time_s)
 
         # Spatial dimensions
-        self.dx_um = dx_um
-        self.dy_um = dy_um
+        if isinstance(pitch_um, REAL_TYPES):
+            pitch_um = [pitch_um, pitch_um]
+        self.pitch_um = np.squeeze(pitch_um)
+        if (len(self.pitch_um) != 2):
+            raise ValueError("Expected (float, float) for pitch_um")
+        self.pitch_um = np.array([float(self.pitch_um[0]), float(self.pitch_um[1])])
 
-        self.dx = dx_um / self.wav_um
-        self.dy = dy_um / self.wav_um
+        self.pitch = self.pitch_um / self.wav_um
 
         # Make normalized coordinate grids.
-        xpix = (width - 1) * np.linspace(-0.5, 0.5, width)
+        xpix = (width  - 1) * np.linspace(-0.5, 0.5, width)
         ypix = (height - 1) * np.linspace(-0.5, 0.5, height)
-        self.x_grid, self.y_grid = np.meshgrid(self.dx * xpix, self.dy * ypix)
+        self.grid = np.meshgrid(self.pitch[0] * xpix, self.pitch[1] * ypix)
 
         # Source profile dictionary
         self.source = {}
@@ -244,6 +248,8 @@ class SLM:
             self.source["phase"] = phase_correction
 
         return self.source["phase"]
+
+    # Writing methods
 
     def _write_hw(self, phase):
         """
@@ -510,7 +516,95 @@ class SLM:
 
         return out
 
-    def set_source_analytic(self, fit_function="gaussian2d", units="norm", phase_offset=0, sim=False, **kwargs):
+    def save(self, path=".", name=None):
+        """
+        Saves :attr:`~slmsuite.hardware.slms.slm.SLM.phase` and
+        :attr:`~slmsuite.hardware.slms.slm.SLM.display`
+        to a file like ``"path/name_id.h5"``.
+
+        Parameters
+        ----------
+        path : str
+            Path to directory to save in. Default is current directory.
+        name : str OR None
+            Name of the save file. If ``None``, will use :attr:`name` ``+ '_phase'.
+
+        Returns
+        -------
+        str
+            The file path that the fourier calibration was saved to.
+        """
+        if name is None:
+            name = self.name + '_phase'
+        file_path = generate_path(path, name, extension="h5")
+        write_h5(
+            file_path,
+            {
+                "__version__" : __version__,
+                "phase" : self.phase,
+                "display" : self.display,
+            }
+        )
+
+        return file_path
+
+    def load(self, file_path=None):
+        """
+        Loads :attr:`~slmsuite.hardware.slms.slm.SLM.display`
+        from a file and writes to the SLM without :attr:`settle_time_s`.
+
+        Parameters
+        ----------
+        file_path : str OR None
+            Full path to the phase file. If ``None``, will
+            search the current directory for a file with a name like
+            :attr:`name` ``+ '_phase'.
+
+        Returns
+        -------
+        str
+            The file path that the phase was loaded from.
+
+        Raises
+        ------
+        FileNotFoundError
+            If a file is not found.
+        Warning
+            Warns the user if the stored
+            :attr:`~slmsuite.hardware.slms.slm.SLM.phase`
+            does not agree with the displayed value.
+        """
+        if file_path is None:
+            path = os.path.abspath(".")
+            name = self.name + '_phase'
+            file_path = latest_path(path, name, extension="h5")
+            if file_path is None:
+                raise FileNotFoundError(
+                    "Unable to find a phase file like\n{}"
+                    "".format(os.path.join(path, name))
+                )
+
+        data = read_h5(file_path)
+
+        self._write_hw(data["display"])
+        self.display = data["display"]
+        self.phase = data["phase"]
+
+        if not np.all(np.isclose(data["display"], self._phase2gray(data["phase"]))):
+            warnings.warn("Integer data in 'display' does not match 'phase' for this SLM.")
+
+        return file_path
+
+    # Source and calibration methods
+
+    def set_source_analytic(
+            self,
+            fit_function="gaussian2d",
+            units="norm",
+            phase_offset=0,
+            sim=False,
+            **kwargs
+        ):
         """
         In the absence of a proper wavefront calibration, sets
         :attr:`~slmsuite.hardware.slms.slm.SLM.source` amplitude and phase using a
@@ -544,8 +638,11 @@ class SLM:
             if ``False``.
         phase_offset : float OR numpy.ndarray
             Additional phase (of shape :attr:`shape`) added to :attr:`source`.
-        kwargs
-            Arguments passed to ``fit_function``.
+        **kwargs
+            Arguments passed to ``fit_function`` in addition to the SLM grid in the
+            requested ``units``. If the ``fit_function`` is ``"gaussian2d"`` and no
+            keyword arguments have been passed, the radius defaults to 1/4 of the
+            smaller SLM dimension.
 
         Returns
         --------
@@ -554,25 +651,27 @@ class SLM:
         """
         # Wavelength normalized
         if units == "norm":
-            dx = 1
-            dy = 1
+            pitch = (1,1)
         # Fractions of the display
         elif units == "frac":
-            dx = self.x_grid.ptp() / self.dx_um
-            dy = self.y_grid.ptp() / self.dy_um
+            pitch = [g.ptp() / p for g,p in zip(self.grid, self.pitch_um)]
         # Physical units
         else:
             if units in toolbox.LENGTH_FACTORS.keys():
                 factor = toolbox.LENGTH_FACTORS[units]
             else:
                 raise RuntimeError("Did not recognize units '{}'".format(units))
-            dx = factor * self.dx / self.dx_um
-            dy = factor * self.dy / self.dy_um
+            pitch = [factor / self.wav_um, factor / self.wav_um]
+
+        xy = [g / p for g,p in zip(self.grid, pitch)]
+
+        if len(kwargs) == 0 and isinstance(fit_function, str) and fit_function == "gaussian2d":
+            w = np.min([np.amax(xy[0]), np.amax(xy[1])]) / 4
+            kwargs = {"x0" : 0, "y0" : 0, "a" : 1, "c" : 0, "wx" : w, "wy" : w}
 
         if isinstance(fit_function, str):
             fit_function = getattr(fitfunctions, fit_function)
 
-        xy = [self.x_grid / dx, self.y_grid / dy]
         source = fit_function(xy, **kwargs)
 
         self.source["amplitude_sim" if sim else "amplitude"] = np.abs(source)
@@ -582,15 +681,18 @@ class SLM:
 
     def fit_source_amplitude(self, method="fit", extent_threshold=.1, force=True):
         """
-        Extracts various scalar :attr:`source` parameters from the source for use in
+        Extracts various :attr:`source` parameters from the source for use in
         analytic functions. This is done by analyzing the :attr:`source` ``["amplitude"]``
         distribution with ``"moments"`` or least squares ``"fit"``.
-        The scalar parameters include:
+        These parameters include the following keys:
 
-        -   ``"amplitude_center_pix"``
+        -   ``"amplitude_center_pix"`` : (float, float)
+
             Pixel corresponding to the center of the source.
             The grid is also changed to be centered on this pixel.
-        -   ``"amplitude_radius"``
+
+        -   ``"amplitude_radius"`` : float
+
             The radial standard deviation of the amplitude distribution in normalized units.
             For a Gaussian source, this is the :math:`1/e` amplitude radius
             (:math:`1/e^2` power radius).
@@ -598,11 +700,15 @@ class SLM:
             This is used to set the source radius for
             :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`
             and similar.
-        -   ``"amplitude_extent"``
-            The box radii of the smallest box which covers all amplitude
+
+        -   ``"amplitude_extent"`` : (float, float)
+
+            The box radii of the smallest rectangle which covers all amplitude
             larger than ``extent_threshold``, where the maximum of the distribution is
             normalized to one.
-        -   ``"amplitude_extent_radius"``
+
+        -   ``"amplitude_extent_radius"`` : float
+
             Smallest scalar radius about the center of the that covers all amplitude
             larger than ``extent_threshold``, where the maximum of the distribution is
             normalized to one.
@@ -621,10 +727,13 @@ class SLM:
 
         -   ``"amplitude_center_pix"``
             Unchanged from current center.
+
         -   ``"amplitude_radius"``
             Guessed as 1/4 of the smallest extent.
+
         -   ``"amplitude_extent"``
-            Guessed as
+            Guessed as the the rectangle that circumscribes the SLM field.
+
         -   ``"amplitude_extent_radius"``
             Guessed as the the radius that circumscribes the SLM field.
 
@@ -646,57 +755,83 @@ class SLM:
             return
 
         center_grid = np.array(
-            [np.argmin(self.x_grid[0,:]), np.argmin(self.y_grid[:,0])]
+            [np.argmin(self.grid[0][0,:]), np.argmin(self.grid[1][:,0])]
         )
 
         if not "amplitude" in self.source:
             # If there is no measured source amplitude, then make guesses based off of the grid.
             self.source["amplitude_center_pix"] = center_grid
             self.source["amplitude_radius"] = .25 * np.min((
-                self.shape[1]*self.dx,
-                self.shape[0]*self.dy
+                self.shape[1]*self.pitch[0],
+                self.shape[0]*self.pitch[1]
             ))
             self.source["amplitude_extent"] = np.array(
-                [np.max(np.abs(self.x_grid)), np.max(np.abs(self.y_grid))]
+                [np.max(np.abs(self.grid[0])), np.max(np.abs(self.grid[1]))]
             )
             self.source["amplitude_extent_radius"] = np.sqrt(np.amax(
-                np.square(self.x_grid) + np.square(self.y_grid)
+                np.square(self.grid[0]) + np.square(self.grid[1])
             ))
         else:
             # Otherwise, use the measured amplitude distribution.
-            amp = self.source["amplitude"].copy()
+            amp = np.abs(self.source["amplitude"])
+
+            # Parse extent_threshold
+            if extent_threshold > 1:
+                raise RuntimeError("extent_threshold cannot exceed 1 (100%). Use a small value.")
 
             if method == "fit":
-                result = analysis.image_fit(amp)
+                result = analysis.image_fit(amp, plot=True)
+
                 std = np.array([result[0,5], result[0,6]])
+
                 center = np.array([result[0,1], result[0,2]])
+                center += np.flip(self.shape)/2
             elif method == "moments":
                 center = analysis.image_positions(amp)
-                std_pix = np.sqrt(analysis.image_variances(amp, centers=center)[:2])
-                std_norm = np.array([self.dx, self.dy]) * np.squeeze(std_pix)
-                std = np.mean(std_norm)
+
+                std = np.sqrt(analysis.image_variances(amp, centers=center)[:2])
+                # std_norm = self.pitch * np.squeeze(std_pix)
+                # std = np.mean(std_norm)
+
                 center = np.squeeze(center)
+                center += np.flip(self.shape)/2
 
             self.source["amplitude_center_pix"] = center
-            self.source["amplitude_radius"] = std
+            self.source["amplitude_radius"] = np.mean(self.pitch * np.squeeze(std))
 
             # Handle centering.
             dcenter = center_grid - center
 
-            self.x_grid -= dcenter[0] * self.dx
-            self.y_grid -= dcenter[1] * self.dy
+            self.grid[0] -= dcenter[0] * self.pitch[0]
+            self.grid[1] -= dcenter[1] * self.pitch[1]
 
             extent_mask = amp > (extent_threshold * np.amax(amp))
 
             self.source["amplitude_extent"] = np.array([
-                np.max(np.abs(self.x_grid[extent_mask])),
-                np.max(np.abs(self.y_grid[extent_mask]))
+                np.max(np.abs(self.grid[0][extent_mask])),
+                np.max(np.abs(self.grid[1][extent_mask]))
             ])
             self.source["amplitude_extent_radius"] = np.sqrt(np.amax(
-                np.square(self.x_grid[extent_mask]) + np.square(self.y_grid[extent_mask])
+                np.square(self.grid[0][extent_mask]) + np.square(self.grid[1][extent_mask])
             ))
 
+    def get_source_radius(self):
+        """
+        Extracts the source radius for
+        :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`
+        from the scalars computed in
+        :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`.
+        """
+        self.fit_source_amplitude(force=False)
+        return self.source["amplitude_radius"]
+
     def get_zernike_scaling(self):
+        """
+        Extracts the scaling for
+        :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`
+        from the scalars computed in
+        :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`.
+        """
         self.fit_source_amplitude(force=False)
         return np.reciprocal(self.source["amplitude_extent_radius"])
 
@@ -817,7 +952,7 @@ class SLM:
         self.fit_source_amplitude(force=False)
 
         rad_norm = self.source["amplitude_radius"]
-        rad_pix = rad_norm * np.mean([self.dx, self.dy])
+        rad_pix = rad_norm * np.mean(pitch)
         rad_freq = np.reciprocal(rad_pix)
 
         psf_kxy = toolbox.convert_blaze_vector(

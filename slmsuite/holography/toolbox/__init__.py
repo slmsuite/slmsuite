@@ -35,7 +35,7 @@ BLAZE_LABELS = {
     "freq": (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
     "lpmm": (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
     "ij": (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
-    "zernike": (r"$Z_1^{-1}$ [zernike rad]", r"$Z_1^1$ [zernike rad]"),
+    "zernike": (r"$Z_1^1$ [Zernike rad]", r"$Z_1^{-1}$ [Zernike rad]"),
 }
 for k in LENGTH_FACTORS.keys():
     u = LENGTH_LABELS[k]
@@ -115,8 +115,13 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
 
     -  ``"zernike"``
         The phase coefficients of the tilt zernike terms
-        :math:`x = Z_1 = Z_1^{-1}` and
-        :math:`y = Z_2 = Z_1^1` necessary to produce a given blaze.
+        :math:`x = Z_2 = Z_1^1` and
+        :math:`y = Z_1 = Z_1^{-1}` necessary to produce a given blaze.
+        These functions are defined within the unit disk, and canonically have amplitude
+        of 1 at the edges. The coefficients of these terms are multiplied directly to
+        the normalized Zernike functions. For instance, a coefficient of :math:`\pi` would
+        produce a wavefront offset of :math:`\pm\pi` across the unit disk.
+        See :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
         Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
 
     Important
@@ -215,8 +220,16 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
     if from_units in CAMERA_UNITS or to_units in CAMERA_UNITS:
         if cameraslm is None or cameraslm.fourier_calibration is None:
             warnings.warn(
-                "CameraSLM must be passed to slm for conversion '{}' to '{}'"
-                .format(from_units, to_units)
+                f"CameraSLM must be passed to slm for conversion '{from_units}' to '{to_units}'"
+            )
+            return np.full_like(vector_parsed, np.nan)
+
+        cam_pitch_um = cameraslm.cam.pitch_um
+
+        if cam_pitch_um is None:
+            warnings.warn(
+                f"Camera must have filled attribute pitch_um "
+                "for conversion '{from_units}' to '{to_units}'"
             )
             return np.full_like(vector_parsed, np.nan)
 
@@ -227,7 +240,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
             pitch_um = np.nan
             wav_um = np.nan
         else:
-            pitch_um = format_2vectors([slm.dx_um, slm.dy_um])
+            pitch_um = format_2vectors(slm.pitch_um)
             wav_um = slm.wav_um
 
     if from_units == "lpmm" or to_units == "lpmm":
@@ -241,7 +254,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
         if slm is None:
             pitch = np.nan
         else:
-            pitch = format_2vectors([slm.dx, slm.dy])
+            pitch = format_2vectors(slm.pitch)
 
         if shape is None:
             if slm is None:
@@ -297,7 +310,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
         vector_xy = cameraslm.kxyslm_to_ijcam(rad)
     elif to_units in CAMERA_UNITS:
         unit = to_units.split("_")[-1]
-        vector_xy = cameraslm.kxyslm_to_ijcam(rad) * cameraslm._get_camera_pitch_um() / LENGTH_FACTORS[unit]
+        vector_xy = cameraslm.kxyslm_to_ijcam(rad) * cam_pitch_um / LENGTH_FACTORS[unit]
         if "mag_" in to_units: vector_xy /= cameraslm.mag
     elif to_units == "zernike":
         vector_xy = rad * zernike_scale
@@ -309,7 +322,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
         if from_units in CAMERA_UNITS:
             if from_units != "ij":
                 unit = from_units.split("_")[-1]
-                vector_z /= np.mean(cameraslm._get_camera_pitch_um()) / LENGTH_FACTORS[unit]
+                vector_z /= np.mean(cam_pitch_um) / LENGTH_FACTORS[unit]
                 if "mag_" in from_units: vector_z /= cameraslm.mag
 
             focal_power = cameraslm._ijcam_to_kxyslm_depth(vector_z)
@@ -325,7 +338,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
 
             if to_units != "ij":
                 unit = to_units.split("_")[-1]
-                vector_z *= LENGTH_FACTORS[unit] / np.mean(cameraslm._get_camera_pitch_um())
+                vector_z *= LENGTH_FACTORS[unit] / np.mean(cam_pitch_um)
                 if "mag_" in to_units: vector_z *= cameraslm.mag
 
         elif to_units == "zernike":
@@ -677,7 +690,7 @@ def imprint(
     .. code-block:: python
 
         canvas = np.zeros(shape=slm.shape)  # Matrix to imprint onto.
-        window = [200, 200, 200, 200]       # Region of the matrix to imprint.
+        window = [200, 200, 200, 200]       # Region of the matrix to imprint [x, w, y, h].
         toolbox.imprint(canvas, window=window, function=toolbox.phase.blaze, grid=slm, vector=(.001, .001))
 
     See also :ref:`examples`.
@@ -687,22 +700,34 @@ def imprint(
     matrix : numpy.ndarray
         The data to imprint a ``function`` onto.
     window
-        See :meth:`~slmsuite.holography.toolbox.window_slice()`.
+        See :meth:`~slmsuite.holography.toolbox.window_slice()` for various options.
     function : function OR float
         A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
         which accept ``grid`` as the first argument.
+
+        Note
+        ~~~~
+        2D functions in :mod:`~slmsuite.holography.analysis.fitfunctions`
+        are also of this style.
+
+        Note
+        ~~~~
         Also accepts floating point values, in which case this value is simply added.
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR None
         Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
-        such a class can be passed instead of the grids directly.
+        such a class can be passed instead of the grids directly if a
+        :mod:`~slmsuite.holography.toolbox` function is used.
         ``None`` can only be passed if a float is passed as ``function``.
     imprint_operation : {"replace" OR "add"}
         Decides how the ``function`` is imparted to the ``matrix``.
 
-        - If ``"replace"``, then the values of ``matrix`` inside ``window`` are replaced with ``function``.
-        - If ``"add"``, then these are instead added together (useful, for instance, for global blazes).
+        - If ``"replace"``, then the values of ``matrix``
+          inside ``window`` are replaced with ``function``.
+        - If ``"add"``, then these are instead added together
+          (useful, for instance, for adding global blazes).
+
     centered
         See :meth:`~slmsuite.holography.toolbox.window_slice()`.
     circular
@@ -716,10 +741,11 @@ def imprint(
        This is left as an option such that the user does not have to transform the
        entire ``grid`` to satisfy a tiny imprinted patch.
        See :meth:`transform_grid` for more details.
-    shift : (float, float)
+    shift : (float, float) OR None OR True
        Passed to :meth:`transform_grid`, operating on the cropped imprint grid.
        This is left as an option such that the user does not have to transform the
        entire ``grid`` to satisfy a tiny imprinted patch.
+       If ``True``, the grid is centered on the region.
        See :meth:`transform_grid` for more details.
     **kwargs :
         For passing additional arguments accepted by ``function``.
@@ -747,7 +773,10 @@ def imprint(
     is_float = isinstance(function, REAL_TYPES)
 
     if not is_float:
-        assert grid is not None, "toolbox.py: imprint grid cannot be None if a function is given."
+        if grid is None:
+            raise ValueError(
+                "grid cannot be None if a function is given; None is a float-only option."
+            )
 
     # Modify the matrix.
     if imprint_operation == "replace":
@@ -1199,7 +1228,14 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
 
 def assign_vectors(vectors, assignment_options):
     """
-    Assigns ``vectors`` to the closest Euclidean counterpart ``assignment_options``.
+    Assigns each vector in ``vectors`` to the closest counterpart ``assignment_options``.
+    Uses Euclidean distance.
+
+    Note
+    ~~~~
+    An :math:`\mathcal{O}(N^2)` brute force approach is currently implemented,
+    though it is vectorized.
+    This could be sped up significantly.
 
     Parameters
     ----------
@@ -1244,12 +1280,17 @@ def _process_grid(grid):
         The grids in ``(x_grid, y_grid)`` form.
     """
 
-    # See if grid has x_grid or y_grid (==> SLM class)
-    if hasattr(grid, "x_grid") and hasattr(grid, "y_grid"):
+    # See if grid is an object with grid fields.
+    if hasattr(grid, "grid"):
+        grid = grid.grid
+    elif hasattr(grid, "x_grid") and hasattr(grid, "y_grid"):
         return (grid.x_grid, grid.y_grid)
 
     # Otherwise, assume it's a tuple
-    assert len(grid) == 2, "Expected a 2-tuple with x and y meshgrids."
+    if len(grid) != 2:
+        raise ValueError("Expected a 2-tuple with x and y meshgrids.")
+    if np.any(np.shape(grid[0]) != np.shape(grid[1])):
+        raise ValueError("Expected a 2-tuple with x and y meshgrids.")
 
     return grid
 
@@ -1274,9 +1315,10 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
         Defaults to zero if ``None``.
         If a 2x2 matrix is passed, transforms the :math:`x` and :math:`y` grids
         according to :math:`x' = M_{00}x + M_{01}y`,  :math:`y' = M_{10}y + M_{11}y`.
-    shift : (float, float) OR None
+    shift : (float, float) OR None OR True
         Translational shift of the grid in normalized :math:`\frac{x}{\lambda}` coordinates
         ("fwd" direction). Defaults to no shift if ``None``.
+        If ``True``, shifts the grid to be centered upon itself.
     direction : str in ``{"fwd", "rev"}``
         Defines the direction of the transform: forward (``"fwd"``) transforms then shifts;
         reverse (``"rev"``) undoes the shift then applies the inverse transform.
@@ -1303,14 +1345,22 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
     # Parse shift.
     if shift is None:
         shift = (0, 0)
-    shift = np.array(shift)
+    if shift is True:
+        shift = (-np.mean(x_grid), -np.mean(y_grid))
+    shift = np.squeeze(shift)
 
     # Return the transformed grids.
     if np.isscalar(transform) and transform == 0:  # The trivial case
-        return (
-            x_grid.copy() if shift[0] == 0 else (x_grid - shift[0]),
-            y_grid.copy() if shift[1] == 0 else (y_grid - shift[1]),
-        )
+        if direction == "fwd":
+            return (
+                x_grid.copy() if shift[0] == 0 else (x_grid + shift[0]),
+                y_grid.copy() if shift[1] == 0 else (y_grid + shift[1]),
+            )
+        elif direction == "rev":
+            return (
+                x_grid.copy() if shift[0] == 0 else (x_grid - shift[0]),
+                y_grid.copy() if shift[1] == 0 else (y_grid - shift[1]),
+            )
     else:  # transform is not trivial.
         # Interpret angular transform as a matrix.
         if np.isscalar(transform):

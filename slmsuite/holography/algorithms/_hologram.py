@@ -10,14 +10,14 @@ class Hologram(_HologramStats):
     Tip
     ~~~
     The Fourier domain (``"kxy"``) of an SLM with shape :attr:`slm_shape` also has the shape
-    :attr:`slm_shape` under discrete Fourier transform. However, the extents of this
-    domain correspond to the edges of the farfield
-    (:math:`\pm\frac{\lambda}{2\Delta x}` radians, where :math:`\Delta x`
-    is the SLM pixel pitch). This means that resolution of the farfield
-    :math:`\pm\frac{\lambda}{2N_x\Delta x}` can be quite poor with small :math:`N_x`.
-    The solution is to zero-pad the SLM nearfield
+    :attr:`slm_shape` under discrete Fourier transform. The extents of this
+    domain correspond to the edges of the farfield determined by physical constants
+    as :math:`\pm\frac{\lambda}{2\Delta x}` radians, where :math:`\Delta x`
+    is the SLM pixel pitch. This means that resolution of the farfield
+    :math:`\pm\frac{\lambda}{2N_x\Delta x}` radians can be quite poor with small
+    resolution :math:`N_x`. The solution is to zero-pad the SLM nearfield
     --- artificially increasing the width :math:`N_x` and height
-    :math:`N_y` even though the extent of the non-zero nearfield data remains the same ---
+    :math:`N_y` while the extent of the non-zero nearfield data remains the same ---
     and thus enhance the resolution of the farfield.
     In practice, padding is accomplished by passing a :attr:`shape` or
     :attr:`target` of appropriate shape (see constructor :meth:`.__init__()` and subclasses),
@@ -199,7 +199,7 @@ class Hologram(_HologramStats):
         # Warn the user about powers of two.
         if any(np.log2(self.shape) != np.round(np.log2(self.shape))):
             warnings.warn(
-                "algorithms.py: Hologram target shape {} is not a power of 2; consider using "
+                "Hologram target shape {} is not a power of 2; consider using "
                 ".calculate_padded_shape() to pad to powers of 2 and speed up "
                 "FFT computation. While some FFT solvers support other prime powers "
                 "(3, 5, 7, ...), literature suggests that GPU support is best for powers of 2."
@@ -258,17 +258,17 @@ class Hologram(_HologramStats):
 
             if amp is not None:
                 assert np.all(self.slm_shape == np.array(amp_shape)), (
-                    "algorithms.py: The shape of amplitude (via `amp` or SLM) is not equal to the "
+                    "The shape of amplitude (via `amp` or SLM) is not equal to the "
                     "shapes of the provided initial phase (`phase`) or SLM (via `target` or `slm_shape`)"
                 )
             if phase is not None:
                 assert np.all(self.slm_shape == np.array(phase_shape)), (
-                    "algorithms.py: The shape of the inital phase (`phase`) is not equal to the "
+                    "The shape of the initial phase (`phase`) is not equal to the "
                     "shapes of the provided amplitude (via `amp` or SLM) or SLM (via `target` or `slm_shape`)"
                 )
             if slm_shape is not None:
                 assert np.all(self.slm_shape == np.array(slm_shape)), (
-                    "algorithms.py: The shape of SLM (via `target` or `slm_shape`) is not equal to the "
+                    "The shape of SLM (via `target` or `slm_shape`) is not equal to the "
                     "shapes of the provided initial phase (`phase`) or amplitude (via `amp` or SLM)"
                 )
 
@@ -441,19 +441,26 @@ class Hologram(_HologramStats):
         if hasattr(slm_shape, "slm"):
             cameraslm = slm_shape
             slm_shape = cameraslm.slm.shape
+
         # If slm_shape is actually a SLM
         elif hasattr(slm_shape, "shape"):
-            cameraslm = lambda: 0
-            cameraslm.slm = slm_shape
-            slm_shape = cameraslm.slm.shape
+            cameraslm = lambda: 0               # Make a fake cameraslm
+            cameraslm.slm = slm_shape           # At this point, slm_shape is the SLM.
+            slm_shape = cameraslm.slm.shape     # And make the shape variable actually the shape.
+
+            if precision_basis == "ij":
+                raise ValueError(
+                    "Must pass a CameraSLM object under slm_shape "
+                    "to use the 'ij' precision_basis!"
+                )
 
         # Handle precision
         if np.isfinite(precision) and cameraslm is not None:
             if precision <= 0:
                 raise ValueError(
-                    "algorithms.py: Precision passed to calculate_padded_shape() must be positive."
+                    "Precision passed to calculate_padded_shape() must be positive."
                 )
-            dpixel = np.amin([cameraslm.slm.dx, cameraslm.slm.dy])
+            dpixel = np.amin(cameraslm.slm.pitch)
             fs = 1 / dpixel  # Sampling frequency
 
             if precision_basis == "ij":
@@ -467,7 +474,7 @@ class Hologram(_HologramStats):
             precision_shape = (pixels, pixels)
         elif np.isfinite(precision):
             raise ValueError(
-                "algorithms.py: Must pass a CameraSLM object under slm_shape "
+                "Must pass a CameraSLM object under slm_shape "
                 "to implement calculate_padded_shape() precision calculations!"
             )
         else:
@@ -798,7 +805,7 @@ class Hologram(_HologramStats):
         methods = list(ALGORITHM_DEFAULTS.keys())
         if not method in methods:
             raise ValueError(
-                "algorithms.py: unrecognized method '{}'.\n"
+                "unrecognized method '{}'.\n"
                 "Valid methods include {}".format(method, methods)
             )
         self.method = method
@@ -819,7 +826,7 @@ class Hologram(_HologramStats):
         for group in stat_groups:
             if not (group in FEEDBACK_OPTIONS):
                 raise ValueError(
-                    "algorithms.py: statistics group '{}' not recognized as a feedback option.\n"
+                    "statistics group '{}' not recognized as a feedback option.\n"
                     "Valid options: {}".format(group, FEEDBACK_OPTIONS)
                 )
         self.flags["stat_groups"] = stat_groups
@@ -827,7 +834,7 @@ class Hologram(_HologramStats):
         if feedback is not None:
             if not (feedback in FEEDBACK_OPTIONS):
                 raise ValueError(
-                    "algorithms.py: feedback '{}' not recognized as a feedback option.\n"
+                    "feedback '{}' not recognized as a feedback option.\n"
                     "Valid options: {}".format(group, FEEDBACK_OPTIONS)
                 )
             self.flags["feedback"] = feedback
@@ -1286,7 +1293,7 @@ class Hologram(_HologramStats):
             Fraction of available memory to use. Passed to :meth:`cupy.cuda.MemoryPool.set_limit()`.
         """
         if cp == np:
-            raise ValueError("algorithms.py: Cannot set mempool for numpy. Need cupy.")
+            raise ValueError("Cannot set mempool for numpy. Need cupy.")
 
         mempool = cp.get_default_memory_pool()
 
@@ -1317,7 +1324,7 @@ class Hologram(_HologramStats):
         """
 
         if cp == np:
-            raise ValueError("algorithms.py: Cannot get mempool for numpy. Need cupy.")
+            raise ValueError("Cannot get mempool for numpy. Need cupy.")
 
         mempool = cp.get_default_memory_pool()
 

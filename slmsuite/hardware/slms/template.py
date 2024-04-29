@@ -13,11 +13,9 @@ class Template(SLM):
 
     def __init__(
         self,
-        width,
-        height,
-        wav_um,
-        pitch_um,
-        bitdepth,
+        bitdepth=8,         # TODO: Remove these arguments if the SLM SDK
+        wav_um=1,           #       has some function to read them in.
+        pitch_um=(8,8),     #       Otherwise, the user must supply.
         **kwargs
     ):
         r"""
@@ -25,17 +23,13 @@ class Template(SLM):
 
         Parameters
         ----------
-        width : int
-            Width of the SLM in pixels.
-        height : int
-            Height of the SLM in pixels.
-        wav_um : float
-            Wavelength of operation in microns.
-        pitch_um : float
-            Pitch of SLM pixels in microns.
         bitdepth : int
-            Bits of phase resolution (e.g. 8 for 256 phase settings.)
-        kwargs
+            Depth of SLM pixel well in bits. Defaults to 10.
+        wav_um : float
+            Wavelength of operation in microns. Defaults to 1 um.
+        pitch_um : (float, float)
+            Pixel pitch in microns. Defaults to 8 micron square pixels.
+        **kwargs
             See :meth:`.SLM.__init__` for permissible options.
 
         Note
@@ -50,6 +44,8 @@ class Template(SLM):
         # Mandatory functions:
         # - Opening a connection to the device.
 
+        sdk = TODO()
+
         # Other possibilities to consider:
         # - Setting the SLM's operating wavelength (wav_um).
         # - Updating the SLM's phase table if necessary, and/or setting the design
@@ -61,12 +57,10 @@ class Template(SLM):
 
         # Instantiate the superclass
         super().__init__(
-            width,
-            height,
+            (sdk.width(), sdk.height()),
             bitdepth=bitdepth,
             wav_um=wav_um,
-            dx_um=pitch_um,
-            dy_um=pitch_um,
+            pitch_um=pitch_um,
             **kwargs
         )
 

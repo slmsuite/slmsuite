@@ -33,11 +33,11 @@ class CameraSLM:
 
     Attributes
     ----------
-    cam : object
+    cam : ~slmsuite.hardware.cameras.camera.Camera
         Instance of :class:`~slmsuite.hardware.cameras.camera.Camera`
         which interfaces with a camera. This camera is
         used to provide closed-loop feedback to an SLM for calibration and holography.
-    slm : object
+    slm : ~slmsuite.hardware.slms.slm.SLM
         Instance of :class:`~slmsuite.hardware.slms.slm.SLM`
         which interfaces with a phase display.
     mag : float
@@ -50,19 +50,39 @@ class CameraSLM:
 
     def __init__(self, cam, slm, mag=1):
         """
+        Initialize an SLM linked to a camera, with given magnification between the
+        camera and experiment planes.
+
         Parameters
         ----------
-        cam
-            See :attr:`~CameraSLM.cam`.
-        slm
-            See :attr:`~CameraSLM.slm`.
-        mag
-            See :attr:`~CameraSLM.mag`.
+        cam : ~slmsuite.hardware.cameras.camera.Camera
+            Instance of :class:`~slmsuite.hardware.cameras.camera.Camera`
+            which interfaces with a camera. This camera is
+            used to provide closed-loop feedback to an SLM for calibration and holography.
+        slm : ~slmsuite.hardware.slms.slm.SLM
+            Instance of :class:`~slmsuite.hardware.slms.slm.SLM`
+            which interfaces with a phase display.
+        mag : float
+            Magnification of the camera relative to an experiment plane. For instance,
+            ``mag = 10`` could refer to the use of a 10x objective (with appropriate
+            imaging lensing) between the experiment plane and the camera.
+            In this case, the images apparent on the camera are ten times larger than
+            the true objects at the experiment plane.
+
+            Note
+            ~~~~
+            This magnification is currently isotropic. In the future, anisotropy between
+            the camera and experiment planes could be implemented.
         """
+        if not hasattr(cam, "get_image"):
+            raise ValueError(f"Expected Camera to be passed as cam. Found {type(cam)}")
         self.cam = cam
+
+        if not hasattr(slm, "write"):
+            raise ValueError(f"Expected SLM to be passed as slm. Found {type(slm)}")
         self.slm = slm
 
-        self.mag = mag
+        self.mag = float(mag)
 
 
 class NearfieldSLM(CameraSLM):
@@ -89,13 +109,14 @@ class FourierSLM(CameraSLM):
 
     Attributes
     ----------
-    fourier_calibration : dict or None
+    fourier_calibration : dict OR None
         Information for the affine transformation that maps between
         the k-space of the SLM (kxy) and the pixel-space of the camera (ij).
-        See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibrate`.
+        See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibrate()`.
         In the future, including pincushion or other distortions might be implemented
-        using :meth:`scipy.ndimage.spline_filter`, though this mapping would be separable.
-    wavefront_calibration_raw : dict or None
+        using :meth:`scipy.ndimage.spline_filter()`,
+        though this mapping would be separable.
+    wavefront_calibration_raw : dict OR None
         Raw data for wavefront calibration, which corrects for aberrations
         in the optical system (phase) and measures the amplitude distribution
         of power on the SLM (amplitude).
@@ -103,7 +124,7 @@ class FourierSLM(CameraSLM):
     """
 
     def __init__(self, *args, **kwargs):
-        """See :attr:`CameraSLM.__init__`."""
+        # """See :attr:`CameraSLM.__init__`."""
         super().__init__(*args, **kwargs)
 
         self.fourier_calibration = None
@@ -128,6 +149,9 @@ class FourierSLM(CameraSLM):
             A :class:`~slmsuite.hardware.cameraslms.FourierSLM` object with simulated
             hardware.
         """
+        # Make sure we have a Fourier calibration.
+        if self.fourier_calibration is None:
+            raise ValueError("Cannot simulate() a FourierSLM without a Fourier calibration.")
 
         # Make a simulated SLM
         slm_sim = SimulatedSLM(
@@ -137,24 +161,22 @@ class FourierSLM(CameraSLM):
             name=self.slm.name+"_sim",
             wav_um=self.slm.wav_um,
             wav_design_um=self.slm.wav_design_um,
-            dx_um=self.slm.dx_um,
-            dy_um=self.slm.dy_um
+            pitch_um=self.slm.pitch_um,
         )
 
         # Make a simulated camera using the current Fourier calibration
         cam_sim = SimulatedCamera(
             slm_sim,
             resolution=self.cam.shape[::-1],
-            M=self.fourier_calibration["M"],
-            b=self.fourier_calibration["b"],
+            M=copy.copy(self.fourier_calibration["M"]),
+            b=copy.copy(self.fourier_calibration["b"]),
             bitdepth=self.cam.bitdepth,
             averaging=self.cam._buffer.shape[0]   # TODO check this.
                         if self.cam._buffer is not None else None,
-            dx_um=self.cam.dx_um,
-            dy_um=self.cam.dy_um,
-            name=self.cam.name+"sim"
+            pitch_um=self.cam.pitch_um,
+            name=self.cam.name+"_sim"
         )
-        cam_sim.transform = self.cam.transform
+        cam_sim.transform = copy.copy(self.cam.transform)
 
         #Combine the two and pass FourierSLM attributes from hardware
         fs_sim = FourierSLM(cam_sim, slm_sim)
@@ -166,7 +188,7 @@ class FourierSLM(CameraSLM):
 
     ### Settle Time Measurement ###
 
-    def measure_settle(
+    def settle_calibrate(
         self, vector=(0.1, 0.1), basis="kxy", size=None, times=None, settle_time_s=1, plot=True
     ):
         """
@@ -232,6 +254,97 @@ class FourierSLM(CameraSLM):
 
         return results
 
+    ### Pixel Calibration ###
+
+    def pixel_calibrate(
+        self,
+        gray_levels=2,
+        periods=2,
+        measure_orders=3,
+    ):
+        """
+        Calibration for pixel properties such as crosstalk and .
+        Note this calibration is not at the level of individual pixels, but rather
+        aggregate statistics over all pixels.
+
+        Note
+        ~~~~
+        A Fourier calibration must be loaded.
+
+        Caution
+        ~~~~~~~
+        Data is taken without wavefront calibration applied. If the SLM without
+        calibration produces too defocussed of a spot,
+        then this measurement may not be ideal.
+
+        Phase crosstalk: https://doi.org/10.1364/OE.20.022334
+        Vpi variation: https://doi.org/10.1364/OE.21.016086
+
+        Parameters
+        ----------
+        gray_levels : int OR array_like of int
+            TODO
+        periods : int OR array_like of int
+            TODO
+        measure_orders : int OR array_like of int
+            TODO
+        plot : bool
+            TODO
+        """
+        # Parse gray_levels by forcing range and datatype.
+        if np.isscalar(gray_levels):
+            gray_levels = np.todo()
+        gray_levels = np.mod(gray_levels, self.slm.bitresolution).astype(self.slm.dtype)
+
+        # Parse periods by forcing even integer.
+        if np.isscalar(measure_orders):
+            measure_orders = int(measure_orders)
+            measure_orders = np.arange(-measure_orders, measure_orders+1)
+
+        measure_orders = measure_orders.astype(int)
+
+        # Parse periods by forcing even integer.
+        periods = periods.astype(int)
+        P = len(periods)
+
+        shape = (2, P, len(gray_levels), len(gray_levels), len(measure_orders))
+        data = np.zeros(shape)
+
+        vectors_freq = np.zeros((2, 2*P))
+        vectors_freq[0, :P] = vectors_freq[1, P:] = np.reciprocal(periods.astype(float))
+        vectors_kxy = toolbox.convert_vector(
+            vectors_freq,
+            from_units="freq",
+            to_units="norm",
+            slm=self
+        )
+        vectors_ij = self.kxyslm_to_ijcam(vectors_kxy)
+        center = self.kxyslm_to_ijcam((0,0))
+
+        # Warn the user if any order is outside the field of view.
+        if False:
+            warnings.warn("TODO")
+
+        # Big sweep.
+        for i in [0,1]:
+            prange = np.arange(P) + i*P
+            for j, p in enumerate(periods):
+                for k, a in enumerate(gray_levels[:-1]):        # Upper triangular gray level selection.
+                    for l, b in enumerate(gray_levels[k:]):
+                        phase = toolbox.phase.binary(self.slm, vectors_kxy[:, prange[p]], a, b)
+
+                        self.slm.write(phase, phase_calibrate=False, settle=True)
+                        analysis.take(
+                            self.cam.get_image(),
+
+                        )
+
+                        data[i,j,k,l,:] = 0
+
+
+
+    ### Fourier Calibration ###
+
     def fourier_calibrate(
         self,
         array_shape=10,
@@ -243,19 +356,24 @@ class FourierSLM(CameraSLM):
         **kwargs,
     ):
         """
-        Project and fit a SLM Fourier space (``"knm"``) grid onto
-        camera pixel space (``"ij"``) for affine fitting.
+        Project and fit a SLM computational Fourier space ``"knm"`` grid onto
+        camera pixel space ``"ij"`` for affine fitting.
         Sets :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`.
         An array produced by
         :meth:`~slmsuite.holography.algorithms.SpotHologram.make_rectangular_array()`
         is projected for analysis by
         :meth:`~slmsuite.holography.analysis.blob_array_detect()`.
+        These arguments are in ``"knm"`` space because:
 
-        Important
-        ~~~~~~~~~
-        For best results, array_pitch should be integer data. Otherwise non-uniform
-        rounding to the SLM's computational :math:`k`-space will result in non-uniform pitch and
-        a bad fit.
+        - The ``"ij"`` space has not yet been calibrated.
+        - The ``"kxy"`` space can lead to non-integer ``array_pitch`` in
+          ``"knm"``-space. This is not ideal (see Tip).
+
+        Tip
+        ~~~
+        For best results, ``array_pitch`` should be integer data. Otherwise non-uniform
+        rounding to the SLM's computational :math:`k`-space can result in non-uniform pitch and
+        a bad fit. The user is warned if non-integer data is given.
 
         Parameters
         ----------
@@ -292,8 +410,8 @@ class FourierSLM(CameraSLM):
             array_shape = [int(array_shape), int(array_shape)]
         if isinstance(array_pitch, REAL_TYPES):
             array_pitch = [array_pitch, array_pitch]
-
-        self.fourier_calibration = None
+        if np.any(array_pitch <= 0):
+            raise ValueError("array_pitch must be positive.")
 
         # Make and project a GS hologram across a normal grid of kvecs
         hologram = self.project_fourier_grid(
@@ -312,17 +430,20 @@ class FourierSLM(CameraSLM):
 
         # Optional step -- autofocus and autoexpose the spots
         if autofocus or isinstance(autofocus, dict):
+            # Pre-expose
             if autoexposure or isinstance(autoexposure, dict):
                 if isinstance(autoexposure, dict):
                     self.cam.autoexposure(**autoexposure)
                 else:
                     self.cam.autoexposure()
 
+            # Focus
             if isinstance(autofocus, dict):
                 self.cam.autofocus(plot=plot, **autofocus)
             else:
                 self.cam.autofocus(plot=plot)
 
+        # Post-expose
         if autoexposure or isinstance(autoexposure, dict):
             if isinstance(autoexposure, dict):
                 self.cam.autoexposure(**autoexposure)
@@ -343,17 +464,15 @@ class FourierSLM(CameraSLM):
         # as a last step we must convert from the array to (centered) knm space, and then
         # one step further to kxy space. This is done by a simple scaling.
         scaling = (
-            np.array((self.slm.dx, self.slm.dy))
+            self.slm.pitch
             * np.flip(np.squeeze(hologram.shape))
             / np.squeeze(array_pitch)
         )
 
-        M = np.array(
-            [
-                [M[0, 0] * scaling[0], M[0, 1] * scaling[1]],
-                [M[1, 0] * scaling[0], M[1, 1] * scaling[1]],
-            ]
-        )
+        M = np.array([
+            [M[0, 0] * scaling[0], M[0, 1] * scaling[1]],
+            [M[1, 0] * scaling[0], M[1, 1] * scaling[1]],
+        ])
 
         self.fourier_calibration = {"__version__" : __version__, "M": M, "b": b, "a": a}
 
@@ -379,13 +498,13 @@ class FourierSLM(CameraSLM):
         ----------
         path : str
             Path to directory to save in. Default is current directory.
-        name : str or None
+        name : str OR None
             Name of the save file. If ``None``, will use :meth:`name_fourier_calibration`.
 
         Returns
         -------
         str
-            The file path that the fourier calibration was saved to.
+            The file path that the Fourier calibration was saved to.
         """
         if name is None:
             name = self.name_fourier_calibration()
@@ -401,7 +520,7 @@ class FourierSLM(CameraSLM):
 
         Parameters
         ----------
-        file_path : str or None
+        file_path : str OR None
             Full path to the Fourier calibration file. If ``None``, will
             search the current directory for a file with a name like
             the one returned by :meth:`name_fourier_calibration`.
@@ -409,7 +528,7 @@ class FourierSLM(CameraSLM):
         Returns
         -------
         str
-            The file path that the fourier calibration was loaded from.
+            The file path that the Fourier calibration was loaded from.
 
         Raises
         ------
@@ -432,8 +551,8 @@ class FourierSLM(CameraSLM):
 
     def project_fourier_grid(self, array_shape=10, array_pitch=10, array_center=None, **kwargs):
         """
-        Projects a Fourier space grid (``"knm"``) onto pixel space (``"ij"``).
-        The chosen computational k-space ``"knm"`` uses a computational shape generated by
+        Projects a Fourier space grid ``"knm"`` onto pixel space ``"ij"``.
+        The chosen computational :math:`k`-space ``"knm"`` uses a computational shape generated by
         :meth:`~slmsuite.holography.algorithms.SpotHologram.calculate_padded_shape()`
         corresponding to the smallest square shape with power-of-two sidelength that is
         larger than the SLM's shape.
@@ -456,6 +575,9 @@ class FourierSLM(CameraSLM):
         ~slmsuite.holography.algorithms.SpotHologram
             Optimized hologram.
         """
+        # Check that the pitch is an integer.
+        if not np.all(np.isclose(array_pitch, np.rint(array_pitch))):
+            warnings.warn("array_pitch is non-integer")
 
         # Make the spot array
         shape = SpotHologram.calculate_padded_shape(self, padding_order=1, square_padding=True)
@@ -466,8 +588,8 @@ class FourierSLM(CameraSLM):
             array_center=None
             if array_center is None
             else (
-                format_2vectors(array_center)
-                + format_2vectors(((shape[1]) / 2.0, (shape[0]) / 2.0))
+                format_2vectors(array_center) +
+                format_2vectors(((shape[1]) / 2.0, (shape[0]) / 2.0))
             ),
             basis="knm",
             orientation_check=True,
@@ -485,15 +607,26 @@ class FourierSLM(CameraSLM):
 
         return hologram
 
+    def set_fourier_calibration_analytic(self, M, b):
+        # Parse arguments.
+        M = np.squeeze(M)
+        if np.any(M.shape != (2,2)):
+            raise ValueError("Expected a 2x2 matrix for M.")
+        a = format_2vectors([0,0])
+        b = format_2vectors(b)
+
+        self.fourier_calibration = {"__version__" : __version__, "M": M, "b": b, "a": a}
+
     ### Fourier Calibration Helpers ###
 
-    # def focal_power_to
-
     def _kxyslm_to_ijcam_depth(self, kxy_depth):
-        """Helper function for handling depth"""
+        """Helper function for handling depth conversion."""
         f_eff = self.get_effective_focal_length("norm")
-        pitch_um = np.mean(self._get_camera_pitch_um())
-        return kxy_depth * (self.slm.wav_um * f_eff * f_eff / pitch_um)
+        if self.cam.pitch_um is None:
+            cam_pitch_um = np.nan
+        else:
+            cam_pitch_um = np.mean(self.cam.pitch_um)
+        return kxy_depth * (self.slm.wav_um * f_eff * f_eff / cam_pitch_um)
 
     def kxyslm_to_ijcam(self, kxy):
         r"""
@@ -551,10 +684,13 @@ class FourierSLM(CameraSLM):
             return ij
 
     def _ijcam_to_kxyslm_depth(self, ij_depth):
-        """Helper function for handling depth"""
+        """Helper function for handling depth conversion."""
         f_eff = self.get_effective_focal_length("norm")
-        pitch_um = np.mean(self._get_camera_pitch_um())
-        return ij_depth * (pitch_um / (self.slm.wav_um * f_eff * f_eff))
+        if self.cam.pitch_um is None:
+            cam_pitch_um = np.nan
+        else:
+            cam_pitch_um = np.mean(self.cam.pitch_um)
+        return ij_depth * (cam_pitch_um / (self.slm.wav_um * f_eff * f_eff))
 
     def ijcam_to_kxyslm(self, ij):
         r"""
@@ -669,32 +805,30 @@ class FourierSLM(CameraSLM):
         else:
             raise ValueError('Unrecognized basis "{}".'.format(basis))
 
-    def _get_camera_pitch_um(self):
-        """
-        Helper function to get the size of a camera pixel.
-        """
-        if self.cam.dx_um is None or self.cam.dy_um is None:
-            warnings.warn("Camera dx_um or dy_um are not set.")
-            return format_2vectors([np.nan, np.nan])
-        if self.cam.dx_um != self.cam.dy_um:
-            warnings.warn("Camera does not have square pitch. Odd behavior might result.")
-        return format_2vectors([self.cam.dx_um, self.cam.dy_um])
-
     def get_effective_focal_length(self, units="norm"):
         """
-        Uses the Fourier calibration to estimate the effective focal length of the
+        Uses the Fourier calibration to estimate the scalar effective focal length of the
         optical train separating the Fourier-domain SLM from the camera.
         This currently assumes an isotropic imaging train without cylindrical optics.
 
-        Note
-        ~~~~
-        Note that this is potentially different from the
-        effective focal length between the SLM and experiment.
+        Tip
+        ~~~
+        This effective focal length between the SLM and camera is potentially different
+        from the effective focal length between the SLM and experiment.
 
         Parameters
         ----------
-        units : {"pix", "um", "norm"}
+        units : str {"ij", "norm", "m", "cm", "mm", "um", "nm"}
             Units for the focal length.
+
+            -  ``"ij"``
+                Focal length in units of camera pixels.
+
+            -  ``"norm"``
+                Normalized focal length in wavelengths.
+
+            -  ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
+                Focal length in metric units.
 
         Returns
         -------
@@ -708,17 +842,42 @@ class FourierSLM(CameraSLM):
         f_eff = np.sqrt(np.abs(np.linalg.det(self.fourier_calibration["M"])))
 
         # Gather other conversions.
-        pitch_um = np.mean(self._get_camera_pitch_um())
+        if units != "ij" and self.cam.pitch_um is None:
+            raise RuntimeError(f"cam.pitch_um must be set to use units '{units}'")
 
         # Convert.
-        if units == "pix":
+        if units == "ij":
             pass
-        elif units == "um":
-            f_eff *= pitch_um
         elif units == "norm":
-            f_eff *= pitch_um / self.slm.wav_um
+            f_eff *= self.cam.pitch_um / self.slm.wav_um
+        elif units in toolbox.LENGTH_FACTORS.keys():
+            f_eff *= self.cam.pitch_um / toolbox.LENGTH_FACTORS[units]
+        else:
+            raise ValueError(f"Unit '{units}' not recognized as a length.")
 
         return f_eff
+
+    def build_fourier_calibration(
+            self,
+            f_eff,
+            units="norm",
+            theta=0,
+            shear_angle=0,
+            offset=(0, 0),
+        ):
+        """
+        Meta: This docstring will be overwritten by ``SimulatedCamera._build_affine``
+        at the end of this file.
+        """
+        return SimulatedCamera._build_affine(
+            f_eff,
+            units=units,
+            theta=theta,
+            shear_angle=shear_angle,
+            offset=offset,
+            cam_pitch_um=self.cam.pitch_um,
+            wav_um=self.slm.wav_um,
+        )
 
     ### Wavefront Calibration ###
 
@@ -729,6 +888,7 @@ class FourierSLM(CameraSLM):
         field_point=(0,0),
         field_point_units="kxy",
         avoid_points=None,
+        avoid_mirrors=True,
         plot=False,
     ):
         """
@@ -739,28 +899,41 @@ class FourierSLM(CameraSLM):
         pitch : float OR (float, float)
             The grid of points must have pitch greater than this value.
         field_exclusion : float OR None
+            Remove all points within ``field_exclusion`` of a ``field_point``.
+            Set to zero if no removal is desired.
             If ``None``, defaults to ``pitch``.
         field_point : (float, float)
-            Position in the camera domain where pixels not included in superpixels are
-            blazed toward in order to reduce light in the camera's field. Suggested
+            Position in the camera domain where the field (pixels not included in superpixels)
+            is blazed toward in order to reduce light in the camera's field. The suggested
             approach is to set this outside the field of view of the camera and make
-            sure that other diffraction orders are far from the `calibration_points`.
-            Defaults to no blaze.
+            sure that other diffraction orders are far from the ``calibration_points``.
+            Defaults to no blaze (``(0,0)`` in ``"kxy"`` units).
         field_point_units : str
-            Default to ``"ij"`` which moves first diffraction order
-             to the camera pixel ``field_point``.
-            If it is instead a unit compatible with
-            :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`, then the
-            ``field_point`` value is interpreted as a shifting blaze vector.
-            In this case, setting one coordinate of ``field_point`` to zero is suggested
+            A unit compatible with
+            :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`.
+            Defaults to ``"kxy"``.
+
+            Tip
+            ~~~
+            Setting one coordinate of ``field_point`` to zero is suggested
             to minimize higher order diffraction.
         avoid_points : numpy.ndarray
-            Additional points to avoid
+            Additional points to avoid in the same manner as avoiding the ``field_point``
+            and diffractive orders (with the same radius ``field_exclusion``).
+            This can, for instance, omit the points outside the camera's field of view,
+            points around known stray reflections, or unusual topology.
+        avoid_mirrors : bool
+            When a 1st order calibration beam is sourced from a
+            weak superpixel in the SLM domain, the -1st order of a different
+            calibration beam can act as a strong noise source if
+            it is sourced from a strong central superpixel.
+            If ``True``, this flag aligns the -1st orders to be inbetween
+            the 1st orders of the grid of calibration points.
 
         Returns
         -------
         numpy.ndarray
-            List of points of dimension ``2 x N`` to calibrate at.
+            List of points of shape ``(2, N)`` to calibrate at.
 
         Raises
         ------
@@ -768,17 +941,13 @@ class FourierSLM(CameraSLM):
             If the fourier plane calibration does not exist.
         """
         # Parse field_point
-        if field_point_units != "ij":
-            field_blaze = toolbox.convert_blaze_vector(
-                format_2vectors(field_point),
-                from_units=field_point_units,
-                to_units="kxy",
-                slm=self.slm
-            )
-
-            field_point = self.kxyslm_to_ijcam(field_blaze)
-
-        field_point = np.rint(format_2vectors(field_point), dtype=int)
+        field_point = toolbox.convert_blaze_vector(
+            format_2vectors(field_point),
+            from_units=field_point_units,
+            to_units="ij",
+            slm=self
+        )
+        field_point = np.rint(format_2vectors(field_point)).astype(int)
 
         # Parse field_exclusion
         if field_exclusion is None:
@@ -791,8 +960,9 @@ class FourierSLM(CameraSLM):
 
         # Generate the initial grid
         plane = format_2vectors(self.cam.shape[::-1])
-        grid = np.floor(plane / pitch).astype(int)
-        spacing = plane / grid
+        grid = np.floor(plane / pitch)
+        if avoid_mirrors: grid += .5    # TODO
+        spacing = (plane / grid).astype(int)
 
         calibration_points = fit_3pt(
             spacing/2,
@@ -840,10 +1010,23 @@ class FourierSLM(CameraSLM):
         return calibration_points
 
     def get_wavefront_calibration_window(self, superpixel_size):
-        """TODO"""
+        """
+        Returns the window size for the interference regions.
+        This is inversely proportional to the size of the superpixel because the
+        superpixel and interference zone are separated by a Fourier transform.
+        The computation works by estimating the spot size of the interference beams and
+        then enlarging by a stored multiplier
+        :attr:`_wavefront_calibration_window_multiplier`
+        which defaults to 4.
+
+        Parameters
+        ----------
+        superpixel_size : int
+            The size of the superpixel on the SLM.
+        """
         interference_size = np.rint(np.array(
             self.get_farfield_spot_size(
-                (superpixel_size * self.slm.dx, superpixel_size * self.slm.dy),
+                superpixel_size * self.slm.pitch,
                 basis="ij"
             )
         )).astype(int)
@@ -881,6 +1064,10 @@ class FourierSLM(CameraSLM):
         after to produce the usable calibration which is written to the SLM.
         This procedure measures the wavefront phase and amplitude.
 
+        Note
+        ~~~~
+        A Fourier calibration must be loaded.
+
         Tip
         ~~~
         If only amplitude calibration is desired,
@@ -897,22 +1084,23 @@ class FourierSLM(CameraSLM):
         calibration_points : (float, float) OR None
             Position(s) in the camera domain where interference occurs.
             This is naturally in the ``"ij"`` basis.
-            If None, densely fills the camera field of view with calibration points.
+            If ``None``, densely fills the camera field of view with calibration points.
         superpixel_size : int
             The width and height in pixels of each SLM superpixel.
             If this is not a devisor of both dimensions in the SLM's :attr:`shape`,
             then superpixels at the edge of the SLM may be cropped and give undefined results.
             Currently, superpixels are forced to be square, and this value must be a scalar.
-        reference_superpixels : (int, int) OR [(int, int)] OR None
-            The superpixel to reference from. Defaults to the center of the SLM.
-            If multiple calibration points are desired, then the references are clustered at the center.
+        reference_superpixels : (int, int) OR numpy.ndarray OR None
+            The superpixel to reference from.
+            Defaults to the center of the SLM if ``None``. If multiple calibration
+            points are requested, then the references are clustered at the center.
         exclude_superpixels : (int, int) OR numpy.ndarray OR None
             If in ``(nx, ny)`` form, optionally exclude superpixels from the margin,
             That is, the ``nx`` superpixels are omitted from the left and right sides
             of the SLM, with the same for ``ny``. As power is
             typically concentrated in the center of the SLM, this function is useful for
-            excluding points that are known to be blocked, or for quickly testing calibration
-            at the most relevant points.
+            excluding points that are known to be blocked (e.g. with an iris or other
+            pupil), or for quickly testing calibration at the most relevant points.
             Otherwise, if exclude_superpixels is an image with the same dimension as the
             superpixeled SLM, this image is interpreted as a denylist.
             Defaults to ``None``, where no superpixels are excluded.
@@ -920,18 +1108,19 @@ class FourierSLM(CameraSLM):
             If ``int``, then tests the scheduled calibration corresponding to this index. TODO
             Defaults to ``None``, which does not test and instead runs the full calibration.
         field_point : (float, float)
-            Position in the camera domain where pixels not included in superpixels are
-            blazed toward in order to reduce light in the camera's field. Suggested
+            Position in the camera domain where the field (pixels not included in superpixels)
+            is blazed toward in order to reduce light in the camera's field. The suggested
             approach is to set this outside the field of view of the camera and make
-            sure that other diffraction orders are far from the `calibration_points`.
-            Defaults to no blaze.
+            sure that other diffraction orders are far from the ``calibration_points``.
+            Defaults to no blaze (``(0,0)`` in ``"kxy"`` units).
         field_point_units : str
-            Default to ``"ij"`` which moves first diffraction order
-             to the camera pixel ``field_point``.
-            If it is instead a unit compatible with
-            :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`, then the
-            ``field_point`` value is interpreted as a shifting blaze vector.
-            In this case, setting one coordinate of ``field_point`` to zero is suggested
+            A unit compatible with
+            :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`.
+            Defaults to ``"kxy"``.
+
+            Tip
+            ~~~
+            Setting one coordinate of ``field_point`` to zero is suggested
             to minimize higher order diffraction.
         phase_steps : int
             The number of interference phases to measure.
@@ -968,7 +1157,8 @@ class FourierSLM(CameraSLM):
         Returns
         -------
         dict
-            :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
+            The contents of
+            :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`.
 
         Raises
         ------
@@ -992,11 +1182,14 @@ class FourierSLM(CameraSLM):
 
         # Now that we have the supershape, we label each of the pixels with an index.
         # It's sometimes useful to map that index to the xy coordinates of the pixel,
-        # hence this function.
+        # hence this function and its inverse.
         def index2coord(index):
             return format_2vectors(
                 np.stack((index % slm_supershape[1], index // slm_supershape[1]), axis=0)
             )
+        def coord2index(coord):
+            coord = np.array(coord)
+            return coord[:,1] * slm_supershape[1] + coord[:,0]
 
         # It's also useful to make an image showing the given indices.
         def index2image(index):
@@ -2050,8 +2243,8 @@ class FourierSLM(CameraSLM):
                     ]:
                         (tx, ty) = (nx + ax, ny + ay)
                         (dx, dy) = (
-                            2 * np.pi * (nx - nxref) * superpixel_size * self.slm.dx,
-                            2 * np.pi * (ny - nyref) * superpixel_size * self.slm.dy,
+                            2 * np.pi * (nx - nxref) * superpixel_size * self.slm.pitch[0],
+                            2 * np.pi * (ny - nyref) * superpixel_size * self.slm.pitch[1],
                         )
 
                         # Make sure our adjacent pixel under test is within range and above threshold.
@@ -2339,3 +2532,6 @@ class FourierSLM(CameraSLM):
             self.process_wavefront_calibration(**kwargs)
 
         return file_path
+
+
+FourierSLM.build_fourier_calibration.__doc__ = SimulatedCamera.build_affine.__doc__

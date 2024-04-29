@@ -313,7 +313,14 @@ class Cheetah640(Camera):
 
     ### Camera Interface ###
 
-    def __init__(self, virtual=False, temperature=None, verbose=True, **kwargs):
+    def __init__(
+            self,
+            virtual=False,
+            temperature=None,
+            pitch_um=(20,20),
+            verbose=True,
+            **kwargs
+        ):
         """
         Initialize camera. Default ``profile`` is ``'free'``.
 
@@ -323,9 +330,12 @@ class Cheetah640(Camera):
             Whether or not the camera is virtual.
         temperature : float or None
             Temperature in degrees celcius to set on startup. ``None`` defaults to no cooling.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations. Defaults to 20 micron square pixels.
         verbose : bool
             Whether or not to print camera initialization information.
-        kwargs
+        **kwargs
             See :meth:`.Camera.__init__` for permissible options.
 
         Raises
@@ -369,8 +379,7 @@ class Cheetah640(Camera):
                 self.xeneth.XC_GetWidth(self.cam),
                 self.xeneth.XC_GetHeight(self.cam),
                 bitdepth=12,
-                dx_um=20,
-                dy_um=20,
+                pitch_um=pitch_um,
                 name=name,
                 **kwargs
             )

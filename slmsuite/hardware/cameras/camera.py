@@ -9,11 +9,13 @@ from scipy.optimize import curve_fit
 
 from slmsuite.holography import analysis
 from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
+from slmsuite.misc.math import REAL_TYPES
 
 
 class Camera():
     """
-    Abstract class for cameras. Comes with transformations and helper functions like autoexpose.
+    Abstract class for cameras.
+    Comes with transformations and helper functions like :meth:`.autoexpose()`.
 
     Attributes
     ----------
@@ -26,18 +28,15 @@ class Camera():
         Depth of a camera pixel well in bits.
     bitresolution : int
         Stores ``2**bitdepth``.
-    dx_um : float or None
-        :math:`x` pixel pitch in microns. Defaults to ``None``.
-        Potential future features will use this.
-    dy_um : float or None
-        :math:`y` pixel pitch in microns. See :attr:`dx_um`.
+    pitch_um : (float, float) OR None
+        Pixel pitch in microns.
     exposure_bounds_s : (float, float) OR None
         Shortest and longest allowable integration in seconds.
     woi : tuple
         WOI (window of interest) in ``(x, width, y, height)`` form.
     default_shape : tuple
         Default ``shape`` of the camera before any WOI changes are made.
-    transform : lambda
+    transform : function
         Flip and/or rotation operator specified by the user in :meth:`__init__`.
         The user is expected to apply this transform to the matrix returned in
         :meth:`get_image()`. Note that WOI changes are applied on the camera hardware
@@ -46,12 +45,10 @@ class Camera():
 
     def __init__(
         self,
-        width,
-        height,
+        resolution,
         bitdepth=8,
         averaging=None,
-        dx_um=None,
-        dy_um=None,
+        pitch_um=None,
         rot="0",
         fliplr=False,
         flipud=False,
@@ -65,20 +62,22 @@ class Camera():
 
         Parameters
         ----------
-        width
-            See :attr:`shape`.
-        height
-            See :attr:`shape`.
+        resolution
+            The width and height of the camera in ``(width, height)`` form.
+
+            Important
+            ~~~~~~~~~
+            This is the opposite of the numpy ``(height, width)``
+            convention stored in :attr:`shape`.
         bitdepth
             See :attr:`bitdepth`.
         averaging : int or None
             Number of frames to average. Used to increase the effective bit depth of a camera by using
             pre-quantization noise (e.g. dark current, read-noise, etc.) to "dither" the pixel output
             signal. If ``None``, no averaging is performed.
-        dx_um
-            See :attr:`dx_um`.
-        dy_um
-            See :attr:`dy_um`.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations.
         rot : str or int
             Rotates returned image by the corresponding degrees in ``["90", "180", "270"]``
             or :meth:`numpy.rot90` code in ``[1, 2, 3]``. Defaults to no rotation.
@@ -92,6 +91,8 @@ class Camera():
         name : str
             Defaults to ``"camera"``.
         """
+        (width, height) = resolution
+
         # Set shape, depending upon transform.
         if rot in ("90", 1, "270", 3):
             self.shape = (width, height)
@@ -103,7 +104,6 @@ class Camera():
         # Create image transformation.
         self.transform = analysis.get_orientation_transformation(rot, fliplr, flipud)
 
-
         # Update WOI information.
         self.woi = (0, width, 0, height)
         try:
@@ -112,17 +112,24 @@ class Camera():
             pass
 
         # Set other useful parameters
-        self.bitdepth = bitdepth
+        self.bitdepth = int(bitdepth)
         self.bitresolution = 2**bitdepth
 
         # Frame averaging
         self.set_averaging(averaging)
 
         # Spatial dimensions
-        self.dx_um = dx_um
-        self.dy_um = dy_um
+        if pitch_um is not None:
+            if isinstance(pitch_um, REAL_TYPES):
+                pitch_um = [pitch_um, pitch_um]
+            self.pitch_um = np.squeeze(pitch_um)
+            if (len(self.pitch_um) != 2):
+                raise ValueError("Expected (float, float) for pitch_um")
+            self.pitch_um = np.array([float(self.pitch_um[0]), float(self.pitch_um[1])])
+        else:
+            self.pitch_um = None
 
-        self.name = name
+        self.name = str(name)
 
         # Default to None, allow subclass constructors to fill.
         self.exposure_bounds_s = None
@@ -263,7 +270,7 @@ class Camera():
         elif image_count is None:
             self._buffer = None
         else:
-            RuntimeError("Unexpected value {} passed for image count.".format(image_count))
+            RuntimeError(f"Unexpected value {image_count} passed for image count.")
 
     def get_image(self, timeout_s=1, transform=True, plot=False):
         """
@@ -471,9 +478,9 @@ class Camera():
 
         Parameters
         ----------
-        z_get : lambda
+        z_get : function
             Gets the current position of the focusing stage. Should return a ``float``.
-        z_set : lambda
+        z_set : function
             Sets the position of the focusing stage to a given ``float``.
         z_list : array_like or None
             ``z`` values to sweep over during search.
@@ -514,7 +521,7 @@ class Camera():
                 axs[0].set_xticks([])
                 axs[0].set_yticks([])
                 axs[1].imshow(dft_norm)
-                axs[1].set_title("FFT\nFoM$ = \\int\\int $|FFT|$ / $max|FFT|$ = {}$".format(fom_))
+                axs[1].set_title(f"FFT\nFoM$ = \\int\\int $|FFT|$ / $max|FFT|$ = {fom_}$")
                 axs[1].set_xticks([])
                 axs[1].set_yticks([])
                 plt.show()

@@ -56,7 +56,16 @@ class Santec(SLM):
         Product code of the device
     """
 
-    def __init__(self, slm_number=1, display_number=2, verbose=True, **kwargs):
+    def __init__(
+            self,
+            slm_number=1,
+            display_number=2,
+            bitdepth=10,
+            wav_um=1,
+            pitch_um=(8,8),
+            verbose=True,
+            **kwargs
+        ):
         r"""
         Initializes an instance of a Santec SLM.
 
@@ -66,9 +75,15 @@ class Santec(SLM):
             See :attr:`slm_number`.
         display_number
             See :attr:`display_number`.
+        bitdepth : int
+            Depth of SLM pixel well in bits. Defaults to 10.
+        wav_um : float
+            Wavelength of operation in microns. Defaults to 1 um.
+        pitch_um : (float, float)
+            Pixel pitch in microns. Defaults to 8 micron square pixels.
         verbose : bool
             Whether to print extra information.
-        kwargs
+        **kwargs
             See :meth:`.SLM.__init__` for permissible options.
 
         Note
@@ -85,8 +100,7 @@ class Santec(SLM):
 
         Caution
         ~~~~~~~
-        :class:`.Santec` defaults to 8 micron SLM pixel size
-        (:attr:`.SLM.dx_um` = :attr:`.SLM.dy_um` = 8)
+        :class:`.Santec` defaults to 8 micron square pixel size :attr:`.SLM.pitch_um`
         and 10-bit :attr:`.SLM.bitdepth`.
         This is valid for SLM-200, SLM-210, and SLM-300,
         but may not be valid for future Santec models.
@@ -97,9 +111,6 @@ class Santec(SLM):
 
         self.slm_number = int(slm_number)
         self.display_number = int(display_number)
-
-        # Default wavelength is 0.780um.
-        wav_um = kwargs.pop("wav_um", 0.780)
 
         # By default, target wavelength is the design wavelength
         wav_design_um = kwargs.pop("wav_design_um", None)
@@ -261,14 +272,12 @@ class Santec(SLM):
                 print("success")
 
             super().__init__(
-                int(width.value),
-                int(height.value),
-                bitdepth=10,
-                name=names[-1],  # SerialNumberID
+                (int(width.value), int(height.value)),
+                bitdepth=bitdepth,
+                name=kwargs.pop("name", names[-1]), # SerialNumberID
                 wav_um=wav_um,
                 wav_design_um=wav_design_um,
-                dx_um=8,
-                dy_um=8,
+                pitch_um=pitch_um,
                 **kwargs,
             )
 

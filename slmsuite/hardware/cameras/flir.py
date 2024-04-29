@@ -34,7 +34,7 @@ class FLIR(Camera):
 
     ### Initialization and termination ###
 
-    def __init__(self, serial="", verbose=True, **kwargs):
+    def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
         """
         Initialize camera and attributes.
 
@@ -42,9 +42,12 @@ class FLIR(Camera):
         ----------
         serial : str
             Serial number of the camera to open.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations.
         verbose : bool
             Whether or not to log.
-        kwargs
+        **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
         if FLIR.sdk is None:
@@ -71,11 +74,9 @@ class FLIR(Camera):
             print("success")
 
         super().__init__(
-            self.cam.SensorWidth.get(),
-            self.cam.SensorHeight.get(),
+            (self.cam.SensorWidth.get(), self.cam.SensorHeight.get()),
             bitdepth=int(self.cam.PixelSize.get()),
-            dx_um=None,
-            dy_um=None,
+            pitch_um=pitch_um,
             name=serial,
             **kwargs
         )

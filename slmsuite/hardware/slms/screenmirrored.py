@@ -19,11 +19,6 @@ class ScreenMirrored(SLM):
     """
     Wraps a :mod:`pyglet` window for displaying data to an SLM.
 
-    Caution
-    ~~~~~~~
-    This class currently supports SLMs with 8-bit precision or less.
-    In the future, this class will support 16-bit SLMs using RG color.
-
     Important
     ~~~~~~~~~
     Many SLM manufacturers provide an SDK for interfacing with their devices.
@@ -102,15 +97,17 @@ class ScreenMirrored(SLM):
         Identifier for the texture loaded into ``OpenGL`` memory.
     """
 
-    def __init__(self, display_number, bitdepth=8, verbose=True, **kwargs):
+    def __init__(
+            self,
+            display_number,
+            bitdepth=8,
+            wav_um=1,
+            pitch_um=(8,8),
+            verbose=True,
+            **kwargs
+        ):
         """
         Initializes a :mod:`pyglet` window for displaying data to an SLM.
-
-        Caution
-        ~~~~~~~
-        :mod:`slmsuite` makes use of user-supplied knowledge
-        of SLM pixel size: :attr:`.SLM.dx_um`, :attr:`.SLM.dy_um`.
-        Be sure these values are correct.
 
         Caution
         ~~~~~~~
@@ -130,14 +127,21 @@ class ScreenMirrored(SLM):
         ----------
         display_number : int
             Monitor number for frame to be instantiated upon.
+        bitdepth : int
+            Bitdepth of the SLM. Defaults to 8.
+
+            Caution
+            ~~~~~~~
+            This class currently supports SLMs with 8-bit precision or less.
+            In the future, this class will also support 16-bit SLMs using RG color.
+        wav_um : float
+            Wavelength of operation in microns. Defaults to 1 um.
+        pitch_um : (float, float)
+            Pixel pitch in microns. Defaults to 8 micron square pixels.
         verbose : bool
             Whether or not to print extra information.
         **kwargs
             See :meth:`.SLM.__init__` for permissible options.
-
-        References
-        ----------
-        .. [14]
         """
         if verbose:
             print("Initializing pyglet... ", end="")
@@ -168,7 +172,13 @@ class ScreenMirrored(SLM):
 
         screen = screens[display_number]
 
-        super().__init__(screen.width, screen.height, bitdepth=bitdepth, **kwargs)
+        super().__init__(
+            (screen.width, screen.height),
+            bitdepth=bitdepth,
+            wav_um=wav_um,
+            pitch_um=pitch_um,
+            **kwargs
+        )
 
         # Setup the window. If failure, closes elegantly upon except().
         try:
@@ -238,6 +248,7 @@ class ScreenMirrored(SLM):
             # Write nothing.
             self.write(phase=None)
         except:
+            # If we failed, try to clean up before erroring.
             try:
                 self.window.close()
             except:

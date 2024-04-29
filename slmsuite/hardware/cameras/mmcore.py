@@ -29,7 +29,12 @@ class MMCore(Camera):
     """
 
     def __init__(
-        self, config, path="C:/Program Files/Micro-Manager-2.0", verbose=True, **kwargs
+        self,
+        config,
+        path="C:/Program Files/Micro-Manager-2.0",
+        pitch_um=None,
+        verbose=True,
+        **kwargs
     ):
         """
         Initialize camera and attributes.
@@ -44,6 +49,9 @@ class MMCore(Camera):
         path : str
             Directory of the Micro-Manager installation. Defaults to the default Windows
             directory of a Micro-Manager 2.0 installation.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations.
         verbose : bool
             Whether or not to print extra information.
         **kwargs
@@ -64,15 +72,15 @@ class MMCore(Camera):
             print("success")
 
         if verbose:
-            print('"{}" initializing... '.format(config), end="")
+            print(f"'{config}' initializing... ", end="")
         self.cam.loadSystemConfiguration(os.path.join(config_path, config, ".cfg"))
         if verbose:
             print("success")
 
         super().__init__(
-            self.cam.getImageWidth(),
-            self.cam.getImageHeight(),
+            (self.cam.getImageWidth(), self.cam.getImageHeight()),
             bitdepth=self.cam.getImageBitDepth(),
+            pitch_um=pitch_um,
             name=config,
             **kwargs
         )

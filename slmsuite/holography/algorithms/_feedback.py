@@ -46,7 +46,7 @@ class FeedbackHologram(Hologram):
             If an :class:`slmsuite.hardware.slms.SLM` is passed, this is set to `None`,
             but the information contained in the SLM is passed to the superclass :class:`.Hologram`.
             See :attr:`cameraslm`.
-        kwargs
+        **kwargs
             See :meth:`Hologram.__init__`.
         """
         # Use the Hologram constructor to initialize self.target with proper shape,

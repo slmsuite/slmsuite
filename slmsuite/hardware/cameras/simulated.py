@@ -41,14 +41,11 @@ class SimulatedCamera(Camera):
 
     Attributes
     ----------
-    resolution : (int, int)
-        ``(height, width)`` of the camera in pixels.
     exposure : float
         Digital gain value to simulate exposure time. Directly proportional to imaged power.
-    x_grid : numpy.ndarray
-        Pixel column number (``"ij"`` basis) used for far-field interpolation.
-    y_grid : numpy.ndarray
-        Pixel row number (``"ij"`` basis) used for far-field interpolation.
+    grid : (numpy.ndarray, numpy.ndarray)
+        Pixel column/row number (``x_grid``, ``y_grid``) in the ``"ij"`` basis used for
+        far-field interpolation.
     shape_padded : (int, int)
         Size of the FFT computational space required to faithfully reproduce the far-field at
         full camera resolution.
@@ -74,26 +71,26 @@ class SimulatedCamera(Camera):
 
     """
 
-    def __init__(self, slm, resolution=None, M=None, b=None, noise=None, **kwargs):
+    def __init__(self, slm, resolution=None, M=None, b=None, noise=None, pitch_um=None, **kwargs):
         """
         Initialize simulated camera.
 
         Parameters
         ----------
-        slm : :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`
+        slm : ~slmsuite.hardware.slms.simulated.SimulatedSLM
             Simulated SLM creating the image.
-        resolution : tuple
-            See :attr:`resolution`. If ``None``, defaults to the resolution of `slm`.
-        M : ndarray
-            2 x 2 affine transform matrix to convert between `slm`'s k-space and the
-            simulated camera's pixel (``"ij"``) basis. If ``None``, defaults to the
-            identity matrix.
-        b : tuple
-            Lateral displacement (in pixels) of the camera center from `slm`'s
-            optical axis. If ``None``, defaults to 0 offset.
+        resolution : (int, int)
+            See :attr:`resolution`. If ``None``, defaults to the resolution of ``slm``.
+        M : array_like
+            Passed to :meth:`set_affine()`.
+        b : array_like
+            Passed to :meth:`set_affine()`.
         noise : dict
             See :attr:`noise`.
-        kwargs
+        pitch_um : (float, float) OR None
+            Pixel pitch in microns. If ``None``, certain calibrations and conversions
+            are not available (e.g. :meth:`build_affine()` for certain units).
+        **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
 
@@ -108,7 +105,7 @@ class SimulatedCamera(Camera):
         elif any([r != s for r, s in zip(resolution, slm.shape[::-1])]):
             self._interpolate = True
 
-        super().__init__(int(resolution[0]), int(resolution[1]), **kwargs)
+        super().__init__(resolution, pitch_um=pitch_um, **kwargs)
 
         # Digital gain emulates exposure
         self.exposure = 1
@@ -117,48 +114,53 @@ class SimulatedCamera(Camera):
         self.noise = noise
 
         # Compute the camera pixel grid in `basis` units (currently "ij")
-        self.x_grid, self.y_grid = np.meshgrid(
+        self.grid = np.meshgrid(
             np.arange(resolution[0]),
             np.arange(resolution[1]),
         )
 
-        self.set_affine(M,b)
+        if M is not None and b is not None:
+            self.set_affine(M, b)
 
     def set_affine(self, M=None, b=None, **kwargs):
         """
         Set the camera's placement in the SLM's k-space. `M` and/or `b`, if provided,
         are used to transform the :class:`SimulatedCamera`'s ``"ij"`` grid to a ``"knm"`` grid
         for interpolation against the :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`'s
-        ``"knm"`` grid. Keyword arguments, if provided, are passed to :meth:`build_affine`
-        to build `M` and `b`.
+        ``"knm"`` grid. Keyword arguments, if provided, are passed to :meth:`.build_fourier_calibration()`
+        to build ``M`` and ``b``.
 
         Parameters
         ----------
-        M : ndarray
-            2 x 2 affine transform matrix to convert between `slm`'s k-space and the
-            simulated camera's pixel (``"ij"``) basis. If ``None``, defaults to the
+        M : array_like
+            2 x 2 affine transform matrix to convert between SLM's :math:`k`-space and the
+            simulated camera's pixel basis (``"ij"``). If ``None``, defaults to the
             identity matrix.
-        b : tuple
-            Lateral displacement (in pixels) of the camera center from `slm`'s
-            optical axis. If ``None``, defaults to 0 offset.
+        b : array_like
+            Lateral displacement (in pixels) of the camera center from the SLM's
+            optical axis. If ``None``, defaults to ``(0,0)`` offset.
         **kwargs : dict, optional
-            Various orientation parameters passed to :meth:`build_affine` to build
-            `M` and `b`, if not provided. See options documented in the method.
+            Various orientation parameters passed to :meth:`.build_fourier_calibration()`
+            to build ``M`` and ``b``, if not provided. See options documented in the
+            method. ``f_eff`` is a required keyword.
         """
 
         # If kwargs are passed instead of M/b, use these to build M, b
-        if M is None and b is None and len(kwargs) > 0:
-            M, b = self.build_affine(**kwargs)
+        if M is None or b is None:
+            if not "f_eff" in kwargs.keys():
+                raise RuntimeError("'f_eff' must be passed if M or b are not set.")
+            else:
+                f_eff = kwargs.pop(kwargs)
+            M, b = SimulatedCamera._build_affine(f_eff, **kwargs)   # TODO
 
         # Affine transform the camera grid ("ij"->"kxy")
-        if M is not None or b is not None:
-            self._interpolate = True
-            (self.x_grid, self.y_grid) = toolbox.transform_grid(self, M, b, direction="rev")
+        self._interpolate = True
+        self.grid = toolbox.transform_grid(self, M, b, direction="rev")
 
         # Fourier space must be sufficiently padded to resolve the camera pixels.
         dkxy = np.sqrt(
-            (self.x_grid[:2, :2] - self.x_grid[0, 0]) ** 2
-            + (self.y_grid[:2, :2] - self.y_grid[0, 0]) ** 2
+            (self.grid[0][:2, :2] - self.grid[0][0, 0]) ** 2 +
+            (self.grid[1][:2, :2] - self.grid[1][0, 0]) ** 2
         )
         dkxy_min = dkxy.ravel()[1:].min()
 
@@ -179,14 +181,14 @@ class SimulatedCamera(Camera):
         # Convert kxy -> knm (0,0 at corner): 1/dx -> Npx
         self.knm_cam = cp.array(
             [
-                self.shape_padded[0] * self._slm.dy * self.y_grid + self.shape_padded[0] / 2,
-                self.shape_padded[1] * self._slm.dx * self.x_grid + self.shape_padded[1] / 2,
+                self.shape_padded[0] * self._slm.pitch[1] * self.grid[1] + self.shape_padded[0] / 2,
+                self.shape_padded[1] * self._slm.pitch[1] * self.grid[0] + self.shape_padded[1] / 2,
             ]
         )
 
         if (
-            cp.amax(cp.abs(self.knm_cam[0] - self.shape_padded[0]/2)) > self.shape_padded[1]/2
-            or cp.amax(cp.abs(self.knm_cam[1] - self.shape_padded[1]/2)) > self.shape_padded[0]/2
+            cp.amax(cp.abs(self.knm_cam[0] - self.shape_padded[0]/2)) > self.shape_padded[1]/2 or
+            cp.amax(cp.abs(self.knm_cam[1] - self.shape_padded[1]/2)) > self.shape_padded[0]/2
         ):
             warnings.warn(
                 "Camera extends beyond the accessible SLM k-space;"
@@ -195,89 +197,116 @@ class SimulatedCamera(Camera):
 
     def build_affine(
             self,
-            f_eff=1,
+            f_eff,
+            units="ij",
             theta=0,
             shear_angle=0,
-            offset=(0, 0),
-            basis="ij",
-            pitch_um=None
+            offset=None,
         ):
         """
-        Build an affine transform defining the SLM -> camera transformation as
+        Builds an affine transform defining the SLM to camera transformation as
         detailed in :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam`.
 
         Parameters
         ----------
-        f_eff : float or (float, float)
-            Effective focal length (in `basis` units) of the
-            optical train separating the Fourier-domain SLM from the camera. If a float is
+        f_eff : float OR (float, float)
+            Effective focal length of the
+            optical train separating the Fourier-domain SLM from the camera. If a ``float`` is
             provided, ``f_eff`` is isotropic; otherwise, ``f_eff`` is defined along the SLM's
-            x and y axes.
+            :math:`x` and :math:`y` axes.
+        units : str {"ij", "m", "cm", "mm", "um", "nm"}
+            Units for the focal length ``f_eff``.
 
-            Important
-            ~~~~~~~~~
-            The default unit for ``f_eff`` is pixels/radian, i.e. the units of :math:`M` matrix
-            elements required to convert normalized angles/:math:`k`-space coordinates to camera
-            pixels in the ``"ij"`` basis.
-            See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam` for additional
-            details. To convert to true distance units (e.g., ``"um"``), multiply ``f_eff`` by the the
-            pixel size in the same dimensions.
-            As noted in :meth:`~slmsuite.hardware.cameraslms.get_effective_focal_length`,
-            non-square pixels therefore imply different effective focal lengths along each axis
-            when using true distance units.
+            -  ``"ij"``
+                Focal length in units of camera pixels.
+
+            -  ``"norm"``
+                Normalized focal length in wavelengths according to the SLM's
+                :attr:`slmsuite.hardware.slms.slm.SLM.wav_um`.
+
+            -  ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
+                Focal length in metric units.
 
         theta : float
             Rotation angle (in radians, ccw) of the camera relative to the SLM orientation.
-            Defaults to 0 (i.e., aligned with the SLM).
-        shear_angle : float or (float, float)
-            Shearing angles (in radians) along the SLM's :math:`x` and :math:`y` axes. If a float is provided,
-            shear is applied isotropically.
-        offset : tuple
-            Lateral displacement (in pixels units) of the camera center from ``slm``'s
-            optical axis. If ``None``, defaults to 0 offset.
-        basis : str
-            Sets the units for ``f_eff`` and ``offset``. Defaults to ``"ij"``, the camera pixel basis.
-        pitch_um : float or (float, float)
-            Camera pixel pitch in microns. Must be provided if ``basis != "ij"``. A square pixel
-            is assumed if a single float is provided.
+            Defaults to zero (i.e., aligned with the SLM).
+        shear_angle : float OR (float, float)
+            Shearing angles (in radians) along the SLM's :math:`x` and :math:`y` axes.
+            If a ``float`` is provided, shear is applied isotropically.
+            Defaults to zero (i.e., no shear).
+        offset : (float, float) OR None
+            Lateral displacement (in pixels units) of the SLM's optical axis
+            from the camera's origin. If ``None``, defaults to ``(0, 0)`` offset.
 
         Returns
         -------
-        ndarray
-            2 x 2 affine matrix :math:`M`
-        tuple
-            Affine vector :math:`b`
+        numpy.ndarray
+            Affine matrix :math:`M`. Shape ``(2, 2)``.
+        numpy.ndarray
+            Affine vector :math:`b`. Shape ``(1, 2)``.
         """
+        SimulatedCamera._build_affine(
+            f_eff,
+            units=units,
+            theta=theta,
+            shear_angle=shear_angle,
+            offset=offset,
+            cam_pitch_um=self.pitch_um,
+            wav_um=self._slm.wav_um,
+        )
 
+    @staticmethod
+    def _build_affine(
+            f_eff,
+            units="ij",
+            theta=0,
+            shear_angle=0,
+            offset=(0, 0),
+            cam_pitch_um=None,
+            wav_um=None,
+        ):
+        """
+        See documentation in :meth:`build_affine()` and
+        :meth:`~slmsuite.hardware.cameraslms.FourierSLM.build_fourier_calibration()`.
+        This helper function is shared between those functions.
+        """
+        # Parse scalars.
         if isinstance(f_eff, REAL_TYPES):
             f_eff = [f_eff, f_eff]
-        if isinstance(pitch_um, REAL_TYPES):
-            pitch_um = [pitch_um, pitch_um]
+        if isinstance(cam_pitch_um, REAL_TYPES):
+            cam_pitch_um = [cam_pitch_um, cam_pitch_um]
+        else:
+            cam_pitch_um = np.ravel(cam_pitch_um)
         if isinstance(shear_angle, REAL_TYPES):
             shear_angle = [shear_angle, shear_angle]
 
-        if basis != "ij":   # TODO: check this!
-            assert pitch_um is not None, "Must provide pixel pitch when using real units!"
+        f_eff = np.squeeze(f_eff).astype(float)
+        shear_angle = np.squeeze(shear_angle)
 
-            if basis in toolbox.LENGTH_FACTORS.keys():
-                factor = toolbox.LENGTH_FACTORS[basis]
-            else:
-                raise RuntimeError("Did not recognize units '{}'".format(basis))
+        # Convert.
+        if units == "ij":
+            pass
+        elif units == "norm":
+            if wav_um is None:
+                raise ValueError(f"wav_um is required for unit '{units}'")
+            if cam_pitch_um is None or cam_pitch_um[0] is None:
+                raise ValueError(f"cam_pitch_um is required for unit '{units}'")
 
-            f_eff = [(factor * f) / p for f, p in zip(f_eff, pitch_um)]
-            b = [(factor * o) / p for o, p in zip(offset, pitch_um)]
+            f_eff *= wav_um / np.squeeze(cam_pitch_um)
+        elif units in toolbox.LENGTH_FACTORS.keys():
+            if cam_pitch_um is None or cam_pitch_um[0] is None:
+                raise ValueError(f"cam_pitch_um is required for unit '{units}'")
 
+            f_eff *= toolbox.LENGTH_FACTORS[units] / np.squeeze(cam_pitch_um)
         else:
-            b = offset
-
-        # Define offset relative to zero in k-space if camera shape is accessible.
-        b = b + np.array([r/2. for r in self.shape])[::-1]
+            raise ValueError(f"Unit '{units}' not recognized as a length.")
 
         mag = np.array([[f_eff[0], 0], [0, f_eff[1]]])
         shear = np.array([[1, np.tan(shear_angle[0])], [np.tan(shear_angle[1]), 1]])
         rot = np.array([[np.cos(-theta), np.sin(-theta)], [-np.sin(-theta), np.cos(-theta)]])
 
         M = mag @ shear @ rot
+        b = toolbox.format_2vectors(offset)
 
         return M, b
 

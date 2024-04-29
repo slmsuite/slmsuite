@@ -35,7 +35,8 @@ Important
 This package uses a number of bases or coordinate spaces. Some coordinate spaces are
 directly used by the user (most often the camera basis ``"ij"`` used for feedback).
 Other bases are less often used directly, but are important to how holograms are
-optimized under the hood (esp. ``"knm"``, the coordinate space of optimization).
+optimized under the hood (esp. ``"knm"``, the coordinate space of optimization when
+using discrete Fourier transforms).
 
 .. list-table:: Bases used in :mod:`slmsuite`.
    :widths: 20 80
@@ -44,8 +45,8 @@ optimized under the hood (esp. ``"knm"``, the coordinate space of optimization).
    * - Basis
      - Meaning
    * - ``"ij"``
-     - Pixel basis of the camera. Centered at ``(i, j) = (cam.shape[1],
-       cam.shape[0])/2``. Is in the image space of the camera.
+     - Pixel basis of the camera. Centered at ``(i, j) = (cam.shape[1]/2,
+       cam.shape[0]/2)``. Is in the image space of the camera.
    * - ``"kxy"``
      - Normalized (floating point) basis of the SLM's :math:`k`-space in normalized units.
        Centered at ``(kx, ky) = (0, 0)``. This basis is what the SLM projects in angular
@@ -53,7 +54,8 @@ optimized under the hood (esp. ``"knm"``, the coordinate space of optimization).
        space and solidified by a lens).
    * - ``"knm"``
      - Pixel basis of the SLM's computational :math:`k`-space.  Centered at ``(kn, km) =
-       (0, 0)``. ``"knm"`` is a discrete version of the continuous ``"kxy"``. This is
+       (shape[1]/2, shape[0]/2)``.
+       ``"knm"`` is a discrete version of the continuous ``"kxy"``. This is
        important because holograms need to be stored in computer memory, a discrete
        medium with pixels, rather than being purely continuous. For instance, in
        :class:`SpotHologram`, spots targeting specific continuous angles are rounded to
@@ -64,6 +66,17 @@ optimized under the hood (esp. ``"knm"``, the coordinate space of optimization).
 
 See the first tip in :class:`Hologram` to learn more about ``"kxy"`` and ``"knm"``
 space.
+
+Note
+~~~~
+Internally, algorithms is split into several hidden files
+to enhance clarity and reduce file length.
+
+- ``_header.py`` : The common imports for all the files.
+- ``_hologram.py`` : The core file. Contains the actual algorithms.
+- ``_stats.py`` : Statistics and plotting common to all Holograms.
+- ``_feedback.py`` : Infrastructure for image feedback.
+- ``_spots.py`` : Infrastructure for spot-specific holography.
 """
 from slmsuite.holography.algorithms._header import *
 

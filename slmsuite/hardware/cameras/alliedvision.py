@@ -47,7 +47,7 @@ class AlliedVision(Camera):
 
     sdk = None
 
-    def __init__(self, serial="", verbose=True, **kwargs):
+    def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
         """
         Initialize camera and attributes.
 
@@ -56,9 +56,12 @@ class AlliedVision(Camera):
         serial : str
             Serial number of the camera to open. If empty, defaults to the first camera in the list
             returned by :meth:`vimba.get_all_cameras()`.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations.
         verbose : bool
             Whether or not to print extra information.
-        kwargs
+        **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
         if AlliedVision.sdk is None:
@@ -80,7 +83,7 @@ class AlliedVision(Camera):
             if len(camera_list) == 0:
                 raise RuntimeError("No cameras found by vimba.")
             if len(camera_list) > 1 and verbose:
-                print("No serial given... Choosing first of ", serial_list)
+                print(f"No serial given... Choosing first of {serial_list}")
 
             self.cam = camera_list[0]
             serial = self.cam.get_serial()
@@ -89,27 +92,28 @@ class AlliedVision(Camera):
                 self.cam = camera_list[serial_list.index(serial)]
             else:
                 raise RuntimeError(
-                    "Serial " + serial + " not found by vimba. Available: ", serial_list
+                    f"Serial {serial} not found by vimba. Available: {serial_list}"
                 )
 
         if verbose:
-            print("vimba sn " "{}" " initializing... ".format(serial), end="")
+            print(f"vimba sn '{serial}' initializing... ", end="")
         self.cam.__enter__()
         if verbose:
             print("success")
 
         super().__init__(
-            self.cam.SensorWidth.get(),
-            self.cam.SensorHeight.get(),
+            (self.cam.SensorWidth.get(), self.cam.SensorHeight.get()),
             bitdepth=int(self.cam.PixelSize.get()),
-            dx_um=None,
-            dy_um=None,
+            pitch_um=pitch_um,
             name=serial,
             **kwargs
         )
 
-        self.cam.BinningHorizontal.set(1)
-        self.cam.BinningVertical.set(1)
+        try:
+            self.cam.BinningHorizontal.set(1)
+            self.cam.BinningVertical.set(1)
+        except:
+            pass    # Some cameras do not have the option to set binning.
 
         self.cam.GainAuto.set("Off")
 
@@ -168,7 +172,7 @@ class AlliedVision(Camera):
         if verbose:
             print("AlliedVision serials:")
             for serial in serial_list:
-                print("\"{}\"".format(serial))
+                print(f"'{serial}'")
 
         if close_sdk:
             AlliedVision.close_sdk()
@@ -204,7 +208,7 @@ class AlliedVision(Camera):
             try:
                 print(prop.get_name(), end="\t")
             except BaseException as e:
-                print("Error accessing property dictionary, '{}':{}".format(key, e))
+                print(f"Error accessing property dictionary, '{key}':{e}")
                 continue
 
             try:
@@ -238,7 +242,7 @@ class AlliedVision(Camera):
             if str(bitdepth) in value[0]:
                 self.cam.SensorBitDepth.set(value[1])
                 break
-            raise RuntimeError("ADC bitdepth {} not found.".format(bitdepth))
+            raise RuntimeError(f"ADC bitdepth {bitdepth} not found.")
 
     def get_adc_bitdepth(self):
         """

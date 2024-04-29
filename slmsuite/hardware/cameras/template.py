@@ -26,6 +26,7 @@ class Template(Camera):
     def __init__(
         self,
         serial="",
+        pitch_um=None,
         verbose=True,
         **kwargs
     ):
@@ -35,10 +36,14 @@ class Template(Camera):
         Parameters
         ----------
         serial : str
-            Most SDKs identify different cameras by some serial number or string.
+            TODO: Most SDKs identify different cameras by some serial number or string.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations.
+            TODO: See if the SDK can pull this information directly from the camera.
         verbose : bool
             Whether or not to print extra information.
-        kwargs
+        **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
         # TODO: Insert code here to initialize the camera hardware, load properties, etc.
@@ -57,16 +62,16 @@ class Template(Camera):
         if verbose: print("success")
 
         # Then we load the camera from the SDK
-        if verbose: print('"{}" initializing... '.format(serial), end="")
+        if verbose: print(f"'{serial}' initializing... ", end="")
         raise NotImplementedError()
         self.cam = sdk.something(serial)                # TODO: Fill in proper function.
         if verbose: print("success")
 
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
-            self.cam.get_width(),                       # TODO: Fill in proper functions.
-            self.cam.get_height(),
+            (self.cam.get_width(), self.cam.get_height()),  # TODO: Fill in proper functions.
             bitdepth=self.cam.get_depth(),
+            pitch_um=pitch_um,
             name=serial,
             **kwargs
         )
@@ -125,7 +130,7 @@ class Template(Camera):
         # for each subclass) -- frame averaging, transformations, and so on -- so this
         # method should be limited to camera-interface specific functions.
         return self.cam.get_image_function()     # TODO: Fill in proper function.
-    
+
     def _get_images_hw(self, timeout_s=1):
         """See :meth:`.Camera._get_images_hw`."""
         raise NotImplementedError()

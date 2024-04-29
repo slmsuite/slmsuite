@@ -51,8 +51,8 @@ def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
         except:
             if DEFAULT_DLL_PATH == dll_path:
                 warnings.warn(
-                    "thorlabs_tsi_sdk DLLs not found at default path. "
-                    "Resolve to use Thorlabs cameras.\nDefault path: '{}'".format(DEFAULT_DLL_PATH)
+                    f"thorlabs_tsi_sdk DLLs not found at default path. "
+                    "Resolve to use Thorlabs cameras.\nDefault path: '{DEFAULT_DLL_PATH}'"
                 )
     else:
         os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]
@@ -100,7 +100,7 @@ class ThorCam(Camera):
             returned by :meth:`TLCameraSDK.discover_available_cameras()`.
         verbose : bool
             Whether or not to print extra information.
-        kwargs
+        **kwargs
             See :meth:`.Camera.__init__` for permissible options.
 
         Raises
@@ -136,12 +136,11 @@ class ThorCam(Camera):
             serial = camera_list[0]
         elif serial not in camera_list:
             raise RuntimeError(
-                "Serial " + serial + " not found by TLCameraSDK. Availible: ",
-                camera_list,
+                f"Serial '{serial}' not found by TLCameraSDK. Availible: {camera_list}"
             )
 
         if verbose:
-            print("ThorCam sn \"{}\" initializing... ".format(serial), end="")
+            print(f"ThorCam sn '{serial}' initializing... ", end="")
         self.cam = ThorCam.sdk.open_camera(serial)
 
         self.cam.is_led_on = False
@@ -219,7 +218,7 @@ class ThorCam(Camera):
         if verbose:
             print("ThorCam serials:")
             for serial in camera_list:
-                print("\"{}\"".format(serial))
+                print(f"'{serial}'")
 
         if close_sdk:
             ThorCam.close_sdk()
@@ -362,7 +361,7 @@ class ThorCam(Camera):
                 self.cam.operation_mode = 1  # Hardware triggered
                 self.cam.arm(2)
             else:
-                raise ValueError("Profile {} not recognized".format(profile))
+                raise ValueError(f"Profile {profile} not recognized")
 
             self.profile = profile
 

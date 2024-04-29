@@ -16,16 +16,19 @@ from slmsuite.holography.analysis.fitfunctions import gaussian2d
 
 # Take and associated functions.
 
-def _center(width):
+def _center(width, integer=False):
     """
-    Center of an index range with length `width`.
+    Center of an index range with length ``width``.
     """
-    return (width - 1) / 2 if width % 2 else width / 2
+    if integer:
+        return int((width - 1) / 2 if width % 2 else width / 2)
+    else:
+        return float(width - 1) / 2
 
 
 def _coordinates(width, centered=False):
     """
-    Coordinate indices of length `width`.
+    Coordinate indices of length ``width``.
     """
     xs = np.arange(width).astype(np.float64)
     if centered:
@@ -34,15 +37,15 @@ def _coordinates(width, centered=False):
     return xs
 
 
-def _generate_grid(w_x, w_y, centered=False):
+def _generate_grid(w_x, w_y, centered=False, integer=False):
     """
 
     """
     xs = np.reshape(np.arange(w_x, dtype=float), (1, 1, w_x))
     ys = np.reshape(np.arange(w_y, dtype=float), (1, w_y, 1))
     if centered:
-        xs -= _center(w_x)
-        ys -= _center(w_y)
+        xs -= _center(w_x, integer=integer)
+        ys -= _center(w_y, integer=integer)
     grid = np.meshgrid(xs, ys)
     return grid
 
@@ -292,7 +295,7 @@ def image_remove_field(images, deviations=1, out=None):
     return out
 
 
-def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=False):
+def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=True, nansum=False):
     r"""
     Computes the given `moment <https://en.wikipedia.org/wiki/Moment_(mathematics)>`_
     :math:`M_{m_xm_y}` for a stack of images.
@@ -331,15 +334,28 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
     moment : (int, int)
         The moments in the :math:`x` and :math:`y` directions: :math:`(m_x, m_y)`. For instance,
 
-        - :math:`M_{m_xm_y} = M_{10}` corresponds to the :math:`x` moment or
-          the position in the :math:`x` dimension.
-        - :math:`M_{m_xm_y} = M_{11}` corresponds to :math:`xy` shear.
-        - :math:`M_{m_xm_y} = M_{02}` corresponds to the :math:`y^2` moment, or the variance
-          (squared width for a Gaussian) in the :math:`y` direction,
-          given a zero or zeroed (via ``centers``) :math:`M_{01}` moment.
+        -   :math:`M_{m_xm_y} = M_{10}` corresponds to the :math:`x` moment or
+            the position in the :math:`x` dimension.
+        -   :math:`M_{m_xm_y} = M_{11}` corresponds to :math:`xy` shear.
+        -   :math:`M_{m_xm_y} = M_{02}` corresponds to the :math:`y^2` moment, or the variance
+            (squared width for a Gaussian) in the :math:`y` direction,
+            given a zero or zeroed (via ``centers``) :math:`M_{01}` moment.
 
-    centers : tuple or numpy.ndarray
+    centers : (float, float) or array_like
         Perturbations to the center of the trial function, :math:`(c_x, c_y)`.
+        Of shape ``(2, image_count)`` if there is a custom center for each image.
+    grid : float OR (float, float) OR (array_like, array_like) OR None
+        If ``None`` (the default), the moment is reported in pixels of the image.
+        However, the user may specify other units:
+
+        -   Providing the scaling factor between pixels and the desired units as a
+            ``float`` or an anisotropic ``(float, float)``.
+            This corresponds to the pixel's :math:`\Delta x`, :math:`\Delta y`.
+        -   Providing lists of length ``w`` and ``h`` as a tuple as the grid dimension.
+        -   Providing full grids of shape ``(w, h)`` in each direction. Note that this
+            case is the most general, and can lead to a rotated grid if a transformed
+            grid is provided.
+
     normalize : bool
         Whether to normalize ``images``.
         If ``False``, normalization is assumed to have been precomputed.
@@ -355,23 +371,27 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
         The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size ``(image_count,)``
         for provided ``images`` data of shape ``(image_count, h, w)``.
     """
+    # Parse arguments.
     images = np.array(images, copy=False)
     if len(images.shape) == 2:
         images = np.reshape(images, (1, images.shape[0], images.shape[1]))
     (img_count, w_y, w_x) = images.shape
+
+    moment = (int(moment[0]), int(moment[1]))
 
     if nansum:
         np_sum = np.nansum
     else:
         np_sum = np.sum
 
+    # Handle normalization.
     if normalize:
         normalization = np_sum(images, axis=(1, 2), keepdims=False)
-        reciprical = np.reciprocal(
+        reciprocal = np.reciprocal(
             normalization, where=normalization != 0, out=np.zeros(img_count,)
         )
     else:
-        reciprical = 1
+        reciprocal = 1
 
     if moment[0] == 0 and moment[1] == 0:  # 0,0 (norm) case
         if normalize:
@@ -386,17 +406,63 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), normalize=True, nansum=F
             c_x = centers[0]
             c_y = centers[1]
 
-        edge_x = np.reshape(np.arange(w_x) - _center(w_x), (1, 1, w_x)) - c_x
-        edge_y = np.reshape(np.arange(w_y) - _center(w_y), (1, w_y, 1)) - c_y
-        edge_x = np.power(edge_x, moment[0], out=edge_x)
-        edge_y = np.power(edge_y, moment[1], out=edge_y)
+        # Parse grid.
+        if grid is None or np.isscalar(grid) or (np.isscalar(grid[0]) and np.isscalar(grid[1])):
+            # Default to the pixel grid.
+            if moment[0] != 0:
+                x_grid = np.reshape(np.arange(w_x) - _center(w_x), (1, 1, w_x)) - c_x
+                if moment[0] != 1:
+                    x_grid = np.power(x_grid, moment[0], out=x_grid)
+            else:
+                x_grid = 0
 
-        if moment[1] == 0:  # only x case
-            return np_sum(images * edge_x, axis=(1, 2), keepdims=False) * reciprical
-        elif moment[0] == 0:  # only y case
-            return np_sum(images * edge_y, axis=(1, 2), keepdims=False) * reciprical
-        else:  # shear case
-            return np_sum(images * edge_x * edge_y, axis=(1, 2), keepdims=False) * reciprical
+            if moment[1] != 0:
+                y_grid = np.reshape(np.arange(w_y) - _center(w_y), (1, w_y, 1)) - c_y
+                if moment[1] != 1:
+                    y_grid = np.power(y_grid, moment[1], out=y_grid)
+            else:
+                y_grid = 0
+
+            # Handle the dx, dy option.
+            if grid is not None:
+                if np.isscalar(grid):
+                    x_grid *= grid[0]
+                    y_grid *= grid[1]
+                else:
+                    x_grid *= grid
+                    y_grid *= grid
+        else:
+            x_grid, y_grid = grid
+
+            if len(np.shape(x_grid)) == 2:
+                # 2D grids.
+                x_grid = np.reshape(x_grid, (1, w_y, w_x)) - c_x
+                y_grid = np.reshape(y_grid, (1, w_y, w_x)) - c_y
+            elif len(np.shape(x_grid)) == 1:
+                # 1D grids.
+                x_grid = np.reshape(x_grid, (1, 1, w_x)) - c_x
+                y_grid = np.reshape(y_grid, (1, w_y, 1)) - c_y
+            elif len(np.shape(x_grid)) == 3:
+                pass
+            else:
+                raise ValueError(f"Could not parse grid of shape {x_grid.shape}")
+
+            # Don't modify original memory.
+            if moment[0] > 0: x_grid = x_grid.copy()
+            if moment[0] > 1: x_grid = np.power(x_grid, moment[0], out=x_grid)
+
+            if moment[1] > 0: y_grid = y_grid.copy()
+            if moment[1] > 1: y_grid = np.power(y_grid, moment[1], out=y_grid)
+
+        if moment[1] == 0:      # Only-x case.
+            x_grid *= reciprocal
+            return np_sum(images * x_grid, axis=(1, 2), keepdims=False)
+        elif moment[0] == 0:    # Only-y case.
+            y_grid *= reciprocal
+            return np_sum(images * y_grid, axis=(1, 2), keepdims=False)
+        else:                   # Shear case.
+            x_grid *= reciprocal
+            return np_sum(images * x_grid * y_grid, axis=(1, 2), keepdims=False)
 
 
 def image_normalization(images, nansum=False):
@@ -459,13 +525,13 @@ def image_normalize(images, nansum=False, remove_field=False):
         else:
             return images / normalization
     else:
-        reciprical = np.reciprocal(
+        reciprocal = np.reciprocal(
             normalization, where=normalization != 0, out=np.zeros(len(normalization))
         )
-        return images * np.reshape(reciprical, (len(normalization), 1, 1))
+        return images * np.reshape(reciprocal, (len(normalization), 1, 1))
 
 
-def image_positions(images, normalize=True, nansum=False):
+def image_positions(images, grid=None, normalize=True, nansum=False):
     r"""
     Computes the two first order moments, equivalent to spot position
     :math:`\left<x\right>` relative to image center, for a stack of images.
@@ -478,6 +544,18 @@ def image_positions(images, normalize=True, nansum=False):
         ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
+    grid : float OR (float, float) OR (array_like, array_like) OR None
+        If ``None`` (the default), the moment is reported in pixels of the image.
+        However, the user may specify other units:
+
+        -   Providing the scaling factor between pixels and the desired units as a
+            ``float`` or an anisotropic ``(float, float)``.
+            This corresponds to the pixel's :math:`\Delta x`, :math:`\Delta y`.
+        -   Providing lists of length ``w`` and ``h`` as a tuple as the grid dimension.
+        -   Providing full grids of shape ``(w, h)`` in each direction. Note that this
+            case is the most general, and can lead to a rotated grid if a transformed
+            grid is provided.
+
     normalize : bool
         Whether to normalize ``images``.
         If ``False``, normalization is assumed to have been precomputed.
@@ -494,13 +572,13 @@ def image_positions(images, normalize=True, nansum=False):
 
     return np.vstack(
         (
-            image_moment(images, (1, 0), normalize=False, nansum=nansum),
-            image_moment(images, (0, 1), normalize=False, nansum=nansum),
+            image_moment(images, (1, 0), grid=grid, normalize=False, nansum=nansum),
+            image_moment(images, (0, 1), grid=grid, normalize=False, nansum=nansum),
         )
     )
 
 
-def image_variances(images, centers=None, normalize=True, nansum=False):
+def image_variances(images, centers=None, grid=None, normalize=True, nansum=False, exclude_shear=False):
     r"""
     Computes the three second order central moments, equivalent to variance, for a stack
     of images.
@@ -534,17 +612,35 @@ def image_variances(images, centers=None, normalize=True, nansum=False):
         If the user has already computed :math:`\left<x\right>`, for example via
         :meth:`image_positions()`, then this can be passed though ``centers``. The default
         ``None`` computes ``centers`` internally.
+    grid : float OR (float, float) OR (array_like, array_like) OR None
+        If ``None`` (the default), the moment is reported in pixels of the image.
+        However, the user may specify other units:
+
+        -   Providing the scaling factor between pixels and the desired units as a
+            ``float`` or an anisotropic ``(float, float)``.
+            This corresponds to the pixel's :math:`\Delta x`, :math:`\Delta y`.
+        -   Providing lists of length ``w`` and ``h`` as a tuple as the grid dimension.
+        -   Providing full grids of shape ``(w, h)`` in each direction. Note that this
+            case is the most general, and can lead to a rotated grid if a transformed
+            grid is provided.
+
     normalize : bool
         Whether to normalize ``images``.
         If ``False``, normalization is assumed to have been precomputed.
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
+    exclude_shear : bool
+        Whether to exclude calculation of the shear variance.
+        The user can choose this for speed.
 
     Returns
     -------
     numpy.ndarray
         Stack of :math:`M_{20}`, :math:`M_{02}`, and :math:`M_{11}`
         in an array of shape ``(3, image_count)``.
+        If ``exclude_shear``,
+        Stack of :math:`M_{20}` and :math:`M_{02}`
+        in an array of shape ``(2, image_count)``.
     """
     if normalize:
         images = image_normalize(images, nansum=nansum)
@@ -552,11 +648,15 @@ def image_variances(images, centers=None, normalize=True, nansum=False):
     if centers is None:
         centers = image_positions(images, normalize=False, nansum=nansum)
 
-    m20 = image_moment(images, (2, 0), centers=centers, normalize=False, nansum=nansum)
-    m02 = image_moment(images, (0, 2), centers=centers, normalize=False, nansum=nansum)
-    m11 = image_moment(images, (1, 1), centers=centers, normalize=False, nansum=nansum)
+    m20 = image_moment(images, (2, 0), centers=centers, grid=grid, normalize=False, nansum=nansum)
+    m02 = image_moment(images, (0, 2), centers=centers, grid=grid, normalize=False, nansum=nansum)
 
-    return np.vstack((m20, m02, m11))
+    if exclude_shear:
+        return np.vstack((m20, m02))
+    else:
+        m11 = image_moment(images, (1, 1), centers=centers, grid=grid, normalize=False, nansum=nansum)
+
+        return np.vstack((m20, m02, m11))
 
 
 def image_ellipticity(variances):
@@ -656,7 +756,7 @@ def image_ellipticity_angle(variances):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
-def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=False):
+def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
     """
     Fit each image in a stack of images to a 2D ``function``.
 
@@ -665,8 +765,8 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
     images : numpy.ndarray (``image_count``, ``height``, ``width``)
         An image or array of images to fit. A single image is interpreted correctly as
         ``(1, h, w)`` even if ``(h, w)`` is passed.
-    grid_ravel : 2-tuple of array_like of reals (``height`` * ``width``) OR None
-        Raveled components of the meshgrid describing coordinates over the images.
+    grid : (array_like, array_like) OR None
+        Components of the meshgrid describing coordinates over the images.
         If ``None``, makes a grid with unit pitch centered on the images.
     function : lambda ((float, float), ... ) -> float
         Some fitfunction which accepts ``(x,y)`` coordinates as first argument.
@@ -709,9 +809,9 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
     (image_count, w_y, w_x) = images.shape
     img_shape = (w_y, w_x)
 
-    if grid_ravel is None:
-        grid = _generate_grid(w_x, w_y)
-        grid_ravel = (grid[0].ravel(), grid[1].ravel())
+    if grid is None:
+        grid = _generate_grid(w_x, w_y, centered=True)
+    grid_ravel = (np.ravel(grid[0]), np.ravel(grid[1]))
 
     # Number of fit parameters the function accepts (minus 1 for xy).
     param_count =  function.__code__.co_argcount - 1
@@ -724,8 +824,10 @@ def image_fit(images, grid_ravel=None, function=gaussian2d, guess=None, plot=Fal
     if guess is None:
         if function is gaussian2d:
             images_normalized = image_normalize(images, remove_field=True)
-            centers = image_positions(images_normalized, normalize=False)
-            variances = image_variances(images_normalized, centers=centers, normalize=False)
+            centers = image_positions(images_normalized, grid=grid, normalize=False)
+            variances = image_variances(images_normalized, centers=centers, grid=grid, normalize=False)
+            print(centers)
+            print(variances)
             maxs = np.amax(images, axis=(1, 2))
             mins = np.amin(images, axis=(1, 2))
             guess = np.vstack((
@@ -841,7 +943,7 @@ def fit_affine(x, y, guess_affine=None, plot=False):
         yc = np.nanmean(y, axis=1)[:, np.newaxis]
 
         if np.any(np.isnan(xc)) or np.any(np.isnan(yc)):
-            raise ValueError("analysis.py: vectors cannot contain a row of all-nan values")
+            raise ValueError("Vectors cannot contain a row of all-nan values")
 
         x_ = x - xc
         y_ = y - yc
@@ -876,7 +978,7 @@ def fit_affine(x, y, guess_affine=None, plot=False):
             M_guess = guess_affine["M"]
             b_guess = guess_affine["b"]
         else:
-            raise ValueError("analysis.py: guess_affine must be a dictionary with 'M' and 'b' fields.")
+            raise ValueError("guess_affine must be a dictionary with 'M' and 'b' fields.")
 
     # Least squares fit.
     def err(p):

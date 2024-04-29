@@ -17,7 +17,7 @@ def linear(x, m, b):
     m : float
         Slope of the line.
     b : float
-        y-intercept of the line.
+        :math:`y`-intercept of the line.
 
     Returns
     -------
@@ -40,9 +40,9 @@ def hyperbola(z, w0, z0, zr):
     w0 : float
         Beamradius at :math:`z = z_0`.
     z0 : float
-        Plane of focus, the center of the hyperbola.
+        Plane of focus :math:`x_0`, the center of the hyperbola.
     zr : float
-        Rayleigh length, the depth of focus.
+        Rayleigh length :math:`z_R`, the depth of focus.
 
     Returns
     -------
@@ -155,7 +155,7 @@ def gaussian(x, x0, a, c, w):
     r"""
     For fitting a 1D Gaussian.
 
-    .. math:: y(x) = c + a \exp \left[\frac{(x-x_0)^2}{2w^2}\right].
+    .. math:: y(x) = c + a \exp \left[-\frac{(x-x_0)^2}{2w^2}\right].
 
     Parameters
     ----------
@@ -188,11 +188,10 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     (equivalent to :math:`M_{11}`;
     see :meth:`~slmsuite.holography.analysis.image_moment()`).
 
-    When ``wxy`` is zero,
-    then we have the usual form of a Gaussian:
+    When ``wxy`` is zero, then we have the usual form of a Gaussian:
 
     .. math:: z(x,y) = c + a \exp \left[
-                                \frac{(x-x_0)^2}{2w_x^2} +
+                                -\frac{(x-x_0)^2}{2w_x^2} -
                                 \frac{(y-y_0)^2}{2w_y^2}
                                 \right].
 
@@ -281,13 +280,13 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     return c + a * np.exp(-.5 * argument)
 
 
-def tophat2d(xy, x0, y0, r, a=1, c=0):
+def tophat2d(xy, x0, y0, R, a=1, c=0):
     r"""
     For fitting a 2D tophat distribution.
 
     .. math:: z(x,y) =  \left\{
                             \begin{array}{ll}
-                                a + c, & x^2 + y^2 < r^2 \\
+                                a + c, & x^2 + y^2 < R^2 \\
                                 c, & \text{ otherwise}.
                             \end{array}
                         \right.
@@ -298,7 +297,7 @@ def tophat2d(xy, x0, y0, r, a=1, c=0):
         Points to fit upon (x, y).
     x0, y0 : float
         Vector offset.
-    r : float
+    R : float
         Active radius of the tophat.
     a : float
         Amplitude.
@@ -312,7 +311,7 @@ def tophat2d(xy, x0, y0, r, a=1, c=0):
     """
     x = xy[0] - x0
     y = xy[1] - y0
-    return np.where(x ** 2 + y ** 2 <= r ** 2, a+c, c)
+    return np.where(np.square(x) + np.square(y) <= R*R, a+c, c)
 
 
 def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):

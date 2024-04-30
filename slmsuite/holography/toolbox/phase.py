@@ -1225,6 +1225,8 @@ def _determine_source_radius(grid, w=None):
     """
     (x_grid, y_grid) = _process_grid(grid)
 
+    # TODO
+
     if w is None:
         return np.min([np.amax(x_grid), np.amax(y_grid)]) / 4
     else:

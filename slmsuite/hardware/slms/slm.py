@@ -651,19 +651,19 @@ class SLM:
         """
         # Wavelength normalized
         if units == "norm":
-            pitch = (1,1)
+            scaling = (1,1)
         # Fractions of the display
         elif units == "frac":
-            pitch = [g.ptp() / p for g,p in zip(self.grid, self.pitch_um)]
+            scaling = [g.ptp() for g in zip(self.grid)]
         # Physical units
         else:
             if units in toolbox.LENGTH_FACTORS.keys():
                 factor = toolbox.LENGTH_FACTORS[units]
             else:
                 raise RuntimeError("Did not recognize units '{}'".format(units))
-            pitch = [factor / self.wav_um, factor / self.wav_um]
+            scaling = [factor / self.wav_um, factor / self.wav_um]
 
-        xy = [g / p for g,p in zip(self.grid, pitch)]
+        xy = [g / s for g,s in zip(self.grid, scaling)]
 
         if len(kwargs) == 0 and isinstance(fit_function, str) and fit_function == "gaussian2d":
             w = np.min([np.amax(xy[0]), np.amax(xy[1])]) / 4
@@ -852,7 +852,7 @@ class SLM:
     def plot_source(self, sim=False):
         """
         Plots measured or simulated amplitude and phase distribution
-        of the SLM illumination.
+        of the SLM illumination. Also plots the rsquared goodness of fit value if available.
 
         Parameters
         ----------
@@ -871,16 +871,17 @@ class SLM:
             raise RuntimeError("Simulated amplitude and/or phase keywords missing from slm.source!")
         elif not sim and not np.all([k in self.source for k in ("amplitude", "phase")]):
             raise RuntimeError(
-                "Amplitude, phase, or r2 keywords missing from slm.source! Run "
-                "fourier_calibration to measure source profile."
+                "'amplitude' or 'phase' keywords missing from slm.source! Run "
+                ".wavefront_calibration() or .set_source_analytic() to measure source profile."
             )
 
         plot_r2 = not sim and "r2" in self.source
 
-        fig, axs = plt.subplots(1, 3 if plot_r2 else 2, figsize=(10, 6))
+        _, axs = plt.subplots(1, 3 if plot_r2 else 2, figsize=(10, 6))
 
         im = axs[0].imshow(
-            self._phase2gray(self.source["phase_sim" if sim else "phase"]),
+            # self._phase2gray(self.source["phase_sim" if sim else "phase"]),
+            np.mod(self.source["phase_sim" if sim else "phase"], 2*np.pi),
             cmap=plt.get_cmap("twilight"),
             interpolation="none",
         )
@@ -889,6 +890,7 @@ class SLM:
         axs[0].set_ylabel("SLM $y$ [pix]")
         divider = make_axes_locatable(axs[0])
         cax = divider.append_axes("right", size="5%", pad=0.05)
+        im.set_clim([0, 2*np.pi])
         plt.colorbar(im, cax=cax)
 
         im = axs[1].imshow(self.source["amplitude_sim" if sim else "amplitude"], clim=(0, 1))

@@ -186,7 +186,7 @@ class FourierSLM(CameraSLM):
 
         return fs_sim
 
-    ### Settle Time Measurement ###
+    ### Settle Time Calibration ###
 
     def settle_calibrate(
         self, vector=(0.1, 0.1), basis="kxy", size=None, times=None, settle_time_s=1, plot=True
@@ -254,7 +254,10 @@ class FourierSLM(CameraSLM):
 
         return results
 
-    ### Pixel Calibration ###
+    def process_settle_calibration(self):
+        pass
+
+    ### Pixel Crosstalk and Vpi Calibration ###
 
     def pixel_calibrate(
         self,
@@ -267,6 +270,10 @@ class FourierSLM(CameraSLM):
         Note this calibration is not at the level of individual pixels, but rather
         aggregate statistics over all pixels.
 
+        Phase crosstalk: https://doi.org/10.1364/OE.20.022334
+        Vpi variation: https://doi.org/10.1364/OE.21.016086
+        Upgraded model: https://doi.org/10.1364/OE.27.025046
+
         Note
         ~~~~
         A Fourier calibration must be loaded.
@@ -276,9 +283,6 @@ class FourierSLM(CameraSLM):
         Data is taken without wavefront calibration applied. If the SLM without
         calibration produces too defocussed of a spot,
         then this measurement may not be ideal.
-
-        Phase crosstalk: https://doi.org/10.1364/OE.20.022334
-        Vpi variation: https://doi.org/10.1364/OE.21.016086
 
         Parameters
         ----------
@@ -295,6 +299,7 @@ class FourierSLM(CameraSLM):
         if np.isscalar(gray_levels):
             gray_levels = np.todo()
         gray_levels = np.mod(gray_levels, self.slm.bitresolution).astype(self.slm.dtype)
+        N = len(gray_levels)
 
         # Parse periods by forcing even integer.
         if np.isscalar(measure_orders):
@@ -302,14 +307,16 @@ class FourierSLM(CameraSLM):
             measure_orders = np.arange(-measure_orders, measure_orders+1)
 
         measure_orders = measure_orders.astype(int)
+        M = len(measure_orders)
 
         # Parse periods by forcing even integer.
         periods = periods.astype(int)
         P = len(periods)
 
-        shape = (2, P, len(gray_levels), len(gray_levels), len(measure_orders))
+        shape = (2, P, N, N, M)
         data = np.zeros(shape)
 
+        # Make all of the x-pointing vectors, then all of the y-pointing vectors.
         vectors_freq = np.zeros((2, 2*P))
         vectors_freq[0, :P] = vectors_freq[1, P:] = np.reciprocal(periods.astype(float))
         vectors_kxy = toolbox.convert_vector(
@@ -318,30 +325,47 @@ class FourierSLM(CameraSLM):
             to_units="norm",
             slm=self
         )
+
+        # Figure out where the orders will appear on the camera.
         vectors_ij = self.kxyslm_to_ijcam(vectors_kxy)
         center = self.kxyslm_to_ijcam((0,0))
+
+        dorder = vectors_ij - center
+        order_ij = []
+
+        for i in range(2*P):
+            order_ij.append(center + measure_orders * dorder[:, [i]])
+
+        distances = np.linalg.norm(dorder, axis=0)
+        integration_size = np.ceil(np.min(distances))
 
         # Warn the user if any order is outside the field of view.
         if False:
             warnings.warn("TODO")
 
         # Big sweep.
-        for i in [0,1]:
+        for i in [0,1]:                                         # Direction
             prange = np.arange(P) + i*P
-            for j, p in enumerate(periods):
-                for k, a in enumerate(gray_levels[:-1]):        # Upper triangular gray level selection.
-                    for l, b in enumerate(gray_levels[k:]):
-                        phase = toolbox.phase.binary(self.slm, vectors_kxy[:, prange[p]], a, b)
-
-                        self.slm.write(phase, phase_calibrate=False, settle=True)
-                        analysis.take(
-                            self.cam.get_image(),
-
+            for j in range(P):                                  # Period
+                for k in range(N):                              # Upper triangular gray level selection.
+                    for l in range(k, N):                       # Periodic normalization when equal.
+                        phase = toolbox.phase.binary(
+                            self.slm,
+                            vectors_kxy[:, prange[j]],
+                            gray_levels[k],
+                            gray_levels[l]
                         )
+                        self.slm.write(phase, phase_calibrate=False, settle=True)
 
-                        data[i,j,k,l,:] = 0
+                        data[i,j,k,l,:] = data[i,j,l,k,:] = analysis.take(
+                            images=self.cam.get_image(),
+                            vectors=order_ij[prange[j]],
+                            size=integration_size,
+                            integrate=True,
+                        ).astype(float)
 
-
+    def process_pixel_calibration(self):
+        pass
 
     ### Fourier Calibration ###
 
@@ -372,8 +396,8 @@ class FourierSLM(CameraSLM):
         Tip
         ~~~
         For best results, ``array_pitch`` should be integer data. Otherwise non-uniform
-        rounding to the SLM's computational :math:`k`-space can result in non-uniform pitch and
-        a bad fit. The user is warned if non-integer data is given.
+        rounding to the SLM's computational :math:`k`-space (``"knm"``-space) can result
+        in non-uniform pitch and a bad fit. The user is warned if non-integer data is given.
 
         Parameters
         ----------
@@ -477,6 +501,8 @@ class FourierSLM(CameraSLM):
         self.fourier_calibration = {"__version__" : __version__, "M": M, "b": b, "a": a}
 
         return self.fourier_calibration
+
+    ### Fourier Calibration Helpers ###
 
     def name_fourier_calibration(self):
         """
@@ -617,7 +643,29 @@ class FourierSLM(CameraSLM):
 
         self.fourier_calibration = {"__version__" : __version__, "M": M, "b": b, "a": a}
 
-    ### Fourier Calibration Helpers ###
+    def build_fourier_calibration(
+            self,
+            f_eff,
+            units="norm",
+            theta=0,
+            shear_angle=0,
+            offset=(0, 0),
+        ):
+        """
+        Meta: This docstring will be overwritten by ``SimulatedCamera._build_affine``
+        at the end of this file.
+        """
+        return SimulatedCamera._build_affine(
+            f_eff,
+            units=units,
+            theta=theta,
+            shear_angle=shear_angle,
+            offset=offset,
+            cam_pitch_um=self.cam.pitch_um,
+            wav_um=self.slm.wav_um,
+        )
+
+    ### Fourier Calibration User Results ###
 
     def _kxyslm_to_ijcam_depth(self, kxy_depth):
         """Helper function for handling depth conversion."""
@@ -627,6 +675,15 @@ class FourierSLM(CameraSLM):
         else:
             cam_pitch_um = np.mean(self.cam.pitch_um)
         return kxy_depth * (self.slm.wav_um * f_eff * f_eff / cam_pitch_um)
+
+    def _ijcam_to_kxyslm_depth(self, ij_depth):
+        """Helper function for handling depth conversion."""
+        f_eff = self.get_effective_focal_length("norm")
+        if self.cam.pitch_um is None:
+            cam_pitch_um = np.nan
+        else:
+            cam_pitch_um = np.mean(self.cam.pitch_um)
+        return ij_depth * (cam_pitch_um / (self.slm.wav_um * f_eff * f_eff))
 
     def kxyslm_to_ijcam(self, kxy):
         r"""
@@ -682,15 +739,6 @@ class FourierSLM(CameraSLM):
             return np.vstack((ij, self._kxyslm_to_ijcam_depth(ij[[2], :])))
         else:
             return ij
-
-    def _ijcam_to_kxyslm_depth(self, ij_depth):
-        """Helper function for handling depth conversion."""
-        f_eff = self.get_effective_focal_length("norm")
-        if self.cam.pitch_um is None:
-            cam_pitch_um = np.nan
-        else:
-            cam_pitch_um = np.mean(self.cam.pitch_um)
-        return ij_depth * (cam_pitch_um / (self.slm.wav_um * f_eff * f_eff))
 
     def ijcam_to_kxyslm(self, ij):
         r"""
@@ -857,181 +905,7 @@ class FourierSLM(CameraSLM):
 
         return f_eff
 
-    def build_fourier_calibration(
-            self,
-            f_eff,
-            units="norm",
-            theta=0,
-            shear_angle=0,
-            offset=(0, 0),
-        ):
-        """
-        Meta: This docstring will be overwritten by ``SimulatedCamera._build_affine``
-        at the end of this file.
-        """
-        return SimulatedCamera._build_affine(
-            f_eff,
-            units=units,
-            theta=theta,
-            shear_angle=shear_angle,
-            offset=offset,
-            cam_pitch_um=self.cam.pitch_um,
-            wav_um=self.slm.wav_um,
-        )
-
     ### Wavefront Calibration ###
-
-    def get_wavefront_calibration_points(
-        self,
-        pitch,
-        field_exclusion=None,
-        field_point=(0,0),
-        field_point_units="kxy",
-        avoid_points=None,
-        avoid_mirrors=True,
-        plot=False,
-    ):
-        """
-        Generates a grid of points to perform wavefront calibration at.
-
-        Parameters
-        ----------
-        pitch : float OR (float, float)
-            The grid of points must have pitch greater than this value.
-        field_exclusion : float OR None
-            Remove all points within ``field_exclusion`` of a ``field_point``.
-            Set to zero if no removal is desired.
-            If ``None``, defaults to ``pitch``.
-        field_point : (float, float)
-            Position in the camera domain where the field (pixels not included in superpixels)
-            is blazed toward in order to reduce light in the camera's field. The suggested
-            approach is to set this outside the field of view of the camera and make
-            sure that other diffraction orders are far from the ``calibration_points``.
-            Defaults to no blaze (``(0,0)`` in ``"kxy"`` units).
-        field_point_units : str
-            A unit compatible with
-            :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`.
-            Defaults to ``"kxy"``.
-
-            Tip
-            ~~~
-            Setting one coordinate of ``field_point`` to zero is suggested
-            to minimize higher order diffraction.
-        avoid_points : numpy.ndarray
-            Additional points to avoid in the same manner as avoiding the ``field_point``
-            and diffractive orders (with the same radius ``field_exclusion``).
-            This can, for instance, omit the points outside the camera's field of view,
-            points around known stray reflections, or unusual topology.
-        avoid_mirrors : bool
-            When a 1st order calibration beam is sourced from a
-            weak superpixel in the SLM domain, the -1st order of a different
-            calibration beam can act as a strong noise source if
-            it is sourced from a strong central superpixel.
-            If ``True``, this flag aligns the -1st orders to be inbetween
-            the 1st orders of the grid of calibration points.
-
-        Returns
-        -------
-        numpy.ndarray
-            List of points of shape ``(2, N)`` to calibrate at.
-
-        Raises
-        ------
-        AssertionError
-            If the fourier plane calibration does not exist.
-        """
-        # Parse field_point
-        field_point = toolbox.convert_blaze_vector(
-            format_2vectors(field_point),
-            from_units=field_point_units,
-            to_units="ij",
-            slm=self
-        )
-        field_point = np.rint(format_2vectors(field_point)).astype(int)
-
-        # Parse field_exclusion
-        if field_exclusion is None:
-            field_exclusion = pitch
-        if not np.isscalar(field_exclusion):
-            field_exclusion = np.mean(field_exclusion)
-
-        # Gather other information
-        base_point = np.rint(self.kxyslm_to_ijcam([0, 0])).astype(int)
-
-        # Generate the initial grid
-        plane = format_2vectors(self.cam.shape[::-1])
-        grid = np.floor(plane / pitch)
-        if avoid_mirrors: grid += .5    # TODO
-        spacing = (plane / grid).astype(int)
-
-        calibration_points = fit_3pt(
-            spacing/2,
-            (1.5*spacing[0], spacing[1]/2),
-            (spacing[0]/2, 1.5*spacing[1]),
-            np.squeeze(grid)
-        )
-
-        # Sort by proximity to the center, avoiding the 0th order
-        distance = np.sum(np.square(calibration_points - base_point), axis=0)
-        I = np.argsort(distance)
-        calibration_points = calibration_points[:, I]
-
-        # Prune points within field_exclusion from a given order (-2, ..., 2).
-        dorder = field_point - base_point
-
-        order_points = np.hstack([base_point + dorder * i for i in range(-2, 3)])
-
-        if avoid_points is None:
-            avoid_points = order_points
-        else:
-            avoid_points = np.hstack((format_2vectors(avoid_points), order_points))
-
-        for i in range(avoid_points.shape[1]):
-            point = avoid_points[:, [i]]
-            distance = np.sum(np.square(calibration_points - point), axis=0)
-            calibration_points = np.delete(
-                calibration_points,
-                distance < field_exclusion*field_exclusion,
-                axis=1
-            )
-
-            if plot: plt.scatter(point[0], point[1], c="r")
-
-        if plot:
-            plt.scatter(
-                calibration_points[0,:],
-                calibration_points[1,:],
-                c=np.arange(calibration_points.shape[1])
-            )
-            plt.xlim([0, self.cam.shape[1]])
-            plt.ylim([0, self.cam.shape[0]])
-            plt.show()
-
-        return calibration_points
-
-    def get_wavefront_calibration_window(self, superpixel_size):
-        """
-        Returns the window size for the interference regions.
-        This is inversely proportional to the size of the superpixel because the
-        superpixel and interference zone are separated by a Fourier transform.
-        The computation works by estimating the spot size of the interference beams and
-        then enlarging by a stored multiplier
-        :attr:`_wavefront_calibration_window_multiplier`
-        which defaults to 4.
-
-        Parameters
-        ----------
-        superpixel_size : int
-            The size of the superpixel on the SLM.
-        """
-        interference_size = np.rint(np.array(
-            self.get_farfield_spot_size(
-                superpixel_size * self.slm.pitch,
-                basis="ij"
-            )
-        )).astype(int)
-
-        return self._wavefront_calibration_window_multiplier * interference_size
 
     def wavefront_calibrate(
         self,
@@ -2090,6 +1964,237 @@ class FourierSLM(CameraSLM):
 
         return calibration_dict
 
+    ### Wavefront Calibration Helpers ###
+
+    def name_wavefront_calibration(self):
+        """
+        Creates ``"<cam.name>-<slm.name>-wavefront-calibration"``.
+
+        Returns
+        -------
+        name : str
+            The generated name.
+        """
+        return "{}-{}-wavefront-calibration".format(self.cam.name, self.slm.name)
+
+    def save_wavefront_calibration(self, path=".", name=None):
+        """
+        Saves :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
+        to a file like ``"path/name_id.h5"``.
+
+        Parameters
+        ----------
+        path : str
+            Path to the save location. Default is current directory.
+        name : str or None
+            Name of the save file. If ``None``, will use :meth:`name_wavefront_calibration`.
+
+        Returns
+        -------
+        str
+            The file path that the fourier calibration was saved to.
+        """
+        if name is None:
+            name = self.name_wavefront_calibration()
+        file_path = generate_path(path, name, extension="h5")
+        write_h5(file_path, self.wavefront_calibration_raw)
+
+        return file_path
+
+    def load_wavefront_calibration(self, file_path=None, process=True, **kwargs):
+        """
+        Loads :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
+        from a file.
+
+        Parameters
+        ----------
+        file_path : str or None
+            Full path to the wavefront calibration file. If ``None``, will
+            search the current directory for a file with a name like
+            the one returned by
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.name_wavefront_calibration`.
+        process : bool
+            Whether to immediately process the wavefront calibration.
+            See
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`.
+        **kwargs
+            Passed to :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`,
+            if ``process`` is true.
+
+        Returns
+        -------
+        str
+            The file path that the wavefront calibration was loaded from.
+        """
+        if file_path is None:
+            path = os.path.abspath(".")
+            name = self.name_wavefront_calibration()
+            file_path = latest_path(path, name, extension="h5")
+            if file_path is None:
+                raise FileNotFoundError(
+                    "Unable to find a Fourier calibration file like\n{}"
+                    "".format(os.path.join(path, name))
+                )
+
+        self.wavefront_calibration_raw = read_h5(file_path)
+
+        if process:
+            self.process_wavefront_calibration(**kwargs)
+
+        return file_path
+
+    def get_wavefront_calibration_points(
+        self,
+        pitch,
+        field_exclusion=None,
+        field_point=(0,0),
+        field_point_units="kxy",
+        avoid_points=None,
+        avoid_mirrors=True,
+        plot=False,
+    ):
+        """
+        Generates a grid of points to perform wavefront calibration at.
+
+        Parameters
+        ----------
+        pitch : float OR (float, float)
+            The grid of points must have pitch greater than this value.
+        field_exclusion : float OR None
+            Remove all points within ``field_exclusion`` of a ``field_point``.
+            Set to zero if no removal is desired.
+            If ``None``, defaults to ``pitch``.
+        field_point : (float, float)
+            Position in the camera domain where the field (pixels not included in superpixels)
+            is blazed toward in order to reduce light in the camera's field. The suggested
+            approach is to set this outside the field of view of the camera and make
+            sure that other diffraction orders are far from the ``calibration_points``.
+            Defaults to no blaze (``(0,0)`` in ``"kxy"`` units).
+        field_point_units : str
+            A unit compatible with
+            :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`.
+            Defaults to ``"kxy"``.
+
+            Tip
+            ~~~
+            Setting one coordinate of ``field_point`` to zero is suggested
+            to minimize higher order diffraction.
+        avoid_points : numpy.ndarray
+            Additional points to avoid in the same manner as avoiding the ``field_point``
+            and diffractive orders (with the same radius ``field_exclusion``).
+            This can, for instance, omit the points outside the camera's field of view,
+            points around known stray reflections, or unusual topology.
+        avoid_mirrors : bool
+            When a 1st order calibration beam is sourced from a
+            weak superpixel in the SLM domain, the -1st order of a different
+            calibration beam can act as a strong noise source if
+            it is sourced from a strong central superpixel.
+            If ``True``, this flag aligns the -1st orders to be inbetween
+            the 1st orders of the grid of calibration points.
+
+        Returns
+        -------
+        numpy.ndarray
+            List of points of shape ``(2, N)`` to calibrate at.
+
+        Raises
+        ------
+        AssertionError
+            If the fourier plane calibration does not exist.
+        """
+        # Parse field_point
+        field_point = toolbox.convert_blaze_vector(
+            format_2vectors(field_point),
+            from_units=field_point_units,
+            to_units="ij",
+            slm=self
+        )
+        field_point = np.rint(format_2vectors(field_point)).astype(int)
+
+        # Parse field_exclusion
+        if field_exclusion is None:
+            field_exclusion = pitch
+        if not np.isscalar(field_exclusion):
+            field_exclusion = np.mean(field_exclusion)
+
+        # Gather other information
+        base_point = np.rint(self.kxyslm_to_ijcam([0, 0])).astype(int)
+
+        # Generate the initial grid
+        plane = format_2vectors(self.cam.shape[::-1])
+        grid = np.floor(plane / pitch)
+        if avoid_mirrors: grid += .5    # TODO
+        spacing = (plane / grid).astype(int)
+
+        calibration_points = fit_3pt(
+            spacing/2,
+            (1.5*spacing[0], spacing[1]/2),
+            (spacing[0]/2, 1.5*spacing[1]),
+            np.squeeze(grid)
+        )
+
+        # Sort by proximity to the center, avoiding the 0th order
+        distance = np.sum(np.square(calibration_points - base_point), axis=0)
+        I = np.argsort(distance)
+        calibration_points = calibration_points[:, I]
+
+        # Prune points within field_exclusion from a given order (-2, ..., 2).
+        dorder = field_point - base_point
+
+        order_points = np.hstack([base_point + dorder * i for i in range(-2, 3)])
+
+        if avoid_points is None:
+            avoid_points = order_points
+        else:
+            avoid_points = np.hstack((format_2vectors(avoid_points), order_points))
+
+        for i in range(avoid_points.shape[1]):
+            point = avoid_points[:, [i]]
+            distance = np.sum(np.square(calibration_points - point), axis=0)
+            calibration_points = np.delete(
+                calibration_points,
+                distance < field_exclusion*field_exclusion,
+                axis=1
+            )
+
+            if plot: plt.scatter(point[0], point[1], c="r")
+
+        if plot:
+            plt.scatter(
+                calibration_points[0,:],
+                calibration_points[1,:],
+                c=np.arange(calibration_points.shape[1])
+            )
+            plt.xlim([0, self.cam.shape[1]])
+            plt.ylim([0, self.cam.shape[0]])
+            plt.show()
+
+        return calibration_points
+
+    def get_wavefront_calibration_window(self, superpixel_size):
+        """
+        Returns the window size for the interference regions.
+        This is inversely proportional to the size of the superpixel because the
+        superpixel and interference zone are separated by a Fourier transform.
+        The computation works by estimating the spot size of the interference beams and
+        then enlarging by a stored multiplier
+        :attr:`_wavefront_calibration_window_multiplier`
+        which defaults to 4.
+
+        Parameters
+        ----------
+        superpixel_size : int
+            The size of the superpixel on the SLM.
+        """
+        interference_size = np.rint(np.array(
+            self.get_farfield_spot_size(
+                superpixel_size * self.slm.pitch,
+                basis="ij"
+            )
+        )).astype(int)
+
+        return self._wavefront_calibration_window_multiplier * interference_size
+
     def process_wavefront_calibration(self, smooth=True, r2_threshold=0.9, apply=True, plot=False):
         """
         Processes :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
@@ -2455,83 +2560,6 @@ class FourierSLM(CameraSLM):
         plt.yticks([])
 
         plt.show()
-
-    def name_wavefront_calibration(self):
-        """
-        Creates ``"<cam.name>-<slm.name>-wavefront-calibration"``.
-
-        Returns
-        -------
-        name : str
-            The generated name.
-        """
-        return "{}-{}-wavefront-calibration".format(self.cam.name, self.slm.name)
-
-    def save_wavefront_calibration(self, path=".", name=None):
-        """
-        Saves :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
-        to a file like ``"path/name_id.h5"``.
-
-        Parameters
-        ----------
-        path : str
-            Path to the save location. Default is current directory.
-        name : str or None
-            Name of the save file. If ``None``, will use :meth:`name_wavefront_calibration`.
-
-        Returns
-        -------
-        str
-            The file path that the fourier calibration was saved to.
-        """
-        if name is None:
-            name = self.name_wavefront_calibration()
-        file_path = generate_path(path, name, extension="h5")
-        write_h5(file_path, self.wavefront_calibration_raw)
-
-        return file_path
-
-    def load_wavefront_calibration(self, file_path=None, process=True, **kwargs):
-        """
-        Loads :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
-        from a file.
-
-        Parameters
-        ----------
-        file_path : str or None
-            Full path to the wavefront calibration file. If ``None``, will
-            search the current directory for a file with a name like
-            the one returned by
-            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.name_wavefront_calibration`.
-        process : bool
-            Whether to immediately process the wavefront calibration.
-            See
-            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`.
-        **kwargs
-            Passed to :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`,
-            if ``process`` is true.
-
-        Returns
-        -------
-        str
-            The file path that the wavefront calibration was loaded from.
-        """
-        if file_path is None:
-            path = os.path.abspath(".")
-            name = self.name_wavefront_calibration()
-            file_path = latest_path(path, name, extension="h5")
-            if file_path is None:
-                raise FileNotFoundError(
-                    "Unable to find a Fourier calibration file like\n{}"
-                    "".format(os.path.join(path, name))
-                )
-
-        self.wavefront_calibration_raw = read_h5(file_path)
-
-        if process:
-            self.process_wavefront_calibration(**kwargs)
-
-        return file_path
 
 
 FourierSLM.build_fourier_calibration.__doc__ = SimulatedCamera.build_affine.__doc__

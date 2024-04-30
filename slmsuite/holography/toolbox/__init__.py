@@ -11,7 +11,9 @@ import warnings
 
 from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 
+
 # Unit definitions.
+
 
 LENGTH_FACTORS = {
     "m": 1e6,
@@ -47,6 +49,7 @@ for k in LENGTH_FACTORS.keys():
     CAMERA_UNITS.append("mag_"+k)
 
 BLAZE_UNITS = list(BLAZE_LABELS.keys())
+
 
 # Unit helper functions.
 
@@ -491,7 +494,7 @@ def window_slice(window, shape=None, centered=False, circular=False):
 
 def window_extent(window, padding_frac=0, padding_pix=0):
     """
-    Find a square that covers the active region of ``window``.
+    Find a square that covers the active region of the 2D boolean mask ``window``.
 
     Parameters
     ----------
@@ -800,6 +803,7 @@ def imprint(
 
 
 # Vector helper functions.
+
 
 def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
     """
@@ -1381,7 +1385,9 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
                 transform[1, 0] * (x_grid - shift[0]) + transform[1, 1] * (y_grid - shift[1]),
             )
 
+
 # Padding functions.
+
 
 def pad(matrix, shape):
     """

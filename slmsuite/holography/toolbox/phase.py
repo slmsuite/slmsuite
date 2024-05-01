@@ -38,7 +38,7 @@ def blaze(grid, vector=(0, 0), offset=0):
         such a class can be passed instead of the grids directly.
     vector : (float, float)
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
-        See :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`
+        See :meth:`~slmsuite.holography.toolbox.convert_vector()`
     offset : float
         Phase offset for this blaze.
 
@@ -88,7 +88,7 @@ def sinusoid(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=np.pi)
         such a class can be passed instead of the grids directly.
     vector : (float, float)
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
-        See :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`
+        See :meth:`~slmsuite.holography.toolbox.convert_vector()`
     offset : float
         Grating phase offset.
     amplitude : float
@@ -145,7 +145,7 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
         such a class can be passed instead of the grids directly.
     vector : (float, float)
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
-        See :meth:`~slmsuite.holography.toolbox.convert_blaze_vector()`
+        See :meth:`~slmsuite.holography.toolbox.convert_vector()`
     offset : float
         Grating phase offset.
     amplitude : float
@@ -235,7 +235,7 @@ def lens(grid, f=(np.inf, np.inf)):
         Defaults to infinity (no lens).
         Scalars are interpreted as a non-cylindrical isotropic lens.
         Future: add a ``convert_focal_length`` method to parallel
-        :meth:`.convert_blaze_vector()`.
+        :meth:`.convert_vector()`. TODO: see depth conversion.
 
     Returns
     -------

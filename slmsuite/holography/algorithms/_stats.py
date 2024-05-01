@@ -456,7 +456,7 @@ class _HologramStats(object):
             artificially expand the ``limits``.
         units : str
             Far-field units for plots (see
-            :func:`~slmsuite.holography.toolbox.convert_blaze_vector` for options).
+            :func:`~slmsuite.holography.toolbox.convert_vector` for options).
             If units requiring a SLM are desired, the attribute :attr:`cameraslm` must be
             filled.
         limit_padding : float
@@ -571,7 +571,7 @@ class _HologramStats(object):
             if to_units != "knm":
                 ext_nm = img.get_extent()
                 ext_min = np.squeeze(
-                    toolbox.convert_blaze_vector(
+                    toolbox.convert_vector(
                         [ext_nm[0], ext_nm[-1]],
                         from_units="knm",
                         to_units=to_units,
@@ -580,7 +580,7 @@ class _HologramStats(object):
                     )
                 )
                 ext_max = np.squeeze(
-                    toolbox.convert_blaze_vector(
+                    toolbox.convert_vector(
                         [ext_nm[1], ext_nm[2]],
                         from_units="knm",
                         to_units=to_units,
@@ -635,7 +635,7 @@ class _HologramStats(object):
             if units == "knm":
                 cam_points = self.cam_points
             else:
-                cam_points = toolbox.convert_blaze_vector(
+                cam_points = toolbox.convert_vector(
                     self.cam_points, from_units="knm", to_units=units, slm=slm, shape=npsource.shape
                 )
 

@@ -81,10 +81,9 @@ class SimulatedCamera(Camera):
             Simulated SLM creating the image.
         resolution : (int, int)
             See :attr:`resolution`. If ``None``, defaults to the resolution of ``slm``.
-        M : array_like
-            Passed to :meth:`set_affine()`.
-        b : array_like
-            Passed to :meth:`set_affine()`.
+        M, b : array_like
+            Passed to :meth:`set_affine()`. Can be set later, but the camera cannot be
+            used until then.
         noise : dict
             See :attr:`noise`.
         pitch_um : (float, float) OR None
@@ -127,7 +126,7 @@ class SimulatedCamera(Camera):
         Set the camera's placement in the SLM's k-space. `M` and/or `b`, if provided,
         are used to transform the :class:`SimulatedCamera`'s ``"ij"`` grid to a ``"knm"`` grid
         for interpolation against the :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`'s
-        ``"knm"`` grid. Keyword arguments, if provided, are passed to :meth:`.build_fourier_calibration()`
+        ``"knm"`` grid. Keyword arguments, if provided, are passed to :meth:`.build_affine()`
         to build ``M`` and ``b``.
 
         Parameters
@@ -140,21 +139,24 @@ class SimulatedCamera(Camera):
             Lateral displacement (in pixels) of the camera center from the SLM's
             optical axis. If ``None``, defaults to ``(0,0)`` offset.
         **kwargs : dict, optional
-            Various orientation parameters passed to :meth:`.build_fourier_calibration()`
-            to build ``M`` and ``b``, if not provided. See options documented in the
+            Various orientation parameters passed to :meth:`.build_affine()`
+            to build ``M`` and ``b``, if not provided. See options documented in this
             method. ``f_eff`` is a required keyword.
         """
 
         # If kwargs are passed instead of M/b, use these to build M, b
         if M is None or b is None:
-            if not "f_eff" in kwargs.keys():
+            f_eff = kwargs.pop("f_eff", None)
+            if f_eff is None:
                 raise RuntimeError("'f_eff' must be passed if M or b are not set.")
-            else:
-                f_eff = kwargs.pop(kwargs)
-            M, b = SimulatedCamera._build_affine(f_eff, **kwargs)   # TODO
+            M, b = self.build_affine(f_eff, **kwargs)
 
         # Affine transform the camera grid ("ij"->"kxy")
         self._interpolate = True
+        self.grid = np.meshgrid(
+            np.arange(self.shape[1]),
+            np.arange(self.shape[0]),
+        )
         self.grid = toolbox.transform_grid(self, M, b, direction="rev")
 
         # Fourier space must be sufficiently padded to resolve the camera pixels.
@@ -168,7 +170,7 @@ class SimulatedCamera(Camera):
         print(
             "Padded SLM k-space shape set to (%d,%d) to achieve required "
             "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
-        )
+        )   # TODO: suppress?
 
         phase = -self._slm.display.astype(float)/self._slm.bitresolution*(2*np.pi)
         self._hologram = Hologram(
@@ -236,7 +238,8 @@ class SimulatedCamera(Camera):
             Defaults to zero (i.e., no shear).
         offset : (float, float) OR None
             Lateral displacement (in pixels units) of the SLM's optical axis
-            from the camera's origin. If ``None``, defaults to ``(0, 0)`` offset.
+            from the camera's origin. If ``None``, defaults to be centered on the center
+            of the camera.
 
         Returns
         -------
@@ -245,7 +248,10 @@ class SimulatedCamera(Camera):
         numpy.ndarray
             Affine vector :math:`b`. Shape ``(1, 2)``.
         """
-        SimulatedCamera._build_affine(
+        if offset is None:
+            offset = np.flip(self.shape) / 2
+
+        return SimulatedCamera._build_affine(
             f_eff,
             units=units,
             theta=theta,
@@ -261,7 +267,7 @@ class SimulatedCamera(Camera):
             units="ij",
             theta=0,
             shear_angle=0,
-            offset=(0, 0),
+            offset=(0,0),
             cam_pitch_um=None,
             wav_um=None,
         ):
@@ -279,6 +285,8 @@ class SimulatedCamera(Camera):
             cam_pitch_um = np.ravel(cam_pitch_um)
         if isinstance(shear_angle, REAL_TYPES):
             shear_angle = [shear_angle, shear_angle]
+        if offset is None:
+            offset = (0,0)
 
         f_eff = np.squeeze(f_eff).astype(float)
         shear_angle = np.squeeze(shear_angle)

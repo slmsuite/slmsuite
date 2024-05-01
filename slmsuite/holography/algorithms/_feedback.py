@@ -96,7 +96,7 @@ class FeedbackHologram(Hologram):
 
             points_ij = toolbox.format_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
             points_kxy = self.cameraslm.ijcam_to_kxyslm(points_ij)
-            self.cam_points = toolbox.convert_blaze_vector(
+            self.cam_points = toolbox.convert_vector(
                 points_kxy, "kxy", "knm", slm=self.cameraslm.slm, shape=self.shape
             )
             self.cam_shape = cam_shape
@@ -143,9 +143,9 @@ class FeedbackHologram(Hologram):
         assert self.cameraslm.fourier_calibration is not None
 
         # First transformation.
-        conversion = toolbox.convert_blaze_vector(
+        conversion = toolbox.convert_vector(
             (1, 1), "knm", "kxy", slm=self.cameraslm.slm, shape=self.shape
-        ) - toolbox.convert_blaze_vector(
+        ) - toolbox.convert_vector(
             (0, 0), "knm", "kxy", slm=self.cameraslm.slm, shape=self.shape
         )
         M1 = np.diag(np.squeeze(conversion))

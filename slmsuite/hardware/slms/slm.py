@@ -654,7 +654,7 @@ class SLM:
             scaling = (1,1)
         # Fractions of the display
         elif units == "frac":
-            scaling = [g.ptp() for g in zip(self.grid)]
+            scaling = [g.ptp() for g in self.grid]
         # Physical units
         else:
             if units in toolbox.LENGTH_FACTORS.keys():
@@ -954,10 +954,10 @@ class SLM:
         self.fit_source_amplitude(force=False)
 
         rad_norm = self.source["amplitude_radius"]
-        rad_pix = rad_norm * np.mean(pitch)
+        rad_pix = rad_norm * np.mean(self.pitch)
         rad_freq = np.reciprocal(rad_pix)
 
-        psf_kxy = toolbox.convert_blaze_vector(
+        psf_kxy = toolbox.convert_vector(
             [rad_freq, rad_freq],
             from_units="freq",
             to_units="kxy",

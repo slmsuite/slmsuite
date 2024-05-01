@@ -54,20 +54,20 @@ BLAZE_UNITS = list(BLAZE_LABELS.keys())
 # Unit helper functions.
 
 
-def convert_blaze_vector(**kwargs):
+def convert_blaze_vector(*args, **kwargs):
     """
     Alias for :meth:`~slmsuite.holography.toolbox.convert_vector()`
     for backwards compatibility.
     """
-    return convert_blaze_vector(**kwargs)
+    return convert_vector(*args, **kwargs)
 
 
-def convert_blaze_radius(**kwargs):
+def convert_blaze_radius(*args, **kwargs):
     """
     Alias for :meth:`~slmsuite.holography.toolbox.convert_radius()`
     for backwards compatibility.
     """
-    return convert_blaze_radius(**kwargs)
+    return convert_radius(*args, **kwargs)
 
 
 def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=None):
@@ -207,9 +207,9 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
     if from_units == to_units:
         return vector_parsed
 
-    vector_xy = vector_parsed[:, :2]
-    if vector_parsed.shape[1] > 2:
-        vector_z =  vector_parsed[:, [2]]
+    vector_xy = vector_parsed[:2, :]
+    if vector_parsed.shape[0] > 2:
+        vector_z =  vector_parsed[[2], :]
     else:
         vector_z = None
 
@@ -229,7 +229,10 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
 
         cam_pitch_um = cameraslm.cam.pitch_um
 
-        if cam_pitch_um is None:
+        if (
+            cam_pitch_um is None and
+            (from_units in CAMERA_UNITS[1:] or to_units in CAMERA_UNITS[1:])    # Don't error if ij.
+        ):
             warnings.warn(
                 f"Camera must have filled attribute pitch_um "
                 "for conversion '{from_units}' to '{to_units}'"
@@ -1089,7 +1092,7 @@ def smallest_distance(vectors, metric=chebyshev):
     vectors : array_like
         Points to compare.
         Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
-    metric : lambda
+    metric : function
         Function to use to compare.
         Defaults to :meth:`scipy.spatial.distance.chebyshev()`.
         :meth:`scipy.spatial.distance.euclidean()` is also common.

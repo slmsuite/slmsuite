@@ -93,7 +93,7 @@ class _AbstractSpotHologram(FeedbackHologram):
                     self.cameraslm.ijcam_to_kxyslm(shift_vectors)
                     - self.cameraslm.ijcam_to_kxyslm((0, 0))
                 )
-                self.spot_knm = toolbox.convert_blaze_vector(
+                self.spot_knm = toolbox.convert_vector(
                     self.spot_kxy, "kxy", "knm", self.cameraslm.slm, self.shape
                 )
                 self.update_target(reset_weights=True)
@@ -310,7 +310,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         if cameraslm is not None:
             psf_kxy = np.mean(cameraslm.slm.spot_radius_kxy())
             self.spot_ij = cameraslm.kxyslm_to_ijcam(self.spot_kxy)
-            psf_ij = toolbox.convert_blaze_radius(psf_kxy, "kxy", "ij", cameraslm)
+            psf_ij = toolbox.convert_radius(psf_kxy, "kxy", "ij", cameraslm)
         else:
             psf_ij = np.nan
             self.spot_ij = None
@@ -1071,7 +1071,7 @@ class SpotHologram(_AbstractSpotHologram):
             self.spot_knm = vectors
 
             if cameraslm is not None:
-                self.spot_kxy = toolbox.convert_blaze_vector(
+                self.spot_kxy = toolbox.convert_vector(
                     self.spot_knm, "knm", "kxy", cameraslm.slm, shape
                 )
 
@@ -1099,7 +1099,7 @@ class SpotHologram(_AbstractSpotHologram):
             else:
                 self.spot_ij = None
 
-            self.spot_knm = toolbox.convert_blaze_vector(
+            self.spot_knm = toolbox.convert_vector(
                 self.spot_kxy, "kxy", "knm", cameraslm.slm, shape
             )
         elif basis == "ij":  # Pixel on the camera.
@@ -1112,7 +1112,7 @@ class SpotHologram(_AbstractSpotHologram):
 
             self.spot_ij = vectors
             self.spot_kxy = cameraslm.ijcam_to_kxyslm(vectors)
-            self.spot_knm = toolbox.convert_blaze_vector(vectors, "ij", "knm", cameraslm, shape)
+            self.spot_knm = toolbox.convert_vector(vectors, "ij", "knm", cameraslm, shape)
         else:
             raise Exception("Unrecognized basis for spots '{}'.".format(basis))
 
@@ -1120,13 +1120,13 @@ class SpotHologram(_AbstractSpotHologram):
         if basis == "ij" or basis == "kxy":
             if null_vectors is not None:
                 # Convert the null vectors.
-                self.null_knm = toolbox.convert_blaze_vector(
+                self.null_knm = toolbox.convert_vector(
                     null_vectors, basis, "knm", cameraslm, shape
                 )
 
                 # Convert the null radius.
                 if null_radius is not None:
-                    self.null_radius_knm = toolbox.convert_blaze_radius(
+                    self.null_radius_knm = toolbox.convert_radius(
                         null_radius, basis, "knm", cameraslm, shape
                     )
                 else:
@@ -1140,8 +1140,8 @@ class SpotHologram(_AbstractSpotHologram):
         # Generate point spread functions (psf) for the knm and ij bases
         if cameraslm is not None:
             psf_kxy = np.mean(cameraslm.slm.spot_radius_kxy())
-            psf_knm = toolbox.convert_blaze_radius(psf_kxy, "kxy", "knm", cameraslm.slm, shape)
-            psf_ij = toolbox.convert_blaze_radius(psf_kxy, "kxy", "ij", cameraslm, shape)
+            psf_knm = toolbox.convert_radius(psf_kxy, "kxy", "knm", cameraslm.slm, shape)
+            psf_ij = toolbox.convert_radius(psf_kxy, "kxy", "ij", cameraslm, shape)
         else:
             psf_knm = 0
             psf_ij = np.nan
@@ -1326,7 +1326,7 @@ class SpotHologram(_AbstractSpotHologram):
                     "to interpret ij."
                 )
 
-                array_center = toolbox.convert_blaze_vector((0, 0), "kxy", "ij", cameraslm)
+                array_center = toolbox.convert_vector((0, 0), "kxy", "ij", cameraslm)
 
         # Make the grid edges.
         x_edge = np.arange(array_shape[0]) - (array_shape[0] - 1) / 2.0
@@ -1357,7 +1357,7 @@ class SpotHologram(_AbstractSpotHologram):
 
         # Convert these to the other coordinate systems if possible.
         if self.cameraslm is not None:
-            self.spot_kxy_rounded = toolbox.convert_blaze_vector(
+            self.spot_kxy_rounded = toolbox.convert_vector(
                 self.spot_knm_rounded,
                 "knm",
                 "kxy",

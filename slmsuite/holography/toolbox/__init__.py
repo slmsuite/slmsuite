@@ -59,6 +59,10 @@ def convert_blaze_vector(*args, **kwargs):
     Alias for :meth:`~slmsuite.holography.toolbox.convert_vector()`
     for backwards compatibility.
     """
+    warnings.warn(
+        "The backwards-compatible alias convert_blaze_vector will be depreciated "
+        "in favor of convert_vector in a future release."
+    )
     return convert_vector(*args, **kwargs)
 
 
@@ -67,6 +71,10 @@ def convert_blaze_radius(*args, **kwargs):
     Alias for :meth:`~slmsuite.holography.toolbox.convert_radius()`
     for backwards compatibility.
     """
+    warnings.warn(
+        "The backwards-compatible alias convert_blaze_radius will be depreciated "
+        "in favor of convert_radius in a future release."
+    )
     return convert_radius(*args, **kwargs)
 
 

@@ -163,7 +163,7 @@ def latest_path(path, name, extension=None, kind="file", digit_count=5):
     return ret
 
 
-def read_h5(file_path, decode_bytes=True, **kwargs):
+def read_h5(file_path, decode_bytes=True):
     """
     Read data from an h5 file into a dictionary.
     In the case of more complicated h5 hierarchy, a dictionary of dictionaries is returned.
@@ -173,11 +173,9 @@ def read_h5(file_path, decode_bytes=True, **kwargs):
     file_path : str
         Full path to the file to read the data from.
     decode_bytes : bool
-        Whether or not objects with type `bytes` should be decoded.
+        Whether or not objects with type ``bytes`` should be decoded.
         By default HDF5 writes strings as bytes objects; this functionality
-        will make strings read back from the file `str` type.
-    **kwargs
-        Passed to h5py.File. Useful for setting raw data chunk cache values (e.g. `rdcc_nbytes`).
+        will make strings read back from the file ``str`` type.
 
     Returns
     -------
@@ -195,22 +193,40 @@ def read_h5(file_path, decode_bytes=True, **kwargs):
                 if decode_bytes:
                     if isinstance(data_, bytes):
                         data_ = bytes.decode(data_)
-                    elif isinstance(data_, np.ndarray) and isinstance(data_[0], bytes):
+                    elif np.isscalar(data_):
+                        pass
+                    elif isinstance(data_, np.ndarray) and len(data_) > 0 and isinstance(data_[0], bytes):
                         data_ = np.vectorize(bytes.decode)(data_)
                 data[key] = data_
 
         return data
 
-    with h5py.File(file_path, "r", **kwargs) as file_:
+    with h5py.File(file_path, "r") as file_:
         data = recurse(file_)
 
     return data
 
 
-def write_h5(file_path, data, mode="w", **kwargs):
+def write_h5(file_path, data, mode="w"):
     """
     Write data in a dictionary to an `h5 file
     <https://docs.h5py.org/en/stable/high/file.html#opening-creating-files>`_.
+
+    Note
+    ~~~~
+    There are some limitations to what the h5 file standard can store, along with
+    limitations on what is currently implemented in this function. A few tips:
+
+    Supported types:
+
+    - Nested dictionaries which are written as h5 group hierarchy,
+    - ``None`` (though this is written as ``False``),
+    - Uniform arrays of numeric or string data.
+
+    Example unsupported types:
+
+    - Staggered arrays (an array consisting of arrays of different sizes),
+    - Non-numeric or non-string data (e.g. object),
 
     Parameters
     ----------
@@ -220,16 +236,31 @@ def write_h5(file_path, data, mode="w", **kwargs):
         Dictionary of data to save in the file.
     mode : str
         The mode to open the file with.
-    **kwargs
-        Passed to h5py.File. Useful for setting raw data chunk cache values (e.g. `rdcc_nbytes`).
     """
     def recurse(group, data):
         for key in data.keys():
             if isinstance(data[key], dict):
                 new_group = group.create_group(key)
                 recurse(new_group, data[key])
+            elif isinstance(data[key], str):
+                group[key] = bytes(data[key], 'utf-8')
+            elif data[key] is None:
+                group[key] = False
             else:
-                group[key] = data[key]
+                try:
+                    array = np.array(data[key])
+                except ValueError as e:
+                    raise ValueError(
+                        "write_h5() does not support saving staggered arrays such as {}. "
+                        "Arrays must be uniform. {}".format(str(data[key]), str(e))
+                    )
+                except Exception as e:
+                    raise e
 
-    with h5py.File(file_path, mode, **kwargs) as file_:
+                if array.dtype.char == "U":
+                    array = np.vectorize(str.encode)(array)
+
+                group[key] = array
+
+    with h5py.File(file_path, mode) as file_:
         recurse(file_, data)

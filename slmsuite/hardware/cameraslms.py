@@ -116,7 +116,7 @@ class FourierSLM(CameraSLM):
         In the future, including pincushion or other distortions might be implemented
         using :meth:`scipy.ndimage.spline_filter()`,
         though this mapping would be separable.
-    wavefront_calibration_raw : dict OR None
+    wavefront_calibration : dict OR None
         Raw data for wavefront calibration, which corrects for aberrations
         in the optical system (phase) and measures the amplitude distribution
         of power on the SLM (amplitude).
@@ -128,7 +128,7 @@ class FourierSLM(CameraSLM):
         super().__init__(*args, **kwargs)
 
         self.fourier_calibration = None
-        self.wavefront_calibration_raw = None
+        self.wavefront_calibration = None
 
         # Size of the calibration point window relative to the spot.
         self._wavefront_calibration_window_multiplier = 4
@@ -181,10 +181,85 @@ class FourierSLM(CameraSLM):
         #Combine the two and pass FourierSLM attributes from hardware
         fs_sim = FourierSLM(cam_sim, slm_sim)
         fs_sim.fourier_calibration = copy.deepcopy(self.fourier_calibration)
-        fs_sim.wavefront_calibration_raw = copy.deepcopy(self.wavefront_calibration_raw)
+        fs_sim.wavefront_calibration = copy.deepcopy(self.wavefront_calibration)
         fs_sim._wavefront_calibration_window_multiplier = self._wavefront_calibration_window_multiplier
 
         return fs_sim
+
+    ### Calibration Helpers ###
+
+    def name_calibration(self, calibration_type):
+        """
+        Creates ``"<cam.name>-<slm.name>-<calibration_type>"``.
+
+        Returns
+        -------
+        name : str
+            The generated name.
+        calibration_type : str
+            TODO
+        """
+        return f"{self.cam.name}_{self.slm.name}_{calibration_type}"
+
+    def save_calibration(self, calibration_type, path=".", name=None):
+        """
+        Saves :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`
+        to a file like ``"path/name_id.h5"``.
+
+        Parameters
+        ----------
+        path : str
+            Path to directory to save in. Default is current directory.
+        name : str OR None
+            Name of the save file. If ``None``, will use :meth:`name_calibration`.
+
+        Returns
+        -------
+        str
+            The file path that the Fourier calibration was saved to.
+        """
+        if name is None:
+            name = self.name_calibration()
+        file_path = generate_path(path, name, extension="h5")
+        write_h5(file_path, self.fourier_calibration)
+
+        return file_path
+
+    def load_calibration(self, calibration_type, file_path=None):
+        """
+        Loads :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`
+        from a file.
+
+        Parameters
+        ----------
+        file_path : str OR None
+            Full path to the Fourier calibration file. If ``None``, will
+            search the current directory for a file with a name like
+            the one returned by :meth:`name_fourier_calibration`.
+
+        Returns
+        -------
+        str
+            The file path that the Fourier calibration was loaded from.
+
+        Raises
+        ------
+        FileNotFoundError
+            If a file is not found.
+        """
+        if file_path is None:
+            path = os.path.abspath(".")
+            name = self.name_fourier_calibration()
+            file_path = latest_path(path, name, extension="h5")
+            if file_path is None:
+                raise FileNotFoundError(
+                    "Unable to find a Fourier calibration file like\n{}"
+                    "".format(os.path.join(path, name))
+                )
+
+        self.fourier_calibration = read_h5(file_path)
+
+        return file_path
 
     ### Settle Time Calibration ###
 
@@ -498,82 +573,17 @@ class FourierSLM(CameraSLM):
             [M[1, 0] * scaling[0], M[1, 1] * scaling[1]],
         ])
 
-        self.fourier_calibration = {"__version__" : __version__, "M": M, "b": b, "a": a}
+        self.fourier_calibration = {
+            "__version__" : __version__,
+            "calibration" : "fourier_calibration",
+            "M": M,
+            "b": b,
+            "a": a
+        }
 
         return self.fourier_calibration
 
     ### Fourier Calibration Helpers ###
-
-    def name_fourier_calibration(self):
-        """
-        Creates ``"<cam.name>-<slm.name>-fourier-calibration"``.
-
-        Returns
-        -------
-        name : str
-            The generated name.
-        """
-        return "{}-{}-fourier-calibration".format(self.cam.name, self.slm.name)
-
-    def save_fourier_calibration(self, path=".", name=None):
-        """
-        Saves :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`
-        to a file like ``"path/name_id.h5"``.
-
-        Parameters
-        ----------
-        path : str
-            Path to directory to save in. Default is current directory.
-        name : str OR None
-            Name of the save file. If ``None``, will use :meth:`name_fourier_calibration`.
-
-        Returns
-        -------
-        str
-            The file path that the Fourier calibration was saved to.
-        """
-        if name is None:
-            name = self.name_fourier_calibration()
-        file_path = generate_path(path, name, extension="h5")
-        write_h5(file_path, self.fourier_calibration)
-
-        return file_path
-
-    def load_fourier_calibration(self, file_path=None):
-        """
-        Loads :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`
-        from a file.
-
-        Parameters
-        ----------
-        file_path : str OR None
-            Full path to the Fourier calibration file. If ``None``, will
-            search the current directory for a file with a name like
-            the one returned by :meth:`name_fourier_calibration`.
-
-        Returns
-        -------
-        str
-            The file path that the Fourier calibration was loaded from.
-
-        Raises
-        ------
-        FileNotFoundError
-            If a file is not found.
-        """
-        if file_path is None:
-            path = os.path.abspath(".")
-            name = self.name_fourier_calibration()
-            file_path = latest_path(path, name, extension="h5")
-            if file_path is None:
-                raise FileNotFoundError(
-                    "Unable to find a Fourier calibration file like\n{}"
-                    "".format(os.path.join(path, name))
-                )
-
-        self.fourier_calibration = read_h5(file_path)
-
-        return file_path
 
     def project_fourier_grid(self, array_shape=10, array_pitch=10, array_center=None, **kwargs):
         """
@@ -653,7 +663,7 @@ class FourierSLM(CameraSLM):
         ):
         """
         Meta: This docstring will be overwritten by ``SimulatedCamera.build_affine``'s
-        at the end of this file.
+        after this class.
         """
         if offset is None:
             offset = np.flip(self.cam.shape) / 2
@@ -907,6 +917,10 @@ class FourierSLM(CameraSLM):
 
         return f_eff
 
+    ### Zernike Wavefront Calibration ###
+
+
+
     ### Wavefront Calibration ###
 
     def wavefront_calibrate(
@@ -935,7 +949,7 @@ class FourierSLM(CameraSLM):
         from each point, the less ideal the correction is.
         Correction at many points over the plane permits a better understanding of the
         aberration and greater possibility of compensation.
-        Sets :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`.
+        Sets :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration`.
         Run :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`
         after to produce the usable calibration which is written to the SLM.
         This procedure measures the wavefront phase and amplitude.
@@ -1021,7 +1035,7 @@ class FourierSLM(CameraSLM):
             calibration. This is useful to determine the quality of a previous
             calibration, as a new calibration should yield zero phase correction needed
             if the previous was perfect. The old calibration will be stored in the
-            :attr:`wavefront_calibration_raw` under ``"previous_phase_correction"``,
+            :attr:`wavefront_calibration` under ``"previous_phase_correction"``,
             so keep in mind that this (uncompressed) image will take up significantly
             more space.
         measure_background : bool
@@ -1044,7 +1058,7 @@ class FourierSLM(CameraSLM):
         -------
         dict
             The contents of
-            :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`.
+            :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration`.
 
         Raises
         ------
@@ -1318,6 +1332,7 @@ class FourierSLM(CameraSLM):
         # Build the calibration dict.
         calibration_dict = {
             "__version__" : __version__,
+            "calibration" : "wavefront_calibration",
             "calibration_points" : calibration_points,
             "superpixel_size" : superpixel_size,
             "slm_supershape" : slm_supershape,
@@ -1982,88 +1997,11 @@ class FourierSLM(CameraSLM):
 
                         calibration_dict[key][i, coords[1, i], coords[0, i]] = result
 
-        self.wavefront_calibration_raw = calibration_dict
+        self.wavefront_calibration = calibration_dict
 
         return calibration_dict
 
     ### Wavefront Calibration Helpers ###
-
-    def name_wavefront_calibration(self):
-        """
-        Creates ``"<cam.name>-<slm.name>-wavefront-calibration"``.
-
-        Returns
-        -------
-        name : str
-            The generated name.
-        """
-        return "{}-{}-wavefront-calibration".format(self.cam.name, self.slm.name)
-
-    def save_wavefront_calibration(self, path=".", name=None):
-        """
-        Saves :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
-        to a file like ``"path/name_id.h5"``.
-
-        Parameters
-        ----------
-        path : str
-            Path to the save location. Default is current directory.
-        name : str or None
-            Name of the save file. If ``None``, will use :meth:`name_wavefront_calibration`.
-
-        Returns
-        -------
-        str
-            The file path that the fourier calibration was saved to.
-        """
-        if name is None:
-            name = self.name_wavefront_calibration()
-        file_path = generate_path(path, name, extension="h5")
-        write_h5(file_path, self.wavefront_calibration_raw)
-
-        return file_path
-
-    def load_wavefront_calibration(self, file_path=None, process=True, **kwargs):
-        """
-        Loads :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
-        from a file.
-
-        Parameters
-        ----------
-        file_path : str or None
-            Full path to the wavefront calibration file. If ``None``, will
-            search the current directory for a file with a name like
-            the one returned by
-            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.name_wavefront_calibration`.
-        process : bool
-            Whether to immediately process the wavefront calibration.
-            See
-            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`.
-        **kwargs
-            Passed to :meth:`~slmsuite.hardware.cameraslms.FourierSLM.process_wavefront_calibration`,
-            if ``process`` is true.
-
-        Returns
-        -------
-        str
-            The file path that the wavefront calibration was loaded from.
-        """
-        if file_path is None:
-            path = os.path.abspath(".")
-            name = self.name_wavefront_calibration()
-            file_path = latest_path(path, name, extension="h5")
-            if file_path is None:
-                raise FileNotFoundError(
-                    "Unable to find a Fourier calibration file like\n{}"
-                    "".format(os.path.join(path, name))
-                )
-
-        self.wavefront_calibration_raw = read_h5(file_path)
-
-        if process:
-            self.process_wavefront_calibration(**kwargs)
-
-        return file_path
 
     def get_wavefront_calibration_points(
         self,
@@ -2219,7 +2157,7 @@ class FourierSLM(CameraSLM):
 
     def process_wavefront_calibration(self, index=0, smooth=True, r2_threshold=0.9, apply=True, plot=False):
         """
-        Processes :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_raw`
+        Processes :attr:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration`
         into the desired phase correction and amplitude measurement. Applies these
         parameters to the respective variables in the SLM if ``apply`` is ``True``.
 
@@ -2249,7 +2187,7 @@ class FourierSLM(CameraSLM):
             The updated source dictionary containing the processed source amplitude and phase.
         """
         # Step 0: Initialize helper variables and functions.
-        data = self.wavefront_calibration_raw
+        data = self.wavefront_calibration
 
         if len(data) == 0:
             raise RuntimeError("No raw wavefront data to process. Either load data or calibrate.")
@@ -2299,7 +2237,7 @@ class FourierSLM(CameraSLM):
             The updated source dictionary containing the processed source amplitude and phase.
         """
         # Step 0: Initialize helper variables and functions.
-        data = self.wavefront_calibration_raw
+        data = self.wavefront_calibration
 
         if len(data) == 0:
             raise RuntimeError("No raw wavefront data to process. Either load data or calibrate.")
@@ -2548,7 +2486,7 @@ class FourierSLM(CameraSLM):
         """TODO"""
         plt.figure(figsize=(16, 8))
 
-        data = self.wavefront_calibration_raw
+        data = self.wavefront_calibration
 
         if index is None:
             coords = data["calibration_points"]
@@ -2640,3 +2578,13 @@ class FourierSLM(CameraSLM):
 
 
 FourierSLM.build_fourier_calibration.__doc__ = SimulatedCamera.build_affine.__doc__
+
+
+class SimulatedFourierSLM(FourierSLM):
+    def __init__(calibrations):
+        """
+        Parameters
+        ----------
+        calibrations : list of str
+            TODO
+        """

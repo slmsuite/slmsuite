@@ -6,6 +6,10 @@ Include the ``numpy-export`` flag in the ``pip install`` command,
 as the :class:`AlliedVision` class makes use of these features. See especially the
 `vimba python manual <https://github.com/alliedvision/VimbaPython/blob/master/Documentation/Vimba%20Python%20Manual.pdf>`_
 for reference.
+
+Note
+~~~~
+Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
 
 import time

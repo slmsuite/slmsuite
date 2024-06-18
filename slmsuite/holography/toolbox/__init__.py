@@ -3,7 +3,7 @@ Helper functions for manipulating phase patterns.
 """
 
 import numpy as np
-from scipy.spatial.distance import chebyshev, euclidean
+from scipy.spatial import distance
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import cv2
 import matplotlib.pyplot as plt
@@ -28,16 +28,16 @@ LENGTH_LABELS["um"] = r"$\mu$m"
 CAMERA_UNITS = ["ij"]
 
 BLAZE_LABELS = {
-    "rad": (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
+    "rad":  (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
     "mrad": (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
-    "deg": (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]"),
+    "deg":  (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]"),
     "norm": (r"$k_x/k$", r"$k_y/k$"),
-    "kxy": (r"$k_x/k$", r"$k_y/k$"),
-    "knm": (r"$n$ [pix]", r"$m$ [pix]"),
+    "kxy":  (r"$k_x/k$", r"$k_y/k$"),
+    "knm":  (r"$k_n$ [pix]", r"$k_m$ [pix]"),
     "freq": (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
     "lpmm": (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
-    "ij": (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
-    "zernike": (r"$Z_1^1$ [Zernike rad]", r"$Z_1^{-1}$ [Zernike rad]"),
+    "ij":   (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
+    "zernike":  (r"$Z_1^1$ [Zernike rad]", r"$Z_1^{-1}$ [Zernike rad]"),
 }
 for k in LENGTH_FACTORS.keys():
     u = LENGTH_LABELS[k]
@@ -229,7 +229,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
         cameraslm = None
 
     if from_units in CAMERA_UNITS or to_units in CAMERA_UNITS:
-        if cameraslm is None or cameraslm.fourier_calibration is None:
+        if cameraslm is None or cameraslm.calibrations["fourier"] is None:
             warnings.warn(
                 f"CameraSLM must be passed to slm for conversion '{from_units}' to '{to_units}'"
             )
@@ -425,7 +425,7 @@ def convert_radius(radius, from_units="norm", to_units="norm", slm=None, shape=N
 
 def window_slice(window, shape=None, centered=False, circular=False):
     """
-    Get the slices that describe the window's view into the larger array.
+    Parses the slices that describe the window's view into the larger array.
 
     Parameters
     ----------
@@ -476,14 +476,17 @@ def window_slice(window, shape=None, centered=False, circular=False):
             xc = xi + int((window[1] - 1) / 2)
             yc = yi + int((window[3] - 1) / 2)
 
-            rr_grid = (window[3] ** 2) * np.square(x_grid.astype(float) - xc) + (
-                window[1] ** 2
-            ) * np.square(y_grid.astype(float) - yc)
+            rr_grid = (
+                (window[3] ** 2) * np.square(x_grid.astype(float) - xc) +
+                (window[1] ** 2) * np.square(y_grid.astype(float) - yc)
+            )
 
             mask_grid = rr_grid <= (window[1] ** 2) * (window[3] ** 2) / 4.0
 
+            # Pass things back through window_slice to crop the circle, should the user
+            # have given values that are out of bounds.
             return window_slice((y_grid[mask_grid], x_grid[mask_grid]), shape=shape)
-        else:  # Otherwise, return square slices
+        else:  # Otherwise, return square slices in the python style.
             slice_ = (slice(yi, yf), slice(xi, xf))
     # (y_ind, x_ind) format
     elif len(window) == 2:
@@ -714,6 +717,7 @@ def imprint(
     matrix : numpy.ndarray
         The data to imprint a ``function`` onto.
     window
+        Passed to :meth:`~slmsuite.holography.toolbox.window_slice()`.
         See :meth:`~slmsuite.holography.toolbox.window_slice()` for various options.
     function : function OR float
         A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
@@ -726,7 +730,7 @@ def imprint(
 
         Note
         ~~~~
-        Also accepts floating point values, in which case this value is simply added.
+        Also accepts floating point values, in which case the value is simply added.
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR None
         Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
@@ -1080,15 +1084,15 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
         return np.matmul(M, indices) + b
 
 
-def smallest_distance(vectors, metric=chebyshev):
+def smallest_distance(vectors, metric="chebyshev"):
     """
     Returns the smallest distance between pairs of points under a given ``metric``.
 
-    Note
-    ~~~~
-    An :math:`\mathcal{O}(N^2)` brute force approach is currently implemented.
-    Future work will involve an :math:`\mathcal{O}(N\log(N))`
-    divide and conquer algorithm.
+    Tip
+    ~~~
+    This function supports a :math:`\mathcal{O}(N\log(N))` divide and conquer algorithm
+    and can handle large pointsets.
+    An :math:`\mathcal{O}(N^2)` brute force approach is implemented as a backup.
 
     Caution
     ~~~~~~~
@@ -1100,10 +1104,13 @@ def smallest_distance(vectors, metric=chebyshev):
     vectors : array_like
         Points to compare.
         Cleaned with :meth:`~slmsuite.holography.toolbox.format_2vectors()`.
-    metric : function
+    metric : str OR function
         Function to use to compare.
-        Defaults to :meth:`scipy.spatial.distance.chebyshev()`.
-        :meth:`scipy.spatial.distance.euclidean()` is also common.
+        Defaults to ``"chebyshev"`` which corresponds to
+        :meth:`scipy.spatial.distance.chebyshev()`.
+        The :math:`\mathcal{O}(N\log(N))` divide and conquer algorithm is only
+        compatible with string inputs. allowed by :meth:`scipy.spatial.distance.pdist`.
+        Function arguments will fallback to the brute force approach.
 
     Returns
     -------
@@ -1111,21 +1118,73 @@ def smallest_distance(vectors, metric=chebyshev):
         Minimum distance between any pair of points under the given metric.
         If fewer than two points are given, then ``np.inf`` is returned.
     """
+
+    def _divide_and_conquer_recursive(v, metric, axis=0, min_div=200):
+        # Expects sorted v.
+        N = v.shape[0]
+
+        if N > min_div:
+            M = int(N/2)
+
+            # Divide the problem recursively.
+            d1 = _divide_and_conquer_recursive(v[:M, :], metric, axis)
+            d2 = _divide_and_conquer_recursive(v[M:, :], metric, axis)
+
+            # Conquer.
+            d = min(d1, d2)
+
+            # Leave if we don't need to merge.
+            if (v[M, axis] - v[M+1, axis]) > d:
+                return d
+
+            # Merge around average x0 between two sections.
+            x0 = (v[M, axis] + v[M+1, axis]) / 2
+            mask = np.abs(v[:, axis] - x0) < d
+            subset = v[mask, :]
+
+            return min(d, distance.pdist(subset, metric=metric).min())
+        else:
+            # Use pdist as a fast low-level distance calculator.
+            return  distance.pdist(v, metric=metric).min()
+
     vectors = format_2vectors(vectors)
     N = vectors.shape[1]
 
-    minimum = np.inf
-
     if N <= 1:
+        return np.inf
+
+    if isinstance(metric, str):     # Divide and conquer.
+        if not metric in distance._METRIC_ALIAS:
+            raise RuntimeError("Distance metric '{metric}' not recognized by scipy.")
+
+        axis = 0
+        min_div = 200
+
+        # pdist needs transpose.
+        vectors = vectors.T
+
+        if N < 2*min_div:
+            return distance.pdist(vectors, metric=metric).min()
+        else:
+            centroid = np.max(vectors, axis=axis, keepdims=True)
+
+            # Slightly inefficient use of cdist.
+            xorder = distance.cdist(vectors[:,[axis]], centroid[:,[axis]], metric=metric)
+
+            I = np.argsort(np.squeeze(xorder))
+            vsort = vectors[I, :]
+
+            return _divide_and_conquer_recursive(vsort, metric, axis=axis, min_div=min_div)
+    else:                           # Fallback to brute force.
+        minimum = np.inf
+
+        for x in range(N - 1):
+            for y in range(x + 1, N):
+                distance = metric(vectors[:, x], vectors[:, y])
+                if distance < minimum:
+                    minimum = distance
+
         return minimum
-
-    for x in range(N - 1):
-        for y in range(x + 1, N):
-            distance = metric(vectors[:, x], vectors[:, y])
-            if distance < minimum:
-                minimum = distance
-
-    return minimum
 
 
 def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
@@ -1355,7 +1414,7 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
     if not np.isscalar(transform):
         transform = np.squeeze(transform)
         if transform.shape != (2,2):
-            raise ValueError("Expected transform to be None, scalar or a 2x2 matrix.")
+            raise ValueError("Expected transform to be None, scalar, or a 2x2 matrix.")
 
     # Parse shift.
     if shift is None:
@@ -1426,9 +1485,8 @@ def pad(matrix, shape):
         (shape[1] - matrix.shape[1]) / 2.0,
     )
 
-    assert (
-        deltashape[0] >= 0 and deltashape[1] >= 0
-    ), "Shape {} is too large to pad to shape {}".format(tuple(matrix.shape), shape)
+    if not (deltashape[0] >= 0 and deltashape[1] >= 0):
+        raise ValueError(f"Shape {tuple(matrix.shape)} is too large to pad to shape {shape}")
 
     pad_b = int(np.floor(deltashape[0]))
     pad_t = int(np.ceil(deltashape[0]))
@@ -1477,9 +1535,8 @@ def unpad(matrix, shape):
 
     deltashape = ((shape[0] - mshape[0]) / 2.0, (shape[1] - mshape[1]) / 2.0)
 
-    assert (
-        deltashape[0] <= 0 and deltashape[1] <= 0
-    ), "Shape {} is too small to unpad to shape {}".format(tuple(mshape), shape)
+    if not (deltashape[0] <= 0 and deltashape[1] <= 0):
+        raise ValueError(f"Shape {tuple(mshape)} is too small to unpad to shape {shape}")
 
     pad_b = int(np.floor(-deltashape[0]))
     pad_t = int(mshape[0] - np.ceil(-deltashape[0]))

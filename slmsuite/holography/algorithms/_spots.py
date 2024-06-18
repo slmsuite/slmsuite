@@ -242,9 +242,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
             The index ``-1`` (outside Zernike indexing) is used as a special case to add
             a vortex waveplate with amplitude :math:`2\pi` to the system
-            (see :meth:`slmsuite.holography.toolbox.phase.laguerre_gaussian()`).
+            (see :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`).
         zernike_center_shift : array_like OR None
-
+            TODO
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
@@ -774,18 +774,18 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         return nearfield_out
 
     # Target update.
-    def update_target(self, new_target, reset_weights=False, plot=False):
+    def update_target(self, new_target, reset_weights=False):
         """
         Change the target to something new. This method handles cleaning and normalization.
 
         Parameters
         ----------
         new_target : array_like OR None
+            A list with ``N`` elements corresponding to the target intensities of each
+            of the ``N`` spots.
             If ``None``, sets the target spot amplitudes to be uniform.
         reset_weights : bool
             Whether to overwrite ``weights`` with ``target``.
-        plot : bool
-            Calls :meth:`.plot_farfield()` on :attr:`target`.
         """
         if new_target is None:
             # Default to even power on all spots.
@@ -805,9 +805,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         if reset_weights:
             self.reset_weights()
-
-        if plot:
-            raise NotImplementedError()
 
     # Weighting and stats.
     def _update_weights(self):
@@ -1075,7 +1072,7 @@ class SpotHologram(_AbstractSpotHologram):
                     self.spot_knm, "knm", "kxy", cameraslm.slm, shape
                 )
 
-                if cameraslm.fourier_calibration is not None:
+                if "fourier" in cameraslm.calibrations:
                     self.spot_ij = cameraslm.kxyslm_to_ijcam(self.spot_kxy)
                 else:
                     self.spot_ij = None
@@ -1092,8 +1089,8 @@ class SpotHologram(_AbstractSpotHologram):
 
             self.spot_kxy = vectors
 
-            if hasattr(cameraslm, "fourier_calibration"):
-                if cameraslm.fourier_calibration is not None:
+            if hasattr(cameraslm, "calibrations"):
+                if "fourier" in cameraslm.calibrations:
                     self.spot_ij = cameraslm.kxyslm_to_ijcam(vectors)
                     # This is okay for non-feedback GS, so we don't error.
             else:
@@ -1104,7 +1101,7 @@ class SpotHologram(_AbstractSpotHologram):
             )
         elif basis == "ij":  # Pixel on the camera.
             assert cameraslm is not None, "We need an cameraslm to interpret ij."
-            assert cameraslm.fourier_calibration is not None, (
+            assert "fourier" in cameraslm.calibrations, (
                 "We need an cameraslm with "
                 "fourier-calibrated kxyslm_to_ijcam and ijcam_to_kxyslm transforms "
                 "to interpret ij."
@@ -1211,7 +1208,7 @@ class SpotHologram(_AbstractSpotHologram):
 
             self.null_radius_knm = int(np.ceil(self.null_radius_knm))
 
-        # Initialize target/etc.
+        # Initialize target/etc. Note that this passes through FeedbackHologram.
         super().__init__(shape, target_ij=None, cameraslm=cameraslm, **kwargs)
 
         # Parse null_region after __init__
@@ -1320,7 +1317,7 @@ class SpotHologram(_AbstractSpotHologram):
                 assert "cameraslm" in kwargs, "We need an cameraslm to interpret ij."
                 cameraslm = kwargs["cameraslm"]
                 assert cameraslm is not None, "We need an cameraslm to interpret ij."
-                assert cameraslm.fourier_calibration is not None, (
+                assert "fourier" in cameraslm.calibrations, (
                     "We need an cameraslm with "
                     "fourier-calibrated kxyslm_to_ijcam and ijcam_to_kxyslm transforms "
                     "to interpret ij."
@@ -1348,7 +1345,7 @@ class SpotHologram(_AbstractSpotHologram):
         # Return a new SpotHologram.
         return SpotHologram(shape, vectors, basis=basis, spot_amp=None, **kwargs)
 
-    def _update_target_spots(self, reset_weights=False, plot=False):
+    def _update_target_spots(self, reset_weights=False):
         """
         Wrapped by :meth:`SpotHologram.update_target()`.
         """
@@ -1365,7 +1362,7 @@ class SpotHologram(_AbstractSpotHologram):
                 self.shape,
             )
 
-            if self.cameraslm.fourier_calibration is not None:
+            if "fourier" in self.cameraslm.calibrations:
                 self.spot_ij_rounded = self.cameraslm.kxyslm_to_ijcam(self.spot_kxy_rounded)
             else:
                 self.spot_ij_rounded = None
@@ -1406,17 +1403,14 @@ class SpotHologram(_AbstractSpotHologram):
         if reset_weights:
             self.reset_weights()
 
-        if plot:
-            self.plot_farfield(self.target)
-
     def update_target(self, reset_weights=False, plot=False):
         """
         From the spot locations stored in :attr:`spot_knm`, update the target pattern.
 
         Note
         ~~~~
-        If there's a cameraslm, updates the :attr:`spot_ij_rounded` attribute
-        corresponding to where pixels in the k-space where actually placed (due to rounding
+        If there's a ``cameraslm``, updates the :attr:`spot_ij_rounded` attribute
+        corresponding to where pixels in the :math:`k`-space where actually placed (due to rounding
         to integers, stored in :attr:`spot_knm_rounded`), rather the
         idealized floats :attr:`spot_knm`.
 
@@ -1424,17 +1418,14 @@ class SpotHologram(_AbstractSpotHologram):
         ~~~~
         The :attr:`target` and :attr:`weights` matrices are modified in-place for speed,
         unlike :class:`.Hologram` or :class:`.FeedbackHologram` which make new matrices.
-        This is because spot positions are expected to be corrected using :meth:`correct_spots()`.
+        This is because spot positions are expected to be corrected using :meth:`refine_offsets()`.
 
         Parameters
         ----------
         reset_weights : bool
-            Whether to rest the :attr:`weights` to this new :attr:`target`.
-        plot : bool
-            Whether to enable debug plotting to see the positions of the spots relative to the
-            shape of the camera and slm.
+            Whether to reset the :attr:`weights` to this new :attr:`target`.
         """
-        self._update_target_spots(reset_weights=reset_weights, plot=plot)
+        self._update_target_spots(reset_weights=reset_weights)
 
     # Weighting and stats.
     def _update_weights(self):

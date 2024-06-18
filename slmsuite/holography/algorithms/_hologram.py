@@ -102,16 +102,13 @@ class Hologram(_HologramStats):
         `type promotion <https://numpy.org/doc/stable/reference/routines.fft.html#type-promotion>`_.
         Complex datatypes are derived from :attr:`dtype`:
 
-         - ``float32`` -> ``complex64`` (default :attr:`dtype`)
+         - ``float32`` -> ``complex64`` (the default :attr:`dtype`)
          - ``float64`` -> ``complex128``
 
         ``float16`` is *not* recommended for :attr:`dtype` because ``complex32`` is not
         implemented by :mod:`numpy`.
     iter : int
         Tracks the current iteration number.
-    method : str
-        Remembers the name of the last-used optimization method. The method used for each
-        iteration is stored in ``stats``.
     flags : dict
         Helper flags to store custom persistent variables for optimization.
         These flags are generally changed by passing as a ``kwarg`` to
@@ -130,8 +127,9 @@ class Hologram(_HologramStats):
          - ``"stat_groups"`` : ``list of str``
             Stores the values passed to
             :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
-         - ``"raw_stats"`` : bool
-            Whether to store raw stats.
+         - ``"raw_stats"`` : ``bool``
+            Whether to store raw stats: the raw image and feedback data for each
+            iteration. Note that this can be a good amount of data.
          - ``"blur_ij"`` : ``float``
             See :meth:`~slmsuite.holography.algorithms.FeedbackHologram.ijcam_to_knmslm()`.
          - Other user-defined flags.
@@ -154,7 +152,7 @@ class Hologram(_HologramStats):
         See :meth:`.update_stats()` and :meth:`.plot_stats()`.
     """
 
-    def __init__(self, target, amp=None, phase=None, slm_shape=None, dtype=np.float32):
+    def __init__(self, target, amp=None, phase=None, slm_shape=None, dtype=np.float32, **kwargs):
         r"""
         Initialize datastructures for optimization.
         When :mod:`cupy` is enabled, arrays are initialized on the GPU as :mod:`cupy` arrays:
@@ -167,8 +165,9 @@ class Hologram(_HologramStats):
         Parameters
         ----------
         target : numpy.ndarray OR cupy.ndarray OR (int, int)
-            Target to optimize to. The user can also pass a shape in :mod:`numpy` ``(h,
-            w)`` form, and this constructor will create an empty target of all zeros.
+            Target to optimize to.
+            The user can also pass a shape in :mod:`numpy` ``(h, w)`` form,
+            and this constructor will create an empty target of all zeros.
             :meth:`.calculate_padded_shape()` can be of particular help for calculating the
             shape that will produce desired results (in terms of precision, etc).
         amp : array_like OR None
@@ -180,13 +179,15 @@ class Hologram(_HologramStats):
         slm_shape : (int, int) OR slmsuite.hardware.FourierSLM OR slmsuite.hardware.slms.SLM OR None
             The shape of the near-field of the SLM in :mod:`numpy` `(h, w)` form.
             Optionally, as a quality of life feature, the user can pass a
-            :class:`slmsuite.hardware.FourierSLM` or
-            :class:`slmsuite.hardware.slms.SLM` instead,
+            :class:`~slmsuite.hardware.FourierSLM` or
+            :class:`~slmsuite.hardware.slms.SLM` instead,
             and ``slm_shape`` (and ``amp`` if it is ``None``) are populated from this.
             If ``None``, tries to use the shape of ``amp`` or ``phase``, but if these
             are not present, defaults to :attr:`shape` (which is usually determined by ``target``).
         dtype : type
             See :attr:`dtype`; type to use for stored arrays.
+        **kwargs
+            Passed to :attr:`flags`.
         """
         # 1) Parse inputs
         # Parse target and create shape.
@@ -208,11 +209,13 @@ class Hologram(_HologramStats):
 
         # 1.5) Determine the shape of the SLM. We have three sources of this shape, which are
         # optional to pass, but must be self-consistent if passed:
-        # a) The shape of the nearfield amplitude
-        # b) The shape of the seed nearfield phase
-        # c) slm_shape itself (which is set to the shape of a passed SLM, if given).
-        # If no parameter is passed, these shapes are set to (nan, nan) to prepare for a
-        # vote (next section).
+        #
+        #  a) The shape of the nearfield amplitude
+        #  b) The shape of the seed nearfield phase
+        #  c) slm_shape itself (which is set to the shape of a passed SLM, if given).
+        #
+        # If no parameter is passed for a given shape, the shape is set to (nan, nan) to
+        # prepare for a vote (next section).
 
         # Option a
         if amp is None:
@@ -295,14 +298,17 @@ class Hologram(_HologramStats):
             self.amp = cp.array(amp, dtype=self.dtype, copy=False)
             self.amp *= 1 / Hologram._norm(self.amp)
 
-        # Initialize near-field phase
-        self.reset_phase(phase)
+        # Initialize flags.
+        self.flags = kwargs
 
         # Initialize target. reset() will handle weights.
         self._update_target(target, reset_weights=False)
 
+        # Initialize near-field phase
+        self.reset_phase(phase)
+
         # Initialize everything else inside reset.
-        self.reset(reset_phase=False, reset_flags=True)
+        self.reset(reset_phase=False, reset_flags=False)
 
         # Custom GPU kernels for speedy weighting.
         self._update_weights_generic_cuda_kernel = None
@@ -319,9 +325,11 @@ class Hologram(_HologramStats):
     def reset(self, reset_phase=True, reset_flags=False):
         r"""
         Resets the hologram to an initial state. Does not restore the preconditioned ``phase``
-        that may have been passed to the constructor (as this information is lost upon optimization).
+        that may have been passed to the constructor (as this information is lost upon
+        optimization). Instead, phase is randomized if ``reset_phase=True``.
         Also uses the current ``target`` rather than the ``target`` that may have been
-        passed to the constructor (e.g. includes current :meth:`.refine_offset()` changes, etc).
+        passed to the constructor (e.g. includes current
+        :meth:`~slmsuite.holography.algorithms.SpotHologram.refine_offset()` changes, etc).
 
         Parameters
         ----------
@@ -339,18 +347,54 @@ class Hologram(_HologramStats):
 
         # Reset vars.
         self.iter = 0
-        self.method = ""
-        if reset_flags:
-            self.flags = {}
         self.stats = {"method": [], "flags": {}, "stats": {}}
+        if reset_flags:
+            self.flags = {"method": ""}
 
         # Reset farfield storage.
         self.amp_ff = None
         self.phase_ff = None
 
-    def reset_phase(self, phase=None):
+    def _get_quadratic_initial_phase(self, scaling=1):
+        """
+        Analytically guesses a phase pattern (lens, blaze) that will overlap with the target.
+        """
+        target = self.target
+        if hasattr(target, "get"):
+            target = self.target.get()
+
+        # Figure out the size of the target in knm space
+        center_knm = analysis.image_positions(target, nansum=True)  # Note this is centered knm space.
+
+        # FUTURE: handle shear.
+        std_knm = np.sqrt(analysis.image_variances(target, centers=center_knm, nansum=True)[:2, 0])
+        std_amp = np.sqrt(analysis.image_variances(self.amp)[:2, 0])
+        shape = np.flip(self.shape).astype(float)
+
+        grid = analysis._generate_grid(self.shape[1], self.shape[0], centered=True)
+        grid[0] /= self.shape[1]
+        grid[1] /= self.shape[0]
+
+        # Figure out what lens and blaze we should apply to initialize to cover
+        # the target, based upon the moments we calculated.
+        return (
+            tphase.blaze(grid, center_knm) +
+            tphase.lens(grid, np.reciprocal(scaling * std_knm * shape / std_amp))
+        )
+
+    def _get_random_phase(self):
+        if cp == np:        # numpy does not support `dtype=`
+            rng = np.random.default_rng()
+            return rng.uniform(-np.pi, np.pi, self.slm_shape).astype(self.dtype)
+        else:
+            return cp.random.uniform(-np.pi, np.pi, self.slm_shape, dtype=self.dtype)
+
+    def reset_phase(self, phase=None, quadratic_initial_phase=None):
         r"""
-        Resets the hologram to a random state or to a provided phase.
+        Resets the hologram
+        to a provided phase,
+        to a random state,
+        or to a targeted `quadratic phase <https://doi.org/10.1364/OE.16.002176>`_.
 
         Parameters
         ----------
@@ -358,17 +402,40 @@ class Hologram(_HologramStats):
             The near-field initial phase.
             See :attr:`phase`. :attr:`phase` should only be passed if the user wants to
             precondition the optimization. Of shape :attr:`slm_shape`.
+        quadratic_initial_phase : bool OR float OR None
+            We can also precondition the phase analytically (with a lens and blaze)
+            to roughly the size of the target hologram, according to the first and
+            second order :meth:`~slmsuite.holography.analysis.image_moments()`.
+            This quadratic preconditioning is
+            `thought to help reduce the formation of optical vortices or speckle
+            <https://doi.org/10.1364/OE.16.002176>`_
+            compared to random initialization, as the analytic distribution
+            is smooth in phase.
+            If ``None``, looks for ``"quadratic_initial_phase"`` in :attr:`flags`.
+            If a floating point number is provided, the size of the beam in the
+            farfield is scaled accordingly.
         """
+        # Parse quadratic_initial_phase
+        if quadratic_initial_phase is None:
+            if "quadratic_initial_phase" in self.flags:
+                quadratic_initial_phase = self.flags["quadratic_initial_phase"]
+            else:
+                quadratic_initial_phase = False
+
         # Reset phase to random if no phase is given.
         if phase is None:
-            if cp == np:  # numpy does not support `dtype=`
-                rng = np.random.default_rng()
-                self.phase = rng.uniform(-np.pi, np.pi, self.slm_shape).astype(self.dtype)
-            else:
-                self.phase = cp.random.uniform(-np.pi, np.pi, self.slm_shape, dtype=self.dtype)
+            if quadratic_initial_phase:   # Analytic
+                self.phase = self._get_quadratic_initial_phase(quadratic_initial_phase)
+            else:                   # Random
+                self.phase = self._get_random_phase()
         else:
-            # Otherwise, cast as a cp.array with correct type.
-            self.phase = cp.array(phase, dtype=self.dtype, copy=False)
+            # Otherwise, cast the passed matrix as a cp.array with correct type.
+            phase = cp.array(phase, dtype=self.dtype, copy=False)
+
+            if not np.all(np.array(self.slm_shape) == np.array(phase.shape)):
+                raise ValueError(f"Reset phase of shape {phase.shape} is not of slm_shape {self.slm_shape}")
+
+            self.phase = phase
 
     def reset_weights(self):
         """
@@ -413,7 +480,7 @@ class Hologram(_HologramStats):
         ----------
         slm_shape : (int, int) OR slmsuite.hardware.FourierSLM
             The original shape of the SLM in :mod:`numpy` `(h, w)` form. The user can pass a
-            :class:`slmsuite.hardware.FourierSLM` or :class:`slmsuite.hardware.SLM` instead,
+            :class:`~slmsuite.hardware.FourierSLM` or :class:`~slmsuite.hardware.SLM` instead,
             and should pass this when using the ``precision`` parameter.
         padding_order : int
             Scales to the ``padding_order`` th larger power of 2.
@@ -507,12 +574,16 @@ class Hologram(_HologramStats):
         return np.sqrt(num_values_per_array)
 
     # User interactions: Changing the target and recovering the nearfield phase and complex farfield.
-    def _update_target(self, new_target, reset_weights=False, plot=False):
+    def _update_target(self, new_target, reset_weights=False):
         """
         Change the target to something new. This method handles cleaning and normalization.
 
         This method is shelled by :meth:`update_target()` such that it is still accessible
         in the case that a subclass overwrites :meth:`update_target()`.
+
+        Tip
+        ~~~
+        Use :meth:`.plot_farfield()` on :attr:`target`` for visualization.
 
         Parameters
         ----------
@@ -521,8 +592,6 @@ class Hologram(_HologramStats):
             by :class:`SpotHologram`.
         reset_weights : bool
             Whether to overwrite ``weights`` with ``target``.
-        plot : bool
-            Calls :meth:`.plot_farfield()` on :attr:`target`.
         """
         if new_target is None:
             self.target = cp.zeros(shape=self.shape, dtype=self.dtype)
@@ -540,10 +609,7 @@ class Hologram(_HologramStats):
         if reset_weights:
             self.reset_weights()
 
-        if plot:
-            self.plot_farfield(self.target)
-
-    def update_target(self, new_target, reset_weights=False, plot=False):
+    def update_target(self, new_target, reset_weights=False):
         """
         Change the target to something new. This method handles cleaning and normalization.
 
@@ -555,10 +621,8 @@ class Hologram(_HologramStats):
             be used by a user).
         reset_weights : bool
             Whether to update the :attr:`weights` to this new :attr:`target`.
-        plot : bool
-            Calls :meth:`.plot_farfield()` on :attr:`target`.
         """
-        self._update_target(new_target=new_target, reset_weights=reset_weights, plot=plot)
+        self._update_target(new_target=new_target, reset_weights=reset_weights)
 
     def extract_phase(self):
         r"""
@@ -583,7 +647,6 @@ class Hologram(_HologramStats):
         ----------
         affine : dict
             Affine transformation to apply to far-field data (in the form of
-            :attr:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibration`).
         get : bool
             Whether or not to convert the cupy array to a numpy array if cupy is used.
             This is ignored if numpy is used.
@@ -624,6 +687,46 @@ class Hologram(_HologramStats):
                     cval=0,
                 )
             return farfield
+
+    def _populate_results(self, nearfield=None):
+        """
+        Helper function to populate:
+            - farfield
+            - amp_ff
+            - phase_ff
+
+        From the data in:
+            - amp
+            - phase
+
+        Pass a nearfield complex matrix of self.shape shape to avoid memory reallocation.
+        """
+        (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
+
+        if nearfield is None:
+            nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
+        else:
+            nearfield.fill(0)
+
+        nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
+
+        self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
+        self.amp_ff = cp.abs(self.farfield)
+        self.phase_ff = cp.angle(self.farfield)
+
+    def _nearfield2farfield(self, nearfield, farfield_out=None):
+        """
+        Maps the nearfield to the farfield by a discrete Fourier transform.
+        This function is overloaded by subclasses.
+        """
+        return cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
+
+    def _farfield2nearfield(self, farfield, nearfield_out=None):
+        """
+        Maps the farfield to the nearfield by a discrete Fourier transform.
+        This function is overloaded by subclasses.
+        """
+        return cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho"))
 
     # Core optimization function.
     def optimize(
@@ -672,7 +775,7 @@ class Hologram(_HologramStats):
               feedback (measured) amplitudes,
               and :math:`p` is the power passed as ``"feedback_exponent"`` in
               :attr:`~slmsuite.holography.algorithms.Hologram.flags` (see ``kwargs``).
-              The power :math:`p` defaults to .9 if not passed. In general, smaller
+              The power :math:`p` defaults to .8 if not passed. In general, smaller
               :math:`p` will lead to slower yet more stable optimization.
 
             - ``'WGS-Kim'``
@@ -700,9 +803,32 @@ class Hologram(_HologramStats):
 
             - ``'WGS-Wu'``
 
-              `exponential <https://doi.org/10.1364/OE.413723>`_
+              TODO `exponential <https://doi.org/10.1364/OE.413723>`_
 
-              .. math:: \mathcal{W} = \mathcal{W}\exp\left( f (\mathcal{T} - \mathcal{F}) \right)
+              .. math:: \mathcal{W} = \mathcal{W}\exp\left( p (\mathcal{T} - \mathcal{F}) \right)
+
+              The speed of correction is controlled by :math:`p`,
+              the power passed as ``"feedback_exponent"``.
+
+            - ``'WGS-tanh'``
+
+              TODO Hyperbolic tangent
+
+              .. math:: \mathcal{W} = \mathcal{W}\left[1 + f\text{tanh}\left( p (\mathcal{T} - \mathcal{F}) \right) \right]
+
+              This weighting limits each update to a relative change of :math:`\pm f`,
+              which is passed as ``"feedback_factor"``.
+              The speed of correction is controlled by :math:`p`,
+              the power passed as ``"feedback_exponent"``.
+
+        -   Conjugate Gradient (CG) phase retrieval. **(Not Finished)**
+
+            - ``'CG'``
+
+              TODO
+
+              Uses :mod:`pytorch`-:mod:`cupy`
+              `interoperability <https://docs.cupy.dev/en/stable/user_guide/interoperability.html#pytorch>`_.
 
         -   The option for `Mixed Region Amplitude Freedom (MRAF)
             <https://doi.org/10.1007/s10043-018-0456-x>`_ feedback. In standard
@@ -808,7 +934,7 @@ class Hologram(_HologramStats):
                 "unrecognized method '{}'.\n"
                 "Valid methods include {}".format(method, methods)
             )
-        self.method = method
+        self.flags["method"] = method
 
         # 1) Parse flags:
         # 1.1) Set defaults if not already set.
@@ -842,9 +968,7 @@ class Hologram(_HologramStats):
         # 1.4) Print the flags if verbose.
         if verbose > 1:
             print(
-                "Optimizing with '{}' using the following method-specific flags:".format(
-                    self.method
-                )
+                f"Optimizing with '{method}' using the following method-specific flags:"
             )
             pprint.pprint(
                 {
@@ -865,8 +989,12 @@ class Hologram(_HologramStats):
         # 3) Switch between optimization methods (currently only GS- or WGS-type is supported).
         if "GS" in method:
             self.optimize_gs(iterations, callback)
+        elif "CG" in method:
+            self.optimize_cg(iterations, callback)
+        else:
+            raise ValueError(f"Unsupported optimization method '{method}'")
 
-    # Optimization methods (currently only GS- or WGS-type is supported).
+    # GS- or WGS-type optimization.
     def optimize_gs(self, iterations, callback):
         """
         GPU-accelerated Gerchberg-Saxton (GS) iterative phase retrieval.
@@ -901,9 +1029,10 @@ class Hologram(_HologramStats):
         callback : callable OR None
             See :meth:`.optimize()`.
         """
-        # Proxy to initialize nearfield with the correct shape and correct (complex) type.
+        # Initialize nearfield and farfield.
         nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
-        self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)    # Use target.shape for FreeSpotHologram cases.
+        # Use self.target.shape instead of self.shape to account for CompressedSpotHologram cases.
+        self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)
 
         # Precompute MRAF helper variables.
         mraf_variables = self._mraf_helper_routines()
@@ -931,7 +1060,7 @@ class Hologram(_HologramStats):
                 if callback(self):
                     break
 
-            # Evaluate method-specific routines, stats, etc.
+            # Evaluate method-specific routines, stats, etc. This includes camera feedback/etc.
             # If you want to add new functionality to GS, do so here to keep the main loop clean.
             self._gs_farfield_routines(self.farfield, mraf_variables)
 
@@ -949,26 +1078,8 @@ class Hologram(_HologramStats):
             # Increment iteration.
             self.iter += 1
 
-        # Update the final far-field
-        nearfield.fill(0)
-        nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
-        self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
-        self.amp_ff = cp.abs(self.farfield)
-        self.phase_ff = cp.angle(self.farfield)
-
-    def _nearfield2farfield(self, nearfield, farfield_out=None):
-        """
-        Maps the nearfield to the farfield by a discrete Fourier transform.
-        This function is overloaded by subclasses.
-        """
-        return cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
-
-    def _farfield2nearfield(self, farfield, nearfield_out=None):
-        """
-        Maps the farfield to the nearfield by a discrete Fourier transform.
-        This function is overloaded by subclasses.
-        """
-        return cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho"))
+        # Update the final far-field using phase and amp.
+        self._populate_results()
 
     def _mraf_helper_routines(self):
         # MRAF helper variables
@@ -1035,11 +1146,11 @@ class Hologram(_HologramStats):
         self.update_stats(self.flags["stat_groups"])
 
         # Weight, if desired.
-        if "WGS" in self.method:
+        if "WGS" in self.flags["method"]:
             self._update_weights()
 
             # Decide whether to fix phase.
-            if "Kim" in self.method:
+            if "Kim" in self.flags["method"]:
                 was_not_fixed = not self.flags["fixed_phase"]
 
                 # Enable based on efficiency.
@@ -1047,7 +1158,8 @@ class Hologram(_HologramStats):
                     stats = self.stats["stats"]
                     groups = tuple(stats.keys())
 
-                    assert len(stats) > 0, "Must track statistics to fix phase based on efficiency!"
+                    if len(stats) == 0:
+                        raise ValueError("Must track statistics to fix phase based on efficiency!")
 
                     eff = stats[groups[-1]]["efficiency"][self.iter]
                     if eff > self.flags["fix_phase_efficiency"]:
@@ -1083,7 +1195,7 @@ class Hologram(_HologramStats):
             #     cp.multiply(farfield, self.weights, out=farfield)
             #     cp.nan_to_num(farfield, copy=False, nan=0)
 
-            if not ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
+            if not ("fixed_phase" in self.flags and self.flags["fixed_phase"]) or self.phase_ff is None:
                 self.phase_ff = cp.arctan2(farfield.imag, farfield.real, out=self.phase_ff)
 
             cp.exp(1j * self.phase_ff, out=farfield)
@@ -1134,9 +1246,113 @@ class Hologram(_HologramStats):
                 cp.multiply(farfield, self.weights, _where=signal_region, out=farfield)
                 if mraf_factor is not None: cp.multiply(farfield, mraf_factor, _where=noise_region, out=farfield)
 
+    # Conjugate gradient optimization.
+    def optimize_cg(self, iterations, callback):
+        """
+        **(Not Finished)**
+
+        Conjugate Gradient (CG) iterative phase retrieval.
+
+        Solves the "phase problem": approximates the near-field phase that
+        transforms a known near-field source amplitude to a desired far-field
+        target amplitude.
+
+        Caution
+        ~~~~~~~
+        This function should be called through :meth:`.optimize()` and not called
+        directly. It is left as a public function exposed in documentation to clarify
+        how the internals of :meth:`.optimize()` work.
+
+        Parameters
+        ----------
+        iterations : iterable
+            Number of loop iterations to run. Is an iterable to pass a :mod:`tqdm` iterable.
+        callback : callable OR None
+            See :meth:`.optimize()`.
+        """
+        if torch is None:
+            raise ValueError("pytorch is required for conjugate gradient optimization.")
+
+        # Initialize nearfield and farfield.
+        nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
+        # Use self.target.shape instead of self.shape to account for CompressedSpotHologram cases.
+        self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)
+
+        # Convert variables to torch with **zero-copy** cupy interoperability.
+        # We need torch to handle gradient calculation.
+        amp_torch =         Hologram._get_torch_tensor_from_cupy(self.amp)
+        target_torch =      Hologram._get_torch_tensor_from_cupy(self.target)
+
+        phase_torch =       Hologram._get_torch_tensor_from_cupy(self.phase)
+        nearfield_torch =   Hologram._get_torch_tensor_from_cupy(nearfield)
+        farfield_torch =    Hologram._get_torch_tensor_from_cupy(self.farfield)
+
+        # We're going to use phase for optimization, so we need to record gradients.
+        phase_torch.requires_grad_(True)
+        nearfield_torch.requires_grad_(True)
+        farfield_torch.requires_grad_(True)
+
+        # Parse arguments.
+        loss = self.flags["loss"]
+        if loss is None:
+            loss = torch.nn.MSELoss()
+
+        # Create the optimizer.
+        try:
+            optim_class = getattr(torch.optim, self.flags["optimizer"])
+        except:
+            raise ValueError(f"{self.flags["optimizer"]} is not a valid torch optimizer")
+
+        self.optimizer = optim_class([phase_torch], **self.flags["optimizer_kwargs"])
+
+        # Helper variables for speeding up source phase and amplitude fixing.
+        (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
+
+        for _ in iterations:
+            # (A) Nearfield -> farfield
+            # Fix the relevant part of the nearfield amplitude to the source amplitude.
+            # Everything else is zero because power outside the SLM is assumed unreflected.
+            # This is optimized for when shape is much larger than slm_shape.
+            nearfield_torch.fill_(0)
+            self.optimizer.zero_grad()
+            nearfield_torch[i0:i1, i2:i3] = amp_torch * torch.exp(1j * phase_torch)
+
+            # FFT to move to the farfield. TODO: Torchify; current implementation will
+            # not track gradients.
+            self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
+
+            # (B) Midloop caching and prep
+            # Before callback(), cleanup such that it can access updated amp_ff and images.
+            self._midloop_cleaning(self.farfield)
+
+            # Run step function if present and check termination conditions.
+            if callback is not None:
+                if callback(self):
+                    break
+
+            # (C) Evaluate loss
+            result = loss(farfield_torch, target_torch)
+            result.backward(retain_graph=True)
+
+            # (D) Finally, step the optimization according to the gradients calculated.
+            self.optimizer.step()
+
+            # Increment iteration.
+            self.iter += 1
+
+        # Update the final far-field using phase and amp.
+        self._populate_results()
+
+    @staticmethod
+    def _get_torch_tensor_from_cupy(array):
+        if cp == np:
+            return torch.as_tensor(array, device='cuda')
+        else:
+            return torch.as_tensor(array, device='cpu')
+
     # Weighting functions.
     def _update_weights_generic(
-            self, weight_amp, feedback_amp, target_amp=None, xp=cp, nan_checks=True
+            self, weight_amp, feedback_amp, target_amp, xp=cp, nan_checks=True
         ):
         """
         Helper function to process weight feedback according to the chosen weighting method.
@@ -1148,15 +1364,13 @@ class Hologram(_HologramStats):
         Parameters
         ----------
         weight_amp : numpy.ndarray OR cupy.ndarray
-            A :class:`~slmsuite.holography.SpotArray` instance containing locations
-            where the feedback weight should be calculated.
+            Weights to update.
         feedback_amp : numpy.ndarray OR cupy.ndarray
             Measured or result amplitudes corresponding to ``weight_amp``.
             Should be the same size as ``weight_amp``.
         target_amp : numpy.ndarray OR cupy.ndarray OR None
             Necessary in the case where ``target_amp`` is not uniform, such that the weighting can
-            properly be applied to bring the feedback closer to the target. If ``None``, is assumed
-            to be uniform. Should be the same size as ``weight_amp``.
+            properly be applied to bring the feedback closer to the target.
         xp : module
             This function is used by both :mod:`cupy` and :mod:`numpy`, so we have the option
             for either. Defaults to :mod:`cupy`.
@@ -1174,18 +1388,20 @@ class Hologram(_HologramStats):
             return self._update_weights_generic_cuda(weight_amp, feedback_amp, target_amp)
 
     def _update_weights_generic_cupy(
-            self, weight_amp, feedback_amp, target_amp=None, xp=cp, nan_checks=True
+            self, weight_amp, feedback_amp, target_amp, xp=cp, nan_checks=True
         ):
-        assert self.method[:4] == "WGS-", "For now, assume weighting is for WGS."
-        method = self.method[4:].lower()
+        method = self.flags["method"].lower()
+        if method[:4] != "wgs-":
+            raise ValueError("Weighting is only for WGS.")
+        method = method[4:]
 
-        # Parse feedback_amp
-        if target_amp is None:  # Uniform
-            feedback_corrected = xp.array(feedback_amp, copy=True, dtype=self.dtype)
-        else:  # Non-uniform
-            feedback_corrected = xp.array(feedback_amp, copy=True, dtype=self.dtype)
-            feedback_corrected *= 1 / Hologram._norm(feedback_corrected, xp=xp)
+        feedback_corrected = xp.array(feedback_amp, copy=True, dtype=self.dtype)
+        feedback_corrected *= 1 / Hologram._norm(feedback_corrected, xp=xp)
 
+        if ("wu" in method or "tanh" in method):    # Additive
+            feedback_corrected *= -self.flags["feedback_exponent"]
+            feedback_corrected += xp.array(target_amp, copy=False)
+        else:                                       # Multiplicative
             xp.divide(feedback_corrected, xp.array(target_amp, copy=False), out=feedback_corrected)
 
             if nan_checks:
@@ -1205,13 +1421,14 @@ class Hologram(_HologramStats):
             feedback_corrected *= -self.flags["feedback_factor"]
             feedback_corrected += 1
             xp.reciprocal(feedback_corrected, out=feedback_corrected)
-        # elif "wu" in method:
-        #     feedback = np.exp(self.flags["feedback_exponent"] * (target - feedback))
-        # elif "tanh" in method:
-        #     feedback = self.flags["feedback_factor"] * np.tanh(self.flags["feedback_exponent"] * (target - feedback))
+        elif "wu" in method:
+            feedback_corrected = np.exp(feedback_corrected)
+        elif "tanh" in method:
+            feedback_corrected = self.flags["feedback_factor"] * np.tanh(feedback_corrected)
+            feedback_corrected += 1
         else:
-            raise RuntimeError(
-                "Method " "{}" " not recognized by Hologram.optimize()".format(self.method)
+            raise ValueError(
+                f"Method '{self.flags["method"]}' not recognized by Hologram.optimize()"
             )
 
         if nan_checks:
@@ -1229,22 +1446,18 @@ class Hologram(_HologramStats):
 
         return weight_amp
 
-    def _update_weights_generic_cuda(self, weight_amp, feedback_amp, target_amp=None):
-        method = ALGORITHM_INDEX[self.method]
-
-        if target_amp is None:  # Uniform
-            feedback_norm = 0
-            target_amp = 0
-        else:
-            feedback_norm = Hologram._norm(feedback_amp, xp=cp)
-
+    def _update_weights_generic_cuda(self, weight_amp, feedback_amp, target_amp):
         N = weight_amp.size
-        method = ALGORITHM_INDEX[self.method]
+
+        feedback_amp = cp.array(feedback_amp, copy=False)
+        feedback_norm = Hologram._norm(feedback_amp, xp=cp)
+
+        method = ALGORITHM_INDEX[self.flags["method"]]
 
         threads_per_block = int(
             self._update_weights_generic_cuda_kernel.max_threads_per_block
         )
-        blocks = N // threads_per_block
+        blocks = N // threads_per_block + 1
 
         # Call the RawKernel.
         self._update_weights_generic_cuda_kernel(
@@ -1257,8 +1470,8 @@ class Hologram(_HologramStats):
                 N,
                 method,
                 feedback_norm,
-                self.flags.pop("feedback_exponent", 0),     # TODO: fix
-                self.flags.pop("feedback_factor", 0)
+                self.flags.pop("feedback_exponent", 1),     # TODO: fix
+                self.flags.pop("feedback_factor", 1)
             )
         )
 

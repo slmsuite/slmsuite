@@ -22,12 +22,12 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuda.cu"), '
 
 # Basic gratings.
 
-def blaze(grid, vector=(0, 0), offset=0):
+def blaze(grid, vector=(0, 0)):
     r"""
     Returns a simple `blazed grating <https://en.wikipedia.org/wiki/Blazed_grating>`_,
     a linear phase ramp, toward a given vector in :math:`k`-space.
 
-    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k} \cdot \vec{x} + o
+    .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k} \cdot \vec{x}
 
     Parameters
     ----------
@@ -39,8 +39,6 @@ def blaze(grid, vector=(0, 0), offset=0):
     vector : (float, float)
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
         See :meth:`~slmsuite.holography.toolbox.convert_vector()`
-    offset : float
-        Phase offset for this blaze.
 
     Returns
     -------
@@ -59,25 +57,21 @@ def blaze(grid, vector=(0, 0), offset=0):
     else:
         result = (2 * np.pi * vector[0]) * x_grid + (2 * np.pi * vector[1]) * y_grid
 
-    # Add offset if provided.
-    if offset != 0:
-        result += offset
-
     return result
 
 
-def sinusoid(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=np.pi):
+def sinusoid(grid, vector=(0, 0), shift=0, a=np.pi, b=0):
     r"""
     Returns a simple `holographic grating
     <https://en.wikipedia.org/wiki/Diffraction_grating#SR_(Surface_Relief)_gratings>`_,
     a sinusoidal grating, toward a given vector in :math:`k`-space.
 
-    .. math:: \phi(\vec{x}) = a \sin(\vec{k} \cdot \vec{x} + o) + b
+    .. math:: \phi(\vec{x}) = \frac{a-b}{2} [1 + \cos(2\pi \cdot \vec{k} \cdot \vec{x} + s)] + b
 
     Important
     ---------
-    Unlike a blazed grating :meth:`.blaze()`, half the power will be deflected toward
-    the mirror -1st order at :math:`-\vec{k}`, at best.
+    Unlike a blazed grating :meth:`.blaze()`, power will efficiently be deflected toward
+    the mirror -1st order at :math:`-\vec{k}`, by symmetry.
 
     Parameters
     ----------
@@ -89,13 +83,15 @@ def sinusoid(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=np.pi)
     vector : (float, float)
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
         See :meth:`~slmsuite.holography.toolbox.convert_vector()`
-    offset : float
-        Grating phase offset.
-    amplitude : float
-        Amplitude of the sinusoid.
-        The 0th order will be minimized when this is equal to :math:`\pi`.
-    outer_offset : float
-        Phase offset for this grating.
+    shift : float
+        Radians to laterally shift the period of the grating by.
+    a : float
+        Value at one extreme of the sinusoid.
+        Ignoring crosstalk,
+        the 0th order will be minimized when ``|a-b|`` is equal to :math:`\pi`.
+    b : float
+        Value at the other extreme of the sinusoid.
+        Defaults to zero, in which case ``a`` is the amplitude.
 
     Returns
     -------
@@ -104,26 +100,26 @@ def sinusoid(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=np.pi)
     """
     if vector[0] == 0 and vector[1] == 0:
         (x_grid, _) = _process_grid(grid)
-        result = np.full_like(x_grid, amplitude * np.sin(offset))
+        result = np.full_like(x_grid, (a-b)/2 * (1 + np.sin(shift)))
     else:
-        result = amplitude * np.sin(blaze(grid, vector, offset))
+        result = (a-b)/2 * (1 + np.sin(blaze(grid, vector) + shift))
 
     # Add offset if provided.
-    if outer_offset != 0:
-        result += outer_offset
+    if b != 0:
+        result += b
 
     return result
 
 
-def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_cycle=.5):
+def binary(grid, vector=(0, 0), shift=0, a=np.pi, b=0, duty_cycle=.5):
     r"""
     Returns a simple binary grating toward a given vector in :math:`k`-space.
 
     .. math:: \phi(\vec{x}) =
         \left\{
             \begin{array}{ll}
-                a+b, & (
-                    [2\pi \cdot \vec{k} \cdot \vec{x} + o] \,\,\,\,\text{mod}\,\,\,\, 2\pi
+                a, & (
+                    [2\pi \cdot \vec{k} \cdot \vec{x} + s] \,\,\,\,\text{mod}\,\,\,\, 2\pi
                     ) < 2\pi*d \\
                 b, & \text{ otherwise}.
             \end{array}
@@ -146,13 +142,13 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
     vector : (float, float)
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
         See :meth:`~slmsuite.holography.toolbox.convert_vector()`
-    offset : float
-        Grating phase offset.
-    amplitude : float
-        Amplitude of the sinusoid.
-        The 0th order will be minimized when this is equal to :math:`\pi`.
-    outer_offset : float
-        Phase offset for this grating.
+    shift : float
+        Radians to laterally shift the period of the grating by.
+    a : float
+        Value at one extreme of the binary grating.
+    b : float
+        Value at the other extreme of the binary grating.
+        Defaults to zero, in which case ``a`` is the amplitude.
     duty_cycle : float
         Ratio of the period which is 'on'.
 
@@ -165,10 +161,10 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
 
     if vector[0] == 0 and vector[1] == 0:
         (x_grid, _) = _process_grid(grid)
-        phase = outer_offset
-        if offset != 0:
-            if np.mod(offset, 2*np.pi) < (2 * np.pi * duty_cycle):
-                phase += amplitude
+        phase = b
+        if shift != 0:
+            if np.mod(shift, 2*np.pi) < (2 * np.pi * duty_cycle):
+                phase = a
         result = np.full(x_grid.shape, phase)
     elif vector[0] != 0 and vector[1] != 0:
         pass    # xor the next case.
@@ -185,9 +181,9 @@ def binary(grid, vector=(0, 0), offset=0, amplitude=np.pi, outer_offset=0, duty_
     # If we have not set result, then we have to use the slow np.mod option.
     if result is None:
         result = np.where(
-            np.mod(blaze(grid, vector, offset), 2*np.pi) < (2 * np.pi * duty_cycle),
-            offset,
-            offset + amplitude,
+            np.mod(blaze(grid, vector, shift), 2*np.pi) < (2 * np.pi * duty_cycle),
+            b,
+            a,
         )
 
     return result
@@ -758,7 +754,7 @@ def _plot_zernike_pyramid(grid, order, scale=1, **kwargs):
     **kwargs
         Passed to :meth:`.zernike()`.
     """
-    order += 1
+    order = int(order + 1)
     indices_ansi = np.arange((order * (order + 1)) // 2)
     indices_radial = zernike_convert_index(indices_ansi, from_index="ansi", to_index="radial")
 
@@ -1216,21 +1212,26 @@ def _determine_source_radius(grid, w=None):
         The radius of the phase pattern in normalized :math:`\frac{x}{\lambda}` units.
         To produce perfect structured beams, this radius is equal to the radius of
         the gaussian profile of the source (ideally not clipped by the SLM).
+        If an SLM was passed as grid, retrieves the data from
+        :attr:`slmsuite.hardware.slms.slm.SLM.source` and
+        :meth:`slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`.
         If ``w`` is left as ``None``, ``w`` is set to a quarter of the smallest normalized screen dimension.
 
     Returns
     -------
-    float
+    w : float
         Determined radius. In normalized units.
     """
-    (x_grid, y_grid) = _process_grid(grid)
-
-    # TODO
-
-    if w is None:
-        return np.min([np.amax(x_grid), np.amax(y_grid)]) / 4
-    else:
+    if w is not None:
         return w
+
+    if hasattr(grid, "slm"):
+        grid = grid.slm
+    if hasattr(grid, "get_source_radius"):
+        return grid.get_source_radius()
+
+    (x_grid, y_grid) = _process_grid(grid)
+    return np.min([np.amax(x_grid), np.amax(y_grid)]) / 4
 
 
 def laguerre_gaussian(grid, l, p, w=None):

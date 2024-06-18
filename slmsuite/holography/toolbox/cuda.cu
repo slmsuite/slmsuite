@@ -433,22 +433,14 @@ extern "C" __global__ void update_weights_generic(
     int i = blockDim.x * blockIdx.x + threadIdx.x;
 
     if (i < N) {
-        float feedback = feedback_amp[i];
-        float target = 0;
+        float feedback = feedback_amp[i] / feedback_norm;
+        float target = target_amp[i]
 
-        if (feedback_norm != 0) {
-            feedback /= feedback_norm;
-            target = target_amp[i]
-        } else {
-            target = 1 / sqrt(N);
-        }
-
-        if (method != 4 && method != 5) {
-            // Handle feedback with a non-uniform target
+        if (method != 4 && method != 5) {   // Multiplicative.
             if (target != 0) {
                 feedback /= target;
             } else {
-                feedback = 1;           // Do nothing.
+                feedback = 1;
             }
 
             if (method == 1 || method == 2) {   // Leonardo, Kim
@@ -456,18 +448,18 @@ extern "C" __global__ void update_weights_generic(
             } else if (method == 3) {           // Nogrette
                 feedback = 1 / (1 - feedback_factor * (1 - feedback))
             }
-        } else {
+        } else {                            // Additive.
             if (method == 4) {                  // Wu
                 feedback = exp(feedback_exponent * (target - feedback))
             } else if (method == 5) {           // tanh
-                feedback = feedback_factor * tanh(feedback_exponent * (target - feedback))
+                feedback = 1 + feedback_factor * tanh(feedback_exponent * (target - feedback))
             }
         }
 
         // Check nan, inf
         if (isinf(feedback) || isnan(feedback)) { feedback = 1 }
 
-        // Export the result to global memory.
+        // Export the result to global memory if changed.
         if (feedback != 1) {
             weight_amp[i] *= feedback;
         }

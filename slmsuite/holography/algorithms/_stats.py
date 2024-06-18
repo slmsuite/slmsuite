@@ -23,7 +23,7 @@ class _HologramStats(object):
             Target of holography.
         xp : module
             This function is used by both :mod:`cupy` and :mod:`numpy`, so we have the option
-            for either. Defaults to :mod:`cupy`.
+            to use either. Defaults to :mod:`cupy`.
         efficiency_compensation : bool
             Whether to scale the ``feedback`` based on the overlap with the ``target``.
             This is more accurate for images, but less accurate for SpotHolograms.
@@ -35,7 +35,7 @@ class _HologramStats(object):
         raw : bool
             Passes the ``"raw_stats"`` flag. If ``True``, stores the
             raw feedback and raw feedback-target ratio for each pixel or spot instead of
-            only the derived statistics.
+            only the derived and compressed statistics.
         """
         # Downgrade to numpy if necessary
         if xp == np and (hasattr(feedback_amp, "get") or hasattr(target_amp, "get")):
@@ -79,7 +79,6 @@ class _HologramStats(object):
 
         # Make some helper lists; ignoring power where target is zero.
         mask = xp.logical_and(target_pwr != 0, xp.logical_not(xp.isnan(target_pwr)))
-        # mask = xp.nonzero(target_pwr)
 
         feedback_pwr_masked = feedback_pwr[mask]
         target_pwr_masked = target_pwr[mask]
@@ -143,7 +142,7 @@ class _HologramStats(object):
         if diff > 0:  # Extend methods
             self.stats["method"].extend(["" for _ in range(diff)])
             M = self.iter + 1
-        self.stats["method"][self.iter] = self.method  # Update method
+        self.stats["method"][self.iter] = self.flags["method"]  # Update method
 
         # Update flags
         flaglist = set(self.flags.keys()).union(set(self.stats["flags"].keys()))
@@ -240,25 +239,30 @@ class _HologramStats(object):
             interfaces), but rather to provide extra information for debugging.
         """
         # Save attributes, converting to numpy when necessary.
-        if include_state:
-            to_save = {
-                "slm_shape": self.slm_shape,
-                "phase": self.phase,
-                "amp": self.amp,
-                "shape": self.shape,
-                "target": self.target,
-                "weights": self.weights,
-                "phase_ff": self.phase_ff,
-                "iter": self.iter,
-                "method": self.method,
-                "flags": self.flags,
-            }
+        to_save = {}
 
-            for key in to_save.keys():
-                if hasattr(to_save[key], "get") and not isinstance(to_save[key], dict):
-                    to_save[key] = to_save[key].get()
-        else:
+        if include_state:
+            to_save_keys = [
+                "slm_shape",
+                "phase",
+                "amp",
+                "shape",
+                "target",
+                "weights",
+                "phase_ff",
+                "iter",
+                "method",
+                "flags",
+            ]
             to_save = {}
+
+            for key in to_save_keys:
+                value = getattr(self, key)
+
+                if hasattr(value, "get") and not isinstance(value, dict):
+                    to_save[key] = value.get()
+                else:
+                    to_save[key] = value
 
         # Save stats.
         to_save["stats"] = self.stats
@@ -487,7 +491,7 @@ class _HologramStats(object):
                     limits = self._compute_limits(self.target.get(), limit_padding=limit_padding)
 
             if len(title) == 0:
-                title = "FF Amp"
+                title = "Farfield Amplitude"
 
         # Interpret source and convert to numpy for plotting.
         isphase = "phase" in title.lower()
@@ -599,15 +603,15 @@ class _HologramStats(object):
             if i == 0:
                 ax.set_ylabel(toolbox.BLAZE_LABELS[units][1])
 
-        # If cam_points is defined (i.e. is a FeedbackHologram or subclass),
+        # If _cam_points is defined (i.e. is a FeedbackHologram or subclass),
         # plot a yellow rectangle for the extents of the camera
-        if hasattr(self, "cam_points") and self.cam_points is not None:
+        if hasattr(self, "_cam_points") and self._cam_points is not None:
             # Check to see if the camera extends outside of knm space.
             plot_slm_fov = (
-                np.any(self.cam_points[0, :4] < 0)
-                or np.any(self.cam_points[1, :4] < 0)
-                or np.any(self.cam_points[0, :4] >= npsource.shape[1])
-                or np.any(self.cam_points[1, :4] >= npsource.shape[1])
+                np.any(self._cam_points[0, :4] < 0)
+                or np.any(self._cam_points[1, :4] < 0)
+                or np.any(self._cam_points[0, :4] >= npsource.shape[1])
+                or np.any(self._cam_points[1, :4] >= npsource.shape[1])
             )
 
             # If so, plot a labeled green rectangle to show the extents of knm space.
@@ -631,23 +635,23 @@ class _HologramStats(object):
                     va="top",
                 )
 
-            # Convert cam_points to knm.
+            # Convert _cam_points to knm.
             if units == "knm":
-                cam_points = self.cam_points
+                _cam_points = self._cam_points
             else:
-                cam_points = toolbox.convert_vector(
-                    self.cam_points, from_units="knm", to_units=units, slm=slm, shape=npsource.shape
+                _cam_points = toolbox.convert_vector(
+                    self._cam_points, from_units="knm", to_units=units, slm=slm, shape=npsource.shape
                 )
 
             # Plot the labeled yellow rectangle representing the camera.
             axs[0].plot(
-                cam_points[0],
-                cam_points[1],
+                _cam_points[0],
+                _cam_points[1],
                 c="y",
             )
             axs[0].annotate(
                 "Camera FoV",
-                (np.mean(cam_points[0, :4]), np.max(cam_points[1, :4])),
+                (np.mean(_cam_points[0, :4]), np.max(_cam_points[1, :4])),
                 c="y",
                 size="small",
                 ha="center",
@@ -656,22 +660,22 @@ class _HologramStats(object):
 
             # Determine sensible limits of the field of view.
             if plot_slm_fov:
-                dx = np.max(cam_points[0]) - np.min(cam_points[0])
-                dy = np.max(cam_points[1]) - np.min(cam_points[1])
+                dx = np.max(_cam_points[0]) - np.min(_cam_points[0])
+                dy = np.max(_cam_points[1]) - np.min(_cam_points[1])
             else:
                 dx = dy = 0
 
             ext = full.get_extent()
             axs[0].set_xlim(
                 [
-                    min(ext[0], np.min(cam_points[0]) - dx / 10),
-                    max(ext[1], np.max(cam_points[0]) + dx / 10),
+                    min(ext[0], np.min(_cam_points[0]) - dx / 10),
+                    max(ext[1], np.max(_cam_points[0]) + dx / 10),
                 ]
             )
             axs[0].set_ylim(
                 [
-                    max(ext[2], np.max(cam_points[1]) + dy / 10),
-                    min(ext[3], np.min(cam_points[1]) - dy / 10),
+                    max(ext[2], np.max(_cam_points[1]) + dy / 10),
+                    min(ext[3], np.min(_cam_points[1]) - dy / 10),
                 ]
             )
 

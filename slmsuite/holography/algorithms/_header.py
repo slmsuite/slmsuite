@@ -27,10 +27,18 @@ except ImportError:
     cp_gaussian_filter1d = sp_gaussian_filter1d
     cp_gaussian_filter = sp_gaussian_filter
     cp_affine_transform = sp_affine_transform
-    warnings.warn("cupy not installed. Using numpy.")
+    warnings.warn(
+        "cupy is not installed; using numpy. Install cupy for faster GPU-based holography."
+    )
+
+try:
+    import pytorch as torch
+except ImportError:
+    torch = None
 
 # Import helper functions
 from slmsuite.holography import analysis, toolbox
+from slmsuite.holography.toolbox import phase as tphase
 from slmsuite.holography.toolbox.phase import CUDA_KERNELS, _zernike_populate_basis_map
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.files import write_h5, read_h5
@@ -52,8 +60,14 @@ ALGORITHM_DEFAULTS = {
         "feedback_exponent": 0.8,
     },
     "WGS-Nogrette": {"feedback": "computational", "feedback_factor": 0.1},
-    "WGS-Wu": {"feedback": "computational", "feedback_exponent":1},
-    "WGS-tanh": {"feedback": "computational", "feedback_factor": 1, "feedback_exponent":1},
+    "WGS-Wu": {"feedback": "computational", "feedback_exponent": 10},
+    "WGS-tanh": {"feedback": "computational", "feedback_factor": .5, "feedback_exponent": 10},
+    "CG" : {
+        "feedback": "computational",
+        "optimizer": "Adam",
+        "optimizer_kwargs": {"lr": 1e-4},
+        "loss": None
+    }
 }
 ALGORITHM_INDEX = {key : i for i, key in enumerate(ALGORITHM_DEFAULTS.keys())}
 

@@ -4,6 +4,9 @@ Common fit functions.
 
 import numpy as np
 
+
+# 1D
+
 def linear(x, m, b):
     r"""
     For fitting a line.
@@ -25,6 +28,31 @@ def linear(x, m, b):
         Line evaluated at all ``x``.
     """
     return m * x + b
+
+
+def parabola(x, a, x0, y0):
+    r"""
+    For fitting a parabola.
+
+    .. math:: y(x) = a(x - x_0)^2 + y_0
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        Some independent variable.
+    a : float
+        Strength of the parabola.
+    x0 : float
+        :math:`x` position of the vertex.
+    y0 : float
+        :math:`y` position of the vertex.
+
+    Returns
+    -------
+    y : numpy.ndarray
+        Line evaluated at all ``x``.
+    """
+    return a * np.square(x - x0) + y0
 
 
 def hyperbola(z, w0, z0, zr):
@@ -83,7 +111,7 @@ def lorentzian(x, x0, a, c, Q):
     r"""
     For fitting a resonance.
     There are many ways to describe a Lorentzian. Commonly, a full-width-half-maximum
-    definition is used. Here, with roots in photonic crystal cavities, we include a
+    definition is used. Here, with roots in photonic crystal cavities, we use a
     form defined using the quality factor :math:`Q` of the resonance.
 
     .. math:: y(x) = c + \frac{a}{1 + \left[\frac{x - x_0}{x_0/2Q}\right]^2}.
@@ -180,6 +208,8 @@ def gaussian(x, x0, a, c, w):
     """
     return c + a * np.exp(-.5 * np.square((x - x0) * (1/w)))
 
+
+# 2D
 
 def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     r"""

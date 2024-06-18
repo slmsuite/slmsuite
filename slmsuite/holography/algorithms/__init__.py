@@ -16,56 +16,11 @@ a subset of general image formation. We also support `Mixed Region Amplitude Fre
 Tip
 ~~~
 This module makes use of the GPU-accelerated computing library :mod:`cupy`
-(`GitHub <https://docs.cupy.dev/en/stable/reference/index.html>`_)
+(`GitHub <https://docs.cupy.dev/en/stable/reference/index.html>`_).
 If :mod:`cupy` is not supported, then :mod:`numpy` is used as a fallback, though
 CPU alone is significantly slower. Using :mod:`cupy` is highly encouraged.
-
-Important
----------
-:mod:`slmsuite` follows the ``shape = (h, w)`` and ``vector = (x, y)`` formalism adopted by
-the :mod:`numpy` ecosystem. :mod:`numpy`, :mod:`scipy`, :mod:`matplotlib`, etc generally follow this
-formalism. The ``shape`` and indexing of an array or image always uses the inverted ``(h, w)`` form,
-but other functions such as ``numpy.meshgrid(x, y)`` (default), ``scipy.odr.Data(x, y)``, or
-``matplotlib.pyplot.scatter(x, y)`` use the standard cartesian ``(x, y)`` form that is more familiar
-to users. This is not ideal and causes confusion, but this is the formalism generally
-adopted by the community.
-
-Important
-~~~~~~~~~
-This package uses a number of bases or coordinate spaces. Some coordinate spaces are
-directly used by the user (most often the camera basis ``"ij"`` used for feedback).
-Other bases are less often used directly, but are important to how holograms are
-optimized under the hood (esp. ``"knm"``, the coordinate space of optimization when
-using discrete Fourier transforms).
-
-.. list-table:: Bases used in :mod:`slmsuite`.
-   :widths: 20 80
-   :header-rows: 1
-
-   * - Basis
-     - Meaning
-   * - ``"ij"``
-     - Pixel basis of the camera. Centered at ``(i, j) = (cam.shape[1]/2,
-       cam.shape[0]/2)``. Is in the image space of the camera.
-   * - ``"kxy"``
-     - Normalized (floating point) basis of the SLM's :math:`k`-space in normalized units.
-       Centered at ``(kx, ky) = (0, 0)``. This basis is what the SLM projects in angular
-       space (which maps to the camera's image space via the Fourier transform implemented by free
-       space and solidified by a lens).
-   * - ``"knm"``
-     - Pixel basis of the SLM's computational :math:`k`-space.  Centered at ``(kn, km) =
-       (shape[1]/2, shape[0]/2)``.
-       ``"knm"`` is a discrete version of the continuous ``"kxy"``. This is
-       important because holograms need to be stored in computer memory, a discrete
-       medium with pixels, rather than being purely continuous. For instance, in
-       :class:`SpotHologram`, spots targeting specific continuous angles are rounded to
-       the nearest discrete pixels of ``"knm"`` space in practice.
-       Then, this ``"knm"`` space image is handled as a
-       standard image/array, and operations such as the discrete Fourier transform
-       (instrumental for numerical hologram optimization) can be applied.
-
-See the first tip in :class:`Hologram` to learn more about ``"kxy"`` and ``"knm"``
-space.
+The only algorithm that has no CPU fallback is :class:`CompressedSpotHologram`
+in a Zernike basis beyond 2D or 3D spots. Other cases can use the CPU (however slowly).
 
 Note
 ~~~~
@@ -73,10 +28,11 @@ Internally, algorithms is split into several hidden files
 to enhance clarity and reduce file length.
 
 - ``_header.py`` : The common imports for all the files.
-- ``_hologram.py`` : The core file. Contains the actual algorithms.
-- ``_stats.py`` : Statistics and plotting common to all Holograms.
-- ``_feedback.py`` : Infrastructure for image feedback.
-- ``_spots.py`` : Infrastructure for spot-specific holography.
+- ``_stats.py`` : Statistics and plotting common to all hologram classes.
+- ``_hologram.py`` : The core file. Contains the actual algorithms (:class:`Hologram`).
+- ``_feedback.py`` : Infrastructure for image feedback (:class:`FeedbackHologram`).
+- ``_spots.py`` : Infrastructure for spot-specific holography
+  (:class:`SpotHologram`, :class:`CompressedSpotHologram`).
 """
 from slmsuite.holography.algorithms._header import *
 

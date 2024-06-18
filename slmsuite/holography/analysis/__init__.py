@@ -85,7 +85,9 @@ def take(
         Defaults to ``True``.
     integrate : bool
         If ``True``, the spatial dimension are integrated (summed), yielding a result of the
-        same length as the number of vectors. Defaults to ``False``.
+        same length as the number of vectors. Forces floating point datatype before the
+        summation is done, as integer data (especially for cameras near saturation) can overflow.
+        Defaults to ``False``.
     clip : bool
         Whether to allow out-of-range integration regions. ``True`` allows regions outside
         the valid area, setting the invalid region to ``np.nan``
@@ -184,7 +186,7 @@ def take(
             pass
 
         if integrate:  # Sum over the integration axis.
-            return xp.squeeze(xp.sum(result, axis=-1))
+            return xp.squeeze(xp.sum(result.astype(float), axis=-1))
         else:  # Reshape the integration axis.
             return xp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
@@ -237,6 +239,11 @@ def image_remove_field(images, deviations=1, out=None):
     This threshold is set to either the mean plus ``deviations`` standard deviations,
     computed uniquely for each image, or the median of each image if ``deviations``
     is ``None``. This is equivalent to background subtraction.
+
+    Important
+    ~~~~~~~~~
+    If a stack of images is provided, field removal is done individually on each image.
+    Field removal is not done in aggregate.
 
     Parameters
     ----------
@@ -299,7 +306,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
     r"""
     Computes the given `moment <https://en.wikipedia.org/wiki/Moment_(mathematics)>`_
     :math:`M_{m_xm_y}` for a stack of images.
-    This involves integrating each image against polynomial trial functions:
+    This involves discretely integrating each image against polynomial trial functions:
 
     .. math:: M_{m_xm_y} = \frac{   \int_{-w_x/2}^{+w_x/2} dx \, (x-c_x)^{m_x}
                                     \int_{-w_y/2}^{+w_y/2} dy \, (y-c_y)^{m_y}
@@ -352,9 +359,13 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
             ``float`` or an anisotropic ``(float, float)``.
             This corresponds to the pixel's :math:`\Delta x`, :math:`\Delta y`.
         -   Providing lists of length ``w`` and ``h`` as a tuple as the grid dimension.
-        -   Providing full grids of shape ``(w, h)`` in each direction. Note that this
-            case is the most general, and can lead to a rotated grid if a transformed
-            grid is provided.
+
+            Tip
+            ~~~
+            If the user pre-allocates and reuses these lists, this case has best performance.
+        -   Providing two full grids of shape ``(h, w)``, one for each direction.
+            Note that this case is the most general, and can lead to a rotated grid if a
+            transformed grid is provided.
 
     normalize : bool
         Whether to normalize ``images``.
@@ -434,12 +445,13 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
         else:
             x_grid, y_grid = grid
 
-            if len(np.shape(x_grid)) == 2:
-                # 2D grids.
+            x_grid = np.squeeze(x_grid)
+            y_grid = np.squeeze(y_grid)
+
+            if len(np.shape(x_grid)) == 2:                          # 2D grids.
                 x_grid = np.reshape(x_grid, (1, w_y, w_x)) - c_x
                 y_grid = np.reshape(y_grid, (1, w_y, w_x)) - c_y
-            elif len(np.shape(x_grid)) == 1:
-                # 1D grids.
+            elif len(np.shape(x_grid)) == 1:                        # 1D grids.
                 x_grid = np.reshape(x_grid, (1, 1, w_x)) - c_x
                 y_grid = np.reshape(y_grid, (1, w_y, 1)) - c_y
             elif len(np.shape(x_grid)) == 3:
@@ -448,21 +460,15 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
                 raise ValueError(f"Could not parse grid of shape {x_grid.shape}")
 
             # Don't modify original memory.
-            if moment[0] > 0: x_grid = x_grid.copy()
-            if moment[0] > 1: x_grid = np.power(x_grid, moment[0], out=x_grid)
-
-            if moment[1] > 0: y_grid = y_grid.copy()
-            if moment[1] > 1: y_grid = np.power(y_grid, moment[1], out=y_grid)
+            if moment[0] > 1: x_grid = np.power(x_grid, moment[0])
+            if moment[1] > 1: y_grid = np.power(y_grid, moment[1])
 
         if moment[1] == 0:      # Only-x case.
-            x_grid *= reciprocal
-            return np_sum(images * x_grid, axis=(1, 2), keepdims=False)
+            return np_sum(images * x_grid * reciprocal, axis=(1, 2), keepdims=False)
         elif moment[0] == 0:    # Only-y case.
-            y_grid *= reciprocal
-            return np_sum(images * y_grid, axis=(1, 2), keepdims=False)
+            return np_sum(images * y_grid * reciprocal, axis=(1, 2), keepdims=False)
         else:                   # Shear case.
-            x_grid *= reciprocal
-            return np_sum(images * x_grid * y_grid, axis=(1, 2), keepdims=False)
+            return np_sum(images * x_grid * y_grid * reciprocal, axis=(1, 2), keepdims=False)
 
 
 def image_normalization(images, nansum=False):
@@ -717,6 +723,31 @@ def image_ellipticity(variances):
     return 1 - (eig_minus / eig_plus)
 
 
+def image_areas(variances):
+    r"""
+    Given the output of :meth:`image_variances()`,
+    return a measure of spot area for each moment triplet.
+    The output of :meth:`image_variances()` contains the moments :math:`M_{20}`,
+    :math:`M_{02}`, and :math:`M_{11}`. We return the determinant :math:`|M|` which is a
+    proxy for spot area.
+
+    Parameters
+    ----------
+    variances : numpy.ndarray
+        The output of :meth:`image_variances()`. Shape ``(3, image_count)``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of areas for the given moments in an array of shape ``(image_count,)``.
+    """
+    m20 = variances[0, :]
+    m02 = variances[1, :]
+    m11 = variances[2, :]
+
+    return m20 * m02 - m11 * m11
+
+
 def image_ellipticity_angle(variances):
     r"""
     Given the output of :meth:`image_variances()`,
@@ -756,6 +787,10 @@ def image_ellipticity_angle(variances):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
+def batch_fit(y, x, function, guess, plot=False):
+    pass
+
+
 def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
     """
     Fit each image in a stack of images to a 2D ``function``.
@@ -771,14 +806,16 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
     function : lambda ((float, float), ... ) -> float
         Some fitfunction which accepts ``(x,y)`` coordinates as first argument.
         Defaults to :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`.
-    guess : None OR numpy.ndarray (``image_count``, ``parameter_count``)
-        - If ``guess`` is ``None``, will construct a guess based on the ``function`` passed.
+    guess : None OR True OR numpy.ndarray (``image_count``, ``parameter_count``)
+        - If ``guess`` is ``None`` or ``True``, will construct a guess based on the ``function`` passed.
           Functions for which guesses are implemented include:
 
           - :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`
 
         - If ``guess`` is ``None`` and ``function`` does not have a guess
-          implemented, no guess will be provided to the optimizer.
+          implemented, no guess will be provided to the optimizer and the user will be warned.
+        - If ``guess`` is ``True`` and ``function`` does not have a guess
+          implemented, an error will be raised.
         - If ``guess`` is a ``numpy.ndarray``, a column of the array will be provided
           to the optimizer as a guess for the fit parameters for each image.
     plot : bool
@@ -793,10 +830,10 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
         A matrix with the fit results. The first row
         contains the rsquared quality of each fit.
         The values in the remaining rows correspond to the parameters
-        for the supplied fit function.
+        for the supplied fit function, then the errors for each of the parameters.
         Failed fits have an rsquared of ``numpy.nan`` and parameters
         are set to the provided or constructed guess or ``numpy.nan``
-        if no guess was provided or constructed.
+        if no guess was provided or constructed; errors are set to ``numpy.nan``.
 
     Raises
     ------
@@ -816,33 +853,44 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
     # Number of fit parameters the function accepts (minus 1 for xy).
     param_count =  function.__code__.co_argcount - 1
 
-    # Number of parameters to return (plus 1 for rsquared).
-    result_count = param_count + 1
+    # Number of parameters to return: fitted parameters, errors, and plus 1 for rsquared.
+    result_count = 2 * param_count + 1
     result = np.full((image_count, result_count), np.nan)
 
     # Construct guesses.
-    if guess is None:
+    if guess is None or guess is True:
         if function is gaussian2d:
             images_normalized = image_normalize(images, remove_field=True)
             centers = image_positions(images_normalized, grid=grid, normalize=False)
             variances = image_variances(images_normalized, centers=centers, grid=grid, normalize=False)
-            print(centers)
-            print(variances)
+
             maxs = np.amax(images, axis=(1, 2))
             mins = np.amin(images, axis=(1, 2))
             guess = np.vstack((
                 centers,
                 maxs - mins,
                 mins,
-                np.sqrt(variances[0:2, :]),
+                np.sqrt(variances[:2, :]),
                 variances[2, :]
-            )).transpose()
+            )).T
         else:
-            raise NotImplementedError("Default guess for function not implemented.")
+            message = f"Default guess for function {str(function)} not implemented."
+            if guess is True:
+                raise NotImplementedError(message)
+            else:
+                warnings.warn(message)
 
     # Fit and plot each image.
     for img_idx in range(image_count):
         img = images[img_idx, :, :].ravel()
+        grid_ravel_ = grid_ravel
+
+        # Deal with nans.
+        undefined = np.isnan(img)
+        if np.any(undefined):
+            defined = np.logical_not(undefined)
+            img = img[defined]
+            grid_ravel_ = (grid_ravel[0][defined], grid_ravel[1][defined])
 
         # Get guess.
         p0 = None if guess is None else guess[img_idx]
@@ -850,9 +898,11 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
         # Attempt fit.
         fit_succeeded = True
         popt = None
+        perr = None
 
         try:
-            popt, _ = curve_fit(function, grid_ravel, img, ftol=1e-5, p0=p0,)
+            popt, pcov = curve_fit(function, grid_ravel_, img, ftol=1e-5, p0=p0,)
+            perr = np.sqrt(np.diag(pcov))
         except RuntimeError:    # The fit failed if scipy says so.
             fit_succeeded = False
         else:                   # The fit failed if any of the parameters aren't finite.
@@ -860,15 +910,18 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
                 fit_succeeded = False
 
         if fit_succeeded:   # Calculate r2.
-            ss_res = np.sum(np.square(img - function(grid_ravel, *popt)))
+            ss_res = np.sum(np.square(img - function(grid_ravel_, *popt)))
             ss_tot = np.sum(np.square(img - np.mean(img)))
             r2 = 1 - (ss_res / ss_tot)
         else:               # r2 is nan and the fit parameters are the guess or nan.
             popt = p0 if p0 is not None else np.full(param_count, np.nan)
             r2 = np.nan
+            perr = np.nan
 
+        # Populate results.
         result[img_idx, 0] = r2
-        result[img_idx, 1:] = popt
+        result[img_idx, 1:(param_count+1)] = popt
+        result[img_idx, (param_count+1):] = perr
 
         # Plot.
         if plot:

@@ -755,7 +755,7 @@ class SLM:
             return
 
         center_grid = np.array(
-            [np.argmin(self.grid[0][0,:]), np.argmin(self.grid[1][:,0])]
+            [np.argmin(np.abs(self.grid[0][0,:])), np.argmin(np.abs(self.grid[1][:,0]))]
         )
 
         if not "amplitude" in self.source:
@@ -780,21 +780,22 @@ class SLM:
                 raise RuntimeError("extent_threshold cannot exceed 1 (100%). Use a small value.")
 
             if method == "fit":
-                result = analysis.image_fit(amp, plot=True)
-
+                result = analysis.image_fit(amp, plot=False)
                 std = np.array([result[0,5], result[0,6]])
 
                 center = np.array([result[0,1], result[0,2]])
-                center += np.flip(self.shape)/2
             elif method == "moments":
                 center = analysis.image_positions(amp)
-
                 std = np.sqrt(analysis.image_variances(amp, centers=center)[:2])
-                # std_norm = self.pitch * np.squeeze(std_pix)
-                # std = np.mean(std_norm)
 
                 center = np.squeeze(center)
-                center += np.flip(self.shape)/2
+
+            print(center)
+
+            center += np.flip(self.shape)/2
+
+
+            print(center)
 
             self.source["amplitude_center_pix"] = center
             self.source["amplitude_radius"] = np.mean(self.pitch * np.squeeze(std))
@@ -802,8 +803,17 @@ class SLM:
             # Handle centering.
             dcenter = center_grid - center
 
-            self.grid[0] -= dcenter[0] * self.pitch[0]
-            self.grid[1] -= dcenter[1] * self.pitch[1]
+            print(dcenter)
+            print(self.pitch)
+
+            self.grid[0] += dcenter[0] * self.pitch[0]
+            self.grid[1] += dcenter[1] * self.pitch[1]
+
+
+            center_grid = np.array(
+                [np.argmin(self.grid[0][0,:]), np.argmin(self.grid[1][:,0])]
+            )
+            print(center_grid)
 
             extent_mask = amp > (extent_threshold * np.amax(amp))
 
@@ -817,7 +827,7 @@ class SLM:
 
     def get_source_radius(self):
         """
-        Extracts the source radius for
+        Extracts the source radius in normalized units for functions like
         :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`
         from the scalars computed in
         :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`.
@@ -872,7 +882,7 @@ class SLM:
         elif not sim and not np.all([k in self.source for k in ("amplitude", "phase")]):
             raise RuntimeError(
                 "'amplitude' or 'phase' keywords missing from slm.source! Run "
-                ".wavefront_calibration() or .set_source_analytic() to measure source profile."
+                ".wavefront_calibrate() or .set_source_analytic() to measure source profile."
             )
 
         plot_r2 = not sim and "r2" in self.source

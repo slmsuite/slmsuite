@@ -566,7 +566,7 @@ class _HologramStats(object):
 
         # Helper function: calculate extent for the given units
         try:
-            slm = self.cameraslm.slm
+            slm = self.cameraslm
         except:
             slm = None
             units = "knm"
@@ -579,7 +579,7 @@ class _HologramStats(object):
                         [ext_nm[0], ext_nm[-1]],
                         from_units="knm",
                         to_units=to_units,
-                        slm=slm,
+                        hardware=slm,
                         shape=npsource.shape,
                     )
                 )
@@ -588,7 +588,7 @@ class _HologramStats(object):
                         [ext_nm[1], ext_nm[2]],
                         from_units="knm",
                         to_units=to_units,
-                        slm=slm,
+                        hardware=slm,
                         shape=npsource.shape,
                     )
                 )
@@ -640,7 +640,11 @@ class _HologramStats(object):
                 _cam_points = self._cam_points
             else:
                 _cam_points = toolbox.convert_vector(
-                    self._cam_points, from_units="knm", to_units=units, slm=slm, shape=npsource.shape
+                    self._cam_points, 
+                    from_units="knm", 
+                    to_units=units, 
+                    hardware=slm, 
+                    shape=npsource.shape
                 )
 
             # Plot the labeled yellow rectangle representing the camera.

@@ -572,7 +572,7 @@ class FourierSLM(CameraSLM):
             vectors_freq,
             from_units="freq",
             to_units="norm",
-            slm=self
+            hardware=self
         )
 
         # Make the y-pointing field vector, then the x-pointing field vector.
@@ -582,7 +582,7 @@ class FourierSLM(CameraSLM):
             field_freq,
             from_units="freq",
             to_units="norm",
-            slm=self
+            hardware=self
         )
         field_hi = self.slm.dtype(self.slm.bitresolution / 2)
         field_lo = self.slm.dtype(0)
@@ -591,7 +591,7 @@ class FourierSLM(CameraSLM):
             field_freq,
             from_units="freq",
             to_units="ij",
-            slm=self
+            hardware=self
         )
 
         # Figure out where the orders will appear on the camera.
@@ -1515,7 +1515,7 @@ class FourierSLM(CameraSLM):
                 format_2vectors(field_point),
                 from_units=field_point_units,
                 to_units="kxy",
-                slm=self.slm
+                hardware=self.slm
             )
 
             field_point = self.kxyslm_to_ijcam(field_blaze)
@@ -1524,7 +1524,7 @@ class FourierSLM(CameraSLM):
                 field_point,
                 from_units="ij",
                 to_units="kxy",
-                slm=self
+                hardware=self
             )
 
         field_point = np.rint(format_2vectors(field_point)).astype(int)
@@ -2445,7 +2445,7 @@ class FourierSLM(CameraSLM):
             format_2vectors(field_point),
             from_units=field_point_units,
             to_units="ij",
-            slm=self
+            hardware=self
         )
         field_point = np.rint(format_2vectors(field_point)).astype(int)
 

@@ -63,6 +63,11 @@ def convert_blaze_vector(*args, **kwargs):
         "The backwards-compatible alias convert_blaze_vector will be depreciated "
         "in favor of convert_vector in a future release."
     )
+
+    if "slm" in kwargs.keys():
+        kwargs["hardware"] = kwargs.pop("slm")
+        warnings.warn("convert_vector(slm=) was renamed convert_vector(hardware=).")
+
     return convert_vector(*args, **kwargs)
 
 
@@ -75,10 +80,15 @@ def convert_blaze_radius(*args, **kwargs):
         "The backwards-compatible alias convert_blaze_radius will be depreciated "
         "in favor of convert_radius in a future release."
     )
+    
+    if "slm" in kwargs.keys():
+        kwargs["hardware"] = kwargs.pop("slm")
+        warnings.warn("convert_vector(slm=) was renamed convert_vector(hardware=).")
+
     return convert_radius(*args, **kwargs)
 
 
-def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=None):
+def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, shape=None):
     r"""
     Helper function for vector unit conversions in the :math:`k`-space of the SLM.
 
@@ -110,19 +120,19 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
 
     -  ``"ij"``
         Camera pixel units, relative to the origin of the camera.
-        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
+        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
         See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam`
         and :meth:`~slmsuite.hardware.cameraslms.FourierSLM.ijcam_to_kxyslm`.
 
     -  ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
         Camera position in metric length units, relative to the origin of the camera.
-        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
+        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
 
     -  ``"mag_m"``, ``"mag_cm"``, ``"mag_mm"``, ``"mag_um"``, ``"mag_nm"``
         Scales the corresponding metric length unit according to the value stored in
         :attr:`~slmsuite.hardware.cameraslms.FourierSLM.mag` to match the true
         dimensions of the experiment plane, apposed to the camera plane.
-        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
+        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
 
     -  ``"zernike"``
         The phase coefficients of the tilt zernike terms
@@ -133,7 +143,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
         the normalized Zernike functions. For instance, a coefficient of :math:`\pi` would
         produce a wavefront offset of :math:`\pm\pi` across the unit disk.
         See :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
-        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``slm``.
+        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
 
     Important
     ~~~~~~~~~
@@ -165,14 +175,15 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
     Warning
     ~~~~~~~
     The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
-    so a ``slm`` should be passed (otherwise returns an array of ``nan`` values).
+    so a SLM should be passed to ``hardware``
+    (otherwise returns an array of ``nan`` values).
     The unit ``"zernike"`` also requires an SLM.
     The unit ``"knm"`` additionally requires the ``shape`` of the computational space.
-    If not included when an slm is passed, ``shape=slm.shape`` is assumed.
+    If not included when ``hardware`` is passed, ``shape=slm.shape`` is assumed.
     The units ``"ij"``, ``"um"``, ``"mag_um"``, and related refer to distance on the
     camera and require calibration data stored in a
     :class:`~slmsuite.hardware.cameraslms.FourierSLM`,
-    so this must be passed in place of ``slm``.
+    so this must be passed to ``hardware``.
 
     Parameters
     ----------
@@ -183,14 +194,14 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
     from_units, to_units : str
         Units which we are converting between. See the listed units above for options.
         Defaults to ``"norm"``.
-    slm : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.FourierSLM` OR None
-        Relevant SLM to pull data from in the case of
+    hardware : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.FourierSLM` OR None
+        Relevant hardware to pull calibration data from in the case of
         ``"freq"``, ``"knm"``, or ``"lpmm"``.
         If :class:`~slmsuite.hardware.cameraslms.FourierSLM`, the unit ``"ij"`` and other
         length units can be processed too.
     shape : (int, int) OR None
         Shape of the computational SLM space. Needed for ``"knm"``.
-        Defaults to ``slm.shape`` if ``slm`` is not ``None``.
+        Defaults to ``slm.shape`` if ``hardware`` is not ``None``.
 
     Returns
     --------
@@ -222,11 +233,12 @@ def convert_vector(vector, from_units="norm", to_units="norm", slm=None, shape=N
         vector_z = None
 
     # Determine whether a CameraSLM was passed (to enable "ij" units and related).
-    if hasattr(slm, "slm"):
-        cameraslm = slm
-        slm = cameraslm.slm
+    if hasattr(hardware, "slm"):
+        cameraslm = hardware
+        slm = hardware.slm
     else:
         cameraslm = None
+        slm = hardware
 
     if from_units in CAMERA_UNITS or to_units in CAMERA_UNITS:
         if cameraslm is None or cameraslm.calibrations["fourier"] is None:
@@ -386,11 +398,16 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
         print("'{}' : {}".format(unit, tuple(result.T[0])))
 
 
-def convert_radius(radius, from_units="norm", to_units="norm", slm=None, shape=None):
+def convert_radius(radius, from_units="norm", to_units="norm", hardware=None, shape=None):
     """
     Helper function for scalar unit conversions.
     Uses :meth:`convert_vector` to deduce the (average, in the case of an
     anisotropic transformation) scalar radius when going between sets of units.
+
+    Tip
+    ~~~
+    In the future, we might create a similar function to handle anisotropic 
+    conversions better by converting a 2x2 matrix representing a sheared parallelogram.
 
     Parameters
     ----------
@@ -398,7 +415,7 @@ def convert_radius(radius, from_units="norm", to_units="norm", slm=None, shape=N
         The scalar radius to convert.
     from_units, to_units : str
         Passed to :meth:`convert_vector`.
-    slm : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.CameraSLM` OR None
+    hardware : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.CameraSLM` OR None
         Passed to :meth:`convert_vector`.
     shape : (int, int) OR None
         Passed to :meth:`convert_vector`.
@@ -409,13 +426,13 @@ def convert_radius(radius, from_units="norm", to_units="norm", slm=None, shape=N
         New scalar radius.
     """
     v0 = convert_vector(
-        (0, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
+        (0, 0), from_units=from_units, to_units=to_units, hardware=hardware, shape=shape
     )
     vx = convert_vector(
-        (radius, 0), from_units=from_units, to_units=to_units, slm=slm, shape=shape
+        (radius, 0), from_units=from_units, to_units=to_units, hardware=hardware, shape=shape
     )
     vy = convert_vector(
-        (0, radius), from_units=from_units, to_units=to_units, slm=slm, shape=shape
+        (0, radius), from_units=from_units, to_units=to_units, hardware=hardware, shape=shape
     )
     return np.mean([np.linalg.norm(vx - v0), np.linalg.norm(vy - v0)])
 

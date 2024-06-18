@@ -96,7 +96,11 @@ class FeedbackHologram(Hologram):
             points_ij = toolbox.format_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
             points_kxy = self.cameraslm.ijcam_to_kxyslm(points_ij)
             self._cam_points = toolbox.convert_vector(
-                points_kxy, "kxy", "knm", slm=self.cameraslm.slm, shape=self.shape
+                points_kxy, 
+                from_units="kxy", 
+                to_units="knm", 
+                hardware=self.cameraslm.slm, 
+                shape=self.shape
             )
 
             # Transform the target, if it is provided.
@@ -141,10 +145,10 @@ class FeedbackHologram(Hologram):
         if not "fourier" in self.cameraslm.calibrations:
             raise RuntimeError("ijcam_to_knmslm requires a Fourier calibration.")
 
-        # First transformation. FUTURE: make convert_basis output a matrix?
+        # First transformation. FUTURE: make convert_basis to output a matrix like here?
         conversion = (
-            toolbox.convert_vector((1, 1), "knm", "kxy", slm=self.cameraslm.slm, shape=self.shape) -
-            toolbox.convert_vector((0, 0), "knm", "kxy", slm=self.cameraslm.slm, shape=self.shape)
+            toolbox.convert_vector((1, 1), "knm", "kxy", hardware=self.cameraslm.slm, shape=self.shape) -
+            toolbox.convert_vector((0, 0), "knm", "kxy", hardware=self.cameraslm.slm, shape=self.shape)
         )
         M1 = np.diag(np.squeeze(conversion))
         b1 = np.matmul(M1, -toolbox.format_2vectors(np.flip(np.squeeze(self.shape)) / 2))

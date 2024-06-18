@@ -1301,7 +1301,7 @@ class Hologram(_HologramStats):
         try:
             optim_class = getattr(torch.optim, self.flags["optimizer"])
         except:
-            raise ValueError(f"{self.flags["optimizer"]} is not a valid torch optimizer")
+            raise ValueError(f"{self.flags['optimizer']} is not a valid torch optimizer")
 
         self.optimizer = optim_class([phase_torch], **self.flags["optimizer_kwargs"])
 
@@ -1428,7 +1428,7 @@ class Hologram(_HologramStats):
             feedback_corrected += 1
         else:
             raise ValueError(
-                f"Method '{self.flags["method"]}' not recognized by Hologram.optimize()"
+                f"Method '{self.flags['method']}' not recognized by Hologram.optimize()"
             )
 
         if nan_checks:

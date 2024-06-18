@@ -94,7 +94,11 @@ class _AbstractSpotHologram(FeedbackHologram):
                     - self.cameraslm.ijcam_to_kxyslm((0, 0))
                 )
                 self.spot_knm = toolbox.convert_vector(
-                    self.spot_kxy, "kxy", "knm", self.cameraslm.slm, self.shape
+                    self.spot_kxy, 
+                    to_units="kxy", 
+                    from_units="knm", 
+                    hardware=self.cameraslm.slm, 
+                    shape=self.shape
                 )
                 self.update_target(reset_weights=True)
                 self.reset_phase()
@@ -298,7 +302,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 spot_vectors[self.zernike_basis_cartesian],
                 from_units="zernike",
                 to_units="kxy",
-                slm=cameraslm
+                hardware=cameraslm
             )
 
         # Check to make sure spots are within bounds
@@ -1069,7 +1073,11 @@ class SpotHologram(_AbstractSpotHologram):
 
             if cameraslm is not None:
                 self.spot_kxy = toolbox.convert_vector(
-                    self.spot_knm, "knm", "kxy", cameraslm.slm, shape
+                    self.spot_knm, 
+                    from_units="knm", 
+                    to_units="kxy", 
+                    hardware=cameraslm.slm, 
+                    shape=shape
                 )
 
                 if "fourier" in cameraslm.calibrations:
@@ -1097,7 +1105,11 @@ class SpotHologram(_AbstractSpotHologram):
                 self.spot_ij = None
 
             self.spot_knm = toolbox.convert_vector(
-                self.spot_kxy, "kxy", "knm", cameraslm.slm, shape
+                self.spot_kxy, 
+                from_units="kxy", 
+                to_units="knm", 
+                hardware=cameraslm.slm, 
+                shape=shape
             )
         elif basis == "ij":  # Pixel on the camera.
             assert cameraslm is not None, "We need an cameraslm to interpret ij."
@@ -1109,7 +1121,13 @@ class SpotHologram(_AbstractSpotHologram):
 
             self.spot_ij = vectors
             self.spot_kxy = cameraslm.ijcam_to_kxyslm(vectors)
-            self.spot_knm = toolbox.convert_vector(vectors, "ij", "knm", cameraslm, shape)
+            self.spot_knm = toolbox.convert_vector(
+                vectors, 
+                from_units="ij", 
+                to_units="knm", 
+                hardware=cameraslm, 
+                shape=shape
+            )
         else:
             raise Exception("Unrecognized basis for spots '{}'.".format(basis))
 
@@ -1118,13 +1136,21 @@ class SpotHologram(_AbstractSpotHologram):
             if null_vectors is not None:
                 # Convert the null vectors.
                 self.null_knm = toolbox.convert_vector(
-                    null_vectors, basis, "knm", cameraslm, shape
+                    null_vectors, 
+                    from_units=basis, 
+                    to_units="knm", 
+                    hardware=cameraslm, 
+                    shape=shape
                 )
 
                 # Convert the null radius.
                 if null_radius is not None:
                     self.null_radius_knm = toolbox.convert_radius(
-                        null_radius, basis, "knm", cameraslm, shape
+                        null_radius, 
+                        from_units=basis, 
+                        to_units="knm", 
+                        hardware=cameraslm, 
+                        shape=shape
                     )
                 else:
                     self.null_radius_knm = None
@@ -1323,7 +1349,12 @@ class SpotHologram(_AbstractSpotHologram):
                     "to interpret ij."
                 )
 
-                array_center = toolbox.convert_vector((0, 0), "kxy", "ij", cameraslm)
+                array_center = toolbox.convert_vector(
+                    (0, 0), 
+                    from_units="kxy", 
+                    to_units="ij", 
+                    hardware=cameraslm
+                )
 
         # Make the grid edges.
         x_edge = np.arange(array_shape[0]) - (array_shape[0] - 1) / 2.0
@@ -1356,10 +1387,10 @@ class SpotHologram(_AbstractSpotHologram):
         if self.cameraslm is not None:
             self.spot_kxy_rounded = toolbox.convert_vector(
                 self.spot_knm_rounded,
-                "knm",
-                "kxy",
-                self.cameraslm.slm,
-                self.shape,
+                from_units="knm",
+                to_units="kxy",
+                hardware=self.cameraslm.slm,
+                shape=self.shape,
             )
 
             if "fourier" in self.cameraslm.calibrations:

@@ -971,7 +971,7 @@ class SLM:
             [rad_freq, rad_freq],
             from_units="freq",
             to_units="kxy",
-            slm=self,
+            hardware=self,
             shape=self.shape,
         )
 

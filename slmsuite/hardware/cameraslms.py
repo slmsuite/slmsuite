@@ -303,7 +303,7 @@ class FourierSLM(CameraSLM):
     ### Settle Time Calibration ###
 
     def settle_calibrate(
-        self, vector=(0.1, 0.1), basis="kxy", size=None, times=None, settle_time_s=1
+        self, vector=(0.1, 0.1), size=None, times=None, settle_time_s=1
     ):
         """
         Approximates the :math:`1/e` settle time of the SLM.

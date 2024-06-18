@@ -10,6 +10,10 @@ After installing the SDK, extract the files in:
 ``~\\Program Files\\Thorlabs\\Scientific Imaging\\Scientific Camera Support\\Scientific_Camera_Interfaces.zip``.
 Follow the instructions in the extracted file Python_README.txt to install into your
 python environment via ``pip``.
+
+Note
+~~~~
+Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
 
 import os

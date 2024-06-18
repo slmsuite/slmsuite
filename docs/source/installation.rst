@@ -56,6 +56,11 @@ the user can install selectively.
 
 - GPU
     - `cupy <https://cupy.dev/>`_, highly recommended for GPU-accelerated holography.
+- Gradients
+    - `pytorch <https://pytorch.org/>`_, required for conjugate gradient hologram
+      optimization, either in GPU or CPU mode. Uses :mod:`cupy` - :mod:`torch`
+      `interoperability <https://docs.cupy.dev/en/stable/user_guide/interoperability.html#pytorch>`_
+      to pass data between modules without copying, even on the GPU.
 - Cameras
     - `instrumental-lib <https://github.com/mabuchilab/Instrumental>`_
     - `pymmcore <https://github.com/micro-manager/pymmcore>`_

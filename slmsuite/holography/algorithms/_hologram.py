@@ -827,7 +827,7 @@ class Hologram(_HologramStats):
 
               TODO
 
-              Uses :mod:`pytorch`-:mod:`cupy`
+              Uses :mod:`torch`-:mod:`cupy`
               `interoperability <https://docs.cupy.dev/en/stable/user_guide/interoperability.html#pytorch>`_.
 
         -   The option for `Mixed Region Amplitude Freedom (MRAF)

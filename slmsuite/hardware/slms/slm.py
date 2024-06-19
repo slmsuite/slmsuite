@@ -790,12 +790,7 @@ class SLM:
 
                 center = np.squeeze(center)
 
-            print(center)
-
             center += np.flip(self.shape)/2
-
-
-            print(center)
 
             self.source["amplitude_center_pix"] = center
             self.source["amplitude_radius"] = np.mean(self.pitch * np.squeeze(std))
@@ -803,17 +798,12 @@ class SLM:
             # Handle centering.
             dcenter = center_grid - center
 
-            print(dcenter)
-            print(self.pitch)
-
             self.grid[0] += dcenter[0] * self.pitch[0]
             self.grid[1] += dcenter[1] * self.pitch[1]
-
 
             center_grid = np.array(
                 [np.argmin(self.grid[0][0,:]), np.argmin(self.grid[1][:,0])]
             )
-            print(center_grid)
 
             extent_mask = amp > (extent_threshold * np.amax(amp))
 

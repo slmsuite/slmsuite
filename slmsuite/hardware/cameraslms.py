@@ -104,6 +104,10 @@ class NearfieldSLM(CameraSLM):
         self.mag = mag
 
 
+def _blaze_offset(grid, vector, offset=0):
+    return blaze(grid, vector) + offset
+
+
 class FourierSLM(CameraSLM):
     r"""
     Class for an SLM and camera separated by a Fourier transform.
@@ -169,7 +173,7 @@ class FourierSLM(CameraSLM):
             hardware.
         """
         # Make sure we have a Fourier calibration.
-        if self.calibrations["fourier"] is None:
+        if not "fourier" in self.calibrations:
             raise ValueError("Cannot simulate() a FourierSLM without a Fourier calibration.")
 
         # Make a simulated SLM
@@ -208,20 +212,20 @@ class FourierSLM(CameraSLM):
 
     def name_calibration(self, calibration_type):
         """
-        Creates ``"<cam.name>-<slm.name>-<calibration_type>"``.
+        Creates ``"<cam.name>-<slm.name>-<calibration_type>-calibration"``.
 
         Parameters
         ----------
         calibration_type : str
             The type of calibration to save. See :attr:`calibrations` for supported
-            options. Works for any key of :attr:`calibrations`.
+            options.
 
         Returns
         -------
         name : str
             The generated name.
         """
-        return f"{self.cam.name}_{self.slm.name}_{calibration_type}"
+        return f"{self.cam.name}-{self.slm.name}-{calibration_type}-calibration"
 
     def save_calibration(self, calibration_type, path=".", name=None):
         """
@@ -248,7 +252,7 @@ class FourierSLM(CameraSLM):
         if name is None:
             name = self.name_calibration(calibration_type)
         file_path = generate_path(path, name, extension="h5")
-        write_h5(file_path, {calibration_type : self.calibrations[calibration_type]})
+        write_h5(file_path, self.calibrations[calibration_type])
 
         return file_path
 
@@ -260,7 +264,7 @@ class FourierSLM(CameraSLM):
         ----------
         calibration_type : str
             The type of calibration to save. See :attr:`calibrations` for supported
-            options. Works for any key of :attr:`calibrations`.
+            options.
         file_path : str OR None
             Full path to the calibration file. If ``None``, will
             search the current directory for a file with a name like
@@ -286,7 +290,7 @@ class FourierSLM(CameraSLM):
                     "".format(os.path.join(path, name))
                 )
 
-        self.calibrations[calibration_type] = read_h5(file_path)[calibration_type]
+        self.calibrations[calibration_type] = read_h5(file_path)
 
         return file_path
 
@@ -819,12 +823,11 @@ class FourierSLM(CameraSLM):
         ])
 
         self.calibrations["fourier"] = {
-            "__version__" : __version__,
-            "__time__" : time.time(),
             "M": M,
             "b": b,
             "a": a
         }
+        self.calibrations["fourier"].update(self._get_calibration_metadata())
 
         return self.calibrations["fourier"]
 
@@ -931,7 +934,7 @@ class FourierSLM(CameraSLM):
 
     def _kxyslm_to_ijcam_depth(self, kxy_depth):
         """Helper function for handling depth conversion."""
-        f_eff = self.get_effective_focal_length("norm")
+        f_eff = np.mean(self.get_effective_focal_length("norm"))
         if self.cam.pitch_um is None:
             cam_pitch_um = np.nan
         else:
@@ -940,7 +943,7 @@ class FourierSLM(CameraSLM):
 
     def _ijcam_to_kxyslm_depth(self, ij_depth):
         """Helper function for handling depth conversion."""
-        f_eff = self.get_effective_focal_length("norm")
+        f_eff = np.mean(self.get_effective_focal_length("norm"))
         if self.cam.pitch_um is None:
             cam_pitch_um = np.nan
         else:
@@ -984,7 +987,7 @@ class FourierSLM(CameraSLM):
         RuntimeError
             If the fourier plane calibration does not exist.
         """
-        if self.calibrations["fourier"] is None:
+        if not "fourier" in self.calibrations:
             raise RuntimeError("Fourier calibration must exist to be used.")
 
         kxy = format_vectors(kxy, handle_dimension="pass")
@@ -997,7 +1000,7 @@ class FourierSLM(CameraSLM):
 
         # Handle z if needed.
         if kxy.shape[0] == 3:
-            return np.vstack((ij, self._kxyslm_to_ijcam_depth(ij[[2], :])))
+            return np.vstack((ij, self._kxyslm_to_ijcam_depth(kxy[[2], :])))
         else:
             return ij
 
@@ -1046,7 +1049,7 @@ class FourierSLM(CameraSLM):
         RuntimeError
             If the fourier plane calibration does not exist.
         """
-        if self.calibrations["fourier"] is None:
+        if not "fourier" in self.calibrations:
             raise RuntimeError("Fourier calibration must exist to be used.")
 
         ij = format_vectors(ij, handle_dimension="pass")
@@ -1144,7 +1147,7 @@ class FourierSLM(CameraSLM):
         f_eff : float
             Effective focal length.
         """
-        if self.calibrations["fourier"] is None:
+        if not "fourier" in self.calibrations:
             raise RuntimeError("Fourier calibration must exist to be used.")
 
         # Gather f_eff in pix/rad.
@@ -1158,9 +1161,9 @@ class FourierSLM(CameraSLM):
         if units == "ij":
             pass
         elif units == "norm":
-            f_eff *= self.cam.pitch_um / self.slm.wav_um
+            f_eff *= np.array(self.cam.pitch_um) / self.slm.wav_um
         elif units in toolbox.LENGTH_FACTORS.keys():
-            f_eff *= self.cam.pitch_um / toolbox.LENGTH_FACTORS[units]
+            f_eff *= np.array(self.cam.pitch_um) / toolbox.LENGTH_FACTORS[units]
         else:
             raise ValueError(f"Unit '{units}' not recognized as a length.")
 
@@ -1530,7 +1533,7 @@ class FourierSLM(CameraSLM):
         field_point = np.rint(format_2vectors(field_point)).astype(int)
 
         # Use the Fourier calibration to help find points/sizes in the imaging plane.
-        if self.calibrations["fourier"] is None:
+        if not "fourier" in self.calibrations:
             raise RuntimeError("Fourier calibration must be done before wavefront calibration.")
         calibration_blazes = self.ijcam_to_kxyslm(calibration_points)
         reference_blazes = calibration_blazes.copy()
@@ -1771,7 +1774,7 @@ class FourierSLM(CameraSLM):
                                 reference_superpixels_coords[0, i], 1,
                                 reference_superpixels_coords[1, i], 1
                             ]) * superpixel_size,
-                            blaze,
+                            _blaze_offset,
                             self.slm,
                             vector=reference_blaze[:, [i]],
                             offset=reference_phase
@@ -1787,7 +1790,7 @@ class FourierSLM(CameraSLM):
                                 target_coords[0, i], 1,
                                 target_coords[1, i], 1
                             ]) * superpixel_size,
-                            blaze,
+                            _blaze_offset,
                             self.slm,
                             vector=target_blaze[:, [i]],
                             offset=target_phase if np.isscalar(target_phase) else target_phase[i]
@@ -2783,7 +2786,7 @@ class FourierSLM(CameraSLM):
                 imprint(
                     phase,
                     np.array([nx, 1, ny, 1]) * superpixel_size,
-                    blaze,
+                    _blaze_offset,
                     self.slm,
                     vector=(kx[ny, nx], ky[ny, nx]),
                     offset=offset[ny, nx],
@@ -2956,13 +2959,3 @@ class FourierSLM(CameraSLM):
 
 
 FourierSLM.build_fourier_calibration.__doc__ = SimulatedCamera.build_affine.__doc__
-
-
-class _SimulatedFourierSLM(FourierSLM):
-    def __init__(calibrations):
-        """
-        Parameters
-        ----------
-        calibrations : list of str
-            TODO
-        """

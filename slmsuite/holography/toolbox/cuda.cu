@@ -1,7 +1,17 @@
 // This file is loaded into slmsuite.holography.toolbox.phase at runtime.
 // cupy.RawKernels call functions inside it.
 #include <cupy/complex.cuh>
-#include <math.h>
+// #include <math.h>
+
+// Max basis size in register memory.
+//   Our pixel-wise kernels sometimes require a basis of polynomials, 
+//   where the polynomial is computed for the coordinates of the given pixel and
+//   stored in the basis. Every CUDA thread has 255 32-bit (sizeof int, float) registers,
+//   so this limits the size of the basis that can be stored. We choose to limit the size
+//   to BASIS_SIZE, leaving the other register to be used for local loop/etc variables.
+//   As far as I understand, the time to allocate static register memory does not depend on 
+//   array size, so having a large default basis is costless.
+#define BASIS_SIZE 100
 
 extern "C"  __device__ void warp_reduce(
     complex<float>* sdata, // volatile
@@ -37,25 +47,26 @@ extern "C" __global__ void compressed_farfield2nearfield(
         // Make a local result variable to avoid talking with global memory.
         float exponent = 0;
         complex<float> result = 0;
+        complex<float> tau = complex<float>(0, 6.28318530717958647692f);
 
         // Figure out which pixel we are at.
         float x = dx * (nf % W) - cx;
         float y = dy * (nf / W) - cy;
 
         if (D == 3) {
-            // Additional copy for 3D spots.
-            float r = x * x + y * y;
+            // Additional compute for 3D spots.
+            float r = .5 * (x * x + y * y);
 
-            // Loop over all the spots (compiler should handle optimizing the trinary).
+            // Loop over all the spots.
             for (int i = 0; i < N; i++) {
                 exponent = x * kxyz[i] + y * kxyz[i + N] + r * kxyz[i + N + N];
-                result += farfield[i] * exp(1j * exponent);
+                result += farfield[i] * exp(tau * exponent);
             }
         } else {
-            // Loop over all the spots (compiler should handle optimizing the trinary).
+            // Loop over all the spots.
             for (int i = 0; i < N; i++) {
                 exponent = x * kxyz[i] + y * kxyz[i + N];
-                result += farfield[i] * exp(1j * exponent);
+                result += farfield[i] * exp(tau * exponent);
             }
         }
 
@@ -91,6 +102,7 @@ extern "C" __global__ void compressed_nearfield2farfield(
     float y = dy * (nf / W) - cy;
 
     float exponent = 0;
+    complex<float> tau = complex<float>(0, 6.28318530717958647692f);
 
     if (nf < W * H) {
         exponent = x * kxyz[ff] + y * kxyz[ff + N];
@@ -100,7 +112,7 @@ extern "C" __global__ void compressed_nearfield2farfield(
         }
 
         // Do the overlap integrand for one nearfield-farfield mapping.
-        sdata[tid] = conj(nearfield[nf]) * exp(2j * PI * exponent);
+        sdata[tid] = conj(nearfield[nf]) * exp(tau * exponent);
     } else {
         sdata[tid] = 0;
     }
@@ -123,16 +135,16 @@ extern "C" __global__ void compressed_nearfield2farfield(
 }
 
 // Version 2 compressed kernel
-
-extern "C" __device__ void populate_basis(
-    const float x,
-    const float y,
+// 
+extern "C" __device__ __forceinline__ void populate_basis(
+    float x,
+    float y,
     const unsigned int D,           // Dimension of Zernike basis (2 [xy] for normal spot arrays)
     const unsigned int M,           // Dimension of polynomial basis (2 [xy] for normal spot arrays)
-    const int* c_md,                // Polynomial coefficients for Zernike (size M*D) [shared]
+    const float* c_md,              // Polynomial coefficients for Zernike (size M*D) [shared]
     const int* i_md,                // A key for where c_dm is nonzero for speed (size M*D) [shared]
     const int* pxy_m,               // Monomial coefficients (size 2*M) [shared]
-    float* basis,
+    float* basis
 ) {
     int i, j, d, stride = 0;
     int nx, ny, nx0, ny0 = 0;
@@ -211,7 +223,7 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
         // Prepare local basis.
         // This is the phase for a given coefficient d at the current pixel.
         // It incurs an O(D) cost, but is amortized over O(N) points.
-        float* basis = float[D];
+        float basis[BASIS_SIZE];
 
         populate_basis(
             dx * (nf % W) - cx,
@@ -225,15 +237,16 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
         float exponent = 0;
         int i = 0;
         int d = 0;
+        complex<float> imag = complex<float>(0, 1.0f);
 
         // Loop over all the spots.
         for (i = 0; i < N; i++) {
             exponent = 0;
             // Loop over basis indices.
             for (d = 0; d < D; d++) {
-                exponent += basis[d] * a_dn[d*N + i];
+                exponent += basis[d] * a_nd[d*N + i];
             }
-            result += farfield[i] * exp(1j * exponent);
+            result += farfield[i] * exp(imag * exponent);
         }
 
         // Export the result to global memory.
@@ -272,11 +285,12 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
     float exponent = 0;
     int i = 0;
     int d = 0;
+    complex<float> imag = complex<float>(0, 1.0f);
 
     // Prepare local basis.
     // This is the phase for a given coefficient d at the current pixel.
     // It incurs an O(D) cost, but is amortized over O(N) points.
-    float* basis = float[D];
+    float basis[BASIS_SIZE];
 
     if (inrange) {
         populate_basis(
@@ -292,11 +306,11 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
         if (inrange) {
             // Loop over basis indices.
             for (d = 0; d < D; d++) {
-                exponent += basis[d] * a_dn[d*N + ff];
+                exponent += basis[d] * a_nd[d*N + i];
             }
 
             // Do the overlap integrand for one nearfield-farfield mapping.
-            sdata[tid] = conj(nearfield[nf]) * exp(1j * exponent);
+            sdata[tid] = conj(nearfield[nf]) * exp(imag * exponent);
         } else {
             sdata[tid] = 0;
         }
@@ -335,19 +349,19 @@ extern "C" __global__ void zernike_test(
 
     if (nf < WH) {
         // Prepare local basis.
-        float* basis = float[D];
+        float basis[BASIS_SIZE];
 
         populate_basis(
-            X[g],
-            Y[g],
+            X[nf],
+            Y[nf],
             D, M, c_md, i_md, pxy_m,
             basis
         );
 
         // Export the result to global memory.
-        int j = 0
+        int j = 0;
         for (int i = 0; i < D; i++) {
-            nearfield[nf + j] = basis[i];
+            out[nf + j] = basis[i];
             j += WH;
         }
     }
@@ -426,15 +440,14 @@ extern "C" __global__ void update_weights_generic(
     const unsigned int method,          // Indexed WGS method
     const float feedback_norm,          // cupy-computed norm of feedback_amp
     const float feedback_exponent,      // Method-specific
-    const float feedback_factor,        // Method-specific
-
+    const float feedback_factor         // Method-specific
 ) {
     // i is each pixel in the weights.
     int i = blockDim.x * blockIdx.x + threadIdx.x;
 
     if (i < N) {
         float feedback = feedback_amp[i] / feedback_norm;
-        float target = target_amp[i]
+        float target = target_amp[i];
 
         if (method != 4 && method != 5) {   // Multiplicative.
             if (target != 0) {
@@ -444,20 +457,20 @@ extern "C" __global__ void update_weights_generic(
             }
 
             if (method == 1 || method == 2) {   // Leonardo, Kim
-                feedback = pow(-feedback, feedback_exponent)
+                feedback = pow(-feedback, feedback_exponent);
             } else if (method == 3) {           // Nogrette
-                feedback = 1 / (1 - feedback_factor * (1 - feedback))
+                feedback = 1 / (1 - feedback_factor * (1 - feedback));
             }
         } else {                            // Additive.
             if (method == 4) {                  // Wu
-                feedback = exp(feedback_exponent * (target - feedback))
+                feedback = exp(feedback_exponent * (target - feedback));
             } else if (method == 5) {           // tanh
-                feedback = 1 + feedback_factor * tanh(feedback_exponent * (target - feedback))
+                feedback = 1 + feedback_factor * tanh(feedback_exponent * (target - feedback));
             }
         }
 
         // Check nan, inf
-        if (isinf(feedback) || isnan(feedback)) { feedback = 1 }
+        if (isinf(feedback) || isnan(feedback)) { feedback = 1; }
 
         // Export the result to global memory if changed.
         if (feedback != 1) {

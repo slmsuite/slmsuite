@@ -19,7 +19,6 @@ from slmsuite.holography.toolbox import _process_grid
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuda.cu"), 'r') as file:
     CUDA_KERNELS = file.read()
 
-
 # Basic gratings.
 
 def blaze(grid, vector=(0, 0)):
@@ -492,6 +491,9 @@ def zernike_aperture(grid, aperture=None):
           uses :meth:`~slmsuite.hardware.slms.slm.SLM.get_zernike_scaling()` to
           determine the scaling most appropriate for the SLM.
           Otherwise, defaults to ``"cropped"``.
+          See also :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`
+          and especially the `extent_threshold` keyword which determines the scaling used by 
+          :meth:`~slmsuite.hardware.slms.slm.SLM.get_zernike_scaling()`
 
         - ``"circular"``
           The circle is scaled isotropically until the pupil edge touches one set
@@ -656,10 +658,13 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
 
     # At the end, we're going to set the values outside the aperture to zero.
     # Make a mask for this if it's necessary.
-    mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
-    if use_mask == "return":
-        return mask
-    use_mask = use_mask and np.any(mask == 0)
+    if use_mask is False:
+        mask = None
+    else:
+        mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
+        if use_mask == "return":
+            return mask
+        use_mask = use_mask and np.any(mask == 0)
 
     if use_mask:
         x_grid_scaled = x_grid[mask] * x_scale
@@ -698,7 +703,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
                         power_factor = 0
 
                 # Change the power key based on derivatives.
-                power_key = (power_key[0] - dx, power_key[1] - dy)
+                power_key = (int(power_key[0] - dx), int(power_key[1] - dy))
 
             # Add the coefficient to the sum for the given monomial power.
             if power_key in summed_coefficients:
@@ -708,6 +713,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
 
     # Finally, build the polynomial.
     if True:
+        # TODO: use polynomial()?
         if out is None:
             out = np.empty(x_grid.shape)
         else:
@@ -729,7 +735,6 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
                         out += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
     else:
         pass
-
 
     return out
 

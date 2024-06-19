@@ -167,10 +167,10 @@ class SimulatedCamera(Camera):
         dkxy_min = dkxy.ravel()[1:].min()
 
         self.shape_padded = Hologram.calculate_padded_shape(self._slm, precision=dkxy_min)
-        print(
-            "Padded SLM k-space shape set to (%d,%d) to achieve required "
-            "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
-        )   # TODO: suppress?
+        # print(
+        #     "Padded SLM k-space shape set to (%d,%d) to achieve required "
+        #     "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
+        # )
 
         phase = -self._slm.display.astype(float)/self._slm.bitresolution*(2*np.pi)
         self._hologram = Hologram(

@@ -36,17 +36,14 @@ BLAZE_LABELS = {
     "knm":  (r"$k_n$ [pix]", r"$k_m$ [pix]"),
     "freq": (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
     "lpmm": (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
-    "ij":   (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
     "zernike":  (r"$Z_1^1$ [Zernike rad]", r"$Z_1^{-1}$ [Zernike rad]"),
+    "ij":   (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
 }
-for k in LENGTH_FACTORS.keys():
-    u = LENGTH_LABELS[k]
-
-    BLAZE_LABELS[k] = (f"Camera $x$ [{u}]", f"Camera $y$ [{u}]"),
-    BLAZE_LABELS["mag_"+k] = (f"Experiment $x$ [{u}]", f"Experiment $y$ [{u}]"),
-
-    CAMERA_UNITS.append(k)
-    CAMERA_UNITS.append("mag_"+k)
+for prefix, name in zip(["", "mag_"], ["Camera", "Experiment"]):
+    for k in LENGTH_FACTORS.keys():
+        u = LENGTH_LABELS[k]
+        BLAZE_LABELS[prefix+k] = (f"{name} $x$ [{u}]", f"{name} $y$ [{u}]"),
+        CAMERA_UNITS.append(prefix+k)
 
 BLAZE_UNITS = list(BLAZE_LABELS.keys())
 
@@ -80,7 +77,7 @@ def convert_blaze_radius(*args, **kwargs):
         "The backwards-compatible alias convert_blaze_radius will be depreciated "
         "in favor of convert_radius in a future release."
     )
-    
+
     if "slm" in kwargs.keys():
         kwargs["hardware"] = kwargs.pop("slm")
         warnings.warn("convert_vector(slm=) was renamed convert_vector(hardware=).")
@@ -118,6 +115,25 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         Line pairs per mm or lines per mm of a grating producing the blaze.
         This unit is commonly used to define static diffraction gratings used in spectrometers.
 
+    -  ``"zernike"``
+        The phase coefficients **in radians** of the tilt zernike terms
+        :math:`x = Z_2 = Z_1^1` and
+        :math:`y = Z_1 = Z_1^{-1}` necessary to produce a given blaze.
+        The coefficients of these terms are used as weights multiplied directly with
+        the normalized Zernike functions :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
+        For instance, a weight coefficient of :math:`\pi` would
+        produce a wavefront offset of :math:`\pm\pi` across the unit disk.
+
+        These functions are defined within the unit disk, and canonically have amplitude
+        of :math:`\pm 1` at the edges.
+        The size of the disk when scaled onto the SLM is pulled from radial fits
+        derived from the amplitude distribution of the SLM.
+        See :meth:`~slmsuite.hardware.slms.slm.SLM.get_zernike_scaling()` and
+        :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`, especially
+        the `extent_threshold` keyword which determines the size of the disk.
+        Requires a :class:`~slmsuite.hardware.slms.slm.SLM` or 
+        :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
+
     -  ``"ij"``
         Camera pixel units, relative to the origin of the camera.
         Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
@@ -126,24 +142,15 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
 
     -  ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
         Camera position in metric length units, relative to the origin of the camera.
-        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
+        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``,
+        along with knowledge of the camera pixel size ``pitch_um``.
 
     -  ``"mag_m"``, ``"mag_cm"``, ``"mag_mm"``, ``"mag_um"``, ``"mag_nm"``
         Scales the corresponding metric length unit according to the value stored in
         :attr:`~slmsuite.hardware.cameraslms.FourierSLM.mag` to match the true
         dimensions of the experiment plane, apposed to the camera plane.
-        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
-
-    -  ``"zernike"``
-        The phase coefficients of the tilt zernike terms
-        :math:`x = Z_2 = Z_1^1` and
-        :math:`y = Z_1 = Z_1^{-1}` necessary to produce a given blaze.
-        These functions are defined within the unit disk, and canonically have amplitude
-        of 1 at the edges. The coefficients of these terms are multiplied directly to
-        the normalized Zernike functions. For instance, a coefficient of :math:`\pi` would
-        produce a wavefront offset of :math:`\pm\pi` across the unit disk.
-        See :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
-        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
+        Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``,
+        along with knowledge of the camera pixel size ``pitch_um``.
 
     Important
     ~~~~~~~~~
@@ -152,6 +159,10 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     Most units use the **normalized focal power** :math:`\frac{\lambda}{f}` on the SLM
     necessary to produce a spot at the defined depth relative to the focal plane.
     There are a few units where this differs:
+
+    -  ``"zernike"``
+        The phase coefficient of the :math:`2(x^ + y^2) - 1 = Z_4 = Z_2^0` 
+        zernike focus term necessary to focus at the given depth.
 
     -  ``"ij"``
         True cartesian distance relative to the **camera plane** in pixels.
@@ -164,10 +175,6 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         Importantly, :math:`x` and :math:`y` are divided by
         :attr:`~slmsuite.hardware.cameraslms.FourierSLM.mag`,
         while :math:`z` is multiplied by it.
-
-    -  ``"zernike"``
-        The phase coefficient of the :math:`Z_4 = Z_2^0` zernike focus term necessary to
-        focus at the given depth.
 
     Some of these units will not make sense in a system with anisotropic focusing, for
     instance due to cylindrical lenses in the optical train.
@@ -241,7 +248,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         slm = hardware
 
     if from_units in CAMERA_UNITS or to_units in CAMERA_UNITS:
-        if cameraslm is None or cameraslm.calibrations["fourier"] is None:
+        if cameraslm is None or not "fourier" in cameraslm.calibrations:
             warnings.warn(
                 f"CameraSLM must be passed to slm for conversion '{from_units}' to '{to_units}'"
             )
@@ -258,6 +265,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
                 "for conversion '{from_units}' to '{to_units}'"
             )
             return np.full_like(vector_parsed, np.nan)
+        
+        cam_pitch_um = format_2vectors(cam_pitch_um)
 
     # Generate conversion factors for various units.
     if from_units == "freq" or to_units == "freq":
@@ -285,15 +294,19 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         if shape is None:
             if slm is None:
                 warnings.warn("shape or slm is required for unit 'knm'")
-                shape = np.nan
+                shape = (np.nan, np.nan)
             else:
                 shape = slm.shape
+            
         shape = format_2vectors(np.flip(np.squeeze(shape)))
 
         knm_conv = pitch * shape
 
-    if from_units == "zernike":
-        zernike_scale = slm.get_zernike_scale()
+    if from_units == "zernike" or to_units == "zernike":
+        if slm is None:
+            zernike_scale = np.nan
+        else:
+            zernike_scale = 2 * np.pi * np.reciprocal(slm.get_zernike_scaling())
 
     # XY
 
@@ -310,14 +323,14 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         rad = vector_xy * wav_um / pitch_um
     elif from_units == "lpmm":
         rad = vector_xy * wav_um / 1000
+    elif from_units == "zernike":
+        rad = vector_xy / zernike_scale
     elif from_units == "ij":
         rad = cameraslm.ijcam_to_kxyslm(vector_xy)
     elif from_units in CAMERA_UNITS:
         unit = from_units.split("_")[-1]
         rad = cameraslm.ijcam_to_kxyslm(vector_xy) * LENGTH_FACTORS[unit] / cam_pitch_um
         if "mag_" in from_units: rad *= cameraslm.mag
-    elif from_units == "zernike":
-        rad = vector_xy / zernike_scale
 
     # Convert from normalized "kxy" units to the desired xy output units.
     if to_units == "norm" or to_units == "kxy" or to_units == "rad":
@@ -332,14 +345,14 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         vector_xy = rad * pitch_um / wav_um
     elif to_units == "lpmm":
         vector_xy = rad * 1000 / wav_um
+    elif to_units == "zernike":
+        vector_xy = rad * zernike_scale
     elif to_units == "ij":
         vector_xy = cameraslm.kxyslm_to_ijcam(rad)
     elif to_units in CAMERA_UNITS:
         unit = to_units.split("_")[-1]
         vector_xy = cameraslm.kxyslm_to_ijcam(rad) * cam_pitch_um / LENGTH_FACTORS[unit]
         if "mag_" in to_units: vector_xy /= cameraslm.mag
-    elif to_units == "zernike":
-        vector_xy = rad * zernike_scale
 
     # Z
 
@@ -348,13 +361,13 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         if from_units in CAMERA_UNITS:
             if from_units != "ij":
                 unit = from_units.split("_")[-1]
-                vector_z /= np.mean(cam_pitch_um) / LENGTH_FACTORS[unit]
-                if "mag_" in from_units: vector_z /= cameraslm.mag
+                vector_z *= np.mean(cam_pitch_um) / LENGTH_FACTORS[unit]
+                if "mag_" in from_units: vector_z *= cameraslm.mag
 
             focal_power = cameraslm._ijcam_to_kxyslm_depth(vector_z)
 
         elif from_units == "zernike":
-            focal_power = vector_z * zernike_scale * zernike_scale
+            focal_power = vector_z * ((8 * np.pi) / (zernike_scale * zernike_scale))
         else:
             focal_power = vector_z
 
@@ -364,11 +377,11 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
 
             if to_units != "ij":
                 unit = to_units.split("_")[-1]
-                vector_z *= LENGTH_FACTORS[unit] / np.mean(cam_pitch_um)
-                if "mag_" in to_units: vector_z *= cameraslm.mag
+                vector_z /= LENGTH_FACTORS[unit] / np.mean(cam_pitch_um)
+                if "mag_" in to_units: vector_z /= cameraslm.mag
 
         elif to_units == "zernike":
-            vector_z = focal_power / (zernike_scale * zernike_scale)
+            vector_z = focal_power * ((zernike_scale * zernike_scale) / (8 * np.pi))
         else:
             vector_z = focal_power
 
@@ -858,7 +871,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
 
         - ``"pass"`` Returns ``(K, N)`` if ``K`` is greater than or equal to ``M``.
 
-        ``"crop"`` and ``"pass"`` raise an error if ``K`` is less than ``M``.
+        If the array has smaller dimensionality than expected, an error is always raised.
 
     Returns
     -------
@@ -890,7 +903,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
     elif len(vectors.shape) == 2 and vectors.shape[0] == 1:
         vectors = vectors.T
 
-    # Make sure that we are an array of N-vectors.
+    # Make sure that we are an array of N M-vectors.
     if len(vectors.shape) != 2:
         raise ValueError(f"Wrong dimension {vectors.shape} for vectors.")
 
@@ -923,6 +936,7 @@ def format_2vectors(vectors):
     ----------
     vectors : array_like
         2-vector or array of 2-vectors to process. Desires shape of ``(2, N)``.
+        Uses the ``"crop"`` keyword of :meth:`format_vectors`.
 
     Returns
     -------
@@ -934,7 +948,7 @@ def format_2vectors(vectors):
     ValueError
         If the vector input was inappropriate.
     """
-    return format_vectors(vectors, expected_dimension=2, handle_dimension="error")
+    return format_vectors(vectors, expected_dimension=2, handle_dimension="crop")
 
 
 def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_check=False):
@@ -1197,9 +1211,9 @@ def smallest_distance(vectors, metric="chebyshev"):
 
         for x in range(N - 1):
             for y in range(x + 1, N):
-                distance = metric(vectors[:, x], vectors[:, y])
-                if distance < minimum:
-                    minimum = distance
+                result = metric(vectors[:, x], vectors[:, y])
+                if result < minimum:
+                    minimum = result
 
         return minimum
 

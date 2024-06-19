@@ -121,14 +121,18 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     Attributes
     ----------
-    spot_kxy : array_like of float OR None
-        Spot position vectors with shape ``(2, N)`` or ``(3, N)``.
-        These vectors are floats.
-        The subscript refers to the basis of the vectors, the transformations between
-        which are autocomputed.
-        If necessary transformations do not exist, :attr:`spot_ij` is set to ``None``.
+    spot_zernike : numpy.ndarray OR cupy.ndarray of float
+        Spot position vectors with shape ``(D, N)``.
+
+        I
+    zernike_basis : numpy.ndarray
+
+    zernike_scaling : float
+
+    spot_kxy : numpy.ndarray of float
+        Spot position vectors in the normalized basis with shape ``(2, N)`` or ``(3, N)``.
     spot_ij : array_like of float OR None
-        Lateral spot position vectors with shape ``(2, N)``.
+        Lateral spot position vectors in the camera basis with shape ``(2, N)``.
     external_spot_amp : array_like of float
         When using ``"external_spot"`` feedback or the ``"external_spot"`` stat group,
         the user must supply external data. This data is transferred through this
@@ -146,13 +150,12 @@ class CompressedSpotHologram(_AbstractSpotHologram):
     def __init__(
         self,
         spot_vectors,
-        basis="zernike",
+        basis="kxy",
         spot_amp=None,
         cameraslm=None,
-        zernike_basis=None,
         **kwargs
     ):
-        """
+        r"""
         Initializes a :class:`CompressedSpotHologram` targeting given spots at ``spot_vectors``.
         This class makes use of so-called 'compressed' methods. Instead of
         effectively evaluating a blazing nearfield-farfield transformation kernel
@@ -203,50 +206,51 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         spot_vectors : array_like
             Spot position vectors with shape ``(D, N)``,
             where ``D`` is the dimension of the parameters of each spot.
-        basis : str
+        basis : str OR array_like of int
             The spots can be in any of the following bases:
 
-            - ``"kxy"`` for centered normalized SLM :math:`k`-space (radians),
-              for dimension ``D`` of 2 and 3,
-            - ``"ij"`` for camera coordinates (pixels),
-              for dimension ``D`` of 2 and 3,
-            - ``"zernike"`` for applying Zernike terms to each spot (radians),
-              for dimension ``D`` equal to the length of ``zernike_basis``.
-              The provided coefficients are multiplied directly on the the normalized
-              Zernike polynomials on the unit disk. See
-              :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
+            -   ``"kxy"`` for centered normalized SLM :math:`k`-space (radians),
+                for dimension ``D`` of 2 and 3. This is the default.
 
-            Defaults to ``"kxy"``.
+            -   ``"ij"`` for camera coordinates (pixels),
+                for dimension ``D`` of 2 and 3.
+
+            -   ``"zernike"`` for applying Zernike terms to each spot (radians),
+                for dimension ``D`` equal to the length of ``zernike_basis``.
+                The provided coefficients are multiplied directly on the the normalized
+                Zernike polynomials on the unit disk.
+                See :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
+
+                -   If ``D == 2``, then the basis is assumed to be ``[2,1]``
+                    corresponding to the :math:`x = Z_2 = Z_1^1`
+                    and :math:`y = Z_1 = Z_1^{-1}` tilt terms.
+                -   If ``D == 3``, then the basis is assumed to be ``[2,1,4]``
+                    corresponding to the previous, with the addition of the
+                    :math:`Z_4 = Z_2^0` focus term.
+                -   If ``D > 3``, then the basis is assumed to be ``[1,...,D]``.
+                    The piston (Zernike index 0) term is ignored as this constant phase is
+                    not relevant.
+
+            -   ``array_like of int`` for applying a custom Zernike basis.
+                List of ``D`` indices corresponding to Zernike polynomials using ANSI indexing.
+                See :meth:`~slmsuite.holography.toolbox.phase.convert_zernike_index()`.
+                The index ``-1`` (outside Zernike indexing) is used as a special case to add
+                a vortex waveplate with amplitude :math:`2\pi` to the system
+                (see :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`).
+
         spot_amp : array_like OR None
             The amplitude to target for each spot.
             See :attr:`CompressedSpotHologram.spot_amp`.
             If ``None``, all spots are assumed to have the same amplitude.
             Normalization is performed automatically; the user is not required to
             normalize.
-            MRAF functionality still works by setting ``spot_amp`` to ``np.nan`` to
-            denote 'noise' points where amplitude can be dumped.
+            MRAF functionality still works by setting elements of ``spot_amp`` 
+            to ``np.nan``, denoting 'noise' points where amplitude can be dumped.
         cameraslm : slmsuite.hardware.cameraslms.FourierSLM ORslmsuite.hardware.slms.slm.SLM OR None
             Can be ``None`` only if the ``"kxy"`` basis is chosen and the user does not
             want to make use of camera feedback.
             Is required for ``"ij"`` for obvious reasons.
-            Is required for ``"zernike"`` to handle scaling calibrations and conversions requiring
-        zernike_basis : array_like OR None
-            List of ``D`` indices corresponding to Zernike polynomials using ANSI indexing.
-            See :meth:`~slmsuite.holography.toolbox.phase.convert_zernike_index()`.
-
-            -   If ``None``, and ``D == 2``, then the basis is assumed to be ``[2,1]``
-                corresponding to the :math:`x = Z_2 = Z_1^1`
-                and :math:`y = Z_1 = Z_1^{-1}` tilt terms.
-            -   If ``None``, and ``D == 3``, then the basis is assumed to be ``[2,1,4]``
-                corresponding to the previous, with the addition of the
-                :math:`Z_4 = Z_2^0` focus term.
-            -   If ``None``, and ``D > 3``, then the basis is assumed to be ``[1,...,D]``.
-                The piston (Zernike index 0) term is ignored as this constant phase is
-                not relevant.
-
-            The index ``-1`` (outside Zernike indexing) is used as a special case to add
-            a vortex waveplate with amplitude :math:`2\pi` to the system
-            (see :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`).
+            Is required for ``"zernike"`` to handle scaling calibrations.
         zernike_center_shift : array_like OR None
             TODO
         **kwargs
@@ -265,7 +269,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             self.spot_amp = np.full(N, 1.0 / np.sqrt(N))
 
         # Parse zernike_basis.
-        if zernike_basis is None:
+        if isinstance(basis, str):
             # Assume the ANSI basis (slmsuite default), but start without piston.
             if D == 2:
                 self.zernike_basis = np.array([2,1])
@@ -275,7 +279,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self.zernike_basis = np.arange(1, D+1)
         else:
             # Make sure we are a 1D list.
-            self.zernike_basis = np.ravel(zernike_basis)
+            self.zernike_basis = np.ravel(basis)
+            basis = "zernike"
             if len(self.zernike_basis) != D:
                 raise ValueError("zernike_basis must have the same dimension as the provided spots.")
 
@@ -286,7 +291,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                     "but spot phase is controlled externally."
                 )
 
-        # Make some helper variables to use the spot_basis.
+        # Make some helper variables to use the zernike_basis.
         if not np.any(self.zernike_basis == 2) or not np.any(self.zernike_basis == 1):
             raise ValueError("Compressed basis must include x, y (Zernike ANSI indices 2, 1)")
         self.zernike_basis_cartesian = [
@@ -307,7 +312,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         # Check to make sure spots are within bounds
         kmax = 1    # TODO: replace with correct value.
-        if np.any(np.abs(self.spot_kxy[self.zernike_basis_lateral]) > kmax):
+        if np.any(np.abs(self.spot_kxy[self.zernike_basis_cartesian[:2]]) > kmax):
             raise ValueError("Spots laterally outside the bounds of the farfield")
 
         # Generate ij point spread function (psf)
@@ -378,24 +383,31 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         self._nearfield2farfield_cuda_intermediate = None
 
         # Custom GPU kernels for speed.
+        print("try")
         if np != cp:
+            print("cupy")
             try:
-                v1 = D == 2 or (D == 3 and len(self.zernike_basis_cartesian) == 3)
-                if v1:
-                    self._far2near_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_farfield2nearfield')
-                    self._near2far_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_nearfield2farfield')
-                else:
-                    self._far2near_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_farfield2nearfield_v2')
-                    self._near2far_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_nearfield2farfield_v2')
+                # v1 = D == 2 or (D == 3 and len(self.zernike_basis_cartesian) == 3)
+                # print(v1)
+                # if v1:
+                #     self._near2far_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_nearfield2farfield')
+                #     self._far2near_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_farfield2nearfield')
+                # else:
+                self._near2far_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_nearfield2farfield_v2')
+                self._far2near_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_farfield2nearfield_v2')
 
-                    c_md, i_md, pxy_m = toolbox.phase._zernike_populate_basis_map(self.zernike_basis)
-                    self._c_md = cp.array(c_md)
-                    self._i_md = cp.array(i_md)
-                    self._pxy_m = cp.array(pxy_m)
+                c_md, i_md, pxy_m = tphase._zernike_populate_basis_map(self.zernike_basis)
+                self._c_md = cp.array(c_md)
+                self._i_md = cp.array(i_md)
+                self._pxy_m = cp.array(pxy_m)
+
+                # Test the kernel
+                # self._farfield2nearfield(self._nearfield2farfield(self.phase))
 
                 self.cuda = True
-            except:
-                warnings.warn("Raw CUDA kernels failed to compile. Falling back to cupy.")
+            except Exception as e:
+                raise e
+                # warnings.warn("Raw CUDA kernels failed to compile. Falling back to cupy.")
 
     def __len__(self):
         """
@@ -418,7 +430,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     # Projection backend helper functions.
     def _build_stack(self, D=2):
-        """
+        r"""
         Builds the coordinate stack, which is a stack of the
         :math:`2\pi i x`, :math:`2\pi i y`, and
         (if desired) :math:`\pi i r^2 = \pi i (x^2 + y^2)` coordinates corresponding
@@ -483,12 +495,13 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         Maps the ``(H,W)`` nearfield (complex value on the SLM)
         onto the ``(N,1)`` farfield (complex value for each spot).
         """
+        print("n2f")
         if farfield_out is None:
             farfield_out = cp.zeros((len(self),), dtype=self.dtype_complex)
 
         if self.cuda:
             try:
-                farfield_out = self._nearfield2farfield_cuda(nearfield, farfield_out)
+                farfield_out = self._nearfield2farfield_cuda_v2(nearfield, farfield_out)
             except Exception as err:    # Fallback to cupy upon error.
                 warnings.warn("Falling back to cupy:\n" + str(err))
                 self.cuda = False
@@ -547,7 +560,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         return farfield_out
 
     def _nearfield2farfield_cuda_v2(self, nearfield, farfield_out):
-        H, W = self.slm_shape
+        H, W = self.shape
         D, N = self.spot_kxy.shape
         M = self._i_md.shape[0]
 
@@ -566,6 +579,22 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         if self._nearfield2farfield_cuda_intermediate is None:
             self._nearfield2farfield_cuda_intermediate = cp.zeros((blocks_y, blocks_x), dtype=self.dtype_complex)
 
+        print(W, H, N, D, M)
+
+        print(
+            self.spot_vectors.shape, # a_nd
+            self._c_md.shape,
+            self._i_md.shape,
+            self._pxy_m.shape,
+        )
+
+        print(
+            type(self.spot_vectors), # a_nd
+            type(self._c_md),
+            type(self._i_md),
+            type(self._pxy_m),
+        )
+
         # Call the RawKernel.
         self._near2far_cuda(
             (blocks_x,),
@@ -573,7 +602,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             (
                 nearfield.ravel(),
                 W, H, N, D, M,
-                self.spot_parameters, # a_nd
+                self.spot_vectors, # a_nd
                 self._c_md,
                 self._i_md,
                 self._pxy_m,
@@ -655,7 +684,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         if self.cuda:
             try:
-                nearfield_out = self._farfield2nearfield_cuda(farfield, nearfield_out)
+                nearfield_out = self._farfield2nearfield_cuda_v2(farfield, nearfield_out)
             except Exception as err:    # Fallback to cupy upon error.
                 warnings.warn("Falling back to cupy:\n" + str(err))
                 self.cuda = False
@@ -696,8 +725,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         return nearfield_out
 
-    def _nearfield2farfield_cuda_v2(self, farfield, nearfield_out):
-        H, W = self.slm_shape
+    def _farfield2nearfield_cuda_v2(self, farfield, nearfield_out):
+        H, W = self.shape
         D, N = self.spot_kxy.shape
         M = self._i_md.shape[0]
 
@@ -717,7 +746,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             (
                 farfield.ravel(),
                 W, H, N, D, M,
-                self.spot_parameters, # a_nd
+                self.spot_vectors, # a_nd
                 self._c_md,
                 self._i_md,
                 self._pxy_m,

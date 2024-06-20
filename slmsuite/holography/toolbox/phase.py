@@ -488,12 +488,12 @@ def zernike_aperture(grid, aperture=None):
 
         - ``None``
           If a :class:`~slmsuite.hardware.slms.slm.SLM` is passed for ``grid``, then
-          uses :meth:`~slmsuite.hardware.slms.slm.SLM.get_zernike_scaling()` to
+          uses :meth:`~slmsuite.hardware.slms.slm.SLM.get_source_zernike_scaling()` to
           determine the scaling most appropriate for the SLM.
           Otherwise, defaults to ``"cropped"``.
           See also :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`
-          and especially the `extent_threshold` keyword which determines the scaling used by 
-          :meth:`~slmsuite.hardware.slms.slm.SLM.get_zernike_scaling()`
+          and especially the `extent_threshold` keyword which determines the scaling used by
+          :meth:`~slmsuite.hardware.slms.slm.SLM.get_source_zernike_scaling()`
 
         - ``"circular"``
           The circle is scaled isotropically until the pupil edge touches one set
@@ -527,8 +527,8 @@ def zernike_aperture(grid, aperture=None):
             grid = grid.slm
 
         # Check if slm.
-        if hasattr(grid, "get_zernike_scaling"):
-            aperture = grid.get_zernike_scaling()
+        if hasattr(grid, "get_source_zernike_scaling"):
+            aperture = grid.get_source_zernike_scaling()
         else:
             aperture = "cropped"
 

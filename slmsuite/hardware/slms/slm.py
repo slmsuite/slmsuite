@@ -825,7 +825,7 @@ class SLM:
         self.fit_source_amplitude(force=False)
         return self.source["amplitude_radius"]
 
-    def get_zernike_scaling(self):
+    def get_source_zernike_scaling(self):
         """
         Extracts the scaling for
         :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`
@@ -834,6 +834,16 @@ class SLM:
         """
         self.fit_source_amplitude(force=False)
         return np.reciprocal(self.source["amplitude_extent_radius"])
+
+    def get_source_center(self):
+        """
+        Extracts the scaling for
+        :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`
+        from the scalars computed in
+        :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`.
+        """
+        self.fit_source_amplitude(force=False)
+        return self.source["amplitude_center_pix"]
 
     def _get_source_amplitude(self):
         """Deals with the case of an unmeasured source amplitude."""

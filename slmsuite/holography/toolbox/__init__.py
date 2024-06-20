@@ -128,10 +128,10 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         of :math:`\pm 1` at the edges.
         The size of the disk when scaled onto the SLM is pulled from radial fits
         derived from the amplitude distribution of the SLM.
-        See :meth:`~slmsuite.hardware.slms.slm.SLM.get_zernike_scaling()` and
+        See :meth:`~slmsuite.hardware.slms.slm.SLM.get_source_zernike_scaling()` and
         :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`, especially
         the `extent_threshold` keyword which determines the size of the disk.
-        Requires a :class:`~slmsuite.hardware.slms.slm.SLM` or 
+        Requires a :class:`~slmsuite.hardware.slms.slm.SLM` or
         :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
 
     -  ``"ij"``
@@ -161,7 +161,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     There are a few units where this differs:
 
     -  ``"zernike"``
-        The phase coefficient of the :math:`2(x^ + y^2) - 1 = Z_4 = Z_2^0` 
+        The phase coefficient of the :math:`2(x^ + y^2) - 1 = Z_4 = Z_2^0`
         zernike focus term necessary to focus at the given depth.
 
     -  ``"ij"``
@@ -265,7 +265,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
                 "for conversion '{from_units}' to '{to_units}'"
             )
             return np.full_like(vector_parsed, np.nan)
-        
+
         cam_pitch_um = format_2vectors(cam_pitch_um)
 
     # Generate conversion factors for various units.
@@ -297,7 +297,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
                 shape = (np.nan, np.nan)
             else:
                 shape = slm.shape
-            
+
         shape = format_2vectors(np.flip(np.squeeze(shape)))
 
         knm_conv = pitch * shape
@@ -306,7 +306,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         if slm is None:
             zernike_scale = np.nan
         else:
-            zernike_scale = 2 * np.pi * np.reciprocal(slm.get_zernike_scaling())
+            zernike_scale = 2 * np.pi * np.reciprocal(slm.get_source_zernike_scaling())
 
     # XY
 
@@ -419,7 +419,7 @@ def convert_radius(radius, from_units="norm", to_units="norm", hardware=None, sh
 
     Tip
     ~~~
-    In the future, we might create a similar function to handle anisotropic 
+    In the future, we might create a similar function to handle anisotropic
     conversions better by converting a 2x2 matrix representing a sheared parallelogram.
 
     Parameters

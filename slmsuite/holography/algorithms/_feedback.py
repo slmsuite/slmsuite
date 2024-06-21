@@ -227,7 +227,7 @@ class FeedbackHologram(Hologram):
         if self.img_ij is None:
             self.cameraslm.slm.write(self.extract_phase(), settle=True)
             self.cameraslm.cam.flush()
-            self.img_ij = np.array(self.cameraslm.cam.get_image(), copy=False, dtype=self.dtype)
+            self.img_ij = np.array(self.cameraslm.cam.get_image(), copy=None, dtype=self.dtype)
 
             if basis == "knm":  # Compute the knm basis image.
                 self.img_knm = self.ijcam_to_knmslm(self.img_ij, out=self.img_knm)

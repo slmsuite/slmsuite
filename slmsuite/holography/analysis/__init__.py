@@ -140,7 +140,7 @@ def take(
         region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
     )).astype(int)
 
-    images = xp.array(images, copy=False)
+    images = xp.array(images, copy=None)
     shape = xp.shape(images)
 
     if clip:  # Prevent out-of-range errors by clipping.
@@ -266,9 +266,9 @@ def image_remove_field(images, deviations=1, out=None):
         ``images`` or a copy of ``images``, with each image background-subtracted.
     """
     # Parse images. Convert to float.
-    images = np.array(images, copy=False)
+    images = np.array(images, copy=None)
     if not isinstance(images.dtype, np.floating):
-        images = np.array(images, copy=False, dtype=float)  # Hack to prevent integer underflow.
+        images = np.array(images, copy=None, dtype=float)  # Hack to prevent integer underflow.
 
     # Parse out.
     if out is None:
@@ -383,7 +383,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
         for provided ``images`` data of shape ``(image_count, h, w)``.
     """
     # Parse arguments.
-    images = np.array(images, copy=False)
+    images = np.array(images, copy=None)
     if len(images.shape) == 2:
         images = np.reshape(images, (1, images.shape[0], images.shape[1]))
     (img_count, w_y, w_x) = images.shape
@@ -518,7 +518,7 @@ def image_normalize(images, nansum=False, remove_field=False):
     if remove_field:
         images = image_remove_field(images)
     else:
-        images = np.array(images, copy=False, dtype=float)
+        images = np.array(images, copy=None, dtype=float)
 
     single_image = len(images.shape) == 2
 

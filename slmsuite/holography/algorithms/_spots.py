@@ -172,7 +172,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         # Parse spot_amp.
         if spot_amp is not None:
-            self.spot_amp = np.array(spot_amp, copy=False)
+            self.spot_amp = np.array(spot_amp, copy=None)
             if self.spot_amp.size != N:
                 raise ValueError("spot_amp must have the same length as the provided spots.")
         else:
@@ -603,7 +603,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             cp.matmul(nearfield.ravel()[np.newaxis, :], kernel, out=out[np.newaxis, :])
 
         if self._cupy_kernel is None:
-            self.spot_kxy_complex = cp.array(self.spot_kxy, copy=False, dtype=self.dtype_complex)
+            self.spot_kxy_complex = cp.array(self.spot_kxy, copy=None, dtype=self.dtype_complex)
 
         # Evaluate the kernel.
         if N <= N_batch_max:
@@ -786,7 +786,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             Whether to overwrite ``weights`` with ``target``.
         """
         if new_target is None:
-            self.target = cp.array(self.spot_amp, dtype=self.dtype, copy=False)
+            self.target = cp.array(self.spot_amp, dtype=self.dtype, copy=None)
         else:
             new_target = np.squeeze(new_target.ravel())
             if new_target.shape != (len(self),):
@@ -795,8 +795,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                     "Initialize a new Hologram if a different shape is desired."
                 )
 
-            self.target = cp.array(new_target, dtype=self.dtype, copy=False)
-            self.spot_amp = np.array(new_target, dtype=self.dtype, copy=False)
+            self.target = cp.array(new_target, dtype=self.dtype, copy=None)
+            self.spot_amp = np.array(new_target, dtype=self.dtype, copy=None)
 
         cp.abs(self.target, out=self.target)
         self.target *= 1 / Hologram._norm(self.target)
@@ -822,7 +822,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             self.measure(basis="ij")
 
             amp_feedback = np.sqrt(analysis.take(
-                np.square(np.array(self.img_ij, copy=False, dtype=self.dtype)),
+                np.square(np.array(self.img_ij, copy=None, dtype=self.dtype)),
                 self.spot_ij,
                 self.spot_integration_width_ij,
                 centered=True,
@@ -836,7 +836,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Apply weights.
         self._update_weights_generic(
             self.weights,
-            cp.array(amp_feedback, copy=False, dtype=self.dtype),
+            cp.array(amp_feedback, copy=None, dtype=self.dtype),
             self.target,
             nan_checks=True
         )
@@ -880,7 +880,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             )
 
         if "external_spot" in stat_groups:
-            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=False, dtype=self.dtype))
+            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=None, dtype=self.dtype))
             stats["external_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
@@ -1480,7 +1480,7 @@ class SpotHologram(_AbstractSpotHologram):
 
                 amp_feedback = np.sqrt(
                     analysis.take(
-                        np.square(np.array(self.img_ij, copy=False, dtype=self.dtype)),
+                        np.square(np.array(self.img_ij, copy=None, dtype=self.dtype)),
                         self.spot_ij,
                         self.spot_integration_width_ij,
                         centered=True,
@@ -1496,7 +1496,7 @@ class SpotHologram(_AbstractSpotHologram):
             self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (
                 self._update_weights_generic(
                     self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
-                    cp.array(amp_feedback, copy=False, dtype=self.dtype),
+                    cp.array(amp_feedback, copy=None, dtype=self.dtype),
                     self.spot_amp,
                     nan_checks=True
                 )
@@ -1581,7 +1581,7 @@ class SpotHologram(_AbstractSpotHologram):
             )
 
         if "external_spot" in stat_groups:
-            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=False, dtype=self.dtype))
+            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=None, dtype=self.dtype))
             stats["external_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,

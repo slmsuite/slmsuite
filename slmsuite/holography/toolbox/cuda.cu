@@ -11,7 +11,7 @@
 //   to BASIS_SIZE, leaving the other register to be used for local loop/etc variables.
 //   As far as I understand, the time to allocate static register memory does not depend on 
 //   array size, so having a large default basis is costless.
-#define BASIS_SIZE 100
+#define BASIS_SIZE 15
 
 extern "C"  __device__ void warp_reduce(
     complex<float>* sdata, // volatile
@@ -148,8 +148,14 @@ extern "C" __device__ __forceinline__ void populate_basis(
 ) {
     int i, j, d, stride = 0;
     int nx, ny, nx0, ny0 = 0;
-    float monomial = 0;
+    float monomial = 0.0f;
 
+    // Initialize to zero (very important!)
+    for (d = 0; d < D; d++) {
+        basis[d] = 0;
+    }
+
+    // Loop through all the monomial terms, adding them to the basis where needed.
     for (i = 0; i < M; i++) {
         nx = pxy_m[i];
         ny = pxy_m[i+M];
@@ -168,7 +174,7 @@ extern "C" __device__ __forceinline__ void populate_basis(
             // Reset if we're starting a new path.
             if (nx - nx0 < 0 || ny - ny0 < 0) {
                 nx0 = ny0 = 0;
-                monomial = 1;
+                monomial = 1.0f;
             }
 
             // Traverse the path in +x or +y.
@@ -226,8 +232,8 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
         float basis[BASIS_SIZE];
 
         populate_basis(
-            dx * (nf % W) - cx,
-            dy * (nf / W) - cy,
+            dx * (float)((nf % W) - cx),
+            dy * (float)((nf / W) - cy),
             D, M, c_md, i_md, pxy_m,
             basis
         );
@@ -237,16 +243,18 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
         float exponent = 0;
         int i = 0;
         int d = 0;
-        complex<float> imag = complex<float>(0, 1.0f);
+        int k = 0;
 
         // Loop over all the spots.
         for (i = 0; i < N; i++) {
             exponent = 0;
             // Loop over basis indices.
+            k = i;
             for (d = 0; d < D; d++) {
-                exponent += basis[d] * a_nd[d*N + i];
+                exponent += basis[d] * a_nd[k];
+                k += N;
             }
-            result += farfield[i] * exp(imag * exponent);
+            result += farfield[i] * exp(complex<float>(0, exponent));
         }
 
         // Export the result to global memory.
@@ -285,7 +293,6 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
     float exponent = 0;
     int i = 0;
     int d = 0;
-    complex<float> imag = complex<float>(0, 1.0f);
 
     // Prepare local basis.
     // This is the phase for a given coefficient d at the current pixel.
@@ -294,8 +301,8 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
 
     if (inrange) {
         populate_basis(
-            dx * (nf % W) - cx,
-            dy * (nf / W) - cy,
+            dx * ((nf % W) - cx),
+            dy * ((nf / W) - cy),
             D, M, c_md, i_md, pxy_m,
             basis
         );
@@ -310,7 +317,9 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
             }
 
             // Do the overlap integrand for one nearfield-farfield mapping.
-            sdata[tid] = conj(nearfield[nf]) * exp(imag * exponent);
+            // sdata[tid] = exp(complex<float>(0, exponent)); //conj(nearfield[nf]); // * exp(imag * exponent);
+            sdata[tid] = conj(nearfield[nf]) * exp(complex<float>(0, exponent));
+            // conj(nearfield[nf]) * exp(imag * exponent);
         } else {
             sdata[tid] = 0;
         }
@@ -328,7 +337,9 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
             warp_reduce(sdata, tid);
 
             // Save the summed results to global memory.
-            if (tid == 0) { farfield_intermediate[blockIdx.x + i * gridDim.x] = sdata[0]; }
+            if (tid == 0) { 
+                farfield_intermediate[blockIdx.x + i * gridDim.x] = sdata[0]; 
+            }
         }
     }
 }
@@ -354,14 +365,15 @@ extern "C" __global__ void zernike_test(
         populate_basis(
             X[nf],
             Y[nf],
-            D, M, c_md, i_md, pxy_m,
+            D, M, 
+            c_md, i_md, pxy_m,
             basis
         );
 
         // Export the result to global memory.
         int j = 0;
         for (int i = 0; i < D; i++) {
-            out[nf + j] = basis[i];
+            out[nf + j] = basis[i]; // X[nf] + Y[nf]; // 
             j += WH;
         }
     }

@@ -908,17 +908,22 @@ def _zernike_populate_basis_map(indices):
     M = len(cantor_indices)
 
     pxy_m = _inverse_cantor_pairing(cantor_indices)
-    msort = _term_pathing(pxy_m)
+
+    # Find an optimal sort pattern for constructing the polynomials.
+    # msort = _term_pathing(pxy_m)
+    msort = np.arange(M)
     pxy_m = pxy_m[msort, :].astype(int)
+
+    # Reinsert the other cases.
     if len(other_indices) > 0:
         pxy_m = np.pad(pxy_m, ((0, len(other_indices)), (0,0)))
         pxy_m[len(zernike_indices):, 0] = other_indices     # Other indices go into nx.
 
     # Populate the results.
-    c_md = np.transpose(_zernike_cache_vectorized[zernike_indices, :][:, cantor_indices[msort]]).astype(int)
+    c_md = _zernike_cache_vectorized[zernike_indices, :][:, cantor_indices[msort]].T.astype(np.float32)
     i_md = np.full((M, D), -1, dtype=int)
 
-    darange = np.arange(D)
+    darange = np.arange(len(zernike_indices))
 
     for m in msort:
         nonzero = darange[c_md[m, :] != 0]
@@ -935,15 +940,20 @@ except:
 
 def _zernike_test(grid, indices):
     c_md, i_md, pxy_m = _zernike_populate_basis_map(indices)
+
+    # Parse grid.
     (x_grid, y_grid) = _process_grid(grid)
-    x_grid = cp.array(x_grid, copy=False)
-    y_grid = cp.array(y_grid, copy=False)
+    scale = 1
+    if hasattr(grid, "get_source_zernike_scaling"):
+        scale = grid.get_source_zernike_scaling()
+    x_grid = cp.array(x_grid.astype(np.float32) * scale, copy=False)
+    y_grid = cp.array(y_grid.astype(np.float32) * scale, copy=False)
 
     (H, W) = x_grid.shape
     WH = int(W*H)
     (M, D) = c_md.shape
 
-    out = cp.empty((D,H,W))
+    out = cp.empty((D,H,W), dtype=np.float32)
 
     threads_per_block = int(_zernike_test_kernel.max_threads_per_block)
     blocks = WH // threads_per_block
@@ -954,9 +964,9 @@ def _zernike_test(grid, indices):
         (threads_per_block,),
         (
             WH, D, M,
-            cp.array(c_md, copy=False),
-            cp.array(i_md, copy=False),
-            cp.array(pxy_m, copy=False),
+            cp.array(c_md.ravel(), copy=False),
+            cp.array(i_md.ravel(), copy=False),
+            cp.array(pxy_m.ravel(), copy=False),
             x_grid.ravel(),
             y_grid.ravel(),
             out.ravel()

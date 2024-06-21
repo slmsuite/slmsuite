@@ -256,17 +256,16 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
 
         cam_pitch_um = cameraslm.cam.pitch_um
 
-        if (
-            cam_pitch_um is None and
-            (from_units in CAMERA_UNITS[1:] or to_units in CAMERA_UNITS[1:])    # Don't error if ij.
-        ):
-            warnings.warn(
-                f"Camera must have filled attribute pitch_um "
-                "for conversion '{from_units}' to '{to_units}'"
-            )
-            return np.full_like(vector_parsed, np.nan)
-
-        cam_pitch_um = format_2vectors(cam_pitch_um)
+        if cam_pitch_um is None:
+            # Don't error if ij.
+            if from_units in CAMERA_UNITS[1:] or to_units in CAMERA_UNITS[1:]:
+                warnings.warn(
+                    f"Camera must have filled attribute pitch_um "
+                    "for conversion '{from_units}' to '{to_units}'"
+                )
+                return np.full_like(vector_parsed, np.nan)
+        else:
+            cam_pitch_um = format_2vectors(cam_pitch_um)
 
     # Generate conversion factors for various units.
     if from_units == "freq" or to_units == "freq":

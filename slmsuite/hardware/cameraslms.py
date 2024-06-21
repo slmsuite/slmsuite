@@ -1155,7 +1155,8 @@ class FourierSLM(CameraSLM):
 
         # Gather other conversions.
         if units != "ij" and self.cam.pitch_um is None:
-            raise RuntimeError(f"cam.pitch_um must be set to use units '{units}'")
+            warnings.warn(f"cam.pitch_um must be set to use units '{units}'")
+            return np.nan
 
         # Convert.
         if units == "ij":

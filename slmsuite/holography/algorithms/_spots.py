@@ -239,9 +239,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 hardware=cameraslm
             )
 
-        # Move the Zernike spots to the GPU.
-        self.spot_zernike = cp.array(self.spot_zernike, dtype=self.dtype)
-
         # Check to make sure spots are within bounds
         kmax = 1    # TODO: replace with correct value.
         if np.any(np.abs(self.spot_kxy[self.zernike_basis_cartesian[:2]]) > kmax):
@@ -268,37 +265,38 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         #  - and finally forced to be an odd integer.
         min_psf = 3
 
-        if self.spot_ij is not None:
-            dist_ij = np.max([toolbox.smallest_distance(self.spot_ij) / 1.5, min_psf])
-            if psf_ij > dist_ij:
-                warnings.warn(
-                    "The expected camera spot point-spread-function is too large. "
-                    "Clipping to a smaller "
-                )
-            self.spot_integration_width_ij = np.clip(6 * psf_ij, 3, dist_ij)
-            self.spot_integration_width_ij =  int(2 * np.floor(self.spot_integration_width_ij / 2) + 1)
+        # if self.spot_ij is not None:
+        #     dist_ij = np.max([toolbox.smallest_distance(self.spot_ij) / 1.5, min_psf])
+        #     if psf_ij > dist_ij:
+        #         warnings.warn(
+        #             "The expected camera spot point-spread-function is too large. "
+        #             "Clipping to a smaller "
+        #         )
+        #     self.spot_integration_width_ij = np.clip(6 * psf_ij, 3, dist_ij)
+        #     self.spot_integration_width_ij =  int(2 * np.floor(self.spot_integration_width_ij / 2) + 1)
 
-            cam_shape = cameraslm.cam.shape
+        #     cam_shape = cameraslm.cam.shape
 
-            if (
-                np.any(self.spot_ij[0] < self.spot_integration_width_ij / 2) or
-                np.any(self.spot_ij[1] < self.spot_integration_width_ij / 2) or
-                np.any(self.spot_ij[0] >= cam_shape[1] - self.spot_integration_width_ij / 2) or
-                np.any(self.spot_ij[1] >= cam_shape[0] - self.spot_integration_width_ij / 2)
-            ):
-                raise ValueError(
-                    "Spots outside camera bounds!\nSpots:\n{}\nBounds: {}".format(
-                        self.spot_ij, cam_shape
-                    )
-                )
-        else:
-            self.spot_integration_width_ij = None
+        #     if (
+        #         np.any(self.spot_ij[0] < self.spot_integration_width_ij / 2) or
+        #         np.any(self.spot_ij[1] < self.spot_integration_width_ij / 2) or
+        #         np.any(self.spot_ij[0] >= cam_shape[1] - self.spot_integration_width_ij / 2) or
+        #         np.any(self.spot_ij[1] >= cam_shape[0] - self.spot_integration_width_ij / 2)
+        #     ):
+        #         raise ValueError(
+        #             "Spots outside camera bounds!\nSpots:\n{}\nBounds: {}".format(
+        #                 self.spot_ij, cam_shape
+        #             )
+        #         )
+        # else:
+        self.spot_integration_width_ij = None
 
         # Initialize target/etc with fake shape.
         super().__init__(shape=(1,1), target_ij=None, cameraslm=cameraslm, **kwargs)
 
         # Replace the fake shape with the SLM shape.
         self.shape = self.slm_shape
+        self.reset()
 
         # Fill the target with data.
         self.update_target(new_target=spot_amp, reset_weights=True)
@@ -314,11 +312,27 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Storage variable to use cp.sum on the intermediate sum.
         self._nearfield2farfield_cuda_intermediate = None
 
-        # Custom GPU kernels for speed.
         if np != cp:
+            # Move the Zernike spots to the GPU.
+            self.spot_zernike = cp.array(self.spot_zernike, dtype=self.dtype)
+
+            # Custom GPU kernels for speed.
             try:
-                self._near2far_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_nearfield2farfield_v2')
-                self._far2near_cuda = cp.RawKernel(CUDA_KERNELS, 'compressed_farfield2nearfield_v2')
+                self._near2far_cuda = cp.RawKernel(
+                    CUDA_KERNELS, 
+                    'compressed_nearfield2farfield_v2',
+                    translate_cucomplex=True,
+                    jitify=True,
+                )
+                self._far2near_cuda = cp.RawKernel(
+                    CUDA_KERNELS, 
+                    'compressed_farfield2nearfield_v2',
+                    translate_cucomplex=True,
+                    jitify=True,
+                )
+
+                self._near2far_cuda.compile()
+                self._far2near_cuda.compile()
 
                 c_md, i_md, pxy_m = tphase._zernike_populate_basis_map(self.zernike_basis)
                 self._c_md = cp.array(c_md)
@@ -326,8 +340,12 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._pxy_m = cp.array(pxy_m)
 
                 self.cuda = True
-            except:
-                warnings.warn("Raw CUDA kernels failed to load. Falling back to cupy.")
+
+                # Test the kernel.
+                self._farfield2nearfield(self._nearfield2farfield(cp.full(self.slm_shape, 1j, dtype=self.dtype_complex)))
+            except Exception as e:
+                raise e
+                warnings.warn("Raw CUDA kernels failed to load. Falling back to cupy.\n" + str(e))
 
     def __len__(self):
         """
@@ -418,7 +436,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         Maps the ``(H,W)`` nearfield (complex value on the SLM)
         onto the ``(N,1)`` farfield (complex value for each spot).
         """
-        print("n2f")
+        # print("n2f")
         if farfield_out is None:
             farfield_out = cp.zeros((len(self),), dtype=self.dtype_complex)
 
@@ -484,7 +502,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     def _nearfield2farfield_cuda_v2(self, nearfield, farfield_out):
         H, W = self.shape
-        D, N = self.spot_kxy.shape
+        D, N = self.spot_zernike.shape
         M = self._i_md.shape[0]
 
         threads_per_block = int(1024)
@@ -497,7 +515,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         blocks_x = int(np.ceil(float(W*H) / threads_per_block))
         blocks_y = N
 
-        print((blocks_x, blocks_y))
+        # print((blocks_x, blocks_y))
 
         if self._nearfield2farfield_cuda_intermediate is None:
             self._nearfield2farfield_cuda_intermediate = cp.zeros((blocks_y, blocks_x), dtype=self.dtype_complex)
@@ -505,19 +523,35 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         center_pix = np.array(self.cameraslm.slm.get_source_center())
         pitch_zernike = np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
 
-        print(W, H, N, D, M)
-        print(
-            self.spot_vectors.shape, # a_nd
-            self._c_md.shape,
-            self._i_md.shape,
-            self._pxy_m.shape,
-        )
-        print(
-            type(self.spot_vectors), # a_nd
-            type(self._c_md),
-            type(self._i_md),
-            type(self._pxy_m),
-        )
+        # print(W, H, N, D, M)
+        # print(
+        #     self.spot_zernike.shape, # a_nd
+        #     self._c_md.shape,
+        #     self._i_md.shape,
+        #     self._pxy_m.shape,
+        # )
+        # print(
+        #     type(self.spot_zernike), # a_nd
+        #     type(self._c_md),
+        #     type(self._i_md),
+        #     type(self._pxy_m),
+        # )
+
+        # print(self.iter)
+
+        self._nearfield2farfield_cuda_intermediate.fill(-1)
+
+        # print(
+        #     nearfield.ravel(),
+        #     W, H, N, D, M,
+        #     self.spot_zernike.T,    # a_nd
+        #     self._c_md,
+        #     self._i_md,
+        #     self._pxy_m,
+        #     float(center_pix[0]), float(center_pix[1]),
+        #     float(pitch_zernike[0]), float(pitch_zernike[1]),
+        #     self._nearfield2farfield_cuda_intermediate.ravel()
+        # )
 
         # Call the RawKernel.
         self._near2far_cuda(
@@ -526,27 +560,29 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             (
                 nearfield.ravel(),
                 W, H, N, D, M,
-                self.spot_vectors.T,    # a_nd
+                self.spot_zernike.T,    # a_nd
                 self._c_md,
                 self._i_md,
                 self._pxy_m,
-                float(center_pix[0]), float(center_pix[1]),
-                float(pitch_zernike[0]), float(pitch_zernike[1]),
+                np.float32(center_pix[0]), np.float32(center_pix[1]),
+                np.float32(pitch_zernike[0]), np.float32(pitch_zernike[1]),
                 self._nearfield2farfield_cuda_intermediate.ravel()
             )
         )
 
-        print(W*H)
-        print(self._cupy_stack.shape)
-        print(self._cupy_stack[0, :])
-        print(self._nearfield2farfield_cuda_intermediate)
-        print(cp.abs(self._nearfield2farfield_cuda_intermediate))
-        print(self._nearfield2farfield_cuda_intermediate.shape)
-        print(farfield_out.shape)
+        # print(W*H)
+        # print(self._cupy_stack.shape)
+        # print(self._cupy_stack[0, :])
+        # print(self._nearfield2farfield_cuda_intermediate)
+        # print(cp.abs(self._nearfield2farfield_cuda_intermediate))
+        # print(self._nearfield2farfield_cuda_intermediate.shape)
+        # print(farfield_out.shape)
 
         # Sum over all the blocks to get the final answers using optimized cupy methods.
         farfield_out = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=farfield_out)
         farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
+        
+        # print("done")
 
         return farfield_out
 
@@ -652,7 +688,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     def _farfield2nearfield_cuda_v2(self, farfield, nearfield_out):
         H, W = self.shape
-        D, N = self.spot_kxy.shape
+        D, N = self.spot_zernike.shape
         M = self._i_md.shape[0]
 
         threads_per_block = int(1024)
@@ -668,19 +704,19 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         pitch_zernike = np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
 
         # Call the RawKernel.
-        self._near2far_cuda(
+        self._far2near_cuda(
             (blocks_x,),
             (threads_per_block, 1),
             (
-                farfield.ravel(),
+                farfield,
                 W, H, N, D, M,
-                self.spot_vectors.T,    # a_nd
+                self.spot_zernike.T,    # a_nd
                 self._c_md,
                 self._i_md,
                 self._pxy_m,
-                float(center_pix[0]), float(center_pix[1]),
-                float(pitch_zernike[0]), float(pitch_zernike[1]),
-                nearfield_out.ravel()
+                np.float32(center_pix[0]), np.float32(center_pix[1]),
+                np.float32(pitch_zernike[0]), np.float32(pitch_zernike[1]),
+                nearfield_out
             )
         )
 

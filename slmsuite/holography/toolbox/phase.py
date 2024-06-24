@@ -576,7 +576,7 @@ def zernike(grid, index, weight=1, **kwargs):
     numpy.ndarray
         The phase for this function.
     """
-    return zernike_sum(grid, (index,), (weight,), **kwargs)
+    return zernike_sum(grid, (int(index),), (float(weight),), **kwargs)
 
 
 def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative=(0,0), out=None):
@@ -611,17 +611,18 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    indices : list of int
-        Which Zernike polynomials to sum, defined by ANSI indices.
+    indices : array_like of int
+        Which Zernike polynomials to sum, defined by ANSI indices. Of shape ``(D,)``.
 
         Tip
         ~~~
         Use :meth:`~slmsuite.holography.toolbox.phase.zernike_convert_index()`
         to convert to ANSI from various other common indexing conventions.
 
-    weights : list of float
-        The weight for each given index.
-    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
+    weights : array_like of float
+        The weight for each given index. Of shape ``(D,)``.
+        If a stack of zernike sums is desired, then use shape ``(D, N)``.
+    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR float OR None
         Determines how the Zernike polynomials are laterally scaled.
         Parsed with :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`.
 
@@ -650,11 +651,40 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     numpy.ndarray
         The phase for this function. Optionally returns the 2D Zernike mask.
     """
-    # Parse passed values
+    # Parse passed simple values.
     (x_grid, y_grid) = _process_grid(grid)
     (x_scale, y_scale) = zernike_aperture(grid, aperture)
-    (dx, dy) = derivative
-    out = _parse_out(x_grid, out)
+    if len(derivative) != 2:
+        raise ValueError("Expected derivative to be a (int, int)")
+
+    # Parse indices.
+    indices = np.squeeze(indices)
+    if indices.ndim == 0:
+        indices = np.array([indices])
+    elif indices.ndim > 1:
+        raise ValueError("indices should be a 1D vector.")
+    D = len(indices)
+
+    # Parse weights.
+    weights = np.squeeze(weights)
+    if weights.ndim <= 1:
+        if weights.ndim == 0:
+            weights = np.array([weights])
+
+        if len(weights) == D:
+            weights = np.reshape(weights, (-1, 1))
+        else:
+            raise ValueError("Expected weights to have a common dimension with indices.")
+    elif weights.ndim == 2:
+        if weights.shape[0] != D:
+            raise ValueError("Expected weights to have a common dimension with indices.")
+    else:
+        raise ValueError("Expected weights to be 1D or 2D.")
+
+    (D, N) = weights.shape
+
+    # Parse out.
+    out = _parse_out(x_grid, out, stack=N)
 
     # At the end, we're going to set the values outside the aperture to zero.
     # Make a mask for this if it's necessary.
@@ -666,77 +696,83 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
             return mask
         use_mask = use_mask and np.any(mask == 0)
 
+    # Make the new grids.
     if use_mask:
         x_grid_scaled = x_grid[mask] * x_scale
         y_grid_scaled = y_grid[mask] * y_scale
     else:
-        x_grid_scaled = x_grid * x_scale
-        y_grid_scaled = y_grid * y_scale
+        # Special case to avoid copying grids in the case of no scaling.
+        if x_scale == 1:    x_grid_scaled = x_grid
+        else:               x_grid_scaled = x_grid * x_scale
+        if y_scale == 1:    y_grid_scaled = y_grid
+        else:               y_grid_scaled = y_grid * y_scale
 
-    # Now find the coefficients for polynomial terms x^ay^b. We want to only compute
-    # x^ay^b once because this is an operation on a large array. In contrast, summing
-    # the coefficients of the same terms is simple and fast scalar operations.
-    summed_coefficients = {}
+    _zernike_build_indices(indices)
+    zernike_cantor = _zernike_cache_vectorized[indices, :]   # (D, M)
+    M = zernike_cantor.shape[1]
+    cantor_indices = np.arange(M)
 
-    for key, weight in zip(indices, weights):
-        coefficients = _zernike_coefficients(key)
+    # Remove terms with all zeros
+    nonzero = np.any(zernike_cantor, axis=0)    # Which D are nonzero for given m in M
+    cantor_indices = cantor_indices[nonzero]    # M -> M'
+    zernike_cantor = zernike_cantor[:, nonzero]
 
-        for power_key, factor in coefficients.items():
-            power_factor = factor * weight
+    # Differentiate the terms if needed.
+    if np.any(derivative):
+        cantor_pairing = _inverse_cantor_pairing(cantor_indices)    # (M', 2)
 
-            if dx != 0 or dy != 0:
-                # Apply the power rule to the coefficient.
-                if dx == 1:
-                    power_factor *= power_key[0]
-                elif dx != 0:
-                    if power_key[0] >= dx:
-                        power_factor *= factorial(power_key[0]) / factorial(power_key[0] - dx)
-                    else:
-                        power_factor = 0
+        for j in [0, 1]:
+            if derivative[j] > 0:
+                power = cantor_pairing[:, [j]].T.astype(int)  # (D, 1)
 
-                if dy == 1:
-                    power_factor *= power_key[1]
-                elif dy != 0:
-                    if power_key[1] >= dy:
-                        power_factor *= factorial(power_key[1]) / factorial(power_key[1] - dy)
-                    else:
-                        power_factor = 0
+                # Apply the power rule.
+                if derivative[j] == 1:
+                    zernike_cantor *= power
+                elif derivative[j] > 1:
+                    nonzero = power > derivative[j]
 
-                # Change the power key based on derivatives.
-                power_key = (int(power_key[0] - dx), int(power_key[1] - dy))
+                    zernike_cantor[np.logical_not(nonzero)] = 0
+                    zernike_cantor[nonzero] *= (
+                        special.factorial(power[nonzero]) / special.factorial(power[nonzero] - derivative[j])
+                    ).astype(int)
 
-            # Add the coefficient to the sum for the given monomial power.
-            if power_key in summed_coefficients:
-                summed_coefficients[power_key] += power_factor
-            else:
-                summed_coefficients[power_key] = power_factor
+                # Reduce the power of the term
+                reduced = cantor_pairing[:, j] > 0
+                cantor_pairing[reduced, j] -= derivative[j]
+                cantor_pairing[np.logical_and(reduced, cantor_pairing[:, j] < 0), j] = 0
 
-    # Finally, build the polynomial.
-    if True:
-        # TODO: use polynomial()?
-        if out is None:
-            out = np.empty(x_grid.shape)
-        else:
-            out = np.array(out, copy=None)
+        # Remove terms with all zeros
+        nonzero = np.any(zernike_cantor, axis=0)        # Which D are nonzero for given m in M'
+        cantor_pairing = cantor_pairing[nonzero, :]     # M' -> M''
+        zernike_cantor = zernike_cantor[:, nonzero]
 
-        out.fill(0)
-
-        for power_key, factor in summed_coefficients.items():
-            if factor != 0:
-                if power_key == (0,0):
-                    if use_mask:
-                        out[mask] += factor
-                    else:
-                        out += factor
-                else:
-                    if use_mask:
-                        out[mask] += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
-                    else:
-                        out += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+        terms = cantor_pairing
     else:
-        pass
+        terms = cantor_indices
 
-    return out
+    # Reshape the weights into this new basis.
+    cantor_weights = np.matmul(zernike_cantor.T, weights)  # (M', D) x (D, N) = (M', N)
+
+    # The masked case only computes on a fraction of the full space.
+    if use_mask:
+        out[:, mask] = polynomial(
+            grid=(x_grid_scaled, y_grid_scaled),
+            weights=cantor_weights,
+            terms=terms,
+            out=out[:, mask]
+        )
+    else:
+        out = polynomial(
+            grid=(x_grid_scaled, y_grid_scaled),
+            weights=cantor_weights,
+            terms=terms,
+            out=out
+        )
+
+    if N == 1:
+        return out.reshape(x_grid.shape)
+    else:
+        return out
 
 
 def _plot_zernike_pyramid(grid, order, scale=1, **kwargs):
@@ -786,10 +822,15 @@ _zernike_cache = {}
 _zernike_cache_vectorized = np.array([[]], dtype=int)
 
 
-def _zernike_build(n):
+def _zernike_build_order(o):
     """Pre-caches Zernike polynomial coefficients up to order :math:`n`."""
     N = (n+1) * (n+2) // 2
     for i in range(N):
+        _zernike_coefficients(i)
+
+def _zernike_build_indices(indices):
+    """Pre-caches Zernike polynomial coefficients up to order :math:`n`."""
+    for i in indices:
         _zernike_coefficients(i)
 
 
@@ -991,14 +1032,22 @@ def _inverse_cantor_pairing(z):
     """
     Converts a 1D index to a unique 2D index according to the
     `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
+
+    Returns shape ``(D, 2)``
     """
-    z = np.squeeze(np.array(z, dtype=int, copy=None))
+    z = np.array(z, dtype=int, copy=None)
+    if z.ndim != 1:
+        raise ValueError("Expected a list of shape (D,)")
 
     w = np.floor((np.sqrt(8*z + 1) - 1) // 2).astype(int)
     t = (w*w + w) // 2
 
     y = z-t
     x = w-y
+
+    # Handle negative index case which is used for special indices.
+    y[z < 0] = 0
+    x[z < 0] = z[z < 0]
 
     return np.vstack((x, y)).T
 
@@ -1070,31 +1119,30 @@ def _term_pathing(xy):
     return I
 
 
-def _parse_out(x_grid, out):
+def _parse_out(x_grid, out, stack=1):
     """
-    Helper fucntion to error check the shape and type of ``out``.
+    Helper function to error check the shape and type of ``out``.
     """
+    shape = tuple(np.concatenate(([stack], x_grid.shape)))
+
     if out is None:
         # Initialize out to zero.
         if cp == np:
-            out = np.empty_like(x_grid)
+            out = np.zeros(shape, x_grid.dtype)
         else:
-            out = cp.get_array_module(x_grid).empty_like(x_grid)
+            out = cp.get_array_module(x_grid).zeros(shape, x_grid.dtype)
+
+        return out
     else:
         # Error check user-provided out.
-        if out.shape != x_grid.shape:
-            raise ValueError("out must have same shape as grid.")
+        if out.size != np.prod(shape):
+            raise ValueError("out must have same size as the stacked grid.")
         if out.dtype != x_grid.dtype:
             raise ValueError("out must have same type as grid.")
         if cp != np and cp.get_array_module(x_grid) != cp.get_array_module(out):
             raise ValueError("out and grid must both be cupy arrays if one is.")
 
-    return out
-
-try:
-    _polynomial_kernel = cp.RawKernel(CUDA_KERNELS, 'polynomial')
-except:
-    _polynomial_kernel = None
+        return out.reshape(shape)
 
 
 def polynomial(grid, weights, terms=None, pathing=None, out=None):
@@ -1113,15 +1161,16 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     weights : array_like of float
-        Array of shape ``(N,)`` corresponding to the coefficient of each term.
+        Array of shape ``(D,)`` corresponding to the coefficient of each term.
+        Can also be shape ``(D, N)`` if a stack of ``N`` polynomials is desired.
     terms : array_like of int OR None
-        Array of shape ``(N, 2)`` corresponding to the :math:`x` and :math:`y` exponents
-        for the ``N`` terms.
-        Otherwise, array of shape ``(N, 1)`` corresponding to the Cantor indices of
+        Array of shape ``(D, 2)`` corresponding to the :math:`x` and :math:`y` exponents
+        for the ``D`` terms.
+        Otherwise, array of shape ``(D,)`` corresponding to the Cantor indices of
         monomials.
         If ``None``, assumes the terms are Cantor indices of the range of ``weights``.
     pathing : array_like of int OR None
-        Array of shape ``(N,)`` corresponding to an order that the terms should be
+        Array of shape ``(D,)`` corresponding to an order that the terms should be
         calculated. If ``None``, chooses the path that reduces the number of
         multiplications when evaluating monomials.
     out : numpy.ndarray OR cupy.ndarray
@@ -1133,16 +1182,32 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
         Result of the sum.
     """
     # Parse terms
+    terms = np.array(terms)
     if terms is None:
-        terms = _inverse_cantor_pairing(np.arange(len(weights)))
-    elif terms.size != 2:
-        terms = np.squeeze(terms)
+        terms = _inverse_cantor_pairing(np.arange(D))
 
     if terms.ndim == 1:
         terms = _inverse_cantor_pairing(terms)
 
-    if not terms.shape[1] == 2 or terms.ndim != 2:
-        raise ValueError("Terms must be of shape (N, 2). Found {}.".format(terms.shape))
+    if terms.shape[1] != 2:
+        raise ValueError("Terms must be of shape (D, 2) or (D,). Found {}.".format(terms.shape))
+
+    D = terms.shape[0]
+
+    # Parse weights
+    weights = np.array(weights)
+    if weights.ndim == 1:
+        if len(weights) == D:
+            weights = np.reshape(weights, (-1, 1))
+        else:
+            raise ValueError("Expected weights to have a common dimension with indices.")
+    elif weights.ndim == 2:
+        if weights.shape[0] != D:
+            raise ValueError("Expected weights to have a common dimension with indices.")
+    else:
+        raise ValueError("Expected weights to be 1D or 2D.")
+
+    (D, N) = weights.shape
 
     # Parse pathing
     if pathing is False:
@@ -1152,55 +1217,51 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
 
     # Prepare the grids and canvas.
     (x_grid, y_grid) = _process_grid(grid)
-    out = _parse_out(x_grid, out)
+    out = _parse_out(x_grid, out, stack=N)
 
-    # Decide whether to use numpy/cupy or CUDA
-    if cp == np or _polynomial_kernel is None or cp.get_array_module(x_grid) == np:  # numpy/cupy
-        out.fill(0)
-        nx0 = ny0 = 0
-        if cp == np:
-            monomial = np.ones_like(x_grid)
+    out.fill(0)
+    nx0 = ny0 = 0
+    if cp == np:
+        monomial = np.ones_like(x_grid)
+    else:
+        monomial = cp.get_array_module(x_grid).ones_like(x_grid)
+
+    # Force datatype for easier multiplication.
+    weights = weights.astype(out.dtype)
+
+    # Sum the result.
+    for index in pathing:
+        (nx, ny) = terms[index, :]
+
+        if nx >= 0:                     # Usual case: monomial.
+            # Reset if we're starting a new path.
+            if nx - nx0 < 0 or ny - ny0 < 0:
+                nx0 = ny0 = 0
+                monomial.fill(1)
+
+            # Traverse the path in +x or +y.
+            for _ in range(nx - nx0):
+                monomial *= x_grid
+            for _ in range(ny - ny0):
+                monomial *= y_grid
+
+            # Update the current index.
+            nx0, ny0 = nx, ny
+
+            # We use a for loop here because the arrays will already be big (vectorization
+            # overhead already amortized) and multiplying with zero or special indexing
+            # can cost, esp. on GPU and scalar transfer is easier.
+            for i in range(N):
+                if weights[index, i] != 0:
+                    out[i, ...] += weights[index, i] * monomial
+        elif nx == -1 and ny == 0:      # Special case: vortex waveplate.
+            lg = np.arctan2(y_grid, x_grid)
+
+            for i in range(N):
+                if weights[index, i] > 0:
+                    out[i, ...] += weights[index, i] * lg
         else:
-            monomial = cp.get_array_module(x_grid).ones_like(x_grid)
-
-        # Sum the result.
-        for index in pathing:
-            if weights[index] != 0:
-                (nx, ny) = terms[index, :]
-
-                # Reset if we're starting a new path.
-                if nx - nx0 < 0 or ny - ny0 < 0:
-                    nx0 = ny0 = 0
-                    monomial.fill(1)
-
-                # Traverse the path in +x or +y.
-                for _ in range(nx - nx0):
-                    monomial *= x_grid
-                for _ in range(ny - ny0):
-                    monomial *= y_grid
-
-                # Add the monomial to the result.
-                out += weights[index] * monomial
-    else:                               # CUDA
-        N = int(terms.shape[0])
-        WH = int(x_grid.size)
-
-        threads_per_block = int(_polynomial_kernel.max_threads_per_block)
-        blocks = WH // threads_per_block
-
-        # Call the RawKernel.
-        _polynomial_kernel(
-            (blocks,),
-            (threads_per_block,),
-            (
-                WH, N,
-                cp.array(weights[pathing], copy=None),
-                cp.array(terms.T[pathing, :], copy=None),
-                x_grid.ravel(),
-                y_grid.ravel(),
-                out.ravel()
-            )
-        )
+            raise ValueError("Unrecognized")
 
     return out
 

@@ -15,6 +15,9 @@ class _AbstractSpotHologram(FeedbackHologram):
     #     pass
 
 
+# For the cupy kernel based approach, the size of the kernel to cache.
+N_BATCH_MAX = 400   # Corresponds to ~2 GB for a megapixel SLM.
+
 class CompressedSpotHologram(_AbstractSpotHologram):
     """
     Holography optimized for the generation of optical focal arrays, making use of
@@ -23,22 +26,21 @@ class CompressedSpotHologram(_AbstractSpotHologram):
     Is a subclass of :class:`FeedbackHologram`, but falls back to non-camera-feedback
     routines if :attr:`cameraslm` is not passed.
 
+    Note
+    ~~~~
+    Changes to the SLM (e.g. change of ``wavelength``) will not necessarily propagate
+    to values cached in :attr:`SpotHologram`. Reinitialize the hologram to correctly
+    populate the caches.
+
     Attributes
     ----------
-    spot_zernike : numpy.ndarray OR cupy.ndarray of float
+    spot_zernike : numpy.ndarray
         Spot position vectors with shape ``(D, N)``.
-
-        Important
-        ~~~~~~~~~
-        When :mod:`cupy` is enabled, these spots are hosted on the GPU as ``cupy.ndarray``.
-        Modifications or updates to the data should take this type into account.
     zernike_basis : numpy.ndarray
-        The ind
-    spot_kxy : numpy.ndarray of float
-        Spot position vectors in the normalized basis with shape ``(2, N)`` or ``(3, N)``.
-    spot_ij : array_like of float OR None
+        The ANSI indices that correspond to the basis of the Zernike
+    spot_ij : numpy.ndarray OR None
         Lateral spot position vectors in the camera basis with shape ``(2, N)``.
-    external_spot_amp : array_like of float
+    external_spot_amp : numpy.ndarray
         When using ``"external_spot"`` feedback or the ``"external_spot"`` stat group,
         the user must supply external data. This data is transferred through this
         attribute. For iterative feedback, have the ``callback()`` function set
@@ -76,33 +78,35 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         complicated summations of Zernike polynomials can be employed to focus or
         correct for aberration.
 
+        This :class:`CompressedSpotHologram` focusses on arrays of spots,
+        **each spot having an individualized Zernike calibration**.
+        This calibration of course includes steering in the :math:`x`, :math:`y`, and :math:`z`
+        directions with the 2nd, 1st, and 4th Zernike polynomials, respectively (tilt and focus).
+
         Important
         ---------
-        This class supports three different options for generating compressed spot
-        arrays.
+        This class supports two options for generating compressed spot arrays.
 
-        #.  First, a :mod:`numpy`/:mod:`cupy` method is implemented.
+        #.  First, a :mod:`numpy`/:mod:`cupy` method directly caches the kernels and
+            plays tricks to vectorize the farfield transformation operations.
             This method makes ample use of memory and is inefficient for very large spot arrays.
-            This method works by playing tricks to vectorize operations onto a cached kernel.
-            To update the cached kernel with new spot positions in :attr:`spot_kxy`,
-            set :attr:`_cupy_kernel' to ``None``.
+            The caches are unique to a specific :attr:`spot_zernike`, and are updated
+            when a change to :attr:`spot_zernike` is detected.
             More general or complicated functionality requires full use of the GPU
-            and thus the following methods require :mod:`cupy`.
+            and thus the following option requires :mod:`cupy` and underlying CUDA.
 
-        #.  A custom CUDA kernel loaded into :mod:`cupy` focussing on arrays of
-            spots, **each spot having an individualized Zernike calibration**,
-            which of course includes steering in the :math:`x`, :math:`y`, and :math:`z`
-            directions with the 2nd, 1st, and 4th Zernike polynomials, respectively (tilt and focus).
-            Saving and transporting a set of Zernike polynomials up to a large order would
+        #.  A custom CUDA kernel loaded into :mod:`cupy`.
+            Above a certain number of spots (:math:`O(10^3)`),
+            saving and transporting a set of Zernike polynomial kernels would
             consume unacceptable  amounts of memory and memory bandwidth.
-            Instead, this kernel dynamically constructs all the zernike polynomials in the
+            Instead, this kernel dynamically constructs all the Zernike polynomials in the
             given basis locally on the GPU, using this data to
             apply the nearfield-farfield transformation before returning only the result
             of the transformation. Such computation requires only the data of the input
             and output, along with efficient 'compressed' information defining the
             construction of the polynomial kernels.
             This kernel bases itself upon :attr:`spot_zernike`, which is moved to the
-            GPU at runtime as a ``cupy.ndarray``. This list can be updated
+            GPU every tick.
 
         The chosen option is selected dynamically. Option 2 is the highest preference.
         If the kernel fails to load or :mod:`cupy` is unavailable, the option will downgrade
@@ -212,24 +216,27 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         # Parse spot_vectors.
         if basis == "zernike":
-            self.spot_zernike = spot_vectors
+            self.spot_zernike = np.array(spot_vectors, copy=None)
             self.spot_kxy = toolbox.convert_vector(
                 spot_vectors[self.zernike_basis_cartesian, :],  # Special case to crop the basis.
                 from_units="zernike",
                 to_units="kxy",
                 hardware=cameraslm
             )
+            try:
+                self.spot_ij = toolbox.convert_vector(
+                    spot_vectors,
+                    from_units=basis,
+                    to_units="ij",
+                    hardware=cameraslm
+                )
+            except:
+                self.spot_ij = None
         else:
             self.spot_zernike = toolbox.convert_vector(
                 spot_vectors,
                 from_units=basis,
                 to_units="zernike",
-                hardware=cameraslm
-            )
-            self.spot_kxy = toolbox.convert_vector(
-                spot_vectors,
-                from_units=basis,
-                to_units="kxy",
                 hardware=cameraslm
             )
             self.spot_ij = toolbox.convert_vector(
@@ -314,18 +321,18 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         if np != cp:
             # Move the Zernike spots to the GPU.
-            self.spot_zernike = cp.array(self.spot_zernike, dtype=self.dtype)
+            # self.spot_zernike = cp.array(self.spot_zernike, dtype=self.dtype)
 
             # Custom GPU kernels for speed.
             try:
                 self._near2far_cuda = cp.RawKernel(
-                    CUDA_KERNELS, 
+                    CUDA_KERNELS,
                     'compressed_nearfield2farfield_v2',
                     translate_cucomplex=True,
                     jitify=True,
                 )
                 self._far2near_cuda = cp.RawKernel(
-                    CUDA_KERNELS, 
+                    CUDA_KERNELS,
                     'compressed_farfield2nearfield_v2',
                     translate_cucomplex=True,
                     jitify=True,
@@ -397,44 +404,68 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Rotate to imaginary afterward (not before so we can square X and Y when calculating RR).
         self._cupy_stack *= 1j
 
-    def _build_kernel_batched(self, spot_kxy, out=None):
+    def _build_cupy_kernel_batched(self, vectors=None, out=None):
         """
         Uses the coordinate stack to produce the kernel, a stack of images corresponding
         to the blaze and lens directing power to each desired spot in the farfield.
 
         Parameters
         ----------
-        spot_kxy : numpy.ndarray
-            Vector locations of the spot, in two or three dimensions.
-            See :attr:`spot_kxy`.
-        out : numpy.ndarray OR None
+        vectors : numpy.ndarray OR None
+            Vectors in the :attr:`zernike_basis` to project a spot towards.
+            If ``None``, uses :attr:`spot_zernike`.
+        out : numpy.ndarray OR cupy.ndarray OR None
             Array to direct data to when in-place. None if out-of-place.
         """
-        (D, N) = spot_kxy.shape                         # Shape (2|3, N)
+        # Parse vectors.
+        if vectors is None:
+            vectors = self.spot_zernike
 
-        # Parse stack.
-        if self._cupy_stack is None:
-            self._build_stack(D)                        # Shape (H*W, 2|3)
+        # Make the grids if they aren't there.
+        if not hasattr(self, "_grid_complex"):
+            (x_scale, y_scale) = tphase.zernike_aperture(self.cameraslm.slm, aperture=None)
+            self._grid_complex = (
+                cp.array(self.cameraslm.slm.grid[0] * x_scale, dtype=self.dtype_complex),
+                cp.array(self.cameraslm.slm.grid[1] * y_scale, dtype=self.dtype_complex)
+            )
 
-        # Parse out.
-        out_shape = (np.prod(self.slm_shape), N)        # Shape (H*W, N)
-        if out is None:
-            out = cp.zeros(out_shape, dtype=self.dtype_complex)
-        if out.shape != out_shape:
-            raise ValueError(f"out shape {out.shape} does not matched the expected {out_shape}")
+        # Use the toolbox.phase function to calculate the kernels.
+        zernike_sum(
+            self._grid_complex,
+            indices=self.zernike_basis,
+            weights=vectors,
+            aperture=1,                     # Grids come pre-scaled.
+            use_mask=False,                 # For this task, we don't want the edge of the aperture causing artifacts.
+            out=out
+        )
 
-        # Evaluate the result in a (hopefully) memory and compute efficient way.
-        out = cp.matmul(self._cupy_stack, spot_kxy, out=out)  # (H*W, 2|3) x (2|3, N) = (H*W, N)
-
-        # Convert from phase to complex amplitude.
+        # Convert from real phase to complex amplitude.
+        out *= self.dtype_complex(1j)
         out = cp.exp(out, out=out)
 
         return out
 
+    def _update_cupy_kernel(self, kernel_slice=None, batch_slice=None):
+        # Check if we need to update the kernel.
+        if not hasattr(self, "_spot_zernike_cached") or np.any(self._spot_zernike_cached != self.spot_zernike):
+            self._spot_zernike_cached = self.spot_zernike.copy()
+
+            # Updated the kernel based on whether we're slicing (updating a fractional kernel).
+            if kernel_slice is None or batch_slice is None:
+                self._cupy_kernel = self._build_kernel_batched(out=self._cupy_kernel)
+            else:
+                if self._cupy_kernel is None:
+                    self._cupy_kernel = cp.zeros((np.prod(self.slm_shape), N_BATCH_MAX), dtype=self.dtype_complex)
+
+                self._cupy_kernel[kernel_slice, :] = self._build_kernel_batched(
+                    vectors=self.spot_zernike[:, batch_slice],
+                    out=self._cupy_kernel[kernel_slice, :]
+                )
+
     def _nearfield2farfield(self, nearfield, farfield_out=None):
         """
         Maps the ``(H,W)`` nearfield (complex value on the SLM)
-        onto the ``(N,1)`` farfield (complex value for each spot).
+        onto the ``(N,)`` farfield (complex value for each spot).
         """
         # print("n2f")
         if farfield_out is None:
@@ -581,7 +612,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Sum over all the blocks to get the final answers using optimized cupy methods.
         farfield_out = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=farfield_out)
         farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
-        
+
         # print("done")
 
         return farfield_out
@@ -591,39 +622,27 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # FYI: Nearfield shape is (H,W)
         nearfield = cp.conj(nearfield, out=nearfield)
 
-        N = self.spot_kxy.shape[1]
-        N_batch_max = 500
+        N = len(self)
 
         if farfield_out is None:
             farfield_out = cp.zeros((N, ), dtype=self.dtype_complex)
 
-        # Do some prep work
+        # Do some prep work.
         def collapse_kernel(kernel, out):
-            # (1,H*W) x (H*W, N) = (N,1)^T
-            cp.matmul(nearfield.ravel()[np.newaxis, :], kernel, out=out[np.newaxis, :])
-
-        if self._cupy_kernel is None:
-            self.spot_kxy_complex = cp.array(self.spot_kxy, copy=None, dtype=self.dtype_complex)
+            # (N, H*W), (H*W, 1) x  = (N,1)
+            cp.matmul(kernel, nearfield.ravel()[:, np.newaxis], out=out[:, np.newaxis])
 
         # Evaluate the kernel.
-        if N <= N_batch_max:
-            if self._cupy_kernel is None:
-                self._cupy_kernel = self._build_kernel_batched(self.spot_kxy_complex, out=self._cupy_kernel)
-
+        if N <= N_BATCH_MAX:
+            self._update_cupy_kernel()
             collapse_kernel(self._cupy_kernel, out=farfield_out)
         else:
-            if self._cupy_kernel is None:
-                self._cupy_kernel = cp.zeros((np.prod(self.slm_shape), N_batch_max), dtype=self.dtype_complex)
-
-            batches = 1 + N // N_batch_max
+            batches = 1 + N // N_BATCH_MAX
             for batch in range(batches):
-                batch_slice = slice(batch * N_batch_max, np.clip((batch+1) * N_batch_max, 0, N))
+                batch_slice = slice(batch * N_BATCH_MAX, np.clip((batch+1) * N_BATCH_MAX, 0, N))
                 kernel_slice = slice(0, batch_slice.stop - batch_slice.start)
-                self._cupy_kernel[:, kernel_slice] = self._build_kernel_batched(
-                    self.spot_kxy_complex[:, batch_slice],
-                    out=self._cupy_kernel[:, kernel_slice]
-                )
 
+                self._update_cupy_kernel(batch_slice, kernel_slice)
                 collapse_kernel(self._cupy_kernel[:, kernel_slice], out=farfield_out[batch_slice])
 
         # Normalize.
@@ -723,50 +742,32 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         return nearfield_out
 
     def _farfield2nearfield_cupy(self, farfield, nearfield_out):
-        # FYI: Farfield shape is (N,1)
-        N = self.spot_kxy.shape[1]
-        N_batch_max = 500
+        # FYI: Farfield shape is (N,)
+        N = len(self)
 
         def expand_kernel(kernel, farfield, out):
-            # (H*W, N) x (N,1) = (H*W, 1)   ===reshape===>   (H,W)
-            return cp.matmul(kernel, farfield[:, np.newaxis], out=out[:, np.newaxis])
+            # (1, N) x (N, H*W) = (1, H*W)   ===reshape===>   (H,W)
+            return cp.matmul(farfield[np.newaxis, :], kernel, out=out[np.newaxis, :])
 
-        if self._cupy_kernel is None:
-            self.spot_kxy_complex = cp.array(self.spot_kxy, self.dtype_complex)
-
-        if N <= N_batch_max:
-            if self._cupy_kernel is None:
-                self._cupy_kernel = self._build_kernel_batched(self.spot_kxy_complex, out=self._cupy_kernel)
-
+        # Evaluate the kernel.
+        if N <= N_BATCH_MAX:
+            self._update_cupy_kernel()
             expand_kernel(self._cupy_kernel, farfield, out=nearfield_out.ravel())
         else:
-            if self._cupy_kernel is None:
-                self._cupy_kernel = cp.zeros((np.prod(self.slm_shape), N_batch_max), dtype=self.dtype_complex)
-
             nearfield_out_temp = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
 
-            batches = 1 + N // N_batch_max
-
-            # print(N)
+            batches = 1 + N // N_BATCH_MAX
 
             for batch in range(batches):
-                batch_slice = slice(batch * N_batch_max, np.clip((batch+1) * N_batch_max, 0, N))
-                # kernel_slice = slice(0, np.clip(N_batch_max, 0, N - batch * N_batch_max))
+                batch_slice = slice(batch * N_BATCH_MAX, np.clip((batch+1) * N_BATCH_MAX, 0, N))
                 kernel_slice = slice(0, batch_slice.stop - batch_slice.start)
-                # print(batch)
-                # print(batch_slice)
-                # print(kernel_slice)
-                # print(self._cupy_kernel.shape)
-                self._cupy_kernel[:, kernel_slice] = self._build_kernel_batched(
-                    self.spot_kxy_complex[:, batch_slice],
-                    out=self._cupy_kernel[:, kernel_slice]
-                )
-                # print(self._cupy_kernel[:, batch_slice].shape)
+
+                self._update_cupy_kernel(batch_slice, kernel_slice)
 
                 if batch == 0:
-                    expand_kernel(self._cupy_kernel[:, kernel_slice], farfield[batch_slice], out=nearfield_out.ravel())
+                    expand_kernel(self._cupy_kernel[kernel_slice, :], farfield[batch_slice], out=nearfield_out.ravel())
                 else:
-                    expand_kernel(self._cupy_kernel[:, kernel_slice], farfield[batch_slice], out=nearfield_out_temp.ravel())
+                    expand_kernel(self._cupy_kernel[kernel_slice, :], farfield[batch_slice], out=nearfield_out_temp.ravel())
                     nearfield_out += nearfield_out_temp
 
         return nearfield_out

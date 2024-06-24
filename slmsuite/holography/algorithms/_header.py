@@ -39,7 +39,7 @@ except ImportError:
 # Import helper functions
 from slmsuite.holography import analysis, toolbox
 from slmsuite.holography.toolbox import phase as tphase
-from slmsuite.holography.toolbox.phase import CUDA_KERNELS, _zernike_populate_basis_map
+from slmsuite.holography.toolbox.phase import CUDA_KERNELS, _zernike_populate_basis_map, zernike_sum
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.misc.files import write_h5, read_h5
 

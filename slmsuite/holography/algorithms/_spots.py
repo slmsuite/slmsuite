@@ -377,33 +377,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         raise NotImplementedError("Currently not implemented for CompressedSpotHologram")
 
     # Projection backend helper functions.
-    def _build_stack(self, D=2):
-        r"""
-        Builds the coordinate stack, which is a stack of the
-        :math:`2\pi i x`, :math:`2\pi i y`, and
-        (if desired) :math:`\pi i r^2 = \pi i (x^2 + y^2)` coordinates corresponding
-        to the position of each pixel. The :math:`i\pi` factors are to make compute of
-        the kernels trivial, i.e. such that these factors (and squares) do not have
-        be calculated at each iteration.
-        """
-        X = (2 * cp.pi) * cp.array(self.cameraslm.slm.grid[0], dtype=self.dtype_complex).ravel()
-        Y = (2 * cp.pi) * cp.array(self.cameraslm.slm.grid[1], dtype=self.dtype_complex).ravel()
-
-        if D == 2:      # 2D spots
-            self._cupy_stack = cp.stack((X, Y), axis=-1)       # Shape (H*W, 2)
-        elif D == 3:    # 3D spots
-            # Currently restricted to non-cylindrical focusing.
-            # This is a good assumption if the SLM has square pixel size
-            # and the optical train does not include cylindrical optics.
-            # RR = pi * (x_grid ^2 + y_grid ^ 2)
-            RR = (1 / (4 * cp.pi)) * (cp.square(X) + cp.square(Y))
-            self._cupy_stack = cp.stack((X, Y, RR), axis=-1)   # Shape (H*W, 3)
-        else:
-            raise ValueError(f"Expected spots to be 2D or 3D. Found {D}D")
-
-        # Rotate to imaginary afterward (not before so we can square X and Y when calculating RR).
-        self._cupy_stack *= 1j
-
     def _build_cupy_kernel_batched(self, vectors=None, out=None):
         """
         Uses the coordinate stack to produce the kernel, a stack of images corresponding
@@ -483,54 +456,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         return farfield_out
 
-    def _nearfield2farfield_cuda(self, nearfield, farfield_out):
-        H, W = self.slm_shape
-        D, N = self.spot_kxy.shape
-
-        threads_per_block = int(1024)
-        assert self._near2far_cuda.max_threads_per_block >= threads_per_block
-        if self._near2far_cuda.max_threads_per_block > threads_per_block:
-            warnings.warn(
-                "Threads per block can be larger than the hardcoded limit of 1024. "
-                "Remove this limit for enhanced speed."
-            )
-        blocks_x = int(np.ceil(float(W*H) / threads_per_block))
-        blocks_y = N
-
-        print((blocks_x, blocks_y))
-
-        if self._nearfield2farfield_cuda_intermediate is None:
-            self._nearfield2farfield_cuda_intermediate = cp.zeros((blocks_y, blocks_x), dtype=self.dtype_complex)
-
-        spot_kxy_float = cp.array(self.spot_kxy, self.dtype)    # TODO: Make this faster.
-
-        # Call the RawKernel.
-        self._near2far_cuda(
-            (blocks_x, blocks_y),
-            (threads_per_block, 1),
-            (
-                nearfield.ravel(),
-                W, H, N, D,
-                spot_kxy_float,
-                0, 0, float(self.cameraslm.slm.pitch[0]), float(self.cameraslm.slm.pitch[1]),
-                self._nearfield2farfield_cuda_intermediate.ravel()
-            )
-        )
-
-        print(W*H)
-        print(self._cupy_stack.shape)
-        print(self._cupy_stack[0, :])
-        print(self._nearfield2farfield_cuda_intermediate)
-        print(cp.abs(self._nearfield2farfield_cuda_intermediate))
-        print(self._nearfield2farfield_cuda_intermediate.shape)
-        print(farfield_out.shape)
-
-        # Sum over all the blocks to get the final answers using optimized cupy methods.
-        farfield_out = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=farfield_out)
-        farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
-
-        return farfield_out
-
     def _nearfield2farfield_cuda_v2(self, nearfield, farfield_out):
         H, W = self.shape
         D, N = self.spot_zernike.shape
@@ -546,43 +471,13 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         blocks_x = int(np.ceil(float(W*H) / threads_per_block))
         blocks_y = N
 
-        # print((blocks_x, blocks_y))
-
         if self._nearfield2farfield_cuda_intermediate is None:
             self._nearfield2farfield_cuda_intermediate = cp.zeros((blocks_y, blocks_x), dtype=self.dtype_complex)
 
         center_pix = np.array(self.cameraslm.slm.get_source_center())
         pitch_zernike = np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
 
-        # print(W, H, N, D, M)
-        # print(
-        #     self.spot_zernike.shape, # a_nd
-        #     self._c_md.shape,
-        #     self._i_md.shape,
-        #     self._pxy_m.shape,
-        # )
-        # print(
-        #     type(self.spot_zernike), # a_nd
-        #     type(self._c_md),
-        #     type(self._i_md),
-        #     type(self._pxy_m),
-        # )
-
-        # print(self.iter)
-
         self._nearfield2farfield_cuda_intermediate.fill(-1)
-
-        # print(
-        #     nearfield.ravel(),
-        #     W, H, N, D, M,
-        #     self.spot_zernike.T,    # a_nd
-        #     self._c_md,
-        #     self._i_md,
-        #     self._pxy_m,
-        #     float(center_pix[0]), float(center_pix[1]),
-        #     float(pitch_zernike[0]), float(pitch_zernike[1]),
-        #     self._nearfield2farfield_cuda_intermediate.ravel()
-        # )
 
         # Call the RawKernel.
         self._near2far_cuda(
@@ -601,19 +496,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             )
         )
 
-        # print(W*H)
-        # print(self._cupy_stack.shape)
-        # print(self._cupy_stack[0, :])
-        # print(self._nearfield2farfield_cuda_intermediate)
-        # print(cp.abs(self._nearfield2farfield_cuda_intermediate))
-        # print(self._nearfield2farfield_cuda_intermediate.shape)
-        # print(farfield_out.shape)
-
         # Sum over all the blocks to get the final answers using optimized cupy methods.
         farfield_out = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=farfield_out)
         farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
-
-        # print("done")
 
         return farfield_out
 
@@ -671,37 +556,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         if not self.cuda:
             nearfield_out = self._farfield2nearfield_cupy(farfield, nearfield_out)
-
-        return nearfield_out
-
-    def _farfield2nearfield_cuda(self, farfield, nearfield_out):
-        WH = int(self.slm_shape[0] * self.slm_shape[1])
-        N = int(self.spot_kxy.shape[1])
-        D = int(self.spot_kxy.shape[0])
-
-        if self._cupy_stack is None:
-            self._build_stack(D)
-
-        threads_per_block = int(self._far2near_cuda.max_threads_per_block)
-        blocks = WH // threads_per_block
-
-        spot_kxy_float = cp.array(self.spot_kxy, self.dtype)    # TODO: Make this faster.
-
-        # Call the RawKernel.
-        self._far2near_cuda(
-            (blocks,),
-            (threads_per_block,),
-            (
-                farfield,
-                WH, N, D,
-                spot_kxy_float,
-                self._cupy_stack[:, 0],
-                self._cupy_stack[:, 1],
-                self._cupy_stack[:, 2] if D == 3 else 0,
-                0, 0, 0,
-                nearfield_out.ravel()
-            )
-        )
 
         return nearfield_out
 

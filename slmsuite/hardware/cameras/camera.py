@@ -28,6 +28,8 @@ class Camera():
         Depth of a camera pixel well in bits.
     bitresolution : int
         Stores ``2**bitdepth``.
+    dtype : type
+        The type returned by :meth:`.get_image()`.
     pitch_um : (float, float) OR None
         Pixel pitch in microns.
     exposure_bounds_s : (float, float) OR None
@@ -114,6 +116,7 @@ class Camera():
         # Set other useful parameters
         self.bitdepth = int(bitdepth)
         self.bitresolution = 2**bitdepth
+        self.dtype = np.array(self._get_image_hw()).dtype
 
         # Frame averaging
         self.set_averaging(averaging)
@@ -329,9 +332,12 @@ class Camera():
         """
         # Preallocate memory if necessary
         if out is None:
-            imlist = np.empty((int(image_count), self.shape[0], self.shape[1]))
+            imgs = np.empty(
+                (int(image_count), self.default_shape[0], self.default_shape[1]),
+                dtype=self.dtype
+            )
         else:
-            imlist = out
+            imgs = out
 
         # Flush if desired.
         if flush:
@@ -340,17 +346,120 @@ class Camera():
         # Grab images.
         try:
             # Using the camera-specific method if available
-            imlist = self._get_images_hw(image_count)
+            imgs = self._get_images_hw(image_count)
         except NotImplementedError:
             # Brute-force collection as a backup
             for i in range(image_count):
-                imlist[i, :, :] = self._get_image_hw()
+                imgs[i, :, :] = self._get_image_hw()
 
         if transform:
+            imgs_ = np.empty(
+                (int(image_count), self.shape[0], self.shape[1]),
+                dtype=self.dtype
+            )
             for i in range(image_count):
-                imlist[i, :, :] = self.transform(imlist[i])
+                imgs[i, :, :] = self.transform(imgs[i])     # TODO: check rotation?
 
-        return imlist
+        return imgs
+
+    def get_hdr_image(self, exposures=4, exposure_power=2, return_raw=False, **kwargs):
+        r"""
+        Often, the necessities of precision applications exceed the bitdepth of a
+        camera. One way to recover High Dynamic Range (HDR) imaging is to use
+        `multiple exposures <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
+        each with increasing exposure time. Then, these images can be stitched together
+        as floating-point data, omitting data which is under- or over- exposed.
+
+        Parameters
+        ----------
+        exposures : int
+            The number of exposures to take.
+        exposure_power : int
+            Each exposure increases in time multiplicatively from the base value
+            (original :meth:`get_exposure()`) by this factor. The :math:`i\text{th}` image has
+            exposure time :math:`\tau \times 2^i`, zero-indexed.
+        **kwargs
+            Passed to :meth:`.get_image()`.
+
+        Returns
+        -------
+        numpy.ndarray of float
+            TODO
+            Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.
+
+            Important
+            ~~~~~~~~~
+            The scale of the returned image is the same as the original exposure.
+        """
+        # Parse inputs
+        exposures = int(exposures)
+        exposure_power = int(exposure_power)    # Force int so we have a chance of exposure aligning with camera clock.
+
+        # Make empty data and grab the original exposure time.
+        original_exposure = self.get_exposure()
+        imgs = np.empty((exposures, self.shape[0], self.shape[1]))
+
+        for i in range(exposures):
+            self.set_exposure(int(exposure_power ** i) * original_exposure)
+            self.flush()
+            imgs[i, :, :] = self.get_image(**kwargs)
+
+        # Reset exposure.
+        self.set_exposure(original_exposure)
+        self.flush()
+
+        if return_raw:
+            return imgs
+        else:
+            return self.get_hdr_image_analysis(imgs, exposure_power, overexposure_threshold=self.bitresolution/2)
+
+    @staticmethod
+    def get_hdr_image_analysis(imgs, exposure_power, overexposure_threshold=None):
+        """
+        Analyzes raw data for High Dynamic Range (HDR) imaging
+        `multiple exposures <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
+        each with increasing exposure time.
+
+        Parameters
+        ----------
+        imgs : array_like
+            Stack of images with increasing exposure.
+        exposure_power : int
+            Each exposure increases in time multiplicatively from the base value
+            (original :meth:`get_exposure()`) by this factor. The :math:`i\text{th}` image has
+            exposure time :math:`\tau \times 2^i`, zero-indexed.
+        overexposure_threshold : float OR None
+            For each image (except the first), data is thrown out if values are above
+            this threshold. If ``None``, the threshold defaults to half the maximum.
+
+        Returns
+        -------
+        numpy.ndarray of float
+            Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.
+
+            Important
+            ~~~~~~~~~
+            The scale of the returned image is the same as the original exposure.
+        """
+        # Parse arguments
+        exposure_power = int(exposure_power)
+        if overexposure_threshold is None:
+            # Default to half exposure.
+            overexposure_threshold = np.max(imgs) / 2
+
+        img = None
+
+        for i in range(imgs.shape[0]):
+            img_current = imgs[i, :, :].astype(float)
+
+            if i == 0:
+                img = img_current
+            else:
+                # Overwrite data when greater precision is available.
+                mask = img_current < overexposure_threshold
+                img[mask] = img_current[mask] / float(exposure_power ** i)
+
+        return img
 
     @staticmethod
     def plot_image(img, show=True):

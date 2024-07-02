@@ -799,20 +799,36 @@ def _plot_zernike_pyramid(grid, order, scale=1, **kwargs):
     indices_ansi = np.arange((order * (order + 1)) // 2)
     indices_radial = zernike_convert_index(indices_ansi, from_index="ansi", to_index="radial")
 
+    # Get the pitch of the subplots for later.
+    a1 = plt.subplot(order, order, 1)
+    a2 = plt.subplot(order, order, 2)
+
+    pitch = a2.get_position().xmin - a1.get_position().xmin
+
+    a1.remove()
+    a2.remove()
+
     for i in indices_ansi:
         n, l = indices_radial[i, :]
         m = (n + l) // 2
 
         phase = zernike(grid, i, 1, **kwargs)
 
-        plt.subplot(order, order, 1 + m + n*order)
+        a = plt.subplot(order, order, 1 + m + n*order)
         # plt.title((n,l))
         if i < len(ZERNIKE_NAMES):
-            plt.title(ZERNIKE_NAMES[i])
-        plt.imshow(phase)
+            plt.title(f"#{i}\n({n}, {l})\n" + ZERNIKE_NAMES[i])
+        else:
+            plt.title(i)
+        plt.imshow(phase, cmap="twilight")
         plt.clim([-scale, scale])
         plt.xticks([])
         plt.yticks([])
+
+        dx = .5 * (3*order - n)
+        box = a.get_position()
+        box = box.translated(dx * pitch, 0)
+        a.set_position(box)
 
 
 # Old style dictionary.     {(n,m) : {(nx, ny) : w, ... }, ... }

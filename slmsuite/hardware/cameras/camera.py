@@ -376,8 +376,8 @@ class Camera():
             The number of exposures to take.
         exposure_power : int
             Each exposure increases in time multiplicatively from the base value
-            (original :meth:`get_exposure()`) by this factor. The :math:`i\text{th}` image has
-            exposure time :math:`\tau \times 2^i`, zero-indexed.
+            (original :meth:`get_exposure()`) by this factor :math:`p`. The :math:`i\text{th}` image has
+            exposure time :math:`\tau \times p^i`, zero-indexed.
         **kwargs
             Passed to :meth:`.get_image()`.
 
@@ -415,7 +415,7 @@ class Camera():
 
     @staticmethod
     def get_hdr_image_analysis(imgs, exposure_power, overexposure_threshold=None):
-        """
+        r"""
         Analyzes raw data for High Dynamic Range (HDR) imaging
         `multiple exposures <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
         each with increasing exposure time.
@@ -426,8 +426,8 @@ class Camera():
             Stack of images with increasing exposure.
         exposure_power : int
             Each exposure increases in time multiplicatively from the base value
-            (original :meth:`get_exposure()`) by this factor. The :math:`i\text{th}` image has
-            exposure time :math:`\tau \times 2^i`, zero-indexed.
+            (original :meth:`get_exposure()`) by this factor :math:`p`. The :math:`i\text{th}` image has
+            exposure time :math:`\tau \times p^i`, zero-indexed.
         overexposure_threshold : float OR None
             For each image (except the first), data is thrown out if values are above
             this threshold. If ``None``, the threshold defaults to half the maximum.

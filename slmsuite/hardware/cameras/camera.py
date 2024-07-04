@@ -2,6 +2,7 @@
 Abstract camera functionality.
 """
 import time
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -15,7 +16,8 @@ from slmsuite.misc.math import REAL_TYPES
 class Camera():
     """
     Abstract class for cameras.
-    Comes with transformations and helper functions like :meth:`.autoexpose()`.
+    Comes with transformations, averaging and HDR,
+    and helper functions like :meth:`.autoexpose()`.
 
     Attributes
     ----------
@@ -29,15 +31,25 @@ class Camera():
     bitresolution : int
         Stores ``2**bitdepth``.
     dtype : type
-        The type returned by :meth:`.get_image()`.
+        Stores the type returned by :meth:`._get_image_hw()`.
+        This value is cached upon initialization.
+    averaging : int OR None
+        Default setting for averaging. See :meth:`.get_image()`.
+    hdr : (int, int) OR None
+        Default setting for multi-exposure High Dynamic Range imaging. See :meth:`.get_image()`.
     pitch_um : (float, float) OR None
         Pixel pitch in microns.
     exposure_bounds_s : (float, float) OR None
         Shortest and longest allowable integration in seconds.
     woi : tuple
         WOI (window of interest) in ``(x, width, y, height)`` form.
+
+        Warning
+        ~~~~~~~
+        This feature is less fleshed out than most. There may be issues
+        (e.g. :meth:`.get_image()` with the ``averaging`` or ``hdr`` flags).
     default_shape : tuple
-        Default ``shape`` of the camera before any WOI changes are made.
+        Default ``shape`` of the camera before any WOI or transform changes are made.
     transform : function
         Flip and/or rotation operator specified by the user in :meth:`__init__`.
         The user is expected to apply this transform to the matrix returned in
@@ -49,12 +61,13 @@ class Camera():
         self,
         resolution,
         bitdepth=8,
-        averaging=None,
         pitch_um=None,
+        name="camera",
+        averaging=None,
+        hdr=None,
         rot="0",
         fliplr=False,
         flipud=False,
-        name="camera",
     ):
         """
         Initializes a camera.
@@ -73,13 +86,18 @@ class Camera():
             convention stored in :attr:`shape`.
         bitdepth
             See :attr:`bitdepth`.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations.
+        name : str
+            Defaults to ``"camera"``.
         averaging : int or None
             Number of frames to average. Used to increase the effective bit depth of a camera by using
             pre-quantization noise (e.g. dark current, read-noise, etc.) to "dither" the pixel output
             signal. If ``None``, no averaging is performed.
-        pitch_um : (float, float) OR None
-            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
-            to use additional calibrations.
+        hdr : int OR (int, int) OR None OR False
+            Exposure information for `Multi-exposure High Dynamic Range (HDR) imaging
+            <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
         rot : str or int
             Rotates returned image by the corresponding degrees in ``["90", "180", "270"]``
             or :meth:`numpy.rot90` code in ``[1, 2, 3]``. Defaults to no rotation.
@@ -90,8 +108,6 @@ class Camera():
         flipud : bool
             Flips returned image up down.
             Used to determine :attr:`transform`.
-        name : str
-            Defaults to ``"camera"``.
         """
         (width, height) = resolution
 
@@ -116,10 +132,11 @@ class Camera():
         # Set other useful parameters
         self.bitdepth = int(bitdepth)
         self.bitresolution = 2**bitdepth
-        self.dtype = np.array(self._get_image_hw()).dtype
+        self.dtype = np.array(self._get_image_hw()).dtype   # Future: check if cameras change this after init.
 
         # Frame averaging
-        self.set_averaging(averaging)
+        self.averaging = self._parse_averaging(averaging, preserve_none=True)
+        self.hdr = self._parse_hdr(hdr, preserve_none=True)
 
         # Spatial dimensions
         if pitch_um is not None:
@@ -136,6 +153,8 @@ class Camera():
 
         # Default to None, allow subclass constructors to fill.
         self.exposure_bounds_s = None
+
+    # Core methods - to be implemented by subclass.
 
     def close(self):
         """
@@ -258,26 +277,96 @@ class Camera():
         """
         raise NotImplementedError()
 
-    def set_averaging(self, image_count=None):
-        """
-        Enables/disables frame averaging with a specified number of frames.
+    # Capture methods one level of abstraction above _get_image_hw().
 
-        Parameters
-        ----------
-        image_count : int, None
-            See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
-            If ``None``, no averaging is performed.
+    def _parse_averaging(self, averaging=None, preserve_none=False):
         """
-        if isinstance(image_count, int):
-            self._buffer = np.zeros((image_count, self.shape[0], self.shape[1]))
-        elif image_count is None:
-            self._buffer = None
+        Helper function to get a valid averaging.
+        """
+        if averaging is None:
+            if preserve_none:
+                return None
+            if not hasattr(self, "averaging") or self.averaging is None:
+                averaging = 1
+            else:
+                averaging = self.averaging
+        elif averaging is False:
+            averaging = 1
+        averaging = int(averaging)
+
+        if averaging <= 0:
+            raise ValueError("Cannot have negative averaging.")
+
+        return averaging
+
+    def _parse_hdr(self, exposures=None, preserve_none=False):
+        """
+        Helper function to get a valid hdr parameters.
+        """
+        # Parse inputs
+        if exposures is None:
+            if preserve_none:
+                return None
+            if not hasattr(self, "hdr") or self.hdr is None:
+                (exposures, exposure_power) = (4, 2)
+            else:
+                (exposures, exposure_power) = self.hdr
+        elif exposures is False:
+            exposures = (1, 0)
+        elif np.isscalar(exposures):
+            exposure_power = 2
         else:
-            RuntimeError(f"Unexpected value {image_count} passed for image count.")
+            (exposures, exposure_power) = exposures
 
-    def get_image(self, timeout_s=1, transform=True, plot=False):
+        # Force int so we have a chance of exposure aligning with camera clock.
+        return (int(exposures), int(exposure_power))
+
+    def get_averaging_dtype(self, averaging=None):
+        """Returns the appropriate image datatype for ``averaging`` levels of averaging."""
+        if averaging is None:
+            averaging = self.averaging
+        averaging = int(averaging)
+
+        if averaging <= 0:
+            raise ValueError("Cannot have negative averaging.")
+
+        # Switch based on image type
+        if self.dtype.kind == "i" or self.dtype.kind == "u":
+            dtype_bitdepth = self.dtype.nbytes
+
+            # Remove depth for signed integeter.
+            if self.dtype.kind == "i":
+                dtype_bitdepth -= 1
+
+            extra_bits = int(np.rint(np.log2(averaging)))
+
+            if self.bitdepth + extra_bits <= dtype_bitdepth:
+                # If we can sustain the averaging with the current type, continue.
+                return self.dtype
+            else:
+                # Otherwise, force floating point.
+                return float
+        elif self.dtype.kind == "f":
+            # Return floating point.
+            return self.dtype
+        else:
+            raise ValueError(f"Datatype {self.dtype} does not make sense as a camera return.")
+
+    def get_image(self, timeout_s=1, transform=True, hdr=None, averaging=None):
         """
         Capture, process, and return images from a camera.
+
+        Tip
+        ~~~
+        This function includes two advanced capture options:
+
+        -   `Multi-exposure High Dynamic Range (HDR) imaging
+            <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
+            and
+        -   Software frame averaging (integrating).
+
+        These methods can aid the user in capturing more precise data, beyond the
+        default raw (and bitdepth-limited) output of the camera.
 
         Parameters
         ----------
@@ -286,42 +375,106 @@ class Camera():
         transform : bool
             Whether or not to transform the output image according to
             :attr:`~slmsuite.hardware.cameras.camera.Camera.transform`.
-            Defaults to True.
-        plot : bool
-            Whether to plot the output.
+            Defaults to ``True``.
+        hdr : int OR (int, int) OR None OR False
+            Exposure information for `Multi-exposure High Dynamic Range (HDR) imaging
+            <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
+            If ``None``, the value of :attr:`hdr` is used.
+            If ``False``, HDR is not used no matter the state of :attr:`hdr`.
+
+            See Also
+            ~~~~~~~~
+            :meth:`.get_image_hdr()` for more information.
+
+        averaging : int OR None OR False
+            Number of frames to average over.
+            If ``None``, the value of :attr:`averaging` is used.
+            If ``False``, averaging is not used no matter the state of :attr:`averaging`.
+            If ``hdr`` is enabled, then average is ignored.
+
+            Tip
+            ~~~
+            The datatype is promoted to float if necessary but otherwise tries to stick
+            with the default datatype.
+            For instance, a camera that returns a 12-bit image as a 16-bit type has four
+            more bits to use for averaging, i.e. :math:`2^4 = 16` possible averages without
+            risk of overflow.
+            Requesting more than 16 averages would cause the return type to be promoted
+            to ``float``.
+
+            Note
+            ~~~~
+            Averaging is a bit of a misnomer as the true functionality is to sum or
+            integrate the images. This is done such that integer datatypes (useful for
+            memory compactness) can still be returned; a general mean would need to be
+            floating point.
 
         Returns
         -------
-        numpy.ndarray
+        numpy.ndarray of int OR float
             Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.
         """
+        # Parse acquisition options.
+        averaging = self._parse_averaging(averaging)
+        (exposures, exposure_power) = self._parse_hdr(hdr)
 
-        # Grab image (with averaging if enabled).
-        if self._buffer is not None:
-            self.get_images(self._buffer.shape[0], out=self._buffer, transform=False)
-            img = np.average(self._buffer, axis=0)  # TODO: check
-        else:
-            img = self._get_image_hw(timeout_s)
+        # Switch based on what imaging case we're in.
+        if exposures > 1:       # Average many images with increasing exposure.
+            return self.get_image_hdr(
+                (exposures, exposure_power),
+                timeout_s=timeout_s,
+                transform=transform,
+                averaging=False,
+                hdr=False
+            )
+        elif averaging > 1:     # Average many images.
+            averaging_dtype = self.get_averaging_dtype(averaging)
+
+            try:
+                # Using the camera-specific batch method if available
+                imgs = self._get_images_hw(
+                    averaging, timeout_s=timeout_s
+                ).astype(averaging_dtype)
+
+                # Cast as the proper type so we can sum.
+                img = np.sum(imgs, axis=0)
+            except NotImplementedError:
+                # Brute-force collection as a backup
+                img = np.zeros(self.default_shape, dtype=averaging_dtype)
+
+                for _ in range(averaging):
+                    img += self._get_image_hw(timeout_s=timeout_s).astype(averaging_dtype)
+        else:                   # Normal image
+            img = self._get_image_hw(timeout_s=timeout_s)
 
         # self.transform implements the flipping and rotating keywords passed to the
         # superclass constructor.
         if transform:
             img = self.transform(img)
 
-        # Plot if desired
-        if plot:
-            self.plot_image(img)
-
         return img
 
-    def get_images(self, image_count, out=None, transform=True, flush=False):
+    def get_images(self, image_count, timeout_s=1, out=None, transform=True, flush=False):
         """
         Grab ``image_count`` images in succession.
+
+        Important
+        ~~~~~~~~~
+        This method does not support averaging or HDR features.
+        Rather, it just returns a series of raw images.
 
         Parameters
         ----------
         image_count : int
             Number of images to grab.
+        timeout_s : float
+            The time in seconds to wait **for each** frame to be fetched.
+        out : None OR numpy.ndarray
+            If not ``None``, output data in this memory. Useful to avoid excessive allocation.
+        transform : bool
+            Whether or not to transform the output image according to
+            :attr:`~slmsuite.hardware.cameras.camera.Camera.transform`.
+            Defaults to ``True``.
         flush : bool
             Whether to flush before grabbing.
 
@@ -331,38 +484,43 @@ class Camera():
             Array of shape ``(image_count, height, width)``.
         """
         # Preallocate memory if necessary
+        out_shape = (int(image_count), self.default_shape[0], self.default_shape[1])
         if out is None:
-            imgs = np.empty(
-                (int(image_count), self.default_shape[0], self.default_shape[1]),
-                dtype=self.dtype
-            )
+            imgs = np.empty(out_shape, dtype=self.dtype)
         else:
-            imgs = out
+            if out.shape != out_shape:
+                raise ValueError(f"Expected out to be of shape {out_shape}. Found {out.shape}.")
+            if out.dtype != self.dtype:
+                raise ValueError(f"Expected out to be of type {self.dtype}. Found {out.dtype}.")
+            imgs = np.array(out, copy=False, dtype=self.dtype)
 
         # Flush if desired.
         if flush:
             self.flush()
 
-        # Grab images.
+        # Grab images (no transformation)
         try:
             # Using the camera-specific method if available
-            imgs = self._get_images_hw(image_count)
+            imgs = self._get_images_hw(image_count, timeout_s=timeout_s, out=imgs)
         except NotImplementedError:
             # Brute-force collection as a backup
             for i in range(image_count):
-                imgs[i, :, :] = self._get_image_hw()
+                imgs[i, :, :] = self._get_image_hw(timeout_s=timeout_s)
 
+        # Transform if desired.
         if transform:
             imgs_ = np.empty(
                 (int(image_count), self.shape[0], self.shape[1]),
                 dtype=self.dtype
             )
             for i in range(image_count):
-                imgs[i, :, :] = self.transform(imgs[i])     # TODO: check rotation?
+                imgs_[i, :, :] = self.transform(imgs[i])
+
+            imgs = imgs_
 
         return imgs
 
-    def get_hdr_image(self, exposures=4, exposure_power=2, return_raw=False, **kwargs):
+    def get_image_hdr(self, exposures=None, return_raw=False, **kwargs):
         r"""
         Often, the necessities of precision applications exceed the bitdepth of a
         camera. One way to recover High Dynamic Range (HDR) imaging is to use
@@ -370,30 +528,48 @@ class Camera():
         each with increasing exposure time. Then, these images can be stitched together
         as floating-point data, omitting data which is under- or over- exposed.
 
+        Tip
+        ~~~
+        This feature can be accessed in :meth:`.get_image()`
+        using :attr:`hdr` or the ``hdr=`` flag.
+        This function is exposed here also to reveal the raw data using ``return_raw=``
+        and to draw attention to this useful feature.
+
+        Caution
+        ~~~~~~~
+        Camera exposure is sometimes poorly defined. This might cause incorrect
+        assumptions of the exposure.
+        In general, a larger base exposure will produce more accurate results as a
+        greater number of sample clock periods are rounded to for smaller relative variation.
+        Future modifications to :meth:`get_image_hdr_analysis()` might improve image stitching.
+
         Parameters
         ----------
-        exposures : int
+        exposures : int OR (int, int)
             The number of exposures to take.
-        exposure_power : int
             Each exposure increases in time multiplicatively from the base value
-            (original :meth:`get_exposure()`) by this factor :math:`p`. The :math:`i\text{th}` image has
-            exposure time :math:`\tau \times p^i`, zero-indexed.
+            (original :meth:`get_exposure()`) by a factor :math:`p`.
+            The :math:`i\text{th}` image has exposure time :math:`\tau \times p^i`, zero-indexed.
+            The default base of :math:`p = 2` leads to ``exposures`` being equivalent to
+            `spots <https://en.wikipedia.org/wiki/Exposure_value>`_.
+            This base can be changed to another number by instead passing a tuple, where
+            the second ``int`` defines the desired base.
+        return_raw : bool
+            If ``True``, returns the raw data (stack of images with count ``exposures``)
+            instead of the processed data. The data can be processed using :meth:`get_image_hdr_analysis`
         **kwargs
             Passed to :meth:`.get_image()`.
 
         Returns
         -------
         numpy.ndarray of float
-            TODO
             Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.
 
             Important
             ~~~~~~~~~
             The scale of the returned image is the same as the original exposure.
         """
-        # Parse inputs
-        exposures = int(exposures)
-        exposure_power = int(exposure_power)    # Force int so we have a chance of exposure aligning with camera clock.
+        (exposures, exposure_power) = self._parse_hdr(exposures)
 
         # Make empty data and grab the original exposure time.
         original_exposure = self.get_exposure()
@@ -401,7 +577,7 @@ class Camera():
 
         for i in range(exposures):
             self.set_exposure(int(exposure_power ** i) * original_exposure)
-            self.flush()
+            self.flush()    # Sometimes, cameras return bad frames after exposure change.
             imgs[i, :, :] = self.get_image(**kwargs)
 
         # Reset exposure.
@@ -411,10 +587,13 @@ class Camera():
         if return_raw:
             return imgs
         else:
-            return self.get_hdr_image_analysis(imgs, exposure_power, overexposure_threshold=self.bitresolution/2)
+            img = self.get_image_hdr_analysis(imgs, exposure_power, overexposure_threshold=self.bitresolution/2)
+            if np.max(img) >= self.bitresolution:
+                warnings.warn("HDR image is overexposed.")
+            return img
 
     @staticmethod
-    def get_hdr_image_analysis(imgs, exposure_power, overexposure_threshold=None):
+    def get_image_hdr_analysis(imgs, overexposure_threshold=None, exposure_power=2):
         r"""
         Analyzes raw data for High Dynamic Range (HDR) imaging
         `multiple exposures <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
@@ -424,13 +603,15 @@ class Camera():
         ----------
         imgs : array_like
             Stack of images with increasing exposure.
+        overexposure_threshold : float OR None
+            For each image (except the first), data is thrown out if values are above
+            this threshold. If ``None``, the threshold defaults to half the maximum.
         exposure_power : int
             Each exposure increases in time multiplicatively from the base value
             (original :meth:`get_exposure()`) by this factor :math:`p`. The :math:`i\text{th}` image has
             exposure time :math:`\tau \times p^i`, zero-indexed.
-        overexposure_threshold : float OR None
-            For each image (except the first), data is thrown out if values are above
-            this threshold. If ``None``, the threshold defaults to half the maximum.
+            The default value of ``2`` leads to ``exposures`` being equivalent to
+            `spots <https://en.wikipedia.org/wiki/Exposure_value>`_.
 
         Returns
         -------
@@ -460,6 +641,8 @@ class Camera():
                 img[mask] = img_current[mask] / float(exposure_power ** i)
 
         return img
+
+    # Other helper methods.
 
     @staticmethod
     def plot_image(img, show=True):
@@ -712,10 +895,8 @@ def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
     cam_count = len(cameras)
     cams_max_height = cams_max_width = 0
     for cam_idx, cam in enumerate(cameras):
-        cam_height = cam.shape[0]
-        cam_width = cam.shape[1]
-        cams_max_height = max(cams_max_height, cam_height)
-        cams_max_width = max(cams_max_width, cam_width)
+        cams_max_height = max(cams_max_height, cam.shape[0])
+        cams_max_width = max(cams_max_width, cam.shape[1])
 
     # Create figure.
     plt.ion()

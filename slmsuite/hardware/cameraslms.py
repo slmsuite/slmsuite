@@ -17,7 +17,6 @@ from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import SpotHologram
 from slmsuite.holography.toolbox import imprint, format_2vectors, format_vectors, smallest_distance, fit_3pt
-from scipy.spatial.distance import chebyshev, euclidean
 from slmsuite.holography.toolbox.phase import blaze
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
 from slmsuite.misc.fitfunctions import cos, sinc2d_nomod # sinc2d_centered, sinc2d_centered_taylor, sinc2d_centered_jacobian
@@ -1635,7 +1634,7 @@ class FourierSLM(CameraSLM):
 
         # Error-check if we're measuring multiple sites at once.
         if num_points > 1:
-            calibration_distance = smallest_distance(calibration_points, euclidean)
+            calibration_distance = smallest_distance(calibration_points, "euclidean")
             if np.max(interference_window) > calibration_distance:
                 raise ValueError(
                     "Requested calibration points are too close together. "
@@ -1653,7 +1652,7 @@ class FourierSLM(CameraSLM):
                 field_point + dorder,   # +2nd field order
                 base_point - dorder     # -1st field order
             )),
-            euclidean
+            "euclidean"
         )
 
         if np.mean(interference_window) > order_distance:
@@ -1669,7 +1668,7 @@ class FourierSLM(CameraSLM):
                 calibration_points,         # +1st calibration order
                 calibration_reflections,    # -1st calibration order
             )),
-            euclidean
+            "euclidean"
         )
 
         if np.mean(interference_window)/2 > reflection_distance:

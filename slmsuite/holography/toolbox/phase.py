@@ -523,7 +523,7 @@ def zernike_aperture(grid, aperture=None):
     # Parse aperture.
     if aperture is None:
         # Check if cameraslm.
-        if hasattr(grid, "slm"):
+        if hasattr(grid, "slm") and hasattr(grid, "cam"):
             grid = grid.slm
 
         # Check if slm.
@@ -587,12 +587,14 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
 
     .. math:: \phi(\vec{x}) = \sum_i w_i Z_{I_i}(\vec{x}).
 
+    where :math:`I_i` are the ANSI ``indices`` of the polynomials and
+    :math:`w_i` are the floating point ``weights`` of each polynomial.
     To improve performance, especially for higher order polynomials,
     we store a cache of Zernike coefficients to avoid regeneration.
     See the below example to generate
     :math:`Z_1 - Z_2 + Z_4 = Z_1^{-1} - Z_1^1 + Z_2^0`,
     where the standard radial Zernike indexing :math:`Z_n^l`
-    is instead represented as :math:`Z_i` by the 1-dimensional ANSI index :math:`i`.
+    is instead represented as :math:`Z_j` by the 1-dimensional ANSI index :math:`j`.
 
     .. highlight:: python
     .. code-block:: python
@@ -775,7 +777,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         return out
 
 
-def _plot_zernike_pyramid(grid, order, scale=1, **kwargs):
+def zernike_pyramid_plot(grid, order, scale=1, **kwargs):
     r"""
     Plots :meth:`.zernike()` on a pyramid of subplots corresponding to the radial and
     azimuthal order. The user can resize the figure with ``plt.figure()`` beforehand
@@ -1317,7 +1319,7 @@ def _determine_source_radius(grid, w=None):
     if w is not None:
         return w
 
-    if hasattr(grid, "slm"):
+    if hasattr(grid, "slm") and hasattr(grid, "cam"):
         grid = grid.slm
     if hasattr(grid, "get_source_radius"):
         return grid.get_source_radius()

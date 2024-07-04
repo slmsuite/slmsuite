@@ -43,5 +43,5 @@ Building an SLM Setup
 
 There are a variety of ways to configure an SLM in a beamline, each with advantages and
 disadvantages. In addition, there are known "best practices" to consider when aligning.
-We're in the progress of writing a full guide; however, in the interim, the alignment
+We're in the process of writing a full guide; however, in the interim, the alignment
 tutorial `here <https://aomicroscopy.org/slm-alignment>`_ should get you started!

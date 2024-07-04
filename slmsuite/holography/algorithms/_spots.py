@@ -145,7 +145,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                     :math:`Z_4 = Z_2^0` focus term.
 
                 -   If ``D > 3``, then the basis is assumed to be ``[1,...,D]``.
-                    The piston (Zernike index 0) term is ignored as this constant phase is
+                    The piston term (Zernike index 0) is ignored as this constant phase is
                     not relevant.
 
                 See the next option to customize the Zernike basis beyond these defaults.
@@ -164,9 +164,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             normalize.
             MRAF functionality still works by setting elements of ``spot_amp``
             to ``np.nan``, denoting 'noise' points where amplitude can be dumped.
-        cameraslm : slmsuite.hardware.cameraslms.FourierSLM
+        cameraslm : ~slmsuite.hardware.cameraslms.FourierSLM
             Must be passed. The default of ``None`` with throw an error and is only
-            there such that we can retain the same order as :class:`SpotHologram`.
+            optional such that we can retain the same argument ordering as :class:`SpotHologram`.
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """

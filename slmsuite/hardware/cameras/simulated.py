@@ -357,7 +357,7 @@ class SimulatedCamera(Camera):
         # Analog phase
         # self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
         # Quantized phase
-        phase = -self._slm.display.astype(float)/self._slm.bitresolution*(2*np.pi)
+        phase = -self._slm.display.astype(float) / (self._slm.bitresolution * 2 * np.pi)
         self._hologram.reset_phase(phase - phase.min() + self._slm.source["phase_sim"])
 
         ff = self._hologram.extract_farfield(get=True if (cp == np) else False)
@@ -372,8 +372,7 @@ class SimulatedCamera(Camera):
         if cp != np:
             img = img.get()
 
-        # Quantize: all power in one pixel (img=1) -> maximum readout value at base exposure=1
-        img = np.rint(img * self.exposure * self.bitresolution)
+        img *= (self.exposure * self.bitresolution)
 
         # Basic noise sources.
         if self.noise is not None:
@@ -388,6 +387,9 @@ class SimulatedCamera(Camera):
                     img = img + read
                 else:
                     raise RuntimeError('Unknown noise source %s specified!'%(key))
+
+        # Quantize: all power in one pixel (img=1) -> maximum readout value at base exposure=1
+        img = np.rint(img)
 
         # Truncate to maximum readout value
         img[img > self.bitresolution] = self.bitresolution

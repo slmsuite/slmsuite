@@ -310,14 +310,13 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
 
     .. math:: M_{m_xm_y} = \frac{   \int_{-w_x/2}^{+w_x/2} dx \, (x-c_x)^{m_x}
                                     \int_{-w_y/2}^{+w_y/2} dy \, (y-c_y)^{m_y}
-                                    P(x+x_0, y+y_0)
+                                    P(x, y)
                                 }{  \int_{-w_x/2}^{+w_x/2} dx \,
                                     \int_{-w_y/2}^{+w_y/2} dy \,
                                     P(x, y)},
 
-    where :math:`P(x, y)` is a given 2D image, :math:`(x_0, y_0)` is the center of a
-    window of size :math:`w_x \times w_y`, and :math:`(c_x, c_y)` is a shift in the
-    center of the trial functions.
+    where :math:`P(x, y)` is a given 2D image of size :math:`w_x \times w_y`,
+    and :math:`(c_x, c_y)` is a shift in the center of the trial functions.
 
     Caution
     ~~~~~~~
@@ -359,10 +358,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
             ``float`` or an anisotropic ``(float, float)``.
             This corresponds to the pixel's :math:`\Delta x`, :math:`\Delta y`.
         -   Providing lists of length ``w`` and ``h`` as a tuple as the grid dimension.
-
-            Tip
-            ~~~
-            If the user pre-allocates and reuses these lists, this case has best performance.
+            **If the user pre-allocates and reuses these lists, this case has best performance.**
         -   Providing two full grids of shape ``(h, w)``, one for each direction.
             Note that this case is the most general, and can lead to a rotated grid if a
             transformed grid is provided.
@@ -787,8 +783,8 @@ def image_ellipticity_angle(variances):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
-def batch_fit(y, x, function, guess, plot=False):
-    pass
+# def batch_fit(y, x, function, guess, plot=False):
+#     pass
 
 
 def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):

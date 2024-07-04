@@ -161,7 +161,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     There are a few units where this differs:
 
     -  ``"zernike"``
-        The phase coefficient of the :math:`2(x^ + y^2) - 1 = Z_4 = Z_2^0`
+        The phase coefficient of the :math:`2(x^2 + y^2) - 1 = Z_4 = Z_2^0`
         zernike focus term necessary to focus at the given depth.
 
     -  ``"ij"``
@@ -240,7 +240,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         vector_z = None
 
     # Determine whether a CameraSLM was passed (to enable "ij" units and related).
-    if hasattr(hardware, "slm"):
+    if hasattr(hardware, "slm") and hasattr(hardware, "cam"):
         cameraslm = hardware
         slm = hardware.slm
     else:
@@ -1220,7 +1220,7 @@ def smallest_distance(vectors, metric="chebyshev"):
 def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
     r"""
     Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
-    on a set of ``vectors`` using the helper function
+    on a set of seed ``vectors`` to promote even vector spacing using the helper function
     :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
     This iteratively forces a set of ``vectors`` away from each other until
     they become more evenly distributed over a space.

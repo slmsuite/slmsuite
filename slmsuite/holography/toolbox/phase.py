@@ -529,7 +529,7 @@ def zernike_aperture(grid, aperture=None):
     # Parse aperture.
     if aperture is None:
         # Check if cameraslm.
-        if hasattr(grid, "slm"):
+        if hasattr(grid, "slm") and hasattr(grid, "cam"):
             grid = grid.slm
 
         # Check if slm.
@@ -547,7 +547,7 @@ def zernike_aperture(grid, aperture=None):
         elif aperture == "cropped":
             x_scale = y_scale = 1 / np.sqrt(np.nanmax(np.square(x_grid) + np.square(y_grid)))
         else:
-            raise ValueError("NotImplemented")
+            raise ValueError(f"Aperture '{aperture}' is not implemented.")
     elif np.isscalar(aperture):
         x_scale = y_scale = aperture
     elif isinstance(aperture, (list, tuple, np.ndarray)) and len(aperture) == 2:
@@ -582,7 +582,88 @@ def zernike(grid, index, weight=1, **kwargs):
     numpy.ndarray
         The phase for this function.
     """
-    return zernike_sum(grid, (index,), (weight,), **kwargs)
+    return zernike_sum(grid, (int(index),), (float(weight),), **kwargs)
+
+
+def zernike_get_string(index, derivative=(0,0)):
+    r"""
+    Returns a :math:`\LaTeX` string corresponding to the cartesian representation of the
+    Zernike polynomial of the given index. The monomials are sorted in reverse Cantor order.
+
+    Parameters
+    ----------
+    index : int
+        ANSI Zernike index.
+    derivative : (int, int)
+        If non-negative, returns the Zernike derivative of the given order. For instance,
+        ``(1, 0)`` corresponds to the first derivative in the :math:`x` direction.
+    """
+    cxy, cw = _zernike_get_cantor([index], [[1]], derivative)
+    result = ""
+
+    # Sum the monomial terms together.
+    for i, w in zip(reversed(range(len(cw))), reversed(cw[:, 0])):
+        result += "{0:+}".format(w)
+
+        for j, n in enumerate(["x", "y"]):
+            if cxy[i, j] >= 1:
+                result += n
+
+                if cxy[i, j] > 1:
+                    result += f"^{cxy[i, j]}"
+
+    if len(result) == 0:
+        result = "0"
+
+    return result.strip("+")    # Remove potential leading +
+
+
+def _zernike_get_cantor(indices, weights, derivative=(0,0), force_pairing=False):
+
+    _zernike_build_indices(indices)
+    zernike_cantor = _zernike_cache_vectorized[indices, :]   # (D, M)
+    M = zernike_cantor.shape[1]
+    cantor_indices = np.arange(M)
+
+    # Remove vectors with all zeros.
+    nonzero = np.any(zernike_cantor, axis=0)    # Which D are nonzero for given m in M
+    cantor_indices = cantor_indices[nonzero]    # M -> M'
+    zernike_cantor = zernike_cantor[:, nonzero] # (D, M')
+
+    cantor_pairing = _inverse_cantor_pairing(cantor_indices)    # (M', 2)
+
+    # Differentiate the terms if needed.
+    if np.any(derivative):
+
+        for j in [0, 1]:
+            if derivative[j] > 0:
+                power = cantor_pairing[:, [j]].T.astype(int)  # (D, 1)
+
+                # Apply the power rule.
+                if derivative[j] == 1:
+                    zernike_cantor *= power
+                elif derivative[j] > 1:
+                    nonzero = power >= derivative[j]
+
+                    zernike_cantor[np.logical_not(nonzero)] = 0
+                    zernike_cantor[nonzero] *= (
+                        special.factorial(power[nonzero]) / special.factorial(power[nonzero] - derivative[j])
+                    ).astype(int)
+
+                # Reduce the power of the term
+                cantor_pairing[:, j] -= derivative[j]
+                cantor_pairing[cantor_pairing[:, j] < 0, j] = 0
+                zernike_cantor *= power >= derivative[j]
+
+        # Remove terms with all zeros
+        nonzero = np.any(zernike_cantor, axis=0)        # Which D are nonzero for given m in M'
+        cantor_pairing = cantor_pairing[nonzero, :]     # M' -> M''
+        zernike_cantor = zernike_cantor[:, nonzero]
+
+    # Reshape the weights into this new basis.
+    cantor_weights = np.matmul(zernike_cantor.T, weights)  # (M', D) x (D, N) = (M', N)
+
+    return cantor_pairing, cantor_weights
 
 
 def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative=(0,0), out=None):
@@ -593,12 +674,14 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
 
     .. math:: \phi(\vec{x}) = \sum_i w_i Z_{I_i}(\vec{x}).
 
+    where :math:`I_i` are the ANSI ``indices`` of the polynomials and
+    :math:`w_i` are the floating point ``weights`` of each polynomial.
     To improve performance, especially for higher order polynomials,
     we store a cache of Zernike coefficients to avoid regeneration.
     See the below example to generate
     :math:`Z_1 - Z_2 + Z_4 = Z_1^{-1} - Z_1^1 + Z_2^0`,
     where the standard radial Zernike indexing :math:`Z_n^l`
-    is instead represented as :math:`Z_i` by the 1-dimensional ANSI index :math:`i`.
+    is instead represented as :math:`Z_j` by the 1-dimensional ANSI index :math:`j`.
 
     .. highlight:: python
     .. code-block:: python
@@ -617,17 +700,36 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    indices : list of int
-        Which Zernike polynomials to sum, defined by ANSI indices.
+    indices : array_like of int OR None
+        Which Zernike polynomials to sum, defined by ANSI indices. Of shape ``(D,)``.
 
         Tip
         ~~~
         Use :meth:`~slmsuite.holography.toolbox.phase.zernike_convert_index()`
         to convert to ANSI from various other common indexing conventions.
 
-    weights : list of float
-        The weight for each given index.
-    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR None
+
+        Important
+        ~~~~~~~~~
+        If ``None`` is passed, the assumed Zernike basis depends on the
+        dimensionality of the provided spots:
+
+        -   If ``D == 2``, then the basis is assumed to be ``[2,1]``
+            corresponding to the :math:`x = Z_2 = Z_1^1`
+            and :math:`y = Z_1 = Z_1^{-1}` tilt terms.
+
+        -   If ``D == 3``, then the basis is assumed to be ``[2,1,4]``
+            corresponding to the previous, with the addition of the
+            :math:`Z_4 = Z_2^0` focus term.
+
+        -   If ``D > 3``, then the basis is assumed to be ``[1,...,D]``.
+            The piston term (Zernike index 0) is ignored as this constant phase is
+            not relevant.
+
+    weights : array_like of float
+        The weight for each given index. Of shape ``(D,)``.
+        If a stack of zernike sums is desired, then use shape ``(D, N)``.
+    aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR float OR None
         Determines how the Zernike polynomials are laterally scaled.
         Parsed with :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`.
 
@@ -656,11 +758,58 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     numpy.ndarray
         The phase for this function. Optionally returns the 2D Zernike mask.
     """
-    # Parse passed values
+    # Parse passed simple values.
     (x_grid, y_grid) = _process_grid(grid)
     (x_scale, y_scale) = zernike_aperture(grid, aperture)
-    (dx, dy) = derivative
-    out = _parse_out(x_grid, out)
+    if len(derivative) != 2:
+        raise ValueError("Expected derivative to be a (int, int)")
+
+
+    # Parse weights.
+    weights = np.squeeze(weights)
+    if weights.ndim <= 1:
+        if weights.ndim == 0:
+            weights = np.array([weights])
+
+        if indices is None:
+            D = None
+        else:
+            indices = np.squeeze(indices)
+            if indices.ndim == 0:
+                indices = np.array([indices])
+
+            D = len(indices)
+
+        if D is None or len(weights) == D:
+            weights = np.reshape(weights, (-1, 1))
+        else:
+            raise ValueError("Expected weights to have a common dimension with indices.")
+    elif weights.ndim == 2:
+        pass
+    else:
+        raise ValueError("Expected weights to be 1D or 2D.")
+
+    (D, N) = weights.shape
+
+    # Parse indices.
+    if indices is None:
+        if D == 2:
+            indices = np.array([2,1])
+        elif D == 3:
+            indices = np.array([2,1,4])
+        else:
+            indices = np.arange(1, D+1)
+
+    indices = np.squeeze(indices)
+    if indices.ndim == 0:
+        indices = np.array([indices])
+    elif indices.ndim > 1:
+        raise ValueError("indices should be a 1D vector.")
+    if weights.shape[0] != len(indices):
+        raise ValueError("Expected weights to have a common dimension with indices.")
+
+    # Parse out.
+    out = _parse_out(x_grid, out, stack=N)
 
     # At the end, we're going to set the values outside the aperture to zero.
     # Make a mask for this if it's necessary.
@@ -672,80 +821,43 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
             return mask
         use_mask = use_mask and np.any(mask == 0)
 
+    # Make the new grids.
     if use_mask:
         x_grid_scaled = x_grid[mask] * x_scale
         y_grid_scaled = y_grid[mask] * y_scale
     else:
-        x_grid_scaled = x_grid * x_scale
-        y_grid_scaled = y_grid * y_scale
+        # Special case to avoid copying grids in the case of no scaling.
+        if x_scale == 1:    x_grid_scaled = x_grid
+        else:               x_grid_scaled = x_grid * x_scale
+        if y_scale == 1:    y_grid_scaled = y_grid
+        else:               y_grid_scaled = y_grid * y_scale
 
-    # Now find the coefficients for polynomial terms x^ay^b. We want to only compute
-    # x^ay^b once because this is an operation on a large array. In contrast, summing
-    # the coefficients of the same terms is simple and fast scalar operations.
-    summed_coefficients = {}
+    # Gather the Zernike information.
+    cantor_terms, cantor_weights = _zernike_get_cantor(indices, weights, derivative)
 
-    for key, weight in zip(indices, weights):
-        coefficients = _zernike_coefficients(key)
-
-        for power_key, factor in coefficients.items():
-            power_factor = factor * weight
-
-            if dx != 0 or dy != 0:
-                # Apply the power rule to the coefficient.
-                if dx == 1:
-                    power_factor *= power_key[0]
-                elif dx != 0:
-                    if power_key[0] >= dx:
-                        power_factor *= factorial(power_key[0]) / factorial(power_key[0] - dx)
-                    else:
-                        power_factor = 0
-
-                if dy == 1:
-                    power_factor *= power_key[1]
-                elif dy != 0:
-                    if power_key[1] >= dy:
-                        power_factor *= factorial(power_key[1]) / factorial(power_key[1] - dy)
-                    else:
-                        power_factor = 0
-
-                # Change the power key based on derivatives.
-                power_key = (int(power_key[0] - dx), int(power_key[1] - dy))
-
-            # Add the coefficient to the sum for the given monomial power.
-            if power_key in summed_coefficients:
-                summed_coefficients[power_key] += power_factor
-            else:
-                summed_coefficients[power_key] = power_factor
-
-    # Finally, build the polynomial.
-    if True:
-        # TODO: use polynomial()?
-        if out is None:
-            out = np.empty(x_grid.shape)
-        else:
-            out = np.array(out, copy=None)
-
-        out.fill(0)
-
-        for power_key, factor in summed_coefficients.items():
-            if factor != 0:
-                if power_key == (0,0):
-                    if use_mask:
-                        out[mask] += factor
-                    else:
-                        out += factor
-                else:
-                    if use_mask:
-                        out[mask] += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
-                    else:
-                        out += factor * np.power(x_grid_scaled, power_key[0]) * np.power(y_grid_scaled, power_key[1])
+    # The masked case only computes on a fraction of the full space.
+    if use_mask:
+        out[:, mask] = polynomial(
+            grid=(x_grid_scaled, y_grid_scaled),
+            weights=cantor_weights,
+            terms=cantor_terms,
+            out=out[:, mask]
+        )
     else:
-        pass
+        out = polynomial(
+            grid=(x_grid_scaled, y_grid_scaled),
+            weights=cantor_weights,
+            terms=cantor_terms,
+            out=out
+        )
 
-    return out
+    if N == 1:
+        return out.reshape(x_grid.shape)
+    else:
+        return out
 
 
-def _plot_zernike_pyramid(grid, order, scale=1, **kwargs):
+def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "noll", "latex", "name"], **kwargs):
     r"""
     Plots :meth:`.zernike()` on a pyramid of subplots corresponding to the radial and
     azimuthal order. The user can resize the figure with ``plt.figure()`` beforehand
@@ -762,27 +874,66 @@ def _plot_zernike_pyramid(grid, order, scale=1, **kwargs):
         Maximum radial order to plot.
     scale : float
         Scales the subplots to ``[-scale, scale]``.
+    titles : list of str
+        Which titles to plot. Options:
+
+        -   ``"ansi"`` the ANSI index,
+        -   ``"noll"`` the noll index,
+        -   ``"latex"`` the cartesian representation of the polynomial,
+        -   ``"name"`` the name of the aberration produced by the polynomial.
     **kwargs
         Passed to :meth:`.zernike()`.
     """
     order = int(order + 1)
     indices_ansi = np.arange((order * (order + 1)) // 2)
     indices_radial = zernike_convert_index(indices_ansi, from_index="ansi", to_index="radial")
+    derivative = kwargs["derivative"] if "derivative" in kwargs else (0,0)
+
+    # Get the pitch of the subplots for later.
+    a1 = plt.subplot(order, order, 1)
+    a2 = plt.subplot(order, order, 2)
+
+    pitch = a2.get_position().xmin - a1.get_position().xmin
+
+    a1.remove()
+    a2.remove()
+
+    # Grab all the phases as a stack.
+    phases = zernike_sum(grid, indices_ansi[np.newaxis, :], np.diag(np.ones_like(indices_ansi)), **kwargs)
 
     for i in indices_ansi:
         n, l = indices_radial[i, :]
         m = (n + l) // 2
 
-        phase = zernike(grid, i, 1, **kwargs)
+        a = plt.subplot(order, order, 1 + m + n*order)
 
-        plt.subplot(order, order, 1 + m + n*order)
-        # plt.title((n,l))
-        if i < len(ZERNIKE_NAMES):
-            plt.title(ZERNIKE_NAMES[i])
-        plt.imshow(phase)
+        # Plot the phase.
+        plt.imshow(phases[i], cmap="twilight")
+
+        # Construct the title.
+        title = ""
+
+        if "ansi" in titles:
+            title += f"#{i}\n"
+        if "noll" in titles:
+            title += f"({n}, {l})\n"
+        if "latex" in titles:
+            latex = zernike_get_string(i, derivative)
+            title += latex + "\n"
+        if derivative == (0,0) and "name" in titles and i < len(ZERNIKE_NAMES):
+            title += ZERNIKE_NAMES[i]
+
+        plt.title(title.strip("\n"))
+
+        # Set scales and move the axis.
         plt.clim([-scale, scale])
         plt.xticks([])
         plt.yticks([])
+
+        dx = .5 * (3*order - n)
+        box = a.get_position()
+        box = box.translated(dx * pitch, 0)
+        a.set_position(box)
 
 
 # Old style dictionary.     {(n,m) : {(nx, ny) : w, ... }, ... }
@@ -792,10 +943,15 @@ _zernike_cache = {}
 _zernike_cache_vectorized = np.array([[]], dtype=int)
 
 
-def _zernike_build(n):
+def _zernike_build_order(o):
     """Pre-caches Zernike polynomial coefficients up to order :math:`n`."""
     N = (n+1) * (n+2) // 2
     for i in range(N):
+        _zernike_coefficients(i)
+
+def _zernike_build_indices(indices):
+    """Pre-caches Zernike polynomial coefficients up to order :math:`n`."""
+    for i in indices:
         _zernike_coefficients(i)
 
 
@@ -886,9 +1042,6 @@ def _zernike_coefficients(index):
 
     return _zernike_cache[index]
 
-
-def _zernike2cantor(indices, coefficients):
-    pass
 
 
 def _zernike_populate_basis_map(indices):
@@ -999,14 +1152,22 @@ def _inverse_cantor_pairing(z):
     """
     Converts a 1D index to a unique 2D index according to the
     `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
+
+    Returns shape ``(D, 2)``
     """
-    z = np.squeeze(np.array(z, dtype=int, copy=None))
+    z = np.array(z, dtype=int, copy=None)
+    if z.ndim != 1:
+        raise ValueError("Expected a list of shape (D,)")
 
     w = np.floor((np.sqrt(8*z + 1) - 1) // 2).astype(int)
     t = (w*w + w) // 2
 
     y = z-t
     x = w-y
+
+    # Handle negative index case which is used for special indices.
+    y[z < 0] = 0
+    x[z < 0] = z[z < 0]
 
     return np.vstack((x, y)).T
 
@@ -1078,31 +1239,30 @@ def _term_pathing(xy):
     return I
 
 
-def _parse_out(x_grid, out):
+def _parse_out(x_grid, out, stack=1):
     """
-    Helper fucntion to error check the shape and type of ``out``.
+    Helper function to error check the shape and type of ``out``.
     """
+    shape = tuple(np.concatenate(([stack], x_grid.shape)))
+
     if out is None:
         # Initialize out to zero.
         if cp == np:
-            out = np.empty_like(x_grid)
+            out = np.zeros(shape, x_grid.dtype)
         else:
-            out = cp.get_array_module(x_grid).empty_like(x_grid)
+            out = cp.get_array_module(x_grid).zeros(shape, x_grid.dtype)
+
+        return out
     else:
         # Error check user-provided out.
-        if out.shape != x_grid.shape:
-            raise ValueError("out must have same shape as grid.")
+        if out.size != np.prod(shape):
+            raise ValueError("out must have same size as the stacked grid.")
         if out.dtype != x_grid.dtype:
             raise ValueError("out must have same type as grid.")
         if cp != np and cp.get_array_module(x_grid) != cp.get_array_module(out):
             raise ValueError("out and grid must both be cupy arrays if one is.")
 
-    return out
-
-try:
-    _polynomial_kernel = cp.RawKernel(CUDA_KERNELS, 'polynomial')
-except:
-    _polynomial_kernel = None
+        return out.reshape(shape)
 
 
 def polynomial(grid, weights, terms=None, pathing=None, out=None):
@@ -1121,15 +1281,16 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
     weights : array_like of float
-        Array of shape ``(N,)`` corresponding to the coefficient of each term.
+        Array of shape ``(D,)`` corresponding to the coefficient of each term.
+        Can also be shape ``(D, N)`` if a stack of ``N`` polynomials is desired.
     terms : array_like of int OR None
-        Array of shape ``(N, 2)`` corresponding to the :math:`x` and :math:`y` exponents
-        for the ``N`` terms.
-        Otherwise, array of shape ``(N, 1)`` corresponding to the Cantor indices of
+        Array of shape ``(D, 2)`` corresponding to the :math:`x` and :math:`y` exponents
+        for the ``D`` terms.
+        Otherwise, array of shape ``(D,)`` corresponding to the Cantor indices of
         monomials.
         If ``None``, assumes the terms are Cantor indices of the range of ``weights``.
     pathing : array_like of int OR None
-        Array of shape ``(N,)`` corresponding to an order that the terms should be
+        Array of shape ``(D,)`` corresponding to an order that the terms should be
         calculated. If ``None``, chooses the path that reduces the number of
         multiplications when evaluating monomials.
     out : numpy.ndarray OR cupy.ndarray
@@ -1141,16 +1302,32 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
         Result of the sum.
     """
     # Parse terms
+    terms = np.array(terms)
     if terms is None:
-        terms = _inverse_cantor_pairing(np.arange(len(weights)))
-    elif terms.size != 2:
-        terms = np.squeeze(terms)
+        terms = _inverse_cantor_pairing(np.arange(D))
 
     if terms.ndim == 1:
         terms = _inverse_cantor_pairing(terms)
 
-    if not terms.shape[1] == 2 or terms.ndim != 2:
-        raise ValueError("Terms must be of shape (N, 2). Found {}.".format(terms.shape))
+    if terms.shape[1] != 2:
+        raise ValueError("Terms must be of shape (D, 2) or (D,). Found {}.".format(terms.shape))
+
+    D = terms.shape[0]
+
+    # Parse weights
+    weights = np.array(weights)
+    if weights.ndim == 1:
+        if len(weights) == D:
+            weights = np.reshape(weights, (-1, 1))
+        else:
+            raise ValueError("Expected weights to have a common dimension with indices.")
+    elif weights.ndim == 2:
+        if weights.shape[0] != D:
+            raise ValueError("Expected weights to have a common dimension with indices.")
+    else:
+        raise ValueError("Expected weights to be 1D or 2D.")
+
+    (D, N) = weights.shape
 
     # Parse pathing
     if pathing is False:
@@ -1160,55 +1337,51 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
 
     # Prepare the grids and canvas.
     (x_grid, y_grid) = _process_grid(grid)
-    out = _parse_out(x_grid, out)
+    out = _parse_out(x_grid, out, stack=N)
 
-    # Decide whether to use numpy/cupy or CUDA
-    if cp == np or _polynomial_kernel is None or cp.get_array_module(x_grid) == np:  # numpy/cupy
-        out.fill(0)
-        nx0 = ny0 = 0
-        if cp == np:
-            monomial = np.ones_like(x_grid)
+    out.fill(0)
+    nx0 = ny0 = 0
+    if cp == np:
+        monomial = np.ones_like(x_grid)
+    else:
+        monomial = cp.get_array_module(x_grid).ones_like(x_grid)
+
+    # Force datatype for easier multiplication.
+    weights = weights.astype(out.dtype)
+
+    # Sum the result.
+    for index in pathing:
+        (nx, ny) = terms[index, :]
+
+        if nx >= 0:                     # Usual case: monomial.
+            # Reset if we're starting a new path.
+            if nx - nx0 < 0 or ny - ny0 < 0:
+                nx0 = ny0 = 0
+                monomial.fill(1)
+
+            # Traverse the path in +x or +y.
+            for _ in range(nx - nx0):
+                monomial *= x_grid
+            for _ in range(ny - ny0):
+                monomial *= y_grid
+
+            # Update the current index.
+            nx0, ny0 = nx, ny
+
+            # We use a for loop here because the arrays will already be big (vectorization
+            # overhead already amortized) and multiplying with zero or special indexing
+            # can cost, esp. on GPU and scalar transfer is easier.
+            for i in range(N):
+                if weights[index, i] != 0:
+                    out[i, ...] += weights[index, i] * monomial
+        elif nx == -1 and ny == 0:      # Special case: vortex waveplate.
+            lg = np.arctan2(y_grid, x_grid)
+
+            for i in range(N):
+                if weights[index, i] > 0:
+                    out[i, ...] += weights[index, i] * lg
         else:
-            monomial = cp.get_array_module(x_grid).ones_like(x_grid)
-
-        # Sum the result.
-        for index in pathing:
-            if weights[index] != 0:
-                (nx, ny) = terms[index, :]
-
-                # Reset if we're starting a new path.
-                if nx - nx0 < 0 or ny - ny0 < 0:
-                    nx0 = ny0 = 0
-                    monomial.fill(1)
-
-                # Traverse the path in +x or +y.
-                for _ in range(nx - nx0):
-                    monomial *= x_grid
-                for _ in range(ny - ny0):
-                    monomial *= y_grid
-
-                # Add the monomial to the result.
-                out += weights[index] * monomial
-    else:                               # CUDA
-        N = int(terms.shape[0])
-        WH = int(x_grid.size)
-
-        threads_per_block = int(_polynomial_kernel.max_threads_per_block)
-        blocks = WH // threads_per_block
-
-        # Call the RawKernel.
-        _polynomial_kernel(
-            (blocks,),
-            (threads_per_block,),
-            (
-                WH, N,
-                cp.array(weights[pathing], copy=None),
-                cp.array(terms.T[pathing, :], copy=None),
-                x_grid.ravel(),
-                y_grid.ravel(),
-                out.ravel()
-            )
-        )
+            raise ValueError("Unrecognized")
 
     return out
 
@@ -1248,7 +1421,7 @@ def _determine_source_radius(grid, w=None):
     if w is not None:
         return w
 
-    if hasattr(grid, "slm"):
+    if hasattr(grid, "slm") and hasattr(grid, "cam"):
         grid = grid.slm
     if hasattr(grid, "get_source_radius"):
         return grid.get_source_radius()
@@ -1257,7 +1430,7 @@ def _determine_source_radius(grid, w=None):
     return np.min([np.amax(x_grid), np.amax(y_grid)]) / 4
 
 
-def laguerre_gaussian(grid, l, p, w=None):
+def laguerre_gaussian(grid, l, p=0, w=None):
     r"""
     Returns the phase farfield for a
     `Laguerre-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Laguerre-Gaussian_modes>`_

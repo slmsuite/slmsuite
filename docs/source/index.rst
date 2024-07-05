@@ -1,18 +1,18 @@
 slmsuite
 ========
 
-.. .. sidebar:: Hone Your Spots
-
-..    An advanced GPU kernel enables spot-specific aberration correction.
-
-..    .. image:: /static/ex-onn.png
-..     :class: only-dark
-
-..    .. image:: /static/ex-onn.png
-..       :class: only-light
-
 |slmsuite|_ is a Python package for high-precision
 spatial light modulator (SLM) control and holography.
+
+.. .. sidebar:: Hone Your Spots
+
+..    |slmsuite|_ enables spot-specific Zernike aberration correction.
+
+..    .. image:: /static/zernike-example-dark.png
+..     :class: only-dark
+
+..    .. image:: /static/zernike-example.png
+..       :class: only-light
 
 .. sidebar:: Enhance Your Holography
 

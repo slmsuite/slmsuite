@@ -28,14 +28,14 @@ class Meadowlark(SLM):
     """
 
     def __init__(
-            self,
-            verbose=True,
-            sdk_path=DEFAULT_SDK_PATH,
-            lut_path=None,
-            wav_um=1,
-            pitch_um=(8,8),
-            **kwargs
-        ):
+        self,
+        verbose=True,
+        sdk_path=DEFAULT_SDK_PATH,
+        lut_path=None,
+        wav_um=1,
+        pitch_um=(8,8),
+        **kwargs
+    ):
         r"""
         Initializes an instance of a Meadowlark SLM.
 

@@ -182,6 +182,12 @@ class SLM:
         """Abstract method to close the SLM and delete related objects."""
         raise NotImplementedError()
 
+    def __del__(self):
+        try:
+            self.close()
+        except:
+            pass
+
     @staticmethod
     def info(verbose=True):
         """
@@ -351,7 +357,7 @@ class SLM:
             cropped, then the cropped data is stored, etc. If integer data was passed, the
             equivalent floating point phase is computed and stored in the attribute :attr:`phase`.
         phase_correct : bool
-            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]` to ``phase``.
+            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]`` to ``phase``.
         settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
 
@@ -527,7 +533,7 @@ class SLM:
         path : str
             Path to directory to save in. Default is current directory.
         name : str OR None
-            Name of the save file. If ``None``, will use :attr:`name` ``+ '_phase'.
+            Name of the save file. If ``None``, will use :attr:`name` + ``'_phase'``.
 
         Returns
         -------
@@ -548,17 +554,19 @@ class SLM:
 
         return file_path
 
-    def load(self, file_path=None):
+    def load(self, file_path=None, settle=False):
         """
         Loads :attr:`~slmsuite.hardware.slms.slm.SLM.display`
-        from a file and writes to the SLM without :attr:`settle_time_s`.
+        from a file and writes to the SLM.
 
         Parameters
         ----------
         file_path : str OR None
             Full path to the phase file. If ``None``, will
             search the current directory for a file with a name like
-            :attr:`name` ``+ '_phase'.
+            :attr:`name` + ``'_phase'``.
+        settle : bool
+            Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
 
         Returns
         -------
@@ -592,6 +600,10 @@ class SLM:
 
         if not np.all(np.isclose(data["display"], self._phase2gray(data["phase"]))):
             warnings.warn("Integer data in 'display' does not match 'phase' for this SLM.")
+
+        # Optional delay.
+        if settle:
+            time.sleep(self.settle_time_s)
 
         return file_path
 

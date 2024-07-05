@@ -415,8 +415,9 @@ class Hologram(_HologramStats):
             compared to random initialization, as the analytic distribution
             is smooth in phase.
             If ``None``, looks for ``"quadratic_initial_phase"`` in :attr:`flags`.
-            If a floating point number is provided, the size of the beam in the
+            If a ``float`` is provided, the size of the beam in the
             farfield is scaled accordingly.
+            This feature is ignored if ``phase`` is not ``None``.
         """
         # Parse quadratic_initial_phase
         if quadratic_initial_phase is None:
@@ -508,7 +509,7 @@ class Hologram(_HologramStats):
         """
         cameraslm = None
         # If slm_shape is actually a FourierSLM
-        if hasattr(slm_shape, "slm"):
+        if hasattr(slm_shape, "slm") and hasattr(slm_shape, "cam"):
             cameraslm = slm_shape
             slm_shape = cameraslm.slm.shape
 

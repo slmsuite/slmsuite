@@ -19,6 +19,12 @@ from slmsuite.holography.toolbox import _process_grid
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuda.cu"), 'r') as file:
     CUDA_KERNELS = file.read()
 
+def _load_cuda():
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuda.cu"), 'r') as file:
+        CUDA_KERNELS = file.read()
+
+    return CUDA_KERNELS
+
 # Basic gratings.
 
 def blaze(grid, vector=(0, 0)):
@@ -907,12 +913,12 @@ def _zernike_populate_basis_map(indices):
 
     M = len(cantor_indices)
 
-    pxy_m = _inverse_cantor_pairing(cantor_indices)
+    pxy_m = _inverse_cantor_pairing(cantor_indices).astype(np.int32)
 
     # Find an optimal sort pattern for constructing the polynomials.
     # msort = _term_pathing(pxy_m)
     msort = np.arange(M)
-    pxy_m = pxy_m[msort, :].astype(int)
+    pxy_m = pxy_m[msort, :]
 
     # Reinsert the other cases.
     if len(other_indices) > 0:
@@ -921,7 +927,7 @@ def _zernike_populate_basis_map(indices):
 
     # Populate the results.
     c_md = _zernike_cache_vectorized[zernike_indices, :][:, cantor_indices[msort]].T.astype(np.float32)
-    i_md = np.full((M, D), -1, dtype=int)
+    i_md = np.full((M, D), -1, dtype=np.int32)
 
     darange = np.arange(len(zernike_indices))
 
@@ -939,6 +945,8 @@ except:
 
 
 def _zernike_test(grid, indices):
+    _zernike_test_kernel = cp.RawKernel(_load_cuda(), 'zernike_test')
+
     c_md, i_md, pxy_m = _zernike_populate_basis_map(indices)
 
     # Parse grid.
@@ -946,8 +954,8 @@ def _zernike_test(grid, indices):
     scale = 1
     if hasattr(grid, "get_source_zernike_scaling"):
         scale = grid.get_source_zernike_scaling()
-    x_grid = cp.array(x_grid.astype(np.float32) * scale, copy=None)
-    y_grid = cp.array(y_grid.astype(np.float32) * scale, copy=None)
+    x_grid = cp.array(x_grid * scale, copy=None, dtype=np.float32)
+    y_grid = cp.array(y_grid * scale, copy=None, dtype=np.float32)
 
     (H, W) = x_grid.shape
     WH = int(W*H)

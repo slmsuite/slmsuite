@@ -212,7 +212,7 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
     const unsigned int N,           // Size of farfield
     const unsigned int D,           // Dimension of Zernike basis (2 [xy] for normal spot arrays)
     const unsigned int M,           // Dimension of polynomial basis (2 [xy] for normal spot arrays)
-    const float* a_nd,              // Spot Zernike coefficients (size N*D) [shared]
+    const float* a_dn,              // Spot Zernike coefficients (size D*N) [shared]
     const float* c_md,              // Polynomial coefficients for Zernike (size M*D) [shared]
     const int* i_md,                // A key for where c_dm is nonzero (size M*D) [shared]
     const int* pxy_m,               // Monomial coefficients (size 2*M) [shared]
@@ -224,41 +224,44 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
 ) {
     // nf is the index of the pixel in the nearfield.
     int nf = blockDim.x * blockIdx.x + threadIdx.x;
+    
+    // Local variables.
+    complex<float> result = 0;
+    float exponent = 0;
+    int i = 0;
+    int d = 0;
+    int k = 0;
 
+    // Prepare local basis.
+    // This is the phase for a given coefficient d at the current pixel.
+    // It incurs an O(D) cost, but is amortized over O(N) points.
+    float basis[BASIS_SIZE];
+
+    populate_basis(
+        dx * (float)((nf % W) - cx),
+        dy * (float)((nf / W) - cy),
+        D, M, 
+        c_md, i_md, pxy_m,
+        basis
+    );
+
+    // Loop over all the spots.
+    for (i = 0; i < N; i++) {
+        // exponent = 0;
+        // // Loop over basis indices.
+        // k = i * D;
+        // for (d = 0; d < D; d++) {
+        //     exponent += basis[d] * a_dn[k];
+        //     k++;
+        // }
+        // result += farfield[i] * exp(complex<float>(0, exponent));
+        result += farfield[i] * exp(complex<float>(0, basis[i]));
+    }
+
+    // Export the result to global memory.
     if (nf < W*H) {
-        // Prepare local basis.
-        // This is the phase for a given coefficient d at the current pixel.
-        // It incurs an O(D) cost, but is amortized over O(N) points.
-        float basis[BASIS_SIZE];
-
-        populate_basis(
-            dx * (float)((nf % W) - cx),
-            dy * (float)((nf / W) - cy),
-            D, M, c_md, i_md, pxy_m,
-            basis
-        );
-
-        // Local variables.
-        complex<float> result = 0;
-        float exponent = 0;
-        int i = 0;
-        int d = 0;
-        int k = 0;
-
-        // Loop over all the spots.
-        for (i = 0; i < N; i++) {
-            exponent = 0;
-            // Loop over basis indices.
-            k = i;
-            for (d = 0; d < D; d++) {
-                exponent += basis[d] * a_nd[k];
-                k += N;
-            }
-            result += farfield[i] * exp(complex<float>(0, exponent));
-        }
-
-        // Export the result to global memory.
-        nearfield[nf] = result;
+        // nearfield[nf] = result; // 
+        nearfield[nf] = complex<float>(dx * (float)((nf % W) - cx), dy * (float)((nf / W) - cy)); // result;
     }
 }
 
@@ -269,7 +272,7 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
     const unsigned int N,                   // Size of farfield
     const unsigned int D,                   // Dimension of Zernike basis (2 [xy] for normal spot arrays)
     const unsigned int M,                   // Dimension of polynomial basis (2 [xy] for normal spot arrays)
-    const float* a_nd,                      // Spot Zernike coefficients (size N*D) [shared]
+    const float* a_dn,                      // Spot Zernike coefficients (size N*D) [shared]
     const float* c_md,                      // Polynomial coefficients for Zernike (size M*D) [shared]
     const int* i_md,                        // A key for where c_dm is nonzero (size M*D) [shared]
     const int* pxy_m,                       // Monomial coefficients (size 2*M) [shared]
@@ -292,6 +295,7 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
     complex<float> result = 0;
     float exponent = 0;
     int i = 0;
+    int k = 0;
     int d = 0;
 
     // Prepare local basis.
@@ -299,25 +303,27 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
     // It incurs an O(D) cost, but is amortized over O(N) points.
     float basis[BASIS_SIZE];
 
-    if (inrange) {
-        populate_basis(
-            dx * ((nf % W) - cx),
-            dy * ((nf / W) - cy),
-            D, M, c_md, i_md, pxy_m,
-            basis
-        );
-    }
+    populate_basis(
+        dx * ((nf % W) - cx),
+        dy * ((nf / W) - cy),
+        D, M, c_md, i_md, pxy_m,
+        basis
+    );
 
     // Iterate through farfield points. Use our basis to find the results.
     for (i = 0; i < N; i++) {
-        if (inrange) {
-            // Loop over basis indices.
-            for (d = 0; d < D; d++) {
-                exponent += basis[d] * a_nd[d*N + i];
-            }
+        exponent = 0;
+        
+        // Loop over basis indices.
+        k = i*N;
+        for (d = 0; d < D; d++) {
+            exponent += basis[d] * a_dn[k];
+            k++;
+        }
 
-            // Do the overlap integrand for one nearfield-farfield mapping.
-            // sdata[tid] = exp(complex<float>(0, exponent)); //conj(nearfield[nf]); // * exp(imag * exponent);
+        // Do the overlap integrand for one nearfield-farfield mapping.
+        // sdata[tid] = exp(complex<float>(0, exponent)); //conj(nearfield[nf]); // * exp(imag * exponent);
+        if (inrange) {
             sdata[tid] = conj(nearfield[nf]) * exp(complex<float>(0, exponent));
             // conj(nearfield[nf]) * exp(imag * exponent);
         } else {
@@ -373,7 +379,7 @@ extern "C" __global__ void zernike_test(
         // Export the result to global memory.
         int j = 0;
         for (int i = 0; i < D; i++) {
-            out[nf + j] = basis[i]; // X[nf] + Y[nf]; // 
+            out[nf + j] = basis[i];
             j += WH;
         }
     }

@@ -297,7 +297,7 @@ class Hologram(_HologramStats):
         else:               # Otherwise, initialize and normalize.
             self.amp = cp.array(amp, dtype=self.dtype, copy=False)
             self.amp *= 1 / Hologram._norm(self.amp)
-
+        
         # Initialize flags.
         self.flags = kwargs
 
@@ -309,6 +309,9 @@ class Hologram(_HologramStats):
 
         # Initialize everything else inside reset.
         self.reset(reset_phase=False, reset_flags=False)
+
+        self.nearfield = None
+        self.farfield = None
 
         # Custom GPU kernels for speedy weighting.
         self._update_weights_generic_cuda_kernel = None
@@ -688,7 +691,7 @@ class Hologram(_HologramStats):
                 )
             return farfield
 
-    def _populate_results(self, nearfield=None):
+    def _populate_results(self):
         """
         Helper function to populate:
             - farfield
@@ -703,14 +706,10 @@ class Hologram(_HologramStats):
         """
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
-        if nearfield is None:
-            nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
-        else:
-            nearfield.fill(0)
+        self.nearfield.fill(0)
+        self.nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
 
-        nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
-
-        self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
+        self.farfield = self._nearfield2farfield(self.nearfield, farfield_out=self.farfield)
         self.amp_ff = cp.abs(self.farfield)
         self.phase_ff = cp.angle(self.farfield)
 
@@ -1030,10 +1029,12 @@ class Hologram(_HologramStats):
             See :meth:`.optimize()`.
         """
         # Initialize nearfield and farfield.
-        nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
+        if self.nearfield is None:
+            self.nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
         # Use self.target.shape instead of self.shape to account for CompressedSpotHologram cases.
-        self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)
-
+        if self.farfield is None:
+            self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)
+        
         # Precompute MRAF helper variables.
         mraf_variables = self._mraf_helper_routines()
 
@@ -1045,11 +1046,11 @@ class Hologram(_HologramStats):
             # Fix the relevant part of the nearfield amplitude to the source amplitude.
             # Everything else is zero because power outside the SLM is assumed unreflected.
             # This is optimized for when shape is much larger than slm_shape.
-            nearfield.fill(0)
-            nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
+            self.nearfield.fill(0)
+            self.nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
 
             # FFT to move to the farfield.
-            self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
+            self.farfield = self._nearfield2farfield(self.nearfield, farfield_out=self.farfield)
 
             # (B) Midloop caching and prep
             # Before callback(), cleanup such that it can access updated amp_ff and images.
@@ -1065,13 +1066,13 @@ class Hologram(_HologramStats):
             self._gs_farfield_routines(self.farfield, mraf_variables)
 
             # (C) Farfield -> nearfield.
-            nearfield = self._farfield2nearfield(self.farfield, nearfield_out=nearfield)
+            self.nearfield = self._farfield2nearfield(self.farfield, nearfield_out=self.nearfield)
 
             # Grab the phase from the complex nearfield.
             # Use arctan2() directly instead of angle() for in-place operations (out=).
             self.phase = cp.arctan2(
-                nearfield.imag[i0:i1, i2:i3],
-                nearfield.real[i0:i1, i2:i3],
+                self.nearfield.imag[i0:i1, i2:i3],
+                self.nearfield.real[i0:i1, i2:i3],
                 out=self.phase,
             )
 
@@ -1083,8 +1084,7 @@ class Hologram(_HologramStats):
 
     def _mraf_helper_routines(self):
         # MRAF helper variables
-        noise_region = cp.isnan(self.target)
-        mraf_enabled = bool(cp.any(noise_region))
+        mraf_enabled = np.isnan(cp.sum(self.target).get())
 
         if not mraf_enabled:
             return {
@@ -1094,6 +1094,8 @@ class Hologram(_HologramStats):
                 "noise_region":None,
                 "zero_region":None,
             }
+        
+        noise_region = cp.isnan(self.target)
 
         zero_region = cp.abs(self.target) == 0
         Z = int(cp.sum(zero_region))

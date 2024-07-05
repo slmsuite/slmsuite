@@ -130,9 +130,10 @@ class Camera():
             pass
 
         # Set other useful parameters
+        self.name = str(name)
         self.bitdepth = int(bitdepth)
         self.bitresolution = 2**bitdepth
-        self.dtype = np.array(self._get_image_hw()).dtype   # Future: check if cameras change this after init.
+        self.dtype = self._get_dtype()
 
         # Frame averaging
         self.averaging = self._parse_averaging(averaging, preserve_none=True)
@@ -148,8 +149,6 @@ class Camera():
             self.pitch_um = np.array([float(self.pitch_um[0]), float(self.pitch_um[1])])
         else:
             self.pitch_um = None
-
-        self.name = str(name)
 
         # Default to None, allow subclass constructors to fill.
         self.exposure_bounds_s = None
@@ -278,6 +277,15 @@ class Camera():
         raise NotImplementedError()
 
     # Capture methods one level of abstraction above _get_image_hw().
+
+    def _get_dtype(self):
+        self.dtype = np.array(self._get_image_hw()).dtype   # Future: check if cameras change this after init.
+
+        if self.dtype.itemsize * 8 < self.bitdepth:
+            raise warnings.warn(
+                f"Camera '{self.name}' bitdepth of {self.bitdepth} does not conform "
+                f"with the image type {self.dtype} with {self.dtype.itemsize} bytes."
+            )
 
     def _parse_averaging(self, averaging=None, preserve_none=False):
         """

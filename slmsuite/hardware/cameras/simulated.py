@@ -144,12 +144,15 @@ class SimulatedCamera(Camera):
             method. ``f_eff`` is a required keyword.
         """
 
-        # If kwargs are passed instead of M/b, use these to build M, b
+        # If kwargs are passed instead of M and b, use these to build M, b
         if M is None or b is None:
             f_eff = kwargs.pop("f_eff", None)
             if f_eff is None:
                 raise RuntimeError("'f_eff' must be passed if M or b are not set.")
             M, b = self.build_affine(f_eff, **kwargs)
+
+        self.M = M
+        self.b = b
 
         # Affine transform the camera grid ("ij"->"kxy")
         self._interpolate = True
@@ -172,12 +175,12 @@ class SimulatedCamera(Camera):
         #     "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
         # )
 
-        phase = -self._slm.display.astype(float)/self._slm.bitresolution*(2*np.pi)
+        phase = -self._slm.display.astype(float) / (self._slm.bitresolution * 2 * np.pi)
         self._hologram = Hologram(
             self.shape_padded,
-            amp = self._slm.source["amplitude_sim"],
-            phase = phase - phase.min() + self._slm.source["phase_sim"],
-            slm_shape = self._slm,
+            amp=self._slm.source["amplitude_sim"],
+            phase=phase - phase.min() + self._slm.source["phase_sim"],
+            slm_shape=self._slm,
         )
 
         # Convert kxy -> knm (0,0 at corner): 1/dx -> Npx
@@ -200,7 +203,7 @@ class SimulatedCamera(Camera):
     def build_affine(
             self,
             f_eff,
-            units="ij",
+            units="norm",
             theta=0,
             shear_angle=0,
             offset=None,
@@ -216,16 +219,15 @@ class SimulatedCamera(Camera):
             optical train separating the Fourier-domain SLM from the camera. If a ``float`` is
             provided, ``f_eff`` is isotropic; otherwise, ``f_eff`` is defined along the SLM's
             :math:`x` and :math:`y` axes.
-        units : str {"ij", "m", "cm", "mm", "um", "nm"}
+        units : str {"norm", "ij", "m", "cm", "mm", "um", "nm"}
             Units for the focal length ``f_eff``.
-
-            -  ``"ij"``
-                Focal length in units of camera pixels.
 
             -  ``"norm"``
                 Normalized focal length in wavelengths according to the SLM's
                 :attr:`slmsuite.hardware.slms.slm.SLM.wav_um`.
-
+                This is the default unit.
+            -  ``"ij"``
+                Focal length in units of camera pixels.
             -  ``"m"``, ``"cm"``, ``"mm"``, ``"um"``, ``"nm"``
                 Focal length in metric units.
 
@@ -327,6 +329,8 @@ class SimulatedCamera(Camera):
     def set_exposure(self, exposure):
         """
         Set the simulated exposure (i.e. digital gain).
+        This factor directly multiplies the normalized (sum of squares norm)
+        image.
 
         Parameters
         ----------
@@ -341,6 +345,25 @@ class SimulatedCamera(Camera):
         """
         return self.exposure
 
+    def _get_dtype(self):
+        """Spoof the datatype because we don't have an image to return"""
+        if self.bitdepth <= 0:
+            raise ValueError("Non-positive bitdepth does not make sense.")
+        elif self.bitdepth <= 8:
+            return np.uint8
+        elif self.bitdepth <= 16:
+            return np.uint16
+        elif self.bitdepth <= 32:
+            return np.uint32
+        elif self.bitdepth <= 64:
+            return np.uint64
+        elif self.bitdepth <= 128:
+            return np.uint128
+        elif self.bitdepth <= 256:
+            return np.uint256
+        else:
+            raise ValueError(f"Numpy cannot encode bitdepth {self.bitdepth}.")
+
     def _get_image_hw(self, timeout_s=None):
         """
         See :meth:`.Camera._get_image_hw`. Computes and samples the affine-transformed SLM far-field.
@@ -350,6 +373,10 @@ class SimulatedCamera(Camera):
         numpy.ndarray
             Array of shape :attr:`shape`
         """
+        if not hasattr(self, "_hologram"):
+            raise RuntimeError(
+                "Cannot display SimulatedCamera before affine transformation is defined."
+            )
 
         # Update phase; calculate the far-field (keep on GPU if using cupy for follow-on interp)
         # FUTURE: in the case where sim is being used inside a GS loop, there could be
@@ -372,7 +399,7 @@ class SimulatedCamera(Camera):
         if cp != np:
             img = img.get()
 
-        img *= (self.exposure * self.bitresolution)
+        img *= self.exposure
 
         # Basic noise sources.
         if self.noise is not None:

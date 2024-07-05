@@ -96,10 +96,10 @@ class FeedbackHologram(Hologram):
             points_ij = toolbox.format_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
             points_kxy = self.cameraslm.ijcam_to_kxyslm(points_ij)
             self._cam_points = toolbox.convert_vector(
-                points_kxy, 
-                from_units="kxy", 
-                to_units="knm", 
-                hardware=self.cameraslm.slm, 
+                points_kxy,
+                from_units="kxy",
+                to_units="knm",
+                hardware=self.cameraslm.slm,
                 shape=self.shape
             )
 

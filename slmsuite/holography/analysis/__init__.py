@@ -10,7 +10,8 @@ from functools import reduce
 from scipy.optimize import curve_fit, minimize
 import warnings
 
-from slmsuite.holography.toolbox import format_2vectors
+from slmsuite.holography.toolbox import format_2vectors, _process_grid
+from slmsuite.holography.toolbox.phase import zernike_sum
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography.analysis.fitfunctions import gaussian2d
 
@@ -492,7 +493,8 @@ def image_normalization(images, nansum=False):
 
 def image_normalize(images, nansum=False, remove_field=False):
     """
-    Normalizes of a stack of images via the the zeroth order moments.
+    Normalizes of a stack of images via the the zeroth order moments
+    such that each image sums to one.
 
     Parameters
     ----------
@@ -953,6 +955,131 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
             plt.show()
 
     return result
+
+
+def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, **kwargs):
+    """
+    Fits sets of Zernike polynomials to a stack of ``images``, up to a desired ``order``.
+    This is done in two steps:
+
+    -   First, an iterative approach is used to subtract Zernike orders from each image.
+        If the Zernike aperture is not cropped or occluded, the orthogonality of the Zernike
+        basis makes this a good and exact approach apart from sampling error.
+        However, if the polynomials lose orthoganality, then this process produces a
+        good guess at best.
+    -   Thus, the second step is to refine the guess with a least squares optimization.
+        This can be time consuming.
+
+    Note
+    ~~~~
+    The piston term (Zernike ANSI index 0) is omitted from the fit return.
+
+    Note
+    ~~~~
+    In the future, we might also fit to the derivatives.
+
+    Parameters
+    ----------
+    images : numpy.ndarray (``image_count``, ``height``, ``width``)
+        An image or array of images to fit. A single image is interpreted correctly as
+        ``(1, h, w)`` even if ``(h, w)`` is passed.
+    grid : (array_like, array_like) OR None
+        Components of the meshgrid describing coordinates over the images.
+        If ``None``, makes a grid with unit pitch centered on the images.
+    order : int
+        Maximal radial Zernike order for the fitting basis.
+    iterations : int
+        Number of times to iterate the subtractive approach.
+    leastsquares : bool
+        Whether to do the least squares optimization step.
+    **kwargs
+        Passed to :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
+    """
+    # Setup.
+    if images.ndim == 2:
+        images = images.reshape((1, *images.shape))
+    image_count = images.shape[0]
+
+    # Generate Zernike terms and norms.
+    order = int(order + 1)
+    indices_ansi = np.arange((order * (order + 1)) // 2)
+    D = len(indices_ansi)
+    phases = zernike_sum(
+        grid,
+        indices_ansi[np.newaxis, :],
+        np.diag(np.ones((D,))),
+        use_mask=True,
+        **kwargs
+    )
+    norm = np.reciprocal(np.nansum(np.square(phases), (1,2), keepdims=False))
+
+    # Preallocate the result.
+    vectors_zernike = np.zeros((D, image_count))
+    images_remainders = np.copy(images)     # Copy the data
+
+    # First, make a guess of the result based on iteratively subtracting Zernike terms.
+    for _ in range(int(iterations)):
+        for i in range(D):
+            # Compute the weights of the given Zernike term in the images.
+            overlap = np.nansum(images_remainders * phases[[i]] * norm[i], axis=(1,2))
+
+            # Record this value in the result.
+            vectors_zernike[i, :] += overlap
+
+            # Subtract the power from the images.
+            images_remainders -= overlap * phases[[i]]
+
+    # Second, if desired, hone the guess via leastsquares.
+    # This is especially important for a basis that is no longer orthonormal
+    # due to incomplete data or a cropped aperture.
+    if leastsquares:
+        # Make grid.
+        grid = _process_grid(grid)
+        grid_ravel = (np.ravel(grid[0]), np.ravel(grid[1]))
+
+        for j in range(image_count):
+            # Lambda to build the funtion from test parameters.
+            def zsum(grid, *p):
+                p = np.reshape(p, vectors_zernike.shape)
+
+                return zernike_sum(
+                    grid,
+                    indices_ansi[np.newaxis, :],
+                    p,
+                    use_mask=True,
+                    **kwargs
+                )
+
+            # Try the fit.
+            try:
+                popt, _ = curve_fit(zsum, grid_ravel, images[j].ravel(), ftol=1e-5, p0=vectors_zernike[:, j])
+                vectors_zernike = popt.reshape(vectors_zernike.shape)
+            except RuntimeError:    # The fit failed if scipy says so.
+                pass
+
+    # Return the fit with the piston term omitted.
+    return vectors_zernike[1:, :]
+
+
+def image_vortices(image):
+    """
+    Find the coordinates of optical vortices inside a phase image by computing the
+    winding number directly.
+    """
+    # Discrete derivatives, with appropriate wrapping.
+    dd = [
+        np.mod(np.diff(image, axis=a, prepend=np.nan) - np.pi, 2*np.pi) for a in range(2)
+    ]
+
+    # Sum to compute the winding.
+    winding_number = -(
+        dd[0] - dd[1] - np.roll(dd[0], shift=1, axis=1) + np.roll(dd[1], shift=1, axis=0)
+    ) / (2 * np.pi)
+
+    # Get rid of the nans on the edges.
+    winding_number[np.isnan(winding_number)] = 0
+
+    return winding_number
 
 
 # Array fitting functions.

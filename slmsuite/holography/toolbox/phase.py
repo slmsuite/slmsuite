@@ -541,7 +541,7 @@ def zernike_aperture(grid, aperture=None):
         elif aperture == "cropped":
             x_scale = y_scale = 1 / np.sqrt(np.nanmax(np.square(x_grid) + np.square(y_grid)))
         else:
-            raise ValueError("NotImplemented")
+            raise ValueError(f"Aperture '{aperture}' is not implemented.")
     elif np.isscalar(aperture):
         x_scale = y_scale = aperture
     elif isinstance(aperture, (list, tuple, np.ndarray)) and len(aperture) == 2:
@@ -579,6 +579,87 @@ def zernike(grid, index, weight=1, **kwargs):
     return zernike_sum(grid, (int(index),), (float(weight),), **kwargs)
 
 
+def zernike_get_string(index, derivative=(0,0)):
+    r"""
+    Returns a :math:`\LaTeX` string corresponding to the cartesian representation of the
+    Zernike polynomial of the given index. The monomials are sorted in reverse Cantor order.
+
+    Parameters
+    ----------
+    index : int
+        ANSI Zernike index.
+    derivative : (int, int)
+        If non-negative, returns the Zernike derivative of the given order. For instance,
+        ``(1, 0)`` corresponds to the first derivative in the :math:`x` direction.
+    """
+    cxy, cw = _zernike_get_cantor([index], [[1]], derivative)
+    result = ""
+
+    # Sum the monomial terms together.
+    for i, w in zip(reversed(range(len(cw))), reversed(cw[:, 0])):
+        result += "{0:+}".format(w)
+
+        for j, n in enumerate(["x", "y"]):
+            if cxy[i, j] >= 1:
+                result += n
+
+                if cxy[i, j] > 1:
+                    result += f"^{cxy[i, j]}"
+
+    if len(result) == 0:
+        result = "0"
+
+    return result.strip("+")    # Remove potential leading +
+
+
+def _zernike_get_cantor(indices, weights, derivative=(0,0), force_pairing=False):
+
+    _zernike_build_indices(indices)
+    zernike_cantor = _zernike_cache_vectorized[indices, :]   # (D, M)
+    M = zernike_cantor.shape[1]
+    cantor_indices = np.arange(M)
+
+    # Remove vectors with all zeros.
+    nonzero = np.any(zernike_cantor, axis=0)    # Which D are nonzero for given m in M
+    cantor_indices = cantor_indices[nonzero]    # M -> M'
+    zernike_cantor = zernike_cantor[:, nonzero] # (D, M')
+
+    cantor_pairing = _inverse_cantor_pairing(cantor_indices)    # (M', 2)
+
+    # Differentiate the terms if needed.
+    if np.any(derivative):
+
+        for j in [0, 1]:
+            if derivative[j] > 0:
+                power = cantor_pairing[:, [j]].T.astype(int)  # (D, 1)
+
+                # Apply the power rule.
+                if derivative[j] == 1:
+                    zernike_cantor *= power
+                elif derivative[j] > 1:
+                    nonzero = power >= derivative[j]
+
+                    zernike_cantor[np.logical_not(nonzero)] = 0
+                    zernike_cantor[nonzero] *= (
+                        special.factorial(power[nonzero]) / special.factorial(power[nonzero] - derivative[j])
+                    ).astype(int)
+
+                # Reduce the power of the term
+                cantor_pairing[:, j] -= derivative[j]
+                cantor_pairing[cantor_pairing[:, j] < 0, j] = 0
+                zernike_cantor *= power >= derivative[j]
+
+        # Remove terms with all zeros
+        nonzero = np.any(zernike_cantor, axis=0)        # Which D are nonzero for given m in M'
+        cantor_pairing = cantor_pairing[nonzero, :]     # M' -> M''
+        zernike_cantor = zernike_cantor[:, nonzero]
+
+    # Reshape the weights into this new basis.
+    cantor_weights = np.matmul(zernike_cantor.T, weights)  # (M', D) x (D, N) = (M', N)
+
+    return cantor_pairing, cantor_weights
+
+
 def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative=(0,0), out=None):
     r"""
     Returns a summation of
@@ -613,13 +694,31 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    indices : array_like of int
+    indices : array_like of int OR None
         Which Zernike polynomials to sum, defined by ANSI indices. Of shape ``(D,)``.
 
         Tip
         ~~~
         Use :meth:`~slmsuite.holography.toolbox.phase.zernike_convert_index()`
         to convert to ANSI from various other common indexing conventions.
+
+
+        Important
+        ~~~~~~~~~
+        If ``None`` is passed, the assumed Zernike basis depends on the
+        dimensionality of the provided spots:
+
+        -   If ``D == 2``, then the basis is assumed to be ``[2,1]``
+            corresponding to the :math:`x = Z_2 = Z_1^1`
+            and :math:`y = Z_1 = Z_1^{-1}` tilt terms.
+
+        -   If ``D == 3``, then the basis is assumed to be ``[2,1,4]``
+            corresponding to the previous, with the addition of the
+            :math:`Z_4 = Z_2^0` focus term.
+
+        -   If ``D > 3``, then the basis is assumed to be ``[1,...,D]``.
+            The piston term (Zernike index 0) is ignored as this constant phase is
+            not relevant.
 
     weights : array_like of float
         The weight for each given index. Of shape ``(D,)``.
@@ -659,13 +758,6 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     if len(derivative) != 2:
         raise ValueError("Expected derivative to be a (int, int)")
 
-    # Parse indices.
-    indices = np.squeeze(indices)
-    if indices.ndim == 0:
-        indices = np.array([indices])
-    elif indices.ndim > 1:
-        raise ValueError("indices should be a 1D vector.")
-    D = len(indices)
 
     # Parse weights.
     weights = np.squeeze(weights)
@@ -673,17 +765,42 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         if weights.ndim == 0:
             weights = np.array([weights])
 
-        if len(weights) == D:
+        if indices is None:
+            D = None
+        else:
+            indices = np.squeeze(indices)
+            if indices.ndim == 0:
+                indices = np.array([indices])
+
+            D = len(indices)
+
+        if D is None or len(weights) == D:
             weights = np.reshape(weights, (-1, 1))
         else:
             raise ValueError("Expected weights to have a common dimension with indices.")
     elif weights.ndim == 2:
-        if weights.shape[0] != D:
-            raise ValueError("Expected weights to have a common dimension with indices.")
+        pass
     else:
         raise ValueError("Expected weights to be 1D or 2D.")
 
     (D, N) = weights.shape
+
+    # Parse indices.
+    if indices is None:
+        if D == 2:
+            indices = np.array([2,1])
+        elif D == 3:
+            indices = np.array([2,1,4])
+        else:
+            indices = np.arange(1, D+1)
+
+    indices = np.squeeze(indices)
+    if indices.ndim == 0:
+        indices = np.array([indices])
+    elif indices.ndim > 1:
+        raise ValueError("indices should be a 1D vector.")
+    if weights.shape[0] != len(indices):
+        raise ValueError("Expected weights to have a common dimension with indices.")
 
     # Parse out.
     out = _parse_out(x_grid, out, stack=N)
@@ -709,65 +826,22 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         if y_scale == 1:    y_grid_scaled = y_grid
         else:               y_grid_scaled = y_grid * y_scale
 
-    _zernike_build_indices(indices)
-    zernike_cantor = _zernike_cache_vectorized[indices, :]   # (D, M)
-    M = zernike_cantor.shape[1]
-    cantor_indices = np.arange(M)
-
-    # Remove terms with all zeros
-    nonzero = np.any(zernike_cantor, axis=0)    # Which D are nonzero for given m in M
-    cantor_indices = cantor_indices[nonzero]    # M -> M'
-    zernike_cantor = zernike_cantor[:, nonzero]
-
-    # Differentiate the terms if needed.
-    if np.any(derivative):
-        cantor_pairing = _inverse_cantor_pairing(cantor_indices)    # (M', 2)
-
-        for j in [0, 1]:
-            if derivative[j] > 0:
-                power = cantor_pairing[:, [j]].T.astype(int)  # (D, 1)
-
-                # Apply the power rule.
-                if derivative[j] == 1:
-                    zernike_cantor *= power
-                elif derivative[j] > 1:
-                    nonzero = power > derivative[j]
-
-                    zernike_cantor[np.logical_not(nonzero)] = 0
-                    zernike_cantor[nonzero] *= (
-                        special.factorial(power[nonzero]) / special.factorial(power[nonzero] - derivative[j])
-                    ).astype(int)
-
-                # Reduce the power of the term
-                reduced = cantor_pairing[:, j] > 0
-                cantor_pairing[reduced, j] -= derivative[j]
-                cantor_pairing[np.logical_and(reduced, cantor_pairing[:, j] < 0), j] = 0
-
-        # Remove terms with all zeros
-        nonzero = np.any(zernike_cantor, axis=0)        # Which D are nonzero for given m in M'
-        cantor_pairing = cantor_pairing[nonzero, :]     # M' -> M''
-        zernike_cantor = zernike_cantor[:, nonzero]
-
-        terms = cantor_pairing
-    else:
-        terms = cantor_indices
-
-    # Reshape the weights into this new basis.
-    cantor_weights = np.matmul(zernike_cantor.T, weights)  # (M', D) x (D, N) = (M', N)
+    # Gather the Zernike information.
+    cantor_terms, cantor_weights = _zernike_get_cantor(indices, weights, derivative)
 
     # The masked case only computes on a fraction of the full space.
     if use_mask:
         out[:, mask] = polynomial(
             grid=(x_grid_scaled, y_grid_scaled),
             weights=cantor_weights,
-            terms=terms,
+            terms=cantor_terms,
             out=out[:, mask]
         )
     else:
         out = polynomial(
             grid=(x_grid_scaled, y_grid_scaled),
             weights=cantor_weights,
-            terms=terms,
+            terms=cantor_terms,
             out=out
         )
 
@@ -777,7 +851,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         return out
 
 
-def zernike_pyramid_plot(grid, order, scale=1, **kwargs):
+def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "noll", "latex", "name"], **kwargs):
     r"""
     Plots :meth:`.zernike()` on a pyramid of subplots corresponding to the radial and
     azimuthal order. The user can resize the figure with ``plt.figure()`` beforehand
@@ -794,12 +868,20 @@ def zernike_pyramid_plot(grid, order, scale=1, **kwargs):
         Maximum radial order to plot.
     scale : float
         Scales the subplots to ``[-scale, scale]``.
+    titles : list of str
+        Which titles to plot. Options:
+
+        -   ``"ansi"`` the ANSI index,
+        -   ``"noll"`` the noll index,
+        -   ``"latex"`` the cartesian representation of the polynomial,
+        -   ``"name"`` the name of the aberration produced by the polynomial.
     **kwargs
         Passed to :meth:`.zernike()`.
     """
     order = int(order + 1)
     indices_ansi = np.arange((order * (order + 1)) // 2)
     indices_radial = zernike_convert_index(indices_ansi, from_index="ansi", to_index="radial")
+    derivative = kwargs["derivative"] if "derivative" in kwargs else (0,0)
 
     # Get the pitch of the subplots for later.
     a1 = plt.subplot(order, order, 1)
@@ -810,19 +892,34 @@ def zernike_pyramid_plot(grid, order, scale=1, **kwargs):
     a1.remove()
     a2.remove()
 
+    # Grab all the phases as a stack.
+    phases = zernike_sum(grid, indices_ansi[np.newaxis, :], np.diag(np.ones_like(indices_ansi)), **kwargs)
+
     for i in indices_ansi:
         n, l = indices_radial[i, :]
         m = (n + l) // 2
 
-        phase = zernike(grid, i, 1, **kwargs)
-
         a = plt.subplot(order, order, 1 + m + n*order)
-        # plt.title((n,l))
-        if i < len(ZERNIKE_NAMES):
-            plt.title(f"#{i}\n({n}, {l})\n" + ZERNIKE_NAMES[i])
-        else:
-            plt.title(i)
-        plt.imshow(phase, cmap="twilight")
+
+        # Plot the phase.
+        plt.imshow(phases[i], cmap="twilight")
+
+        # Construct the title.
+        title = ""
+
+        if "ansi" in titles:
+            title += f"#{i}\n"
+        if "noll" in titles:
+            title += f"({n}, {l})\n"
+        if "latex" in titles:
+            latex = zernike_get_string(i, derivative)
+            title += latex + "\n"
+        if derivative == (0,0) and "name" in titles and i < len(ZERNIKE_NAMES):
+            title += ZERNIKE_NAMES[i]
+
+        plt.title(title.strip("\n"))
+
+        # Set scales and move the axis.
         plt.clim([-scale, scale])
         plt.xticks([])
         plt.yticks([])
@@ -939,9 +1036,6 @@ def _zernike_coefficients(index):
 
     return _zernike_cache[index]
 
-
-def _zernike2cantor(indices, coefficients):
-    pass
 
 
 def _zernike_populate_basis_map(indices):
@@ -1328,7 +1422,7 @@ def _determine_source_radius(grid, w=None):
     return np.min([np.amax(x_grid), np.amax(y_grid)]) / 4
 
 
-def laguerre_gaussian(grid, l, p, w=None):
+def laguerre_gaussian(grid, l, p=0, w=None):
     r"""
     Returns the phase farfield for a
     `Laguerre-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Laguerre-Gaussian_modes>`_

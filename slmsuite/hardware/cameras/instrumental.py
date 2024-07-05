@@ -148,7 +148,7 @@ class Instrumental(Camera):
         """
         self.get_images(5)
 
-    def get_image(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s=1):
         """
         Method to pull an image from the camera and return.
 

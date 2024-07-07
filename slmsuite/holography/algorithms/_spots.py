@@ -412,51 +412,58 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             out=out
         )
 
-        # Convert from real phase to complex amplitude.
-        out *= self.dtype_complex(1j)
+        # Convert from real phase to complex amplitude. Conjugated to properly take the overlap.
+        out *= -self.dtype_complex(1j)
         out = cp.exp(out, out=out)
 
         return out
 
     def _update_cupy_kernel(self, kernel_slice=None, batch_slice=None):
         # Check if we need to update the kernel.
+        needs_update = False
         if not hasattr(self, "_spot_zernike_cached") or np.any(self._spot_zernike_cached != self.spot_zernike):
+            # Make a cached copy to see if we need to update next time.
             self._spot_zernike_cached = self.spot_zernike.copy()
+            needs_update = True
 
-            # Updated the kernel based on whether we're slicing (updating a fractional kernel).
-            if kernel_slice is None or batch_slice is None:
-                self._cupy_kernel = self._build_kernel_batched(out=self._cupy_kernel)
-            else:
-                if self._cupy_kernel is None:
-                    self._cupy_kernel = cp.zeros((np.prod(self.slm_shape), N_BATCH_MAX), dtype=self.dtype_complex)
+        # Update the kernel always if we're slicing (updating a fractional kernel).
+        if kernel_slice is not None and batch_slice is not None:
+            if self._cupy_kernel is None:
+                self._cupy_kernel = cp.zeros((np.prod(self.slm_shape), N_BATCH_MAX), dtype=self.dtype_complex)
 
-                self._cupy_kernel[kernel_slice, :] = self._build_kernel_batched(
-                    vectors=self.spot_zernike[:, batch_slice],
-                    out=self._cupy_kernel[kernel_slice, :]
-                )
+            self._cupy_kernel[kernel_slice, :] = self._build_cupy_kernel_batched(
+                vectors=self.spot_zernike[:, batch_slice],
+                out=self._cupy_kernel[kernel_slice, :]
+            )
+        elif needs_update:  # Otherwise, only update if we need to.
+            self._cupy_kernel = self._build_cupy_kernel_batched(out=self._cupy_kernel)
 
-    def _nearfield2farfield(self, nearfield, farfield_out=None):
+    def _nearfield2farfield(self, phase_torch=None):
         """
         Maps the ``(H,W)`` nearfield (complex value on the SLM)
         onto the ``(N,)`` farfield (complex value for each spot).
         """
-        # print("n2f")
-        if farfield_out is None:
-            farfield_out = cp.zeros((len(self),), dtype=self.dtype_complex)
+        # This may return a torch nearfield if we are in torch mode.
+        nearfield = self._build_nearfield(phase_torch)
 
         if self.cuda:
-            try:
-                farfield_out = self._nearfield2farfield_cuda_v2(nearfield, farfield_out)
-            except Exception as err:    # Fallback to cupy upon error.
-                warnings.warn("Falling back to cupy:\n" + str(err))
-                self.cuda = False
+            if phase_torch is None:
+                try:
+                    self.farfield = self._nearfield2farfield_cuda_v2(nearfield)
+                except Exception as err:    # Fallback to cupy upon error.
+                    warnings.warn("Falling back to cupy:\n" + str(err))
+                    self.cuda = False
+            else:
+                warnings.warn(
+                    "Custom compressed CUDA kernel is not supported for torch."
+                )
 
         if not self.cuda:
-            farfield_out = self._nearfield2farfield_cupy(nearfield, farfield_out)
+            self.farfield = self._nearfield2farfield_cupy(nearfield)
 
-        return farfield_out
+        self._midloop_cleaning()
 
-    def _nearfield2farfield_cuda_v2(self, nearfield, farfield_out):
+    def _nearfield2farfield_cuda_v2(self, nearfield):
         H, W = self.shape
         D, N = self.spot_zernike.shape
         M = self._i_md.shape[0]
@@ -497,30 +504,43 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         )
 
         # Sum over all the blocks to get the final answers using optimized cupy methods.
-        farfield_out = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=farfield_out)
-        farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
+        self.farfield = cp.sum(self._nearfield2farfield_cuda_intermediate, axis=1, out=self.farfield)
+        self.farfield *= (1 / Hologram._norm(self.farfield, xp=cp))
 
-        return farfield_out
+        return self.farfield
 
-    def _nearfield2farfield_cupy(self, nearfield, farfield_out):
+    def _nearfield2farfield_cupy(self, nearfield):
         # Conjugate the nearfield to properly take the overlap integral.
         # FYI: Nearfield shape is (H,W)
-        nearfield = cp.conj(nearfield, out=nearfield)
-
         N = len(self)
-
-        if farfield_out is None:
-            farfield_out = cp.zeros((N, ), dtype=self.dtype_complex)
+        if nearfield is something:
+            istorch = True
 
         # Do some prep work.
-        def collapse_kernel(kernel, out):
-            # (N, H*W), (H*W, 1) x  = (N,1)
-            cp.matmul(kernel, nearfield.ravel()[:, np.newaxis], out=out[:, np.newaxis])
+        if istorch:
+            farfield = self._get_torch_tensor_from_cupy(self.farfield)
+            def collapse_kernel(kernel, out):
+                # (N, H*W), (H*W, 1) x  = (N,1)
+                torch.matmul(
+                    self._get_torch_tensor_from_cupy(kernel),
+                    nearfield.ravel()[:, np.newaxis],
+                    out=out[:, np.newaxis]
+                )
+        else:
+            farfield = self.farfield
+            def collapse_kernel(kernel, out):
+                # (N, H*W), (H*W, 1) x  = (N,1)
+                cp.matmul(
+                    kernel,
+                    nearfield.ravel()[:, np.newaxis],
+                    out=out[:, np.newaxis]
+                )
+
 
         # Evaluate the kernel.
         if N <= N_BATCH_MAX:
             self._update_cupy_kernel()
-            collapse_kernel(self._cupy_kernel, out=farfield_out)
+            collapse_kernel(self._cupy_kernel, out=farfield)
         else:
             batches = 1 + N // N_BATCH_MAX
             for batch in range(batches):
@@ -528,38 +548,32 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 kernel_slice = slice(0, batch_slice.stop - batch_slice.start)
 
                 self._update_cupy_kernel(batch_slice, kernel_slice)
-                collapse_kernel(self._cupy_kernel[:, kernel_slice], out=farfield_out[batch_slice])
+                collapse_kernel(self._cupy_kernel[:, kernel_slice], out=farfield[batch_slice])
 
-        # Normalize.
-        farfield_out *= (1 / Hologram._norm(farfield_out, xp=cp))
-        farfield_out = cp.conj(farfield_out, out=farfield_out)
+        # Normalize. This might need to be brought into torch?
+        farfield *= (1 / Hologram._norm(farfield, xp=torch if istorch else cp))
 
-        # Unconjugate nearfield (leave it unchanged).
-        nearfield = cp.conj(nearfield, out=nearfield)
+        return farfield
 
-        return farfield_out
-
-    def _farfield2nearfield(self, farfield, nearfield_out=None):
+    def _farfield2nearfield(self, extract=True):
         """
         Maps the ``(N,1)`` farfield (complex value for each spot)
         onto the ``(H,W)`` nearfield (complex value on the SLM).
         """
-        if nearfield_out is None:
-            nearfield_out = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
-
         if self.cuda:
             try:
-                nearfield_out = self._farfield2nearfield_cuda_v2(farfield, nearfield_out)
+                self._farfield2nearfield_cuda_v2()
             except Exception as err:    # Fallback to cupy upon error.
                 warnings.warn("Falling back to cupy:\n" + str(err))
                 self.cuda = False
 
         if not self.cuda:
-            nearfield_out = self._farfield2nearfield_cupy(farfield, nearfield_out)
+            self._farfield2nearfield_cupy()
 
-        return nearfield_out
+        if extract:
+            self._nearfield_extract()
 
-    def _farfield2nearfield_cuda_v2(self, farfield, nearfield_out):
+    def _farfield2nearfield_cuda_v2(self):
         H, W = self.shape
         D, N = self.spot_zernike.shape
         M = self._i_md.shape[0]
@@ -581,7 +595,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             (blocks_x,),
             (threads_per_block, 1),
             (
-                farfield,
+                self.farfield,
                 W, H, N, D, M,
                 self.spot_zernike.T,    # a_nd
                 self._c_md,
@@ -589,13 +603,11 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._pxy_m,
                 np.float32(center_pix[0]), np.float32(center_pix[1]),
                 np.float32(pitch_zernike[0]), np.float32(pitch_zernike[1]),
-                nearfield_out
+                self.nearfield
             )
         )
 
-        return nearfield_out
-
-    def _farfield2nearfield_cupy(self, farfield, nearfield_out):
+    def _farfield2nearfield_cupy(self):
         # FYI: Farfield shape is (N,)
         N = len(self)
 
@@ -606,7 +618,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Evaluate the kernel.
         if N <= N_BATCH_MAX:
             self._update_cupy_kernel()
-            expand_kernel(self._cupy_kernel, farfield, out=nearfield_out.ravel())
+            expand_kernel(self._cupy_kernel, self.farfield, out=self.nearfield.ravel())
         else:
             nearfield_out_temp = cp.zeros(self.slm_shape, dtype=self.dtype_complex)
 
@@ -619,12 +631,10 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._update_cupy_kernel(batch_slice, kernel_slice)
 
                 if batch == 0:
-                    expand_kernel(self._cupy_kernel[kernel_slice, :], farfield[batch_slice], out=nearfield_out.ravel())
+                    expand_kernel(self._cupy_kernel[kernel_slice, :], self.farfield[batch_slice], out=self.nearfield.ravel())
                 else:
-                    expand_kernel(self._cupy_kernel[kernel_slice, :], farfield[batch_slice], out=nearfield_out_temp.ravel())
-                    nearfield_out += nearfield_out_temp
-
-        return nearfield_out
+                    expand_kernel(self._cupy_kernel[kernel_slice, :], self.farfield[batch_slice], out=nearfield_out_temp.ravel())
+                    self.nearfield += nearfield_out_temp
 
     # Target update.
     def update_target(self, new_target=None, reset_weights=False):

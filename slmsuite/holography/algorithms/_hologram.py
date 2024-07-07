@@ -35,7 +35,8 @@ class Hologram(_HologramStats):
     ~~~
     Due to imperfect SLM diffraction efficiency, undiffracted light will
     be present at the center of the :attr:`target`.
-    This is called the zeroth order diffraction peak. To avoid this peak, consider shifting
+    This is called the zeroth order diffraction peak.
+    To avoid this peak, consider shifting
     the data contained in :attr:`target` away from the center.
 
     Tip
@@ -48,62 +49,73 @@ class Hologram(_HologramStats):
     Caution
     ~~~~~~~
     By default, arguments passed to the constructor (:attr:`phase`, :attr:`amp`, ... )
-    are stored directly as attributes **without copying**, where possible. These will be
+    are stored directly as attributes **without copying**, when possible. These will be
     modified in place. However, :mod:`numpy` arrays passed to :mod:`cupy` will naturally
     be copied onto the GPU and arrays of incorrect :attr:`dtype` will likewise be copied
-    and casted. This lack of copying is desired in many cases, such that external routines are
-    accessing the same data, but the user can pass copied arrays if this behavior is undesired.
+    and casted. This lack of copying is desired in many cases, such that external routines
+    access the same data, but the user can choose to pass copied arrays if this behavior is undesired.
 
     Attributes
     ----------
     slm_shape : (int, int)
-        The shape of the **near-field** device producing the hologram in the **far-field**
+        The shape of the **nearfield** device producing the hologram in the **farfield**
         in :mod:`numpy` ``(h, w)`` form. This is important to record because
         certain optimizations and calibrations depend on it. If multiple of :attr:`slm_shape`,
         :attr:`phase`, or :attr:`amp` are not ``None`` in the constructor, the shapes must agree.
         If all are ``None``, then the shape of the :attr:`target` is used instead
         (:attr:`slm_shape` == :attr:`shape`).
+    shape : (int, int)
+        The shape of the computational space in the **nearfield** and **farfield**
+        in :mod:`numpy` ``(h, w)`` form.
+        Corresponds to the the ``"knm"`` basis in the **farfield**.
+        This often differs from :attr:`slm_shape` due to padding of the **nearfield**.
     phase : numpy.ndarray OR cupy.ndarray
-        **Near-field** phase pattern to optimize.
+        **nearfield** phase pattern to optimize.
         Initialized to with :meth:`random.default_rng().uniform()` by default (``None``).
         This is of shape :attr:`slm_shape`
-        and (during optimization) padded to shape :attr:`shape`.
+        and (upon copying to :attr:`nearfield` during optimization)
+        padded to shape :attr:`shape`.
     amp : numpy.ndarray OR cupy.ndarray
-        **Near-field** source amplitude pattern (i.e. image-space constraints).
+        **nearfield** source amplitude pattern (i.e. image-space constraints).
         Uniform illumination is assumed by default (``None``).
         This is of shape :attr:`slm_shape`
-        and (during optimization) padded to shape :attr:`shape`.
-    shape : (int, int)
-        The shape of the computational space in the **near-field** and **far-field**
-        in :mod:`numpy` ``(h, w)`` form.
-        Corresponds to the the ``"knm"`` basis in the **far-field**.
-        This often differs from :attr:`slm_shape` due to padding of the **near-field**.
+        and (upon copying to :attr:`nearfield` during optimization)
+        padded to shape :attr:`shape`.
+    nearfield : numpy.ndarray OR cupy.ndarray
+        Helper variable to encode the data in
+        :attr:`phase` and :attr:`amp` as a single complex matrix.
+        This is of shape :attr:`shape`.
     target : numpy.ndarray OR cupy.ndarray
-        Desired **far-field** amplitude in the ``"knm"`` basis. The goal of optimization.
-        This is of shape :attr:`shape`.
+        Desired **farfield** amplitude in the ``"knm"`` basis. The goal of optimization.
+        This is of shape :attr:`shape` in DFT-based algorithms, but differs for
+        :class:`CompressedSpotHologram`.
     weights : numpy.ndarray OR cupy.ndarray
-        The mutable **far-field** amplitude in the ``"knm"`` basis used in GS.
+        The mutable **farfield** amplitude in the ``"knm"`` basis used in GS.
         Starts as :attr:`target` but may be modified by weighted feedback in WGS.
-        This is of shape :attr:`shape`.
+        This is of the same shape as :attr:`target`.
+    farfield : numpy.ndarray OR cupy.ndarray
+        Helper variable to encode the data in the farfield as a single complex matrix.
+        This is of the same shape as :attr:`target`.
     phase_ff : numpy.ndarray OR cupy.ndarray
-        Algorithm-constrained **far-field** phase in the ``"knm"`` basis.
-        Stored for certain computational algorithms.
+        Algorithm-constrained **farfield** phase in the ``"knm"`` basis.
+        Used as a helper variable for optimization.
+        Stored for computational algorithms which desire to fix the phase in the farfield
         (see :meth:`~slmsuite.holography.algorithms.Hologram.optimize_gs`).
-        This is of shape :attr:`shape`.
+        This is of the same shape as :attr:`target`.
     amp_ff : numpy.ndarray OR cupy.ndarray OR None
-        **Far-field** amplitude in the ``"knm"`` basis.
+        **Farfield** amplitude in the ``"knm"`` basis.
         Used for comparing this, the computational result, with the :attr:`target`.
-        This is of shape :attr:`shape`.
+        This is of the same shape as :attr:`target`.
     dtype : type
-        Datatype for stored **near-** and **far-field** arrays, which are **all real**.
+        Datatype for real arrays.
         The default is ``float32``.
     dtype_complex : type
-        Some internal variables are complex. The complex numbers follow :mod:`numpy`
+        Datatype for complex arrays. The complex numbers follow :mod:`numpy`
         `type promotion <https://numpy.org/doc/stable/reference/routines.fft.html#type-promotion>`_.
         Complex datatypes are derived from :attr:`dtype`:
 
-         - ``float32`` -> ``complex64`` (the default :attr:`dtype`)
-         - ``float64`` -> ``complex128``
+        - ``float32`` -> ``complex64`` (the default :attr:`dtype`)
+        - ``float64`` -> ``complex128``
 
         ``float16`` is *not* recommended for :attr:`dtype` because ``complex32`` is not
         implemented by :mod:`numpy`.
@@ -119,7 +131,7 @@ class Hologram(_HologramStats):
             Stores the method used for optimization.
             See :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
          - ``"fixed_phase"`` : ``bool``
-            Fixes the far-field phase as mandated by certain weighted algorithms
+            Fixes the farfield phase as mandated by certain weighted algorithms
             (see :meth:`~slmsuite.holography.algorithms.Hologram.optimize_gs()`).
          - ``"feedback"`` : ``str``
             Stores the values passed to
@@ -152,7 +164,16 @@ class Hologram(_HologramStats):
         See :meth:`.update_stats()` and :meth:`.plot_stats()`.
     """
 
-    def __init__(self, target, amp=None, phase=None, slm_shape=None, dtype=np.float32, **kwargs):
+    def __init__(
+        self,
+        target,
+        amp=None,
+        phase=None,
+        slm_shape=None,
+        dtype=np.float32,
+        propagation_kernel=None,
+        **kwargs
+    ):
         r"""
         Initialize datastructures for optimization.
         When :mod:`cupy` is enabled, arrays are initialized on the GPU as :mod:`cupy` arrays:
@@ -171,13 +192,13 @@ class Hologram(_HologramStats):
             :meth:`.calculate_padded_shape()` can be of particular help for calculating the
             shape that will produce desired results (in terms of precision, etc).
         amp : array_like OR None
-            The near-field amplitude. See :attr:`amp`. Of shape :attr:`slm_shape`.
+            The nearfield amplitude. See :attr:`amp`. Of shape :attr:`slm_shape`.
         phase : array_like OR None
-            The near-field initial phase.
+            The nearfield initial phase.
             See :attr:`phase`. :attr:`phase` should only be passed if the user wants to
             precondition the optimization. Of shape :attr:`slm_shape`.
         slm_shape : (int, int) OR slmsuite.hardware.FourierSLM OR slmsuite.hardware.slms.SLM OR None
-            The shape of the near-field of the SLM in :mod:`numpy` `(h, w)` form.
+            The shape of the nearfield of the SLM in :mod:`numpy` `(h, w)` form.
             Optionally, as a quality of life feature, the user can pass a
             :class:`~slmsuite.hardware.FourierSLM` or
             :class:`~slmsuite.hardware.slms.SLM` instead,
@@ -186,28 +207,18 @@ class Hologram(_HologramStats):
             are not present, defaults to :attr:`shape` (which is usually determined by ``target``).
         dtype : type
             See :attr:`dtype`; type to use for stored arrays.
+        propagation_kernel : array_like OR None
+            TODO
+            Used for focusing
+            Of shape :attr:`slm_shape`.
+
+            Note
+            ~~~~
+            Is ignored for :class:`~slmsuite.holography.algorithms.CompressedSpotHologram`.
         **kwargs
             Passed to :attr:`flags`.
         """
-        # 1) Parse inputs
-        # Parse target and create shape.
-        if len(target) == 2:  # (int, int) was passed.
-            self.shape = target
-            target = None
-        else:
-            self.shape = target.shape
-
-        # Warn the user about powers of two.
-        if any(np.log2(self.shape) != np.round(np.log2(self.shape))):
-            warnings.warn(
-                "Hologram target shape {} is not a power of 2; consider using "
-                ".calculate_padded_shape() to pad to powers of 2 and speed up "
-                "FFT computation. While some FFT solvers support other prime powers "
-                "(3, 5, 7, ...), literature suggests that GPU support is best for powers of 2."
-                "".format(self.shape)
-            )
-
-        # 1.5) Determine the shape of the SLM. We have three sources of this shape, which are
+        # 1) Determine the shape of the SLM. We have three sources of this shape, which are
         # optional to pass, but must be self-consistent if passed:
         #
         #  a) The shape of the nearfield amplitude
@@ -251,7 +262,7 @@ class Hologram(_HologramStats):
             if len(slm_shape) != 2:
                 slm_shape = (np.nan, np.nan)
 
-        # 1.5) [cont] We now have a few options for what the shape of the SLM could be.
+        # 1) [cont] We now have a few options for what the shape of the SLM could be.
         # Parse these to validate consistency.
         stack = np.vstack((amp_shape, phase_shape, slm_shape))
         if np.all(np.isnan(stack)):
@@ -277,6 +288,31 @@ class Hologram(_HologramStats):
 
             self.slm_shape = tuple(self.slm_shape)
 
+        # 1.5) Parse target and create shape.
+        if target is None or len(np.shape(target)) == 1:    # Multi or Compressed Hologram.
+            self.shape = self.slm_shape
+
+            # Don't initialize memory for Multi
+            if target is None:
+                target = []
+        else:                                               # Other cases
+            if len(target) == 2:                            # (int, int) was passed.
+                self.shape = target
+                target = None
+            elif len(np.shape(target)) == 2:                # array_like (true target) passed.
+                self.shape = np.shape(target)
+            else:
+                raise ValueError(f"Unexpected target {target}.")
+
+            # Warn the user about powers of two.
+            if any(np.log2(self.shape) != np.round(np.log2(self.shape))):
+                warnings.warn(
+                    f"Hologram target shape {self.shape} is not a power of 2; consider using "
+                    ".calculate_padded_shape() to pad to powers of 2 and speed up "
+                    "FFT computation. While some FFT solvers support other prime powers "
+                    "(3, 5, 7, ...), literature suggests that GPU support is best for powers of 2."
+                )
+
         # 2) Initialize variables.
         # Save the data type.
         if dtype(0).nbytes == 4:
@@ -288,15 +324,20 @@ class Hologram(_HologramStats):
         else:
             raise ValueError(f"Data type {dtype} not supported.")
 
-        # # Create a "pinned memory" array for optimized stats transfers off of the GPU.
-        # self._stats_pinned = cp_zeros_pinned((5,))
-
-        # Initialize and normalize near-field amplitude
+        # Initialize and normalize nearfield amplitude.
         if amp is None:  # Uniform amplitude by default (scalar).
             self.amp = 1 / np.sqrt(np.prod(self.slm_shape))
         else:               # Otherwise, initialize and normalize.
-            self.amp = cp.array(amp, dtype=self.dtype, copy=False)
+            self.amp = cp.array(amp, dtype=self.dtype, copy=None)
             self.amp *= 1 / Hologram._norm(self.amp)
+
+        # Check propagation_kernel.
+        if propagation_kernel is None:
+            self.propagation_kernel = None
+        else:
+            self.propagation_kernel = cp.array(propagation_kernel, dtype=self.dtype, copy=None)
+            if self.propagation_kernel.shape != self.slm_shape:
+                raise ValueError("Expected the propagation kernel to be the same shape as the SLM.")
 
         # Initialize flags.
         self.flags = kwargs
@@ -304,7 +345,12 @@ class Hologram(_HologramStats):
         # Initialize target. reset() will handle weights.
         self._update_target(target, reset_weights=False)
 
-        # Initialize near-field phase
+        # Initialize complex looping variables.
+        self.nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
+        self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)
+
+        # Initialize nearfield phase.
+        self.phase = None
         self.reset_phase(phase)
 
         # Initialize everything else inside reset.
@@ -377,9 +423,11 @@ class Hologram(_HologramStats):
 
         # Figure out what lens and blaze we should apply to initialize to cover
         # the target, based upon the moments we calculated.
-        return (
+        return cp.array(
             tphase.blaze(grid, center_knm) +
-            tphase.lens(grid, np.reciprocal(scaling * std_knm * shape / std_amp))
+            tphase.lens(grid, np.reciprocal(scaling * std_knm * shape / std_amp)),
+            dtype=self.dtype,
+            copy=None
         )
 
     def _get_random_phase(self):
@@ -399,7 +447,7 @@ class Hologram(_HologramStats):
         Parameters
         ----------
         phase : array_like OR None
-            The near-field initial phase.
+            The nearfield initial phase.
             See :attr:`phase`. :attr:`phase` should only be passed if the user wants to
             precondition the optimization. Of shape :attr:`slm_shape`.
         quadratic_initial_phase : bool OR float OR None
@@ -426,17 +474,21 @@ class Hologram(_HologramStats):
         # Reset phase to random if no phase is given.
         if phase is None:
             if quadratic_initial_phase:   # Analytic
-                self.phase = self._get_quadratic_initial_phase(quadratic_initial_phase)
+                phase = self._get_quadratic_initial_phase(quadratic_initial_phase)
             else:                   # Random
-                self.phase = self._get_random_phase()
+                phase = self._get_random_phase()
         else:
             # Otherwise, cast the passed matrix as a cp.array with correct type.
-            phase = cp.array(phase, dtype=self.dtype, copy=False)
+            phase = cp.array(phase, dtype=self.dtype, copy=None)
 
             if not np.all(np.array(self.slm_shape) == np.array(phase.shape)):
                 raise ValueError(f"Reset phase of shape {phase.shape} is not of slm_shape {self.slm_shape}")
 
+        # In-place allocation.
+        if self.phase is None:
             self.phase = phase
+        else:
+            cp.copyto(self.phase, phase)
 
     def reset_weights(self):
         """
@@ -467,10 +519,9 @@ class Hologram(_HologramStats):
         By default, pads to the smallest square power of two that
         encapsulates the original ``slm_shape``.
 
-        Tip
-        ~~~
-        See also the first tip in the constructor of :class:`Hologram` for more information
-        about the importance of padding.
+        See Also
+        ~~~~~~~~
+        :class:`Hologram` for more information about the importance of padding.
 
         Note
         ~~~~
@@ -505,12 +556,12 @@ class Hologram(_HologramStats):
             Shape of the computational space which satisfies the above requirements.
         """
         cameraslm = None
-        # If slm_shape is actually a FourierSLM
+        # If slm_shape is actually a FourierSLM.
         if hasattr(slm_shape, "slm") and hasattr(slm_shape, "cam"):
             cameraslm = slm_shape
             slm_shape = cameraslm.slm.shape
 
-        # If slm_shape is actually a SLM
+        # If slm_shape is actually a SLM.
         elif hasattr(slm_shape, "shape"):
             cameraslm = lambda: 0               # Make a fake cameraslm
             cameraslm.slm = slm_shape           # At this point, slm_shape is the SLM.
@@ -522,7 +573,7 @@ class Hologram(_HologramStats):
                     "to use the 'ij' precision_basis!"
                 )
 
-        # Handle precision
+        # Handle precision.
         if np.isfinite(precision) and cameraslm is not None:
             if precision <= 0:
                 raise ValueError(
@@ -548,7 +599,7 @@ class Hologram(_HologramStats):
         else:
             precision_shape = slm_shape
 
-        # Handle padding_order
+        # Handle padding_order.
         if padding_order > 0:
             padding_shape = np.power(2, np.ceil(np.log2(slm_shape)) + padding_order - 1).astype(int)
         else:
@@ -563,13 +614,15 @@ class Hologram(_HologramStats):
 
         return shape
 
-    @staticmethod
-    def _calculate_memory_constrained_shape(device=0, dtype=np.float32):
+    def _calculate_memory_constrained_shape(self, device=0, dtype=None):
+        if dtype is None:
+            dtype = self.dtype
+
         memory = Hologram.get_mempool_limit(device=device)
 
-        num_values = memory / np.dtype(dtype).itemsize
+        num_values = memory / dtype(0).nbytes
 
-        # (4 real stored arrays, 2 complex runtime arrays [twice memory])
+        # (4 real arrays, 2 complex arrays for DFT holograms)
         num_values_per_array = num_values / 8
 
         return np.sqrt(num_values_per_array)
@@ -597,13 +650,7 @@ class Hologram(_HologramStats):
         if new_target is None:
             self.target = cp.zeros(shape=self.shape, dtype=self.dtype)
         else:
-            if new_target.shape != self.shape:
-                raise ValueError(
-                    "Target must be of appropriate shape. "
-                    "Initialize a new Hologram if a different shape is desired."
-                )
-
-            self.target = cp.array(new_target, dtype=self.dtype, copy=False)
+            self.target = cp.array(new_target, dtype=self.dtype, copy=None)
             cp.abs(self.target, out=self.target)
             self.target *= 1 / Hologram._norm(self.target)
 
@@ -647,7 +694,7 @@ class Hologram(_HologramStats):
         Parameters
         ----------
         affine : dict
-            Affine transformation to apply to far-field data (in the form of
+            Affine transformation to apply to farfield data (in the form of
         get : bool
             Whether or not to convert the cupy array to a numpy array if cupy is used.
             This is ignored if numpy is used.
@@ -659,8 +706,8 @@ class Hologram(_HologramStats):
         """
         nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), self.shape)
         farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
-        self.amp_ff = cp.abs(farfield)
-        self.phase_ff = cp.angle(farfield)
+        self.amp_ff = cp.abs(farfield, out=self.amp_ff)
+        self.phase_ff = cp.arctan2(farfield.imag, farfield.real, out=self.phase_ff)
 
         if cp != np:
             if affine is not None:
@@ -689,7 +736,8 @@ class Hologram(_HologramStats):
                 )
             return farfield
 
-    def _populate_results(self, nearfield=None):
+    # Propogation: nearfield-farfield helper functions.
+    def _populate_results(self):
         """
         Helper function to populate:
             - farfield
@@ -702,32 +750,82 @@ class Hologram(_HologramStats):
 
         Pass a nearfield complex matrix of self.shape shape to avoid memory reallocation.
         """
+        self.farfield = self._nearfield2farfield(farfield_out=self.farfield)
+        self.amp_ff = cp.abs(self.farfield, out=self.amp_ff)
+        self.phase_ff = cp.arctan2(self.farfield.imag, self.farfield.real, out=self.phase_ff)
+
+    def _build_nearfield(self, phase_torch=None):
+        """Populate nearfield with data from amp and phase."""
+        (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
+        self.nearfield.fill(0)
+
+        if phase_torch is None:
+            if self.propagation_kernel is None:
+                self.nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
+            else:
+                self.nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * (self.phase + self.propagation_kernel))
+
+            return self.nearfield
+        else:
+            nearfield_torch =   self._get_torch_tensor_from_cupy(self.nearfield)
+            amp_torch =         self._get_torch_tensor_from_cupy(self.amp)
+            prop_torch =        self._get_torch_tensor_from_cupy(self.propagation_kernel)
+
+            self.optimizer.zero_grad()
+
+            if prop_torch is None:
+                nearfield_torch[i0:i1, i2:i3] = amp_torch * cp.exp(1j * phase_torch)
+            else:
+                nearfield_torch[i0:i1, i2:i3] = amp_torch * cp.exp(1j * (phase_torch + prop_torch))
+
+            return nearfield_torch
+
+    def _nearfield_extract(self, nearfield):
+        """Populate phase with data from nearfield."""
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
-        if nearfield is None:
-            nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
-        else:
-            nearfield.fill(0)
+        self.phase = cp.arctan2(
+            nearfield.imag[i0:i1, i2:i3],
+            nearfield.real[i0:i1, i2:i3],
+            out=self.phase,
+        )
+        if self.propagation_kernel is not None:
+            self.phase -= self.propagation_kernel
 
-        nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
-
-        self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
-        self.amp_ff = cp.abs(self.farfield)
-        self.phase_ff = cp.angle(self.farfield)
-
-    def _nearfield2farfield(self, nearfield, farfield_out=None):
+    def _nearfield2farfield(self, phase_torch=None):
         """
         Maps the nearfield to the farfield by a discrete Fourier transform.
+        This should populate :attr:`farfield`.
         This function is overloaded by subclasses.
         """
-        return cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
+        # This may return a torch nearfield if we are in torch mode.
+        nearfield = self._build_nearfield(phase_torch)
 
-    def _farfield2nearfield(self, farfield, nearfield_out=None):
+        if phase_torch is None:
+            self.farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
+        else:
+            farfield_torch = self._get_torch_tensor_from_cupy(self.farfield)
+            farfield_torch = torch.fft.fftshift(torch.fft.fft2(torch.fft.fftshift(nearfield), norm="ortho"))
+            self.farfield = cp.array(farfield_torch)
+
+        self._midloop_cleaning()
+
+    def _farfield2nearfield(self, extract=True):
         """
         Maps the farfield to the nearfield by a discrete Fourier transform.
+        This should populate populate :attr:`nearfield`.
         This function is overloaded by subclasses.
+
+        Parameters
+        ----------
+        extract : bool
+            Whether to extract data into the :attr:`phase` variable. This is not used
+            for :class:`MultiplaneHologram`.
         """
-        return cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(farfield), norm="ortho"))
+        self.nearfield = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(self.farfield), norm="ortho"))
+
+        if extract:
+            self._nearfield_extract(self.nearfield)
 
     # Core optimization function.
     def optimize(
@@ -741,8 +839,8 @@ class Hologram(_HologramStats):
         **kwargs,
     ):
         r"""
-        Optimizers to solve the "phase problem": approximating the near-field phase that
-        transforms a known near-field source amplitude to a desired far-field
+        Optimizers to solve the "phase problem": approximating the nearfield phase that
+        transforms a known nearfield source amplitude to a desired farfield
         target amplitude.
         Supported optimization methods include:
 
@@ -782,11 +880,11 @@ class Hologram(_HologramStats):
             - ``'WGS-Kim'``
 
               `Improves the convergence <https://doi.org/10.1364/OL.44.003178>`_
-              of ``WGS-Leonardo`` by fixing the far-field phase
+              of ``WGS-Leonardo`` by fixing the farfield phase
               strictly after a desired number of net iterations
               specified by ``"fix_phase_iteration"``
               or after exceeding a desired efficiency
-              (fraction of far-field energy at the desired points)
+              (fraction of farfield energy at the desired points)
               specified by ``"fix_phase_efficiency"``
 
             - ``'WGS-Nogrette'``
@@ -928,11 +1026,33 @@ class Hologram(_HologramStats):
             Various weight keywords and values to pass depending on the weight method.
             These are passed into :attr:`flags`. See options documented in the constructor.
         """
+        # 1) Update flags based upon the arguments.
+        self._update_flags(method, verbose, feedback, stat_groups, **kwargs)
+
+        # 2) Prepare the iterations iterable.
+        iterations = range(maxiter)
+
+        # 2.1) Decide whether to use a tqdm progress bar. Don't use a bar for maxiter == 1.
+        if verbose and maxiter > 1:
+            iterations = tqdm(iterations)
+
+        # 3) Switch between optimization methods (currently only GS- or WGS-type is supported).
+        if "GS" in method:
+            self.optimize_gs(iterations, callback)
+        elif "CG" in method:
+            self.optimize_cg(iterations, callback)
+        else:
+            raise ValueError(f"Unsupported optimization method '{method}'")
+
+    def _update_flags(self, method, verbose, feedback, stat_groups, **kwargs):
+        """
+        Helper function for :meth:`optimize()` to parse arguments.
+        """
         # 0) Check and record method.
         methods = list(ALGORITHM_DEFAULTS.keys())
         if not method in methods:
             raise ValueError(
-                "unrecognized method '{}'.\n"
+                "Unrecognized method '{}'.\n"
                 "Valid methods include {}".format(method, methods)
             )
         self.flags["method"] = method
@@ -953,7 +1073,7 @@ class Hologram(_HologramStats):
         for group in stat_groups:
             if not (group in FEEDBACK_OPTIONS):
                 raise ValueError(
-                    "statistics group '{}' not recognized as a feedback option.\n"
+                    "Statistics group '{}' not recognized as a feedback option.\n"
                     "Valid options: {}".format(group, FEEDBACK_OPTIONS)
                 )
         self.flags["stat_groups"] = stat_groups
@@ -961,7 +1081,7 @@ class Hologram(_HologramStats):
         if feedback is not None:
             if not (feedback in FEEDBACK_OPTIONS):
                 raise ValueError(
-                    "feedback '{}' not recognized as a feedback option.\n"
+                    "Feedback '{}' not recognized as a feedback option.\n"
                     "Valid options: {}".format(group, FEEDBACK_OPTIONS)
                 )
             self.flags["feedback"] = feedback
@@ -980,28 +1100,13 @@ class Hologram(_HologramStats):
             )
             print("", end="", flush=True)  # Prevent tqdm conflicts.
 
-        # 2) Prepare the iterations iterable.
-        iterations = range(maxiter)
-
-        # 2.1) Decide whether to use a tqdm progress bar. Don't use a bar for maxiter == 1.
-        if verbose and maxiter > 1:
-            iterations = tqdm(iterations)
-
-        # 3) Switch between optimization methods (currently only GS- or WGS-type is supported).
-        if "GS" in method:
-            self.optimize_gs(iterations, callback)
-        elif "CG" in method:
-            self.optimize_cg(iterations, callback)
-        else:
-            raise ValueError(f"Unsupported optimization method '{method}'")
-
     # GS- or WGS-type optimization.
     def optimize_gs(self, iterations, callback):
         """
         GPU-accelerated Gerchberg-Saxton (GS) iterative phase retrieval.
 
-        Solves the "phase problem": approximates the near-field phase that
-        transforms a known near-field source amplitude to a desired far-field
+        Solves the "phase problem": approximates the nearfield phase that
+        transforms a known nearfield source amplitude to a desired farfield
         target amplitude.
 
         Caution
@@ -1031,55 +1136,36 @@ class Hologram(_HologramStats):
             See :meth:`.optimize()`.
         """
         # Initialize nearfield and farfield.
-        nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
         # Use self.target.shape instead of self.shape to account for CompressedSpotHologram cases.
+        self.nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
         self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)
 
         # Precompute MRAF helper variables.
         mraf_variables = self._mraf_helper_routines()
 
-        # Helper variables for speeding up source phase and amplitude fixing.
-        (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
-
         for _ in iterations:
-            # (A) Nearfield -> farfield
-            # Fix the relevant part of the nearfield amplitude to the source amplitude.
-            # Everything else is zero because power outside the SLM is assumed unreflected.
-            # This is optimized for when shape is much larger than slm_shape.
-            nearfield.fill(0)
-            nearfield[i0:i1, i2:i3] = self.amp * cp.exp(1j * self.phase)
+            # (A) Nearfield -> farfield. This uses the phase and amplitude attributes.
+            self.farfield = self._nearfield2farfield(self.nearfield, farfield_out=self.farfield)
 
-            # FFT to move to the farfield.
-            self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
-
-            # (B) Midloop caching and prep
-            # Before callback(), cleanup such that it can access updated amp_ff and images.
-            self._midloop_cleaning(self.farfield)
-
-            # Run step function if present and check termination conditions.
+            # (B) Run step function if present and check termination conditions.
             if callback is not None:
                 if callback(self):
                     break
 
-            # Evaluate method-specific routines, stats, etc. This includes camera feedback/etc.
+            # (C) Update statistics.
+            self.update_stats(self.flags["stat_groups"])
+
+            # (D) Evaluate method-specific routines, stats, etc. This includes camera feedback/etc.
             # If you want to add new functionality to GS, do so here to keep the main loop clean.
             self._gs_farfield_routines(self.farfield, mraf_variables)
 
-            # (C) Farfield -> nearfield.
-            nearfield = self._farfield2nearfield(self.farfield, nearfield_out=nearfield)
-
-            # Grab the phase from the complex nearfield.
-            # Use arctan2() directly instead of angle() for in-place operations (out=).
-            self.phase = cp.arctan2(
-                nearfield.imag[i0:i1, i2:i3],
-                nearfield.real[i0:i1, i2:i3],
-                out=self.phase,
-            )
+            # (E) Farfield -> nearfield. This populates the phase attribute.
+            self.nearfield = self._farfield2nearfield(self.farfield, nearfield_out=self.nearfield)
 
             # Increment iteration.
             self.iter += 1
 
-        # Update the final far-field using phase and amp.
+        # Update the final farfield using phase and amp.
         self._populate_results()
 
     def _mraf_helper_routines(self):
@@ -1132,9 +1218,9 @@ class Hologram(_HologramStats):
             "zero_region":zero_region,
         }
 
-    def _midloop_cleaning(self, farfield):
+    def _midloop_cleaning(self):
         # 2.1) Cache amp_ff for weighting (if None, will init; otherwise in-place).
-        self.amp_ff = cp.abs(farfield, out=self.amp_ff)
+        self.amp_ff = cp.abs(self.farfield, out=self.amp_ff)
 
         # 2.2) Erase images from the past loop. FUTURE: Make better and faster.
         if hasattr(self, "img_ij"):
@@ -1143,9 +1229,6 @@ class Hologram(_HologramStats):
             self.img_knm = None
 
     def _gs_farfield_routines(self, farfield, mraf_variables):
-        # Update statistics
-        self.update_stats(self.flags["stat_groups"])
-
         # Weight, if desired.
         if "WGS" in self.flags["method"]:
             self._update_weights()
@@ -1254,8 +1337,8 @@ class Hologram(_HologramStats):
 
         Conjugate Gradient (CG) iterative phase retrieval.
 
-        Solves the "phase problem": approximates the near-field phase that
-        transforms a known near-field source amplitude to a desired far-field
+        Solves the "phase problem": approximates the nearfield phase that
+        transforms a known nearfield source amplitude to a desired farfield
         target amplitude.
 
         Caution
@@ -1274,82 +1357,67 @@ class Hologram(_HologramStats):
         if torch is None:
             raise ValueError("pytorch is required for conjugate gradient optimization.")
 
-        # Initialize nearfield and farfield.
-        nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
-        # Use self.target.shape instead of self.shape to account for CompressedSpotHologram cases.
-        self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)
-
         # Convert variables to torch with **zero-copy** cupy interoperability.
         # We need torch to handle gradient calculation.
-        amp_torch =         Hologram._get_torch_tensor_from_cupy(self.amp)
-        target_torch =      Hologram._get_torch_tensor_from_cupy(self.target)
-
-        phase_torch =       Hologram._get_torch_tensor_from_cupy(self.phase)
-        nearfield_torch =   Hologram._get_torch_tensor_from_cupy(nearfield)
-        farfield_torch =    Hologram._get_torch_tensor_from_cupy(self.farfield)
-
-        # We're going to use phase for optimization, so we need to record gradients.
+        phase_torch = Hologram._get_torch_tensor_from_cupy(self.phase)
         phase_torch.requires_grad_(True)
-        nearfield_torch.requires_grad_(True)
-        farfield_torch.requires_grad_(True)
-
-        # Parse arguments.
-        loss = self.flags["loss"]
-        if loss is None:
-            loss = torch.nn.MSELoss()
 
         # Create the optimizer.
         try:
             optim_class = getattr(torch.optim, self.flags["optimizer"])
         except:
-            raise ValueError(f"{self.flags['optimizer']} is not a valid torch optimizer")
+            raise ValueError(f"'{self.flags['optimizer']}' is not a valid torch optimizer")
 
         self.optimizer = optim_class([phase_torch], **self.flags["optimizer_kwargs"])
 
-        # Helper variables for speeding up source phase and amplitude fixing.
-        (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
-
         for _ in iterations:
-            # (A) Nearfield -> farfield
-            # Fix the relevant part of the nearfield amplitude to the source amplitude.
-            # Everything else is zero because power outside the SLM is assumed unreflected.
-            # This is optimized for when shape is much larger than slm_shape.
-            nearfield_torch.fill_(0)
+            # Reset the gradients for this step.
             self.optimizer.zero_grad()
-            nearfield_torch[i0:i1, i2:i3] = amp_torch * torch.exp(1j * phase_torch)
 
-            # FFT to move to the farfield. TODO: Torchify; current implementation will
-            # not track gradients.
-            self.farfield = self._nearfield2farfield(nearfield, farfield_out=self.farfield)
+            # Compute the loss for this phase pattern.
+            result = self._cg_loss(phase_torch)
 
-            # (B) Midloop caching and prep
-            # Before callback(), cleanup such that it can access updated amp_ff and images.
-            self._midloop_cleaning(self.farfield)
+            # Compute the gradients upon the phase pattern.
+            result.backward(retain_graph=True)
 
             # Run step function if present and check termination conditions.
             if callback is not None:
                 if callback(self):
                     break
 
-            # (C) Evaluate loss
-            result = loss(farfield_torch, target_torch)
-            result.backward(retain_graph=True)
+            # Update statistics.
+            self.update_stats(self.flags["stat_groups"])
 
-            # (D) Finally, step the optimization according to the gradients calculated.
+            # Step the optimization according to the gradients calculated.
             self.optimizer.step()
 
             # Increment iteration.
             self.iter += 1
 
-        # Update the final far-field using phase and amp.
+        # Update the final farfield using phase and amp.
         self._populate_results()
+
+    def _cg_loss(self, phase_torch):
+        # Parse arguments.
+        loss = self.flags["loss"]
+        if loss is None:
+            loss = torch.nn.MSELoss()
+
+        farfield_torch = self._nearfield2farfield(phase_torch=phase_torch)
+        target_torch = Hologram._get_torch_tensor_from_cupy(self.target)
+
+        # Evaluate loss
+        return loss(farfield_torch, target_torch)
 
     @staticmethod
     def _get_torch_tensor_from_cupy(array):
-        if cp == np:
-            return torch.as_tensor(array, device='cuda')
+        if array is None:
+            return None
         else:
-            return torch.as_tensor(array, device='cpu')
+            if cp == np:
+                return torch.as_tensor(array, device='cpu')
+            else:
+                return torch.as_tensor(array, device='cuda')
 
     # Weighting functions.
     def _update_weights_generic(
@@ -1401,13 +1469,13 @@ class Hologram(_HologramStats):
 
         if ("wu" in method or "tanh" in method):    # Additive
             feedback_corrected *= -self.flags["feedback_exponent"]
-            feedback_corrected += xp.array(target_amp, copy=False)
+            feedback_corrected += xp.array(target_amp, copy=None)
         else:                                       # Multiplicative
-            xp.divide(feedback_corrected, xp.array(target_amp, copy=False), out=feedback_corrected)
+            xp.divide(feedback_corrected, xp.array(target_amp, copy=None), out=feedback_corrected)
 
             if nan_checks:
                 feedback_corrected[feedback_corrected == np.inf] = 1
-                feedback_corrected[xp.array(target_amp, copy=False) == 0] = 1
+                feedback_corrected[xp.array(target_amp, copy=None) == 0] = 1
 
                 xp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
@@ -1450,7 +1518,7 @@ class Hologram(_HologramStats):
     def _update_weights_generic_cuda(self, weight_amp, feedback_amp, target_amp):
         N = weight_amp.size
 
-        feedback_amp = cp.array(feedback_amp, copy=False)
+        feedback_amp = cp.array(feedback_amp, copy=None)
         feedback_norm = Hologram._norm(feedback_amp, xp=cp)
 
         method = ALGORITHM_INDEX[self.flags["method"]]
@@ -1565,6 +1633,7 @@ class Hologram(_HologramStats):
         float
             The result.
         """
+        # TODO: test for torch?
         if xp.iscomplexobj(matrix):
             return xp.sqrt(xp.nansum(xp.square(xp.abs(matrix))))
         else:

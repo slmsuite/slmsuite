@@ -281,7 +281,7 @@ class Camera():
     def _get_dtype(self):
         self.dtype = np.array(self._get_image_hw()).dtype   # Future: check if cameras change this after init.
 
-        if self.dtype.itemsize * 8 < self.bitdepth:
+        if self.dtype(0).nbytes * 8 < self.bitdepth:
             raise warnings.warn(
                 f"Camera '{self.name}' bitdepth of {self.bitdepth} does not conform "
                 f"with the image type {self.dtype} with {self.dtype.itemsize} bytes."

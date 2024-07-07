@@ -2,6 +2,7 @@
 Repository of common analytic phase patterns.
 """
 import os
+import time
 import numpy as np
 try:
     import cupy as cp   # type: ignore
@@ -893,7 +894,12 @@ def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "noll", "latex", 
     a2.remove()
 
     # Grab all the phases as a stack.
-    phases = zernike_sum(grid, indices_ansi[np.newaxis, :], np.diag(np.ones_like(indices_ansi)), **kwargs)
+    grid_ = _process_grid(grid)
+    phases = np.zeros((len(indices_ansi), *grid_[0].shape))
+
+    t0 = time.time()
+    phases = zernike_sum(grid, indices_ansi[np.newaxis, :], np.diag(np.ones_like(indices_ansi)), out=phases, **kwargs)
+    t = time.time() - t0
 
     for i in indices_ansi:
         n, l = indices_radial[i, :]
@@ -928,6 +934,8 @@ def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "noll", "latex", 
         box = a.get_position()
         box = box.translated(dx * pitch, 0)
         a.set_position(box)
+
+    return t
 
 
 # Old style dictionary.     {(n,m) : {(nx, ny) : w, ... }, ... }

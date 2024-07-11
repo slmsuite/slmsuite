@@ -6,6 +6,7 @@ from slmsuite.holography.algorithms._feedback import FeedbackHologram
 
 class MultiplaneHologram(Hologram):
     """
+    Holography combining multiple objectives, potentially across planes of focus or color.
     Other :class:`Hologram` subclasses are restricted to either optimizing a hologram
     within a fixed basis of spots or
     within the grid of a discrete Fourier transform at a fixed plane of focus.

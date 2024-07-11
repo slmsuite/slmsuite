@@ -4,7 +4,7 @@ from slmsuite.holography.algorithms._stats import _HologramStats
 
 class Hologram(_HologramStats):
     r"""
-    Phase retrieval methods applied to holography.
+    Phase retrieval methods applied to holography (DFT-based).
     See :meth:`.optimize()` to learn about the methods implemented for hologram optimization.
 
     Tip
@@ -119,6 +119,10 @@ class Hologram(_HologramStats):
 
         ``float16`` is *not* recommended for :attr:`dtype` because ``complex32`` is not
         implemented by :mod:`numpy`.
+    propagation_kernel : numpy.ndarray OR cupy.ndarray OR None
+        Allows the use to target holography at different depths or aberration spaces.
+        If ``None``, this feature is not used and no depth or aberration
+        transformation is applied.
     iter : int
         Tracks the current iteration number.
     flags : dict
@@ -206,11 +210,43 @@ class Hologram(_HologramStats):
             If ``None``, tries to use the shape of ``amp`` or ``phase``, but if these
             are not present, defaults to :attr:`shape` (which is usually determined by ``target``).
         dtype : type
-            See :attr:`dtype`; type to use for stored arrays.
+            See :attr:`dtype`; the type to use for stored arrays. The user should choose
+            this as a tradeoff between precision, memory size, and compute time.
         propagation_kernel : array_like OR None
-            TODO
-            Used for focusing
-            Of shape :attr:`slm_shape`.
+            Primarily used for targeting holography at a different depth plane, encoded
+            by a focusing kernel. :class:`MultiplaneHologram`, targeting several depth planes,
+            must make use of this parameter to 'bake' the information for each plane
+            into the composite hologram.
+            A more advanced use of this feature is to
+            target different positions in aberration-space, i.e. have a unique
+            wavefront calibration baked into the hologram for each plane.
+
+            The kernel must be of shape :attr:`slm_shape`.
+            If ``None``, this feature is unused (the kernel is an ideal DFT).
+
+            Tip
+            ~~~
+            The unit conversions necessary to convert a depth into a Zernike focusing
+            parameter are stored in a ``cameraslm``, and can be accessed via
+            :meth:`~slmsuite.holography.toolbox.convert_vector`.
+
+            .. highlight:: python
+            .. code-block:: python
+
+                # Convert a floating point Z depth from a desired units to Zernike units.
+                depth_zernike = convert_vector(
+                    (0, 0, depth),
+                    from_units="<depth_units>",
+                    to_units="zernike",
+                    hardware=cameraslm,
+                )
+
+                # The ANSI Zernike indices (2,1,4) [x,y,z]
+                # are automatically assumed from the 3-vector.
+                propagation_kernel = toolbox.phase.zernike_sum(
+                    grid=cameraslm,
+                    weights=depth_zernike,
+                )
 
             Note
             ~~~~
@@ -266,7 +302,7 @@ class Hologram(_HologramStats):
         # Parse these to validate consistency.
         stack = np.vstack((amp_shape, phase_shape, slm_shape))
         if np.all(np.isnan(stack)):
-            self.slm_shape = self.shape
+            self.slm_shape = None
         else:
             self.slm_shape = np.rint(np.nanmean(stack, axis=0)).astype(int)
 
@@ -290,6 +326,9 @@ class Hologram(_HologramStats):
 
         # 1.5) Parse target and create shape.
         if target is None or len(np.shape(target)) == 1:    # Multi or Compressed Hologram.
+            if self.slm_shape is None:
+                raise ValueError("SLM shape must be provided through cameraslm=")
+
             self.shape = self.slm_shape
 
             # Don't initialize memory for Multi
@@ -313,6 +352,9 @@ class Hologram(_HologramStats):
                     "(3, 5, 7, ...), literature suggests that GPU support is best for powers of 2."
                 )
 
+        if self.slm_shape is None:
+            self.slm_shape = self.shape
+
         # 2) Initialize variables.
         # Save the data type.
         if dtype(0).nbytes == 4:
@@ -334,6 +376,8 @@ class Hologram(_HologramStats):
         # Check propagation_kernel.
         if propagation_kernel is None:
             self.propagation_kernel = None
+        elif isinstance(propagation_kernel, REAL_TYPES):
+            self.propagation_kernel
         else:
             self.propagation_kernel = cp.array(propagation_kernel, dtype=self.dtype, copy=None)
             if self.propagation_kernel.shape != self.slm_shape:
@@ -687,14 +731,26 @@ class Hologram(_HologramStats):
             return self.phase.get() + np.pi
         return self.phase + np.pi
 
-    def extract_farfield(self, affine=None, get=True):
+    def extract_farfield(self, shape=None, propagation_kernel=None, affine=None, get=True):
         r"""
-        Collects the current complex farfield from the GPU with :meth:`cupy.ndarray.get()`.
+        Collects the current complex DFT farfield, potentially with transformations.
+        This includes collecting the data from the GPU with :meth:`cupy.ndarray.get()`.
 
         Parameters
         ----------
+        shape : (int, int)
+            Shape of the DFT.
+            Useful to change the resolution of the farfield.
+            If ``None``, defaults to :attr:`shape`, and falls back to :attr:`slm_shape`.
+        propagation_kernel : array_like
+            Used to check the result of the hologram at different depths.
+            See :attr:`propagation_kernel`. If ``None``, defaults to
+            :attr:`propagation_kernel` if one is present. Otherwise, no kernel is
+            applied. Zeroing can force no kernel to be applied and yield the raw DFT.
         affine : dict
-            Affine transformation to apply to farfield data (in the form of
+            Affine transformation to apply to farfield data (in the form of a dictionary
+            with keys ``"M"`` and ``"b"``).
+            If ``None``, no transformation is applied.
         get : bool
             Whether or not to convert the cupy array to a numpy array if cupy is used.
             This is ignored if numpy is used.
@@ -702,20 +758,39 @@ class Hologram(_HologramStats):
         Returns
         -------
         numpy.ndarray
-            Current farfield of the optimization.
+            Current farfield expected from the current :attr:`phase`.
         """
-        nearfield = toolbox.pad(self.amp * cp.exp(1j * self.phase), self.shape)
-        farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
-        self.amp_ff = cp.abs(farfield, out=self.amp_ff)
-        self.phase_ff = cp.arctan2(farfield.imag, farfield.real, out=self.phase_ff)
+        # Parse shape.
+        if shape is None:
+            shape = self.shape
+        if len(shape) == 1:
+            shape = self.slm_shape
 
+        # Parse propagation_kernel
+        if propagation_kernel is None:
+            propagation_kernel = self.propagation_kernel
+        if propagation_kernel is None:
+            propagation_kernel = 0
+        if not np.isscalar(propagation_kernel):
+            propagation_kernel = cp.array(propagation_kernel, copy=None)
+
+        # This doesn't use self.nearfield, self.farfield because we might be using different shape.
+        nearfield = toolbox.pad(self.amp * cp.exp(1j * (self.phase + propagation_kernel)), shape)
+        farfield = cp.fft.fftshift(cp.fft.fft2(cp.fft.fftshift(nearfield), norm="ortho"))
+
+        # Only populate amp and phase if
+        if self.amp_ff is not None and shape == self.amp_ff.shape:
+            self.amp_ff = cp.abs(farfield, out=self.amp_ff)
+            self.phase_ff = cp.arctan2(farfield.imag, farfield.real, out=self.phase_ff)
+
+        # Transform as desired. Note that this will likely break normalization.
         if cp != np:
             if affine is not None:
                 cp_affine_transform(
                     input=farfield,
                     matrix=affine["M"],
                     offset=affine["b"],
-                    output_shape=self.shape,
+                    output_shape=shape,
                     order=3,
                     output=farfield,
                     mode="constant",
@@ -728,7 +803,7 @@ class Hologram(_HologramStats):
                     input=farfield,
                     matrix=affine["M"],
                     offset=affine["b"],
-                    output_shape=self.shape,
+                    output_shape=shape,
                     order=3,
                     output=farfield,
                     mode="constant",
@@ -750,7 +825,7 @@ class Hologram(_HologramStats):
 
         Pass a nearfield complex matrix of self.shape shape to avoid memory reallocation.
         """
-        self.farfield = self._nearfield2farfield(farfield_out=self.farfield)
+        self._nearfield2farfield()
         self.amp_ff = cp.abs(self.farfield, out=self.amp_ff)
         self.phase_ff = cp.arctan2(self.farfield.imag, self.farfield.real, out=self.phase_ff)
 
@@ -780,13 +855,13 @@ class Hologram(_HologramStats):
 
             return nearfield_torch
 
-    def _nearfield_extract(self, nearfield):
+    def _nearfield_extract(self):
         """Populate phase with data from nearfield."""
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
         self.phase = cp.arctan2(
-            nearfield.imag[i0:i1, i2:i3],
-            nearfield.real[i0:i1, i2:i3],
+            self.nearfield.imag[i0:i1, i2:i3],
+            self.nearfield.real[i0:i1, i2:i3],
             out=self.phase,
         )
         if self.propagation_kernel is not None:
@@ -825,7 +900,7 @@ class Hologram(_HologramStats):
         self.nearfield = cp.fft.ifftshift(cp.fft.ifft2(cp.fft.ifftshift(self.farfield), norm="ortho"))
 
         if extract:
-            self._nearfield_extract(self.nearfield)
+            self._nearfield_extract()
 
     # Core optimization function.
     def optimize(
@@ -1144,8 +1219,9 @@ class Hologram(_HologramStats):
         mraf_variables = self._mraf_helper_routines()
 
         for _ in iterations:
-            # (A) Nearfield -> farfield. This uses the phase and amplitude attributes.
-            self.farfield = self._nearfield2farfield(self.nearfield, farfield_out=self.farfield)
+            # (A) Nearfield -> farfield.
+            # This uses the phase and amplitude attributes to populate the farfield attribute.
+            self._nearfield2farfield()
 
             # (B) Run step function if present and check termination conditions.
             if callback is not None:
@@ -1159,8 +1235,9 @@ class Hologram(_HologramStats):
             # If you want to add new functionality to GS, do so here to keep the main loop clean.
             self._gs_farfield_routines(self.farfield, mraf_variables)
 
-            # (E) Farfield -> nearfield. This populates the phase attribute.
-            self.nearfield = self._farfield2nearfield(self.farfield, nearfield_out=self.nearfield)
+            # (E) Farfield -> nearfield.
+            # This populates the nearfield and phase attribute.
+            self._farfield2nearfield()
 
             # Increment iteration.
             self.iter += 1

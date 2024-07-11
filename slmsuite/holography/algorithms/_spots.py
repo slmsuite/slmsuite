@@ -20,8 +20,7 @@ N_BATCH_MAX = 400   # Corresponds to ~2 GB for a megapixel SLM.
 
 class CompressedSpotHologram(_AbstractSpotHologram):
     """
-    Holography optimized for the generation of optical focal arrays, making use of
-    kernels not bound to the grid of a discrete Fourier transform.
+    Holography optimized for the generation of optical focal arrays (compressed-kernel-based).
 
     Is a subclass of :class:`FeedbackHologram`, but falls back to non-camera-feedback
     routines if :attr:`cameraslm` is not passed.
@@ -201,8 +200,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             # Warn the user that the piston is useless.
             if 0 in self.zernike_basis:
                 warnings.warn(
-                    "Found ANSI index '0' (Zernike piston) in the zernike_basis, "
-                    "but spot phase is controlled externally."
+                    "Found ANSI index '0' (Zernike piston) in the zernike_basis; "
+                    "this is not necessary as spot phase is controlled externally."
                 )
 
         # Make some helper variables to use the zernike_basis.
@@ -213,6 +212,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         ]
         if np.any(self.zernike_basis == 4):
             self.zernike_basis_cartesian.append(np.argwhere(self.zernike_basis == 4)[0])
+        self.zernike_basis_cartesian = np.array(self.zernike_basis_cartesian)
 
         # Parse spot_vectors.
         if basis == "zernike":
@@ -403,7 +403,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             )
 
         # Use the toolbox.phase function to calculate the kernels.
-        zernike_sum(
+        out = zernike_sum(
             self._grid_complex,
             indices=self.zernike_basis,
             weights=vectors,
@@ -411,6 +411,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             use_mask=False,                 # For this task, we don't want the edge of the aperture causing artifacts.
             out=out
         )
+        out = out.reshape((out.shape[0], out.shape[1] * out.shape[2]))
 
         # Convert from real phase to complex amplitude. Conjugated to properly take the overlap.
         out *= -self.dtype_complex(1j)
@@ -420,16 +421,22 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     def _update_cupy_kernel(self, kernel_slice=None, batch_slice=None):
         # Check if we need to update the kernel.
-        needs_update = False
-        if not hasattr(self, "_spot_zernike_cached") or np.any(self._spot_zernike_cached != self.spot_zernike):
-            # Make a cached copy to see if we need to update next time.
+        needs_update = (
+            not hasattr(self, "_spot_zernike_cached") or
+            np.any(self._spot_zernike_cached != self.spot_zernike)
+        )
+
+        # Take a cached copy so we can check if we need to update next time.
+        if needs_update:
             self._spot_zernike_cached = self.spot_zernike.copy()
-            needs_update = True
 
         # Update the kernel always if we're slicing (updating a fractional kernel).
         if kernel_slice is not None and batch_slice is not None:
             if self._cupy_kernel is None:
-                self._cupy_kernel = cp.zeros((np.prod(self.slm_shape), N_BATCH_MAX), dtype=self.dtype_complex)
+                self._cupy_kernel = cp.zeros(
+                    (N_BATCH_MAX, self.slm_shape[0] * self.slm_shape[1]),
+                    dtype=self.dtype_complex
+                )
 
             self._cupy_kernel[kernel_slice, :] = self._build_cupy_kernel_batched(
                 vectors=self.spot_zernike[:, batch_slice],
@@ -513,8 +520,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Conjugate the nearfield to properly take the overlap integral.
         # FYI: Nearfield shape is (H,W)
         N = len(self)
-        if nearfield is something:
-            istorch = True
+
+        # Determine whether we are in torch-mode.
+        istorch = nearfield is False    # TODO
 
         # Do some prep work.
         if istorch:
@@ -536,10 +544,11 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                     out=out[:, np.newaxis]
                 )
 
-
         # Evaluate the kernel.
         if N <= N_BATCH_MAX:
             self._update_cupy_kernel()
+            print(self._cupy_kernel.shape)
+            print(farfield.shape)
             collapse_kernel(self._cupy_kernel, out=farfield)
         else:
             batches = 1 + N // N_BATCH_MAX
@@ -774,7 +783,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
 class SpotHologram(_AbstractSpotHologram):
     """
-    Holography optimized for the generation of optical focal arrays.
+    Holography optimized for the generation of optical focal arrays (DFT-based).
 
     Is a subclass of :class:`FeedbackHologram`, but falls back to non-camera-feedback
     routines if :attr:`cameraslm` is not passed.

@@ -11,11 +11,11 @@ from slmsuite.hardware.slms.slm import SLM
 try:
     import pyglet
     import pyglet.gl as gl
-except ImportError:
-    warnings.warn("pyglet not installed. Install to use ScreenMirrored SLMs.")
-finally:
+
     if pyglet.__version__[0] != "1":
         raise ImportError("pyglet >=2.0.0 is not supported. Please downgrade to 1.5.29.")
+except ImportError:
+    warnings.warn("pyglet not installed. Install to use ScreenMirrored SLMs.")
 
 class ScreenMirrored(SLM):
     """

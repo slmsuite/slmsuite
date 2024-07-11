@@ -852,7 +852,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         return out
 
 
-def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "noll", "latex", "name"], **kwargs):
+def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "radial", "latex", "name"], **kwargs):
     r"""
     Plots :meth:`.zernike()` on a pyramid of subplots corresponding to the radial and
     azimuthal order. The user can resize the figure with ``plt.figure()`` beforehand
@@ -872,8 +872,8 @@ def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "noll", "latex", 
     titles : list of str
         Which titles to plot. Options:
 
-        -   ``"ansi"`` the ANSI index,
-        -   ``"noll"`` the noll index,
+        -   ``"ansi"`` the ANSI singleton index,
+        -   ``"radial"`` the radial index pair,
         -   ``"latex"`` the cartesian representation of the polynomial,
         -   ``"name"`` the name of the aberration produced by the polynomial.
     **kwargs

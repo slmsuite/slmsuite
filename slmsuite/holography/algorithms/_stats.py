@@ -481,8 +481,8 @@ class _HologramStats(object):
         if source is None:
             source = self.amp_ff
 
-            if source is None:
-                source = self.extract_farfield()
+            if source is None or len(source.shape) == 1:
+                source = self.extract_farfield(get=False)
 
             if limits is None:
                 if np == cp:
@@ -640,10 +640,10 @@ class _HologramStats(object):
                 _cam_points = self._cam_points
             else:
                 _cam_points = toolbox.convert_vector(
-                    self._cam_points, 
-                    from_units="knm", 
-                    to_units=units, 
-                    hardware=slm, 
+                    self._cam_points,
+                    from_units="knm",
+                    to_units=units,
+                    hardware=slm,
                     shape=npsource.shape
                 )
 

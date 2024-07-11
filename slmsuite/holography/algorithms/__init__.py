@@ -40,6 +40,7 @@ from slmsuite.holography.algorithms._hologram import Hologram as _Hologram
 from slmsuite.holography.algorithms._feedback import FeedbackHologram as _FeedbackHologram
 from slmsuite.holography.algorithms._spots import SpotHologram as _SpotHologram
 from slmsuite.holography.algorithms._spots import CompressedSpotHologram as _CompressedSpotHologram
+from slmsuite.holography.algorithms._multiplane import MultiplaneHologram as _MultiplaneHologram
 
 # Hack to get automodule to put the classes in the correct location.
 class Hologram(_Hologram):
@@ -53,3 +54,13 @@ class SpotHologram(_SpotHologram):
 
 class CompressedSpotHologram(_CompressedSpotHologram):
     pass
+
+class MultiplaneHologram(_MultiplaneHologram):
+    pass
+
+# Hack to get the class and attribute docs to work.
+Hologram.__doc__ = _Hologram.__doc__
+FeedbackHologram.__doc__ = _FeedbackHologram.__doc__
+SpotHologram.__doc__ = _SpotHologram.__doc__
+CompressedSpotHologram.__doc__ = _CompressedSpotHologram.__doc__
+MultiplaneHologram.__doc__ = _MultiplaneHologram.__doc__

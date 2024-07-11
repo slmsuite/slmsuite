@@ -1250,7 +1250,10 @@ class Hologram(_HologramStats):
 
     def _mraf_helper_routines(self):
         # MRAF helper variables
-        mraf_enabled = np.isnan(cp.sum(self.target).get())
+        if np == cp:
+            mraf_enabled = np.isnan(np.sum(self.target))
+        else:
+            mraf_enabled = np.isnan(cp.sum(self.target).get())
 
         if not mraf_enabled:
             return {

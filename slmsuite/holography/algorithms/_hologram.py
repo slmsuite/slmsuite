@@ -400,6 +400,9 @@ class Hologram(_HologramStats):
         # Initialize everything else inside reset.
         self.reset(reset_phase=False, reset_flags=False)
 
+        self.nearfield = None
+        self.farfield = None
+
         # Custom GPU kernels for speedy weighting.
         self._update_weights_generic_cuda_kernel = None
         if np != cp:
@@ -1247,8 +1250,7 @@ class Hologram(_HologramStats):
 
     def _mraf_helper_routines(self):
         # MRAF helper variables
-        noise_region = cp.isnan(self.target)
-        mraf_enabled = bool(cp.any(noise_region))
+        mraf_enabled = np.isnan(cp.sum(self.target).get())
 
         if not mraf_enabled:
             return {
@@ -1258,6 +1260,8 @@ class Hologram(_HologramStats):
                 "noise_region":None,
                 "zero_region":None,
             }
+
+        noise_region = cp.isnan(self.target)
 
         zero_region = cp.abs(self.target) == 0
         Z = int(cp.sum(zero_region))

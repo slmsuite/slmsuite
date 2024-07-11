@@ -306,7 +306,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         self.reset()
 
         # Fill the target with data.
-        self.update_target(new_target=spot_amp, reset_weights=True)
+        self.update_target(new_target=self.spot_amp, reset_weights=True)
 
         # Set the external amp variable to be perfect by default.
         self.external_spot_amp = np.ones(self.target.shape)
@@ -328,13 +328,11 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._near2far_cuda = cp.RawKernel(
                     CUDA_KERNELS,
                     'compressed_nearfield2farfield_v2',
-                    translate_cucomplex=True,
                     jitify=True,
                 )
                 self._far2near_cuda = cp.RawKernel(
                     CUDA_KERNELS,
                     'compressed_farfield2nearfield_v2',
-                    translate_cucomplex=True,
                     jitify=True,
                 )
 
@@ -349,7 +347,11 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self.cuda = True
 
                 # Test the kernel.
-                self._farfield2nearfield(self._nearfield2farfield(cp.full(self.slm_shape, 1j, dtype=self.dtype_complex)))
+                self._farfield2nearfield(
+                    self._nearfield2farfield(
+                        cp.full(self.slm_shape, self.dtype_complex(1j), dtype=self.dtype_complex)
+                    )
+                )
             except Exception as e:
                 raise e
                 warnings.warn("Raw CUDA kernels failed to load. Falling back to cupy.\n" + str(e))
@@ -470,10 +472,10 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         self._midloop_cleaning()
 
-    def _nearfield2farfield_cuda_v2(self, nearfield):
-        H, W = self.shape
-        D, N = self.spot_zernike.shape
-        M = self._i_md.shape[0]
+    def _nearfield2farfield_cuda_v2(self, nearfield, farfield_out):
+        H, W = np.int32(self.shape)
+        D, N = np.int32(self.spot_zernike.shape)
+        M = np.int32(self._i_md.shape[0])
 
         threads_per_block = int(1024)
         assert self._near2far_cuda.max_threads_per_block >= threads_per_block
@@ -488,25 +490,25 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         if self._nearfield2farfield_cuda_intermediate is None:
             self._nearfield2farfield_cuda_intermediate = cp.zeros((blocks_y, blocks_x), dtype=self.dtype_complex)
 
-        center_pix = np.array(self.cameraslm.slm.get_source_center())
-        pitch_zernike = np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
-
-        self._nearfield2farfield_cuda_intermediate.fill(-1)
+        center_pix = np.array(self.cameraslm.slm.get_source_center(), dtype=np.float32)
+        pitch_zernike = (
+            np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
+        ).astype(np.float32)
 
         # Call the RawKernel.
         self._near2far_cuda(
             (blocks_x,),
             (threads_per_block, 1),
             (
-                nearfield.ravel(),
+                nearfield,
                 W, H, N, D, M,
-                self.spot_zernike.T,    # a_nd
+                self.spot_zernike,    # a_dn
                 self._c_md,
                 self._i_md,
                 self._pxy_m,
-                np.float32(center_pix[0]), np.float32(center_pix[1]),
-                np.float32(pitch_zernike[0]), np.float32(pitch_zernike[1]),
-                self._nearfield2farfield_cuda_intermediate.ravel()
+                center_pix[0], center_pix[1],
+                pitch_zernike[0], pitch_zernike[1],
+                self._nearfield2farfield_cuda_intermediate
             )
         )
 
@@ -582,10 +584,16 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         if extract:
             self._nearfield_extract()
 
-    def _farfield2nearfield_cuda_v2(self):
-        H, W = self.shape
-        D, N = self.spot_zernike.shape
-        M = self._i_md.shape[0]
+    def _farfield2nearfield_cuda_v2(self, farfield, nearfield_out):
+        # self._far2near_cuda = cp.RawKernel(
+        #     CUDA_KERNELS,
+        #     'compressed_farfield2nearfield_v2',
+        #     jitify=True,
+        # )
+
+        H, W = np.int32(self.shape)
+        D, N = np.int32(self.spot_zernike.shape)
+        M = np.int32(self._i_md.shape[0])
 
         threads_per_block = int(1024)
         assert self._near2far_cuda.max_threads_per_block >= threads_per_block
@@ -596,8 +604,31 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             )
         blocks_x = int(np.ceil(float(W*H) / threads_per_block))
 
-        center_pix = np.array(self.cameraslm.slm.get_source_center())
-        pitch_zernike = np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
+        center_pix = np.array(self.cameraslm.slm.get_source_center(), dtype=np.float32)
+        pitch_zernike = (
+            np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
+        ).astype(np.float32)
+
+        # args = [
+        #     farfield,
+        #     W, H, N, D, M,
+        #     self.spot_zernike,    # a_dn
+        #     self._c_md,
+        #     self._i_md,
+        #     self._pxy_m,
+        #     center_pix[0], center_pix[1],
+        #     pitch_zernike[0], pitch_zernike[1],
+        #     nearfield_out
+        # ]
+
+        # for arg in args:
+        #     print(
+        #         type(arg),
+        #         (arg.shape if hasattr(arg, "shape") else ""),
+        #         (arg.dtype if hasattr(arg, "dtype") else "")
+        #     )
+        # for arg in args:
+        #     print(arg)
 
         # Call the RawKernel.
         self._far2near_cuda(
@@ -606,12 +637,12 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             (
                 self.farfield,
                 W, H, N, D, M,
-                self.spot_zernike.T,    # a_nd
+                self.spot_zernike,      # a_dn
                 self._c_md,
                 self._i_md,
                 self._pxy_m,
-                np.float32(center_pix[0]), np.float32(center_pix[1]),
-                np.float32(pitch_zernike[0]), np.float32(pitch_zernike[1]),
+                center_pix[0], center_pix[1],
+                pitch_zernike[0], pitch_zernike[1],
                 self.nearfield
             )
         )

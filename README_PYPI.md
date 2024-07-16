@@ -1,5 +1,5 @@
 <p align="center">
-<img alt="slmsuite" src="https://raw.githubusercontent.com/QPG-MIT/slmsuite/main/docs/source/static/slmsuite-raw.svg" width="256">
+<img alt="slmsuite" src="https://raw.githubusercontent.com/QPG-MIT/slmsuite/main/docs/source/static/slmsuite.svg" width="256">
 </p>
 
 <h2 align="center">High-Performance Spatial Light Modulator Control and Holography</h2>
@@ -13,7 +13,7 @@
 
 ## Installation
 
-Install the stable version of `slmsuite` from [PyPi](https://pypi.org/project/slmsuite/) using:
+Install the stable version of `slmsuite` from [PyPI](https://pypi.org/project/slmsuite/) using:
 
 ```console
 $ pip install slmsuite

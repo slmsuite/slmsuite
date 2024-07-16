@@ -316,11 +316,12 @@ class Camera():
             if preserve_none:
                 return None
             if not hasattr(self, "hdr") or self.hdr is None:
-                (exposures, exposure_power) = (4, 2)
+                (exposures, exposure_power) = (1, 0)
             else:
                 (exposures, exposure_power) = self.hdr
         elif exposures is False:
-            exposures = (1, 0)
+            exposures = 1
+            exposure_power = 0
         elif np.isscalar(exposures):
             exposure_power = 2
         else:
@@ -395,10 +396,9 @@ class Camera():
             :meth:`.get_image_hdr()` for more information.
 
         averaging : int OR None OR False
-            Number of frames to average over.
+            If ``int``, the number of frames to average over.
             If ``None``, the value of :attr:`averaging` is used.
             If ``False``, averaging is not used no matter the state of :attr:`averaging`.
-            If ``hdr`` is enabled, then average is ignored.
 
             Tip
             ~~~
@@ -432,8 +432,7 @@ class Camera():
                 (exposures, exposure_power),
                 timeout_s=timeout_s,
                 transform=transform,
-                averaging=False,
-                hdr=False
+                averaging=averaging,
             )
         elif averaging > 1:     # Average many images.
             averaging_dtype = self.get_averaging_dtype(averaging)
@@ -586,7 +585,7 @@ class Camera():
         for i in range(exposures):
             self.set_exposure(int(exposure_power ** i) * original_exposure)
             self.flush()    # Sometimes, cameras return bad frames after exposure change.
-            imgs[i, :, :] = self.get_image(**kwargs)
+            imgs[i, :, :] = self.get_image(hdr=False, **kwargs)
 
         # Reset exposure.
         self.set_exposure(original_exposure)
@@ -595,7 +594,7 @@ class Camera():
         if return_raw:
             return imgs
         else:
-            img = self.get_image_hdr_analysis(imgs, exposure_power, overexposure_threshold=self.bitresolution/2)
+            img = self.get_image_hdr_analysis(imgs, exposure_power=exposure_power, overexposure_threshold=self.bitresolution/2)
             if np.max(img) >= self.bitresolution:
                 warnings.warn("HDR image is overexposed.")
             return img

@@ -11,9 +11,14 @@ This uses the :mod:`h5py` `module <https://h5py.org>`_.
 
 import os
 import re
+import warnings
 
 import h5py
 import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+from slmsuite.holography.analysis import _make_8bit
 
 
 def _max_numeric_id(path, name, extension=None, kind="file", digit_count=5):
@@ -264,3 +269,113 @@ def write_h5(file_path, data, mode="w"):
 
     with h5py.File(file_path, mode) as file_:
         recurse(file_, data)
+
+
+def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=None, **kwargs):
+    """
+    Save an image or stacks of images as a filetype supported by :mod:`imageio`.
+    Handles :mod:`matplotlib` colormapping
+
+    Negative values are truncated to zero.
+
+    Important
+    ~~~~~~~~~
+
+
+    Parameters
+    ----------
+    file_path : str
+        Full path to the file to save the data in.
+    images : numpy.ndarray
+        A 2D matrix (image formats) or stack of 2D matrices (video formats).
+    cmap : str OR bool OR None
+        If ``str``, the :mod:`matplotlib` colormap under this name is used.
+        If ``None`` or ``False``, the images are directly saved as grayscale 8-bit images.
+        If ``True``, the default colormap is used.
+    lut : int OR None
+        Size of the lookup table for the colormap. This determines the number of colors
+        the resulting image has. This can be larger than 256 values because RGB data can
+        realize more colors than grayscale.
+        If ``None`, Defaults to ``mpl.rcParams['image.lut']`` (if the image is floating
+        point) or the maximum of the image (if the image )
+    normalize : bool
+        If ``True``, the maximum of the image is taken as the image maximum.
+        If ``False`` and using integer data, the data is unchanged.
+        If ``False`` and using floating point data, 1 is taken to be the maximum, and
+        this is scaled to the ``lut``.
+    **kwargs
+        Passed to ``imageio.imwrite()``. Useful for choosing a ``plugin`` or ``format``.
+
+    Returns
+    -------
+    numpy.ndarray
+        The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size ``(image_count,)``
+        for provided ``images`` data of shape ``(image_count, h, w)``.
+    """
+    # Parse images.
+    images = np.array(images, copy=None)
+    if len(images.shape) == 2:
+        images = np.reshape(images, (1, images.shape[0], images.shape[1]))
+    # (img_count, w_y, w_x) = images.shape
+    isfloat = np.issubdtype(images.dtype, np.floating)
+
+    # Parse cmap.
+    if not isinstance(cmap, str):
+        if cmap is True:
+            cmap = mpl.rcParams['image.cmap']
+        else:
+            if lut is None or lut > 256:
+                lut = 256
+
+    # Parse lut.
+    if lut is None:
+        if isfloat:
+            lut = mpl.rcParams['image.lut']
+        else:
+            lut = np.max(images)+1
+    lut = int(lut)
+
+    if normalize:
+        images = np.rint(images * (float(lut-1) / np.max(images))).astype(int)
+    elif isfloat:
+        images = np.rint(images * float(lut-1)).astype(int)
+
+    images[images < 0] = 0
+    images[images > lut] = lut
+
+    # Convert images.
+    if isinstance(cmap, str):
+        cm = plt.get_cmap(cmap, lut)
+        if hasattr(cm, "colors"):
+            c = cm.colors
+        else:
+            c = cm(np.arange(0, cm.N))
+        images = c[images]
+        images = 255 * images[:, :, :, :3]  # Remove alpha channel
+
+    images = images.astype(np.uint8)
+
+    if border is not None:
+        images[:, 0, :, :] = border
+        images[:, -1, :, :] = border
+        images[:, :, 0, :] = border
+        images[:, :, -1, :] = border
+
+    # Determine the file format
+    extension = file_path.split(".")[-1]
+
+    # Check that imageio is there and write the data
+    try:
+        from imageio import mimsave
+    except:
+        raise ValueError("imageio is required for write_image().")
+
+    mimsave(file_path, images, **kwargs)
+
+    # Optimize .gif if pygifsicle is installed
+    if extension == "gif":
+        try:
+            from pygifsicle import optimize
+            optimize(file_path)
+        except:
+            warnings.warn("pip install pygifsicle to optimize .gif file size.")

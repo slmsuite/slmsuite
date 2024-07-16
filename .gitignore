@@ -29,6 +29,7 @@
 *.png
 !docs/source/static/*.png
 !docs/source/static/*.svg
+!docs/source/static/*.gif
 docs/source/slmsuite-examples/
 
 # editor

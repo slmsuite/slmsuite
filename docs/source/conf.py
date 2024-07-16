@@ -161,14 +161,14 @@ html_theme_options = {
     "navbar_end": ["theme-switcher", "navbar-icon-links"], #, "search-field.html"
     "icon_links": [
         {
-            "name": "PyPI",
-            "url": "https://pypi.org/project/slmsuite/",
-            "icon": "fa-custom fa-pypi",
-        },
-        {
             "name": "GitHub",
             "url": "https://github.com/QPG-MIT/slmsuite/",
-            "icon": "fab fa-github-square",
+            "icon": "fab fa-github",
+        },
+        {
+            "name": "PyPI",
+            "url": "https://pypi.org/project/slmsuite/",
+            "icon": "fab fa-python",
         },
     ],
     "footer_start": ["copyright", "sphinx-version"],

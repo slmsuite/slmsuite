@@ -116,6 +116,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         spot_vectors : array_like
             Spot position vectors with shape ``(D, N)``,
             where ``D`` is the dimension of the parameters of each spot.
+            The processed values of this array are stored in :attr:`spot_zernike` in the
+            ``"zernike"`` basis.
         basis : str OR array_like of int
             The spots can be in any of the following bases:
 
@@ -239,6 +241,12 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 to_units="zernike",
                 hardware=cameraslm
             )
+            self.spot_kxy = toolbox.convert_vector(
+                spot_vectors,
+                from_units=basis,
+                to_units="kxy",
+                hardware=cameraslm
+            )
             self.spot_ij = toolbox.convert_vector(
                 spot_vectors,
                 from_units=basis,
@@ -253,7 +261,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         # Generate ij point spread function (psf)
         if cameraslm is not None:
-            psf_kxy = np.mean(cameraslm.slm.spot_radius_kxy())
+            psf_kxy = np.mean(cameraslm.slm.get_spot_radius_kxy())
             self.spot_ij = cameraslm.kxyslm_to_ijcam(self.spot_kxy)
             psf_ij = toolbox.convert_radius(psf_kxy, "kxy", "ij", cameraslm)
         else:
@@ -303,10 +311,12 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         # Replace the fake shape with the SLM shape.
         self.shape = self.slm_shape
-        self.reset()
 
         # Fill the target with data.
-        self.update_target(new_target=self.spot_amp, reset_weights=True)
+        self.set_target(new_target=self.spot_amp, reset_weights=True)
+
+        # Reset to populate variables.
+        self.reset()
 
         # Set the external amp variable to be perfect by default.
         self.external_spot_amp = np.ones(self.target.shape)
@@ -367,7 +377,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         """
         return self.spot_amp.size
 
-    def calculate_padded_shape(self):
+    def get_padded_shape(self):
         """
         Vestigial from :class:`~slmsuite.holography.algorithms.Hologram`, but unneeded here.
         :class:`~slmsuite.holography.algorithms.CompressedSpotHologram`
@@ -416,7 +426,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         out = out.reshape((out.shape[0], out.shape[1] * out.shape[2]))
 
         # Convert from real phase to complex amplitude. Conjugated to properly take the overlap.
-        out *= -self.dtype_complex(1j)
+        out *= self.dtype_complex(1j)
         out = cp.exp(out, out=out)
 
         return out
@@ -526,6 +536,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Determine whether we are in torch-mode.
         istorch = nearfield is False    # TODO
 
+        nearfield = cp.conj(nearfield, out=nearfield)
+
         # Do some prep work.
         if istorch:
             farfield = self._get_torch_tensor_from_cupy(self.farfield)
@@ -549,8 +561,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Evaluate the kernel.
         if N <= N_BATCH_MAX:
             self._update_cupy_kernel()
-            print(self._cupy_kernel.shape)
-            print(farfield.shape)
             collapse_kernel(self._cupy_kernel, out=farfield)
         else:
             batches = 1 + N // N_BATCH_MAX
@@ -563,6 +573,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         # Normalize. This might need to be brought into torch?
         farfield *= (1 / Hologram._norm(farfield, xp=torch if istorch else cp))
+
+        nearfield = cp.conj(nearfield, out=nearfield)
 
         return farfield
 
@@ -677,7 +689,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                     self.nearfield += nearfield_out_temp
 
     # Target update.
-    def update_target(self, new_target=None, reset_weights=False):
+    def set_target(self, new_target=None, reset_weights=False):
         """
         Change the target to something new. This method handles cleaning and normalization.
 
@@ -748,7 +760,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     def _calculate_stats_computational_spot(self, stats, stat_groups=[]):
         """
-        Wrapped by :meth:`SpotHologram.update_stats()`.
+        Wrapped by :meth:`SpotHologram._update_stats()`.
         """
         if "computational_spot" in stat_groups:
             stats["computational_spot"] = self._calculate_stats(
@@ -760,7 +772,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
         """
-        Wrapped by :meth:`SpotHologram.update_stats()`.
+        Wrapped by :meth:`SpotHologram._update_stats()`.
         """
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
@@ -795,7 +807,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]
             )
 
-    def update_stats(self, stat_groups=[]):
+    def _update_stats(self, stat_groups=[]):
         """
         Calculate statistics corresponding to the desired ``stat_groups``.
 
@@ -806,8 +818,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         """
         stats = {}
 
-        self._calculate_stats_computational_spot(stats, stat_groups)
-        self._calculate_stats_experimental_spot(stats, stat_groups)
+        self._calculate_stats_computational(stats, stat_groups)
+        # self._calculate_stats_experimental_spot(stats, stat_groups)
 
         self._update_stats_dictionary(stats)
 
@@ -932,7 +944,7 @@ class SpotHologram(_AbstractSpotHologram):
             to the (potentially elliptical) projection into ``"knm"`` from the given ``basis``.
         null_region : array_like OR None
             Array of shape :attr:`shape`. Where ``True``, sets the background to zero
-            instead of nan. If ``None``, has no effect.
+            instead of ``nan``. If ``None``, has no effect.
         null_region_radius_frac : float OR None
             Helper function to set the ``null_region`` to zero for Fourier space radius fractions above
             ``null_region_radius_frac``. This is useful to prevent power being deflected
@@ -975,7 +987,7 @@ class SpotHologram(_AbstractSpotHologram):
                     self.spot_knm,
                     from_units="knm",
                     to_units="kxy",
-                    hardware=cameraslm.slm,
+                    hardware=cameraslm,
                     shape=shape
                 )
 
@@ -1007,7 +1019,7 @@ class SpotHologram(_AbstractSpotHologram):
                 self.spot_kxy,
                 from_units="kxy",
                 to_units="knm",
-                hardware=cameraslm.slm,
+                hardware=cameraslm,
                 shape=shape
             )
         elif basis == "ij":  # Pixel on the camera.
@@ -1061,7 +1073,7 @@ class SpotHologram(_AbstractSpotHologram):
 
         # Generate point spread functions (psf) for the knm and ij bases
         if cameraslm is not None:
-            psf_kxy = np.mean(cameraslm.slm.spot_radius_kxy())
+            psf_kxy = np.mean(cameraslm.slm.get_spot_radius_kxy())
             psf_knm = toolbox.convert_radius(psf_kxy, "kxy", "knm", cameraslm.slm, shape)
             psf_ij = toolbox.convert_radius(psf_kxy, "kxy", "ij", cameraslm, shape)
         else:
@@ -1158,7 +1170,7 @@ class SpotHologram(_AbstractSpotHologram):
             self.null_region_knm[mask] = True
 
         # Fill the target with data.
-        self.update_target(reset_weights=True)
+        self.set_target(reset_weights=True)
 
     def __len__(self):
         """
@@ -1275,9 +1287,9 @@ class SpotHologram(_AbstractSpotHologram):
         # Return a new SpotHologram.
         return SpotHologram(shape, vectors, basis=basis, spot_amp=None, **kwargs)
 
-    def _update_target_spots(self, reset_weights=False):
+    def _set_target_spots(self, reset_weights=False):
         """
-        Wrapped by :meth:`SpotHologram.update_target()`.
+        Wrapped by :meth:`SpotHologram.set_target()`.
         """
         # Round the spot points to the nearest integer coordinates in knm space.
         self.spot_knm_rounded = np.rint(self.spot_knm).astype(int)
@@ -1333,7 +1345,7 @@ class SpotHologram(_AbstractSpotHologram):
         if reset_weights:
             self.reset_weights()
 
-    def update_target(self, reset_weights=False, plot=False):
+    def set_target(self, reset_weights=False, plot=False):
         """
         From the spot locations stored in :attr:`spot_knm`, update the target pattern.
 
@@ -1355,7 +1367,7 @@ class SpotHologram(_AbstractSpotHologram):
         reset_weights : bool
             Whether to reset the :attr:`weights` to this new :attr:`target`.
         """
-        self._update_target_spots(reset_weights=reset_weights)
+        self._set_target_spots(reset_weights=reset_weights)
 
     # Weighting and stats.
     def _update_weights(self):
@@ -1409,7 +1421,7 @@ class SpotHologram(_AbstractSpotHologram):
 
     def _calculate_stats_computational_spot(self, stats, stat_groups=[]):
         """
-        Wrapped by :meth:`SpotHologram.update_stats()`.
+        Wrapped by :meth:`SpotHologram._update_stats()`.
         """
 
         if "computational_spot" in stat_groups:
@@ -1464,7 +1476,7 @@ class SpotHologram(_AbstractSpotHologram):
 
     def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
         """
-        Wrapped by :meth:`SpotHologram.update_stats()`.
+        Wrapped by :meth:`SpotHologram._update_stats()`.
         """
 
         if "experimental_spot" in stat_groups:
@@ -1496,7 +1508,7 @@ class SpotHologram(_AbstractSpotHologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"],
             )
 
-    def update_stats(self, stat_groups=[]):
+    def _update_stats(self, stat_groups=[]):
         """
         Calculate statistics corresponding to the desired ``stat_groups``.
 
@@ -1605,7 +1617,7 @@ class SpotHologram(_AbstractSpotHologram):
                     hardware=self.cameraslm.slm,
                     shape=self.shape
                 )
-                self.update_target(reset_weights=True)
+                self.set_target(reset_weights=True)
             elif basis == "ij":
                 # Modify camera targets. Don't modify any k-vectors.
                 self.spot_ij = self.spot_ij + shift_vectors

@@ -28,7 +28,15 @@ class FeedbackHologram(Hologram):
         Measured with :meth:`.measure()`.
     """
 
-    def __init__(self, shape, target_ij=None, cameraslm=None, **kwargs):
+    def __init__(
+            self,
+            shape,
+            target_ij=None,
+            cameraslm=None,
+            null_region=None,
+            null_region_radius_frac=None,
+            **kwargs
+        ):
         """
         Initializes a hologram with camera feedback.
 
@@ -51,6 +59,14 @@ class FeedbackHologram(Hologram):
             If an :class:`~slmsuite.hardware.slms.SLM` is passed, the attribute is set to ``None``,
             but the information contained in the SLM is passed to the superclass :class:`.Hologram`.
             See :attr:`cameraslm`.
+        null_region : array_like OR None
+            Array of shape :attr:`shape`. Where ``True``, sets the background to zero
+            instead of ``nan``. If ``None``, has no effect.
+        null_region_radius_frac : float OR None
+            Helper function to set the ``null_region`` to zero for Fourier space radius fractions above
+            ``null_region_radius_frac``. This is useful to prevent power being deflected
+            to very high orders, which are unlikely to be properly represented in
+            practice on a physical SLM.
         **kwargs
             Passed to :meth:`Hologram.__init__`.
         """
@@ -111,7 +127,12 @@ class FeedbackHologram(Hologram):
 
             # Transform the target, if it is provided.
             if target_ij is not None:
-                self.update_target(target_ij, reset_weights=True)
+                self.update_target(
+                    target_ij,
+                    null_region,
+                    null_region_radius_frac,
+                    reset_weights=True
+                )
 
         else:
             self._cam_points = None
@@ -167,7 +188,7 @@ class FeedbackHologram(Hologram):
 
         # Composite transformation (along with xy -> yx).
         M = cp.array(np.flip(np.flip(np.matmul(M2, M1), axis=0), axis=1))
-        b = cp.array(np.flip(np.matmul(M2, b1) + b2))
+        b = cp.array(np.flip(np.squeeze(np.matmul(M2, b1) + b2)))
 
         # See if the user wants to blur.
         if blur_ij is None:
@@ -184,6 +205,7 @@ class FeedbackHologram(Hologram):
         cp.abs(cp_img, out=cp_img)
 
         # Perform affine.
+        print(b)
         target = cp_affine_transform(
             input=cp_img,
             matrix=M,
@@ -192,7 +214,7 @@ class FeedbackHologram(Hologram):
             order=order,
             output=out,
             mode="constant",
-            cval=0,
+            cval=np.nan,
         )
 
         # Filter the image. FUTURE: fix.
@@ -230,8 +252,14 @@ class FeedbackHologram(Hologram):
             This is useful to avoid (expensive) transformation from the ``"ij"`` to the
             ``"knm"`` basis if :attr:`img_knm` is not needed.
         """
-        if self.img_ij is None:
-            self.cameraslm.slm.write(self.extract_phase(), settle=True)
+        if self.img_ij is None and (basis == "knm" or basis == "ij"):
+            # Apply the pattern to the SLM at the desired depth (implemented by propagation_kernel)
+            if self.propagation_kernel is None:
+                self.cameraslm.slm.write(self.get_phase(), settle=True)
+            else:
+                self.cameraslm.slm.write(self.get_phase() + self.propagation_kernel, settle=True)
+
+            # Measure the result.
             self.cameraslm.cam.flush()
             self.img_ij = np.array(self.cameraslm.cam.get_image(), copy=None, dtype=self.dtype)
 
@@ -246,9 +274,14 @@ class FeedbackHologram(Hologram):
             if self.img_knm is None:
                 self.img_knm = self.ijcam_to_knmslm(np.square(self.img_ij), out=self.img_knm)
                 cp.sqrt(self.img_knm, out=self.img_knm)
+        elif basis == "ij":
+            pass
+        else:
+            raise ValueError(f"Unrecognized measurement basis '{basis}'. Options are 'ij' or 'knm'")
+
 
     # Target update.
-    def update_target(self, new_target_ij, reset_weights=False):
+    def update_target(self, new_target_ij, null_region=None, null_region_radius_frac=None, reset_weights=False):
         """
         Change the target to something new. This method handles cleaning and normalization.
 
@@ -258,12 +291,37 @@ class FeedbackHologram(Hologram):
             New :attr:`target_ij` to optimize towards *in the camera basis*.
             should be of the same shape as the camera.
             Also updates :attr:`target` using the stored Fourier calibration.
+        null_region : array_like OR None
+            Array of shape :attr:`shape`. Where ``True``, sets the background to zero
+            instead of ``nan``. If ``None``, has no effect.
+        null_region_radius_frac : float OR None
+            Helper function to set the ``null_region`` to zero for Fourier space radius fractions above
+            ``null_region_radius_frac``. This is useful to prevent power being deflected
+            to very high orders, which are unlikely to be properly represented in
+            practice on a physical SLM.
         reset_weights : bool
             Whether to update the :attr:`weights` to this new :attr:`target`.
         """
         self.target_ij = new_target_ij
         # Transformation order of zero to prevent nan-blurring in MRAF cases.
         self.ijcam_to_knmslm(new_target_ij, out=self.target, order=0)
+
+        # Set the null region.
+        undefined = cp.isnan(self.target)
+
+        if null_region_radius_frac is not None:
+            # Build up the null region pattern if we have not already done the transform above.
+            if null_region is None:
+                null_region = cp.zeros(self.shape, dtype=bool)
+
+            # Make a circle, outside of which the null_region is active.
+            xl = cp.linspace(-1, 1, null_region.shape[0])
+            yl = cp.linspace(-1, 1, null_region.shape[1])
+            (xg, yg) = cp.meshgrid(xl, yl)
+            mask = cp.square(xg) + cp.square(yg) > null_region_radius_frac**2
+            null_region[mask] = True
+
+        self.target[cp.logical_and(undefined, null_region)] = 0
 
         if reset_weights:
             self.reset_weights()
@@ -313,7 +371,7 @@ class FeedbackHologram(Hologram):
 
     def _calculate_stats_experimental(self, stats, stat_groups=[]):
         """
-        Wrapped by :meth:`FeedbackHologram.update_stats()`.
+        Wrapped by :meth:`FeedbackHologram._update_stats()`.
         """
         if "experimental_knm" in stat_groups:
             self.measure("knm")  # Make sure data is there.
@@ -335,7 +393,7 @@ class FeedbackHologram(Hologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"],
             )
 
-    def update_stats(self, stat_groups=[]):
+    def _update_stats(self, stat_groups=[]):
         """
         Calculate statistics corresponding to the desired ``stat_groups``.
 

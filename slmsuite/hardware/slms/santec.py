@@ -15,7 +15,7 @@ These files should be copied in before use.
 Note
 ~~~~
 Santec provides base wavefront correction accounting for the curvature of the SLM surface.
-Consider loading these files via :meth:`.SLM.load_vendor_phase_correction()`
+Consider loading these files via :meth:`.SLM.read_vendor_phase_correction()`
 """
 import os
 import ctypes
@@ -336,7 +336,7 @@ class Santec(SLM):
 
         return display_list
 
-    def load_vendor_phase_correction(self, file_path, smooth=False, overwrite=True):
+    def read_vendor_phase_correction(self, file_path, smooth=False, overwrite=True):
         """
         Load phase correction provided by Santec from file,
         setting ``"phase"`` in :attr:`~slmsuite.hardware.slms.slm.SLM.source`.

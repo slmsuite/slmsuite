@@ -26,7 +26,7 @@ class MultiplaneHologram(Hologram):
     holograms : list of :class:`Hologram`
         List of sub-holograms to optimize simultaneously.
     """
-    def __init__(self, holograms):
+    def __init__(self, holograms, weights=None):
         """
         Initializes a 'meta' hologram consisting of several sub-holograms optimizing at
         the same time.
@@ -34,7 +34,10 @@ class MultiplaneHologram(Hologram):
         Parameters
         ----------
         holograms : list of :class:`Hologram`
-            List of sub-holograms to optimize simultaneously.
+            List of ``N`` sub-holograms to optimize simultaneously.
+        weights : array_like of float OR None
+            List of ``N`` floats
+            If ``None``, defaults to even power.
         """
         self.holograms = holograms
 
@@ -49,7 +52,7 @@ class MultiplaneHologram(Hologram):
 
         # Construct the parent hologram with empty goals but complete context.
         super().__init__(
-            target=(1,1),           # This hologram has a fake target.
+            target=holograms[0].slm_shape,      # This hologram has a fake target.
             amp=holograms[0].amp,
             phase=holograms[0].phase,
             slm_shape=holograms[0].slm_shape,
@@ -62,6 +65,13 @@ class MultiplaneHologram(Hologram):
             h.amp = self.amp
             h.phase = self.phase
 
+        # Parse weights
+        if weights is None:
+            weights = np.ones(len(self), dtype=self.dtype)
+
+        self.weights = np.array(weights, copy=None, dtype=self.dtype)
+        self.weights /= Hologram._norm(weights)
+
     def __len__(self):
         return len(self.holograms)
 
@@ -69,14 +79,43 @@ class MultiplaneHologram(Hologram):
 
     def _update_flags(self, method, verbose, feedback, stat_groups, **kwargs):
         # First update the parent flags.
-        super()._update_flags(self, method, verbose, feedback, stat_groups, **kwargs)
+        super()._update_flags(method, verbose, feedback, stat_groups, **kwargs)
 
         # Then update each of the child flags. TODO: document this behavior.
         for h in self.holograms:
             h.flags.update(self.flags)
 
-    def _get_quadratic_initial_phase(self, scaling=1):
-        raise NotImplementedError("Quadratic initial phase is not currently supported for Multiplane.")
+    def _update_weights(self, *args, **kwargs):
+        for h in self.holograms: h._update_weights(*args, **kwargs)
+
+    def _gs_farfield_routines(self, *args, **kwargs):
+        for h in self.holograms: h._gs_farfield_routines(*args, **kwargs)
+
+    def _get_target_moments_knm_norm(self):
+        # Get the data from the child holograms.
+        centers = []
+        stds = []
+        for h in self.holograms:
+            center, std = h._get_target_moments_knm_norm()
+            centers.append(center)
+            stds.append(std)
+
+        # Weight the centers.
+        centers = np.vstack(centers)
+        center = np.sum(np.square(self.weights).reshape(-1, 1) * centers, axis=0)
+
+        # With the center, now weight the stds. We're doing an analytic integration of
+        # x^2 over rectangles corresponding to the center \pm sqrt(3) * std of each hologram.
+        stds = np.vstack(stds)
+
+        c = centers - center.reshape(1, 2)
+        l = c - stds * np.sqrt(3)
+        r = c + stds * np.sqrt(3)
+
+        integral_normalized = (r * r * r - l * l * l) / (2 * stds * np.sqrt(3)) / 3
+        std = np.sqrt(np.sum(np.square(self.weights).reshape(-1, 1) * integral_normalized, axis=0))
+
+        return center, std
 
     def reset(self, reset_phase=True, reset_flags=False):
         # Resetting the phase of the parent resets the phase of the children because
@@ -89,22 +128,22 @@ class MultiplaneHologram(Hologram):
     def reset_weights(self):
         for h in self.holograms: h.reset_weights()
 
-    def plot_farfield(self, **kwargs):
-        for h in self.holograms: h.plot_farfield(**kwargs)
+    def plot_farfield(self, *args, **kwargs):
+        for h in self.holograms: h.plot_farfield(*args, **kwargs)
 
-    def plot_nearfield(self, **kwargs):
-        for h in self.holograms: h.plot_nearfield(**kwargs)
+    # def plot_nearfield(self, *args, **kwargs):
+    #     for h in self.holograms: h.plot_nearfield(*args, **kwargs)
 
-    def plot_stats(self, **kwargs):
-        for h in self.holograms: h.plot_stats(**kwargs)
+    def plot_stats(self, *args, **kwargs):
+        for h in self.holograms: h.plot_stats(*args, **kwargs)
 
-    def update_stats(self, stat_groups=[]):
+    def _update_stats(self, stat_groups=[]):
         # TODO: make meta stat group.
-        for h in self.holograms: h.update_stats(stat_groups)
+        for h in self.holograms: h._update_stats(stat_groups)
 
-    def update_target(self, **kwargs):
+    def set_target(self, *args, **kwargs):
         raise RuntimeError(
-            "Do not use MultiplaneHologram.update_target(). "
+            "Do not use MultiplaneHologram.set_target(). "
             "Instead, update the targets of the children holograms directly."
         )
 
@@ -128,17 +167,26 @@ class MultiplaneHologram(Hologram):
         """Sum all the complex nearfields together for the meta nearfield."""
         self.nearfield.fill(0)
 
-        for h in self.holograms:
+        for h, w in zip(self.holograms, self.weights):
             h._farfield2nearfield(extract=False)    # Avoid individually extracting phase.
 
             (i0, i1, i2, i3) = toolbox.unpad(h.shape, h.slm_shape)
 
             # Add the complex individual nearfields to our meta nearfield.
             if h.propagation_kernel is None:
-                self.nearfield += h.nearfield[i0:i1, i2:i3]
+                self.nearfield += w * h.nearfield[i0:i1, i2:i3]
             else:
                 # Remove the propagation kernel if necessary.
-                self.nearfield += h.nearfield[i0:i1, i2:i3] * cp.exp(-1j * h.propagation_kernel)
+                self.nearfield += w * h.nearfield[i0:i1, i2:i3] * cp.exp(-1j * h.propagation_kernel)
 
         # Get meta self phase.
         self._nearfield_extract()
+
+    def _mraf_helper_routines(self):
+        return {
+            "mraf_enabled":False,
+            "where_working":None,
+            "signal_region":None,
+            "noise_region":None,
+            "zero_region":None,
+        }

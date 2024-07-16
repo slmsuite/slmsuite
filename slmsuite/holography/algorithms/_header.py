@@ -60,8 +60,8 @@ ALGORITHM_DEFAULTS = {
         "feedback_exponent": 0.8,
     },
     "WGS-Nogrette": {"feedback": "computational", "feedback_factor": 0.1},
-    "WGS-Wu": {"feedback": "computational", "feedback_exponent": 10},
-    "WGS-tanh": {"feedback": "computational", "feedback_factor": .5, "feedback_exponent": 10},
+    "WGS-Wu": {"feedback": "computational", "feedback_exponent": .5},
+    "WGS-tanh": {"feedback": "computational", "feedback_factor": .2, "feedback_exponent": .5},
     "CG" : {
         "feedback": "computational",
         "optimizer": "Adam",

@@ -169,13 +169,13 @@ class SimulatedCamera(Camera):
         )
         dkxy_min = dkxy.ravel()[1:].min()
 
-        self.shape_padded = Hologram.calculate_padded_shape(self._slm, precision=dkxy_min)
+        self.shape_padded = Hologram.get_padded_shape(self._slm, precision=dkxy_min)
         # print(
         #     "Padded SLM k-space shape set to (%d,%d) to achieve required "
         #     "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
         # )
 
-        phase = -self._slm.display.astype(float) / (self._slm.bitresolution * 2 * np.pi)
+        phase = -self._slm.display.astype(float) * (2 * np.pi / self._slm.bitresolution)
         self._hologram = Hologram(
             self.shape_padded,
             amp=self._slm.source["amplitude_sim"],
@@ -381,13 +381,16 @@ class SimulatedCamera(Camera):
         # Update phase; calculate the far-field (keep on GPU if using cupy for follow-on interp)
         # FUTURE: in the case where sim is being used inside a GS loop, there could be
         # something clever here to use the existing Hologram's data.
+
         # Analog phase
         # self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
-        # Quantized phase
-        phase = -self._slm.display.astype(float) / (self._slm.bitresolution * 2 * np.pi)
-        self._hologram.reset_phase(phase - phase.min() + self._slm.source["phase_sim"])
 
-        ff = self._hologram.extract_farfield(get=True if (cp == np) else False)
+        # Quantized phase
+        self._hologram.amp = self._slm.source["amplitude_sim"]
+        phase = -self._slm.display.astype(self._hologram.dtype) * (2 * np.pi / self._slm.bitresolution)
+        self._hologram.reset_phase(phase - phase.min() + self._slm.source["phase_sim"].astype(self._hologram.dtype))
+
+        ff = self._hologram.get_farfield(get=True)
 
         # Use map_coordinates for fastest interpolation
         # Note: by default, map_coordinates sets pixels outside the SLM k-space to 0 as desired
@@ -415,10 +418,10 @@ class SimulatedCamera(Camera):
                 else:
                     raise RuntimeError('Unknown noise source %s specified!'%(key))
 
-        # Quantize: all power in one pixel (img=1) -> maximum readout value at base exposure=1
-        img = np.rint(img)
-
         # Truncate to maximum readout value
-        img[img > self.bitresolution] = self.bitresolution
+        img[img > self.bitresolution-1] = self.bitresolution-1
 
-        return img
+        # Quantize: all power in one pixel (img=1) -> maximum readout value at base exposure=1
+        # img = np.rint(img)
+
+        return img.astype(self.dtype)

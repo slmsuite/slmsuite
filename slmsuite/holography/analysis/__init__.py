@@ -1061,10 +1061,10 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
     return vectors_zernike[1:, :]
 
 
-def image_vortices(image):
+def image_vortices(phase_image):
     """
     Find the coordinates of optical vortices inside a phase image by computing the
-    winding number directly.
+    winding number directly. The coordinates are returned as a boolean image.
     """
     # Discrete derivatives, with appropriate wrapping.
     dd = [
@@ -1080,6 +1080,13 @@ def image_vortices(image):
     winding_number[np.isnan(winding_number)] = 0
 
     return winding_number
+
+
+def image_remove_vortices(phase_image):
+    """
+    Find and then remove all the vortices in an image.
+    """
+    pass
 
 
 # Array fitting functions.
@@ -1396,7 +1403,7 @@ def blob_array_detect(
         If a single ``int`` size is given, then assume ``(N, N)``.
     orientation : dict or None
         Guess array orientation (same format as the returned) from previous known results.
-        If None (the default), orientation is estimated from looking for peaks in the
+        If ``None`` (the default), orientation is estimated from looking for peaks in the
         Fourier transform of the image.
     orientation_check : bool
         If enabled, looks for two missing spots at one corner as a parity check on rotation.

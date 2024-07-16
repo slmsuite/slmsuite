@@ -117,7 +117,7 @@ class _HologramStats(object):
 
     def _calculate_stats_computational(self, stats, stat_groups=[]):
         """
-        Wrapped by :meth:`Hologram.update_stats()`.
+        Wrapped by :meth:`Hologram._update_stats()`.
         """
         if "computational" in stat_groups:
             stats["computational"] = self._calculate_stats(
@@ -207,7 +207,7 @@ class _HologramStats(object):
 
             self.stats["raw_farfield"][self.iter] = farfield
 
-    def update_stats(self, stat_groups=[]):
+    def _update_stats(self, stat_groups=[]):
         """
         Calculate statistics corresponding to the desired ``stat_groups``.
 
@@ -222,7 +222,7 @@ class _HologramStats(object):
 
         self._update_stats_dictionary(stats)
 
-    def export_stats(self, file_path, include_state=True):
+    def write_stats(self, file_path, include_state=True):
         """
         Uses :meth:`write_h5` to export the statistics hierarchy to a given h5 file.
 
@@ -269,7 +269,7 @@ class _HologramStats(object):
 
         write_h5(file_path, to_save)
 
-    def import_stats(self, file_path, include_state=True):
+    def read_stats(self, file_path, include_state=True):
         """
         Uses :meth:`write_h5` to import the statistics hierarchy from a given h5 file.
 
@@ -482,13 +482,14 @@ class _HologramStats(object):
             source = self.amp_ff
 
             if source is None or len(source.shape) == 1:
-                source = self.extract_farfield(get=False)
+                source = self.get_farfield(get=False)
 
             if limits is None:
-                if np == cp:
-                    limits = self._compute_limits(self.target, limit_padding=limit_padding)
-                else:
-                    limits = self._compute_limits(self.target.get(), limit_padding=limit_padding)
+                if len(self.target.shape) == 2:
+                    if np == cp:
+                        limits = self._compute_limits(self.target, limit_padding=limit_padding)
+                    else:
+                        limits = self._compute_limits(self.target.get(), limit_padding=limit_padding)
 
             if len(title) == 0:
                 title = "Farfield Amplitude"
@@ -528,9 +529,6 @@ class _HologramStats(object):
 
         # Start making the plot
         fig, axs = plt.subplots(1, 2, figsize=figsize)
-
-        for ax in axs:
-            ax.set_facecolor("#FFEEEE")
 
         # Plot the full target, blurred so single pixels are visible in low res
         b = 2 * int(np.amax(self.shape) / 400) + 1  # FUTURE: fix arbitrary
@@ -602,6 +600,12 @@ class _HologramStats(object):
             ax.set_xlabel(toolbox.BLAZE_LABELS[units][0])
             if i == 0:
                 ax.set_ylabel(toolbox.BLAZE_LABELS[units][1])
+
+        aspect = float(npsource.shape[1]) / float(npsource.shape[0])
+
+        for ax in axs:
+            ax.set_facecolor("#FFEEEE")
+            ax.set_aspect(aspect)
 
         # If _cam_points is defined (i.e. is a FeedbackHologram or subclass),
         # plot a yellow rectangle for the extents of the camera

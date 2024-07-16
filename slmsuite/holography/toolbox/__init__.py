@@ -130,7 +130,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         derived from the amplitude distribution of the SLM.
         See :meth:`~slmsuite.hardware.slms.slm.SLM.get_source_zernike_scaling()` and
         :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`, especially
-        the `extent_threshold` keyword which determines the size of the disk.
+        the ``extent_threshold`` keyword which determines the size of the disk.
         Requires a :class:`~slmsuite.hardware.slms.slm.SLM` or
         :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``.
 
@@ -1000,8 +1000,6 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
         option1 = fit_3pt(origin, np.add(origin, dv1), np.add(origin, dv2), N=(5,5))
         option2 = fit_3pt(origin, dv1, dv2, N=(5,5), x1=None, x2=None)
 
-        assert option1 == option2
-
     Parameters
     ----------
     y0, y1 : array_like
@@ -1067,7 +1065,8 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
 
     # Invert the index matrix.
     colinear = np.abs(np.sum(dx1 * dx2)) == np.sqrt(np.sum(dx1 * dx1) * np.sum(dx2 * dx2))
-    assert not colinear, "Indices must not be colinear."
+    if colinear:
+        raise ValueError("Indices must not be colinear.")
 
     J = np.linalg.inv(np.squeeze(np.array([[dx1[0], dx2[0]], [dx1[1], dx2[1]]])))
 
@@ -1525,7 +1524,8 @@ def pad(matrix, shape):
 
     padded = np.pad(matrix, [(pad_b, pad_t), (pad_l, pad_r)], mode="constant", constant_values=0)
 
-    assert np.all(padded.shape == shape)
+    if not padded.shape == shape:
+        raise RuntimeError("Padded result should have desired shape.")
 
     return padded
 
@@ -1578,6 +1578,7 @@ def unpad(matrix, shape):
 
     unpadded = matrix[pad_b:pad_t, pad_l:pad_r]
 
-    assert np.all(unpadded.shape == shape)
+    if not unpadded.shape == shape:
+        raise RuntimeError("Unpadded result should have desired shape.")
 
     return unpadded

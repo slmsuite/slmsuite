@@ -858,7 +858,14 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         return out
 
 
-def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "radial", "latex", "name"], **kwargs):
+def zernike_pyramid_plot(
+        grid,
+        order,
+        scale=1,
+        titles=["ansi", "radial", "latex", "name"],
+        cmap="twilight",
+        **kwargs
+    ):
     r"""
     Plots :meth:`.zernike()` on a pyramid of subplots corresponding to the radial and
     azimuthal order. The user can resize the figure with ``plt.figure()`` beforehand
@@ -882,6 +889,8 @@ def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "radial", "latex"
         -   ``"radial"`` the radial index pair,
         -   ``"latex"`` the cartesian representation of the polynomial,
         -   ``"name"`` the name of the aberration produced by the polynomial.
+    cmap : str
+        Colormap to use in plotting.
     **kwargs
         Passed to :meth:`.zernike()`.
     """
@@ -914,7 +923,7 @@ def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "radial", "latex"
         a = plt.subplot(order, order, 1 + m + n*order)
 
         # Plot the phase.
-        plt.imshow(phases[i], cmap="twilight")
+        plt.imshow(phases[i], cmap=cmap)
 
         # Construct the title.
         title = ""
@@ -942,6 +951,13 @@ def zernike_pyramid_plot(grid, order, scale=1, titles=["ansi", "radial", "latex"
         a.set_position(box)
 
     return t
+
+
+def _zernike_cache_plot():
+    plt.figure(figsize=(10,10))
+    plt.imshow(np.log2(_zernike_cache_vectorized))
+    plt.ylabel("Zernike Index (ANSI)");
+    plt.xlabel("Monomial Index (Cantor)");
 
 
 # Old style dictionary.     {(n,m) : {(nx, ny) : w, ... }, ... }

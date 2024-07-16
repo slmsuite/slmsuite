@@ -207,7 +207,7 @@ class SLM:
             print(".info() NotImplemented.")
         return []
 
-    def load_vendor_phase_correction(self, file_path):
+    def read_vendor_phase_correction(self, file_path):
         """
         Loads vendor-provided phase correction from file,
         setting :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]`.
@@ -522,7 +522,7 @@ class SLM:
 
         return out
 
-    def save(self, path=".", name=None):
+    def write_phase(self, path=".", name=None):
         """
         Saves :attr:`~slmsuite.hardware.slms.slm.SLM.phase` and
         :attr:`~slmsuite.hardware.slms.slm.SLM.display`
@@ -554,7 +554,7 @@ class SLM:
 
         return file_path
 
-    def load(self, file_path=None, settle=False):
+    def read_phase(self, file_path=None, settle=False):
         """
         Loads :attr:`~slmsuite.hardware.slms.slm.SLM.display`
         from a file and writes to the SLM.
@@ -653,8 +653,8 @@ class SLM:
         **kwargs
             Arguments passed to ``fit_function`` in addition to the SLM grid in the
             requested ``units``. If the ``fit_function`` is ``"gaussian2d"`` and no
-            keyword arguments have been passed, the radius defaults to 1/4 of the
-            smaller SLM dimension.
+            keyword arguments have been passed, the radius defaults to 1/2 of the
+            smaller of the two SLM dimensions.
 
         Returns
         --------
@@ -678,7 +678,7 @@ class SLM:
         xy = [g / s for g,s in zip(self.grid, scaling)]
 
         if len(kwargs) == 0 and isinstance(fit_function, str) and fit_function == "gaussian2d":
-            w = np.min([np.amax(xy[0]), np.amax(xy[1])]) / 4
+            w = np.min([np.amax(xy[0]), np.amax(xy[1])]) / 2
             kwargs = {"x0" : 0, "y0" : 0, "a" : 1, "c" : 0, "wx" : w, "wy" : w}
 
         if isinstance(fit_function, str):
@@ -797,8 +797,9 @@ class SLM:
 
                 center = np.array([result[0,1], result[0,2]])
             elif method == "moments":
-                center = analysis.image_positions(amp)
-                std = np.sqrt(analysis.image_variances(amp, centers=center)[:2])
+                # Do moments in power-space, not amplitude.
+                center = analysis.image_positions(np.square(amp))
+                std = np.sqrt(2 * analysis.image_variances(np.square(amp), centers=center)[:2])
 
                 center = np.squeeze(center)
 
@@ -938,7 +939,7 @@ class SLM:
 
         return axs
 
-    def point_spread_function_knm(self, padded_shape=None):
+    def get_point_spread_function_knm(self, padded_shape=None):
         """
         Fourier transforms the wavefront calibration's measured amplitude to find
         the expected diffraction-limited performance of the system in ``"knm"`` space.
@@ -960,7 +961,7 @@ class SLM:
 
         return farfield
 
-    def spot_radius_kxy(self):
+    def get_spot_radius_kxy(self):
         """
         Approximates the expected standard deviation radius of farfield spots in the
         ``"kxy"`` basis based on the near-field amplitude distribution

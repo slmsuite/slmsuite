@@ -1,7 +1,7 @@
 <p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/QPG-MIT/slmsuite/main/docs/source/static/slmsuite-dark.svg">
-<img alt="slmsuite" src="https://raw.githubusercontent.com/QPG-MIT/slmsuite/main/docs/source/static/slmsuite-raw.svg" width="256">
+<img alt="slmsuite" src="https://raw.githubusercontent.com/QPG-MIT/slmsuite/main/docs/source/static/slmsuite.svg" width="256">
 </picture>
 </p>
 
@@ -28,16 +28,16 @@
 
 ## Installation
 
-Install the stable version of `slmsuite` from [PyPi](https://pypi.org/project/slmsuite/) using:
+Install the stable version of `slmsuite` from [PyPI](https://pypi.org/project/slmsuite/) using:
 
 ```console
-$ pip install slmsuite
+pip install slmsuite
 ```
 
 Install the latest version of `slmsuite` from GitHub using:
 
 ```console
-$ pip install git+https://github.com/QPG-MIT/slmsuite
+pip install git+https://github.com/QPG-MIT/slmsuite
 ```
 
 ## Documentation and Examples

@@ -34,31 +34,31 @@ class ScreenMirrored(SLM):
 
     -   `Simple DirectMedia Layer (SDL) <https://www.libsdl.org/>`_ wrappers:
 
-        - :mod:`pygame` (`link <https://www.pygame.org/docs/>`_),
+        - :mod:`pygame` (`link <https://www.pygame.org/docs/>`__),
           which also supports OpenGL. Only supports one screen.
-        - :mod:`sdl2` (`readthedocs <https://pysdl2.readthedocs.io/en/latest/>`_)
+        - :mod:`sdl2` (`readthedocs <https://pysdl2.readthedocs.io/en/latest/>`__)
           through the ``PySDL2`` package. Requires additional libraries.
 
     -   `Open Graphics Library (OpenGL) <https://www.opengl.org/>`_ wrappers:
 
-        - :mod:`moderngl` (`readthedocs <https://moderngl.readthedocs.io/en/latest/>`_),
+        - :mod:`moderngl` (`readthedocs <https://moderngl.readthedocs.io/en/latest/>`__),
           an OpenGL wrapper focusing on a pythonic interface for core OpenGL functions.
-        - :mod:`OpenGL` (`link <http://pyopengl.sourceforge.net/documentation/index.html>`_)
+        - :mod:`OpenGL` (`link <http://pyopengl.sourceforge.net/documentation/index.html>`__)
           through the ``PyOpenGL``/``PyOpenGL_accelerate`` package, a very light OpenGL wrapper.
-        - :mod:`pyglet` (`readthedocs <https://pyglet.readthedocs.io/en/latest/>`_),
+        - :mod:`pyglet` (`readthedocs <https://pyglet.readthedocs.io/en/latest/>`__),
           a light OpenGL wrapper.
 
     -   GUI Library wrappers:
 
-        - :mod:`gi` (`readthedocs <https://pygobject.readthedocs.io/en/latest/>`_),
+        - :mod:`gi` (`readthedocs <https://pygobject.readthedocs.io/en/latest/>`__),
           through the ``PyGObject`` package wrapping ``GTK`` and other GUI libraries.
-        - :mod:`pyqt6` (`link <https://riverbankcomputing.com/software/pyqt/>`_),
+        - :mod:`pyqt6` (`link <https://riverbankcomputing.com/software/pyqt/>`__),
           through the ``PyQt6`` package wrapping the version 6 ``Qt`` GUI library.
-        - :mod:`tkinter` (`link <https://docs.python.org/3/library/tkinter.html>`_),
+        - :mod:`tkinter` (`link <https://docs.python.org/3/library/tkinter.html>`__),
           included in standard ``python``, wrapping the ``Tcl``/``Tk`` GUI library.
-        - :mod:`wx` (`link <https://docs.wxpython.org/>`_),
+        - :mod:`wx` (`link <https://docs.wxpython.org/>`__),
           through the ``wxPython`` package wrapping the ``wxWidgets`` GUI library.
-          :mod:`slmpy` (`GitHub <https://github.com/wavefrontshaping/slmPy>`_) uses :mod:`wx`.
+          :mod:`slmpy` (`GitHub <https://github.com/wavefrontshaping/slmPy>`__) uses :mod:`wx`.
 
     :mod:`slmsuite` uses :mod:`pyglet` as the default display package.
     :mod:`pyglet` is generally more capable than the mentioned SDL wrappers while immediately supporting

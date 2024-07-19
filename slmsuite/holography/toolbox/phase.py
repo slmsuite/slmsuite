@@ -619,8 +619,18 @@ def zernike_get_string(index, derivative=(0,0)):
     return result.strip("+")    # Remove potential leading +
 
 
-def _zernike_get_cantor(indices, weights, derivative=(0,0), force_pairing=False):
+def _zernike_get_cantor(indices, weights, derivative=(0,0)):
+    # Separate the negative indices (special cases) before processing.
+    negative_mask = indices < 0
+    positive_mask = indices >= 0
 
+    negative_indices = indices[negative_mask]
+    indices = indices[positive_mask]
+
+    negative_weights = weights[negative_mask, :]
+    weights = weights[positive_mask, :]
+
+    # Grab the zernike-cantor transformation from the cache.
     _zernike_build_indices(indices)
     zernike_cantor = _zernike_cache_vectorized[indices, :]   # (D, M)
     M = zernike_cantor.shape[1]
@@ -659,12 +669,24 @@ def _zernike_get_cantor(indices, weights, derivative=(0,0), force_pairing=False)
         # Remove terms with all zeros
         nonzero = np.any(zernike_cantor, axis=0)        # Which D are nonzero for given m in M'
         cantor_pairing = cantor_pairing[nonzero, :]     # M' -> M''
-        zernike_cantor = zernike_cantor[:, nonzero]
+        zernike_cantor = zernike_cantor[:, nonzero]     # (D, M'')
 
     # Reshape the weights into this new basis.
-    cantor_weights = np.matmul(zernike_cantor.T, weights)  # (M', D) x (D, N) = (M', N)
+    cantor_weights = np.matmul(zernike_cantor.T, weights)  # (M' or M'', D) x (D, N) = (M' or M'', N)
 
-    return cantor_pairing, cantor_weights
+    # Add in the negative indices.
+    (M, N) = cantor_weights.shape
+    MM = M + np.sum(negative_mask)
+
+    final_pairing = np.zeros((MM, 2), dtype=int)
+    final_pairing[:M, :] = cantor_pairing
+    final_pairing[M:, 0] = negative_indices
+
+    final_weights = np.zeros((MM, N))
+    final_weights[:M, :] = cantor_weights
+    final_weights[M:, :] = negative_weights
+
+    return final_pairing, final_weights
 
 
 def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative=(0,0), out=None):
@@ -934,7 +956,7 @@ def zernike_pyramid_plot(
             title += f"({n}, {l})\n"
         if "latex" in titles:
             latex = zernike_get_string(i, derivative)
-            title += latex + "\n"
+            title += "$" + latex + "$\n"
         if derivative == (0,0) and "name" in titles and i < len(ZERNIKE_NAMES):
             title += ZERNIKE_NAMES[i]
 
@@ -1366,9 +1388,11 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
     out.fill(0)
     nx0 = ny0 = 0
     if cp == np:
+        xp = np
         monomial = np.ones_like(x_grid)
     else:
-        monomial = cp.get_array_module(x_grid).ones_like(x_grid)
+        xp = cp.get_array_module(x_grid)
+        monomial = xp.ones_like(x_grid)
 
     # Force datatype for easier multiplication.
     weights = weights.astype(out.dtype)
@@ -1399,13 +1423,16 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
                 if weights[index, i] != 0:
                     out[i, ...] += weights[index, i] * monomial
         elif nx == -1 and ny == 0:      # Special case: vortex waveplate.
-            lg = np.arctan2(y_grid, x_grid)
+            if xp.iscomplexobj(x_grid):
+                lg = xp.arctan2(xp.real(y_grid), xp.real(x_grid))
+            else:
+                lg = xp.arctan2(y_grid, x_grid)
 
             for i in range(N):
                 if weights[index, i] > 0:
                     out[i, ...] += weights[index, i] * lg
         else:
-            raise ValueError("Unrecognized")
+            raise ValueError(f"Unrecognized terms {(nx, ny)} for index {index}.")
 
     return out
 
@@ -1499,10 +1526,14 @@ def laguerre_gaussian(grid, l, p=0, w=None):
     theta_grid = np.arctan2(x_grid, y_grid)
     rr_grid = y_grid * y_grid + x_grid * x_grid
 
-    return (
-        l * theta_grid
-        + np.pi * np.heaviside(-special.genlaguerre(p, np.abs(l))(2 * rr_grid / w / w), 0)
-    )
+    canvas = 0
+
+    if l != 0:
+        canvas += l * theta_grid
+    if p != 0:
+        canvas += np.pi * np.heaviside(-special.genlaguerre(p, np.abs(l))(2 * rr_grid / w / w), 0)
+
+    return canvas
 
 
 def hermite_gaussian(grid, n, m, w=None):

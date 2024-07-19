@@ -9,9 +9,13 @@ import matplotlib.pyplot as plt
 from functools import reduce
 from scipy.optimize import curve_fit, minimize
 import warnings
+try:
+    import cupy as cp   # type: ignore
+except ImportError:
+    cp = np
 
 from slmsuite.holography.toolbox import format_2vectors, _process_grid
-from slmsuite.holography.toolbox.phase import zernike_sum
+from slmsuite.holography.toolbox.phase import zernike_sum, laguerre_gaussian
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography.analysis.fitfunctions import gaussian2d
 
@@ -441,9 +445,6 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
                     y_grid *= grid
         else:
             x_grid, y_grid = grid
-
-            x_grid = np.squeeze(x_grid)
-            y_grid = np.squeeze(y_grid)
 
             if len(np.shape(x_grid)) == 2:                          # 2D grids.
                 x_grid = np.reshape(x_grid, (1, w_y, w_x)) - c_x
@@ -1061,33 +1062,104 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
     return vectors_zernike[1:, :]
 
 
+def get_module(matrix):
+    if np == cp:
+        return np
+    else:
+        return cp.get_array_module(matrix)
+
+
 def image_vortices(phase_image):
     """
-    Find the coordinates of optical vortices inside a phase image by computing the
-    winding number directly. The coordinates are returned as a boolean image.
+    Find the coordinates of phase vortices inside a phase image by computing the
+    winding number directly. The coordinates are returned as an image.
+
+    Parameters
+    ----------
+    phase_image : array_like
+        Image to detect winding number upon.
+
+    Returns
+    -------
+    winding_number
+        Image with the integer winding number at each pixel.
     """
+    xp = get_module(phase_image)
+
     # Discrete derivatives, with appropriate wrapping.
     dd = [
-        np.mod(np.diff(image, axis=a, prepend=np.nan) - np.pi, 2*np.pi) for a in range(2)
+        xp.mod(xp.diff(phase_image, axis=a, prepend=xp.nan) - xp.pi, 2*xp.pi) for a in range(2)
     ]
 
     # Sum to compute the winding.
     winding_number = -(
-        dd[0] - dd[1] - np.roll(dd[0], shift=1, axis=1) + np.roll(dd[1], shift=1, axis=0)
-    ) / (2 * np.pi)
+        dd[0] - dd[1] - xp.roll(dd[0], shift=1, axis=1) + xp.roll(dd[1], shift=1, axis=0)
+    ) / (2 * xp.pi)
 
     # Get rid of the nans on the edges.
-    winding_number[np.isnan(winding_number)] = 0
+    winding_number[xp.isnan(winding_number)] = 0
 
-    return winding_number
+    return xp.rint(winding_number)
 
 
-def image_remove_vortices(phase_image):
+def image_vortices_coordinates(phase_image, mask=None):
     """
-    Find and then remove all the vortices in an image.
-    """
-    pass
+    Find the coordinates of phase vortices inside a phase image by computing the
+    winding number directly.
 
+    Parameters
+    ----------
+    phase_image : array_like
+        Image to detect winding number upon.
+    mask : array_like OR None
+        Boolean mask to determine coordinates at.
+
+    Returns
+    -------
+    coordinates, weights
+        The coordinates and winding number of each coordinate.
+    """
+    xp = get_module(phase_image)
+
+    winding_number = image_vortices(phase_image)
+
+    if mask is not None:
+        winding_number[xp.logical_not(mask)] = 0
+
+    coordinates = xp.where(winding_number)
+    weights = winding_number[coordinates[0], coordinates[1]]
+
+    return coordinates, weights
+
+def image_vortices_remove(phase_image, mask=None):
+    """
+    Find and then remove all the phase vortices in a phase image.
+
+    Parameters
+    ----------
+    phase_image : array_like
+        Image to remove vortices upon.
+    mask : array_like OR None
+        Boolean mask to remove within. This is advisable for large images.
+
+    Returns
+    -------
+    phase_image
+        The image with vortices removed inside the mask, modified in-place.
+    """
+    xp = get_module(phase_image)
+
+    coordinates, weights = image_vortices_coordinates(phase_image, mask=mask)
+    grid = _generate_grid(phase_image.shape[1], phase_image.shape[0], integer=False)
+
+    if mask is None:
+        for x, y, w in zip(coordinates[1], coordinates[0], weights):
+            phase_image -= w * xp.arctan2(grid[0] - x, grid[1] - y)
+    else:
+        for x, y, w in zip(coordinates[1], coordinates[0], weights):
+            phase_image[mask] -= w * xp.arctan2(grid[0][mask] - x, grid[1][mask] - y)
+
+    return phase_image
 
 # Array fitting functions.
 

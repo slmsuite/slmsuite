@@ -10,11 +10,19 @@ spatial light modulator (SLM) control and holography.
 
    .. image:: /static/ex-zernike-spots-dark.gif
       :class: only-dark
-      :alt: Zernike Spots
+      :alt:
+         Alongside steering spots in three dimensions, this feature enables removal of
+         aberration across a wide field of view. Every spot in the field of view
+         is sourced along a different optical path, and slmsuite can correct for each
+         different aberration experienced.
 
    .. image:: /static/ex-zernike-spots.gif
       :class: only-light
-      :alt: Zernike Spots
+      :alt:
+         Alongside steering spots in three dimensions, this feature enables removal of
+         aberration across a wide field of view. Every spot in the field of view
+         is sourced along a different optical path, and slmsuite can correct for each
+         different aberration experienced.
 
    .. highlights::
 
@@ -22,16 +30,20 @@ spatial light modulator (SLM) control and holography.
       pending* |slmsuite|_ *paper. If you have an interesting application
       for Zernike spots, let us know!*
 
-.. .. sidebar:: Enhance Your Holography
+.. sidebar:: Enhance Your Holography
 
-..    Increasing levels of feedback generate
-..    crisper approximations of a target pattern.
+   Camera feedback and phase flattening in |slmsuite|_ lead to crisp and accurate
+   holograms, even across multiple planes of focus, color, or basis.
 
-..    .. image:: /static/readme-example-dark.png
-..     :class: only-dark
+   .. image:: /static/ex-slmsuite-3D-dark.gif
+      :class: only-dark
+      :alt:
+         Advanced meta-hologram programming optimizes spot and image objectives simultaneously.
 
-..    .. image:: /static/readme-example.png
-..       :class: only-light
+   .. image:: /static/ex-slmsuite-3D.gif
+      :class: only-light
+      :alt:
+         Advanced meta-hologram programming optimizes spot and image objectives simultaneously.
 
 .. raw:: html
 

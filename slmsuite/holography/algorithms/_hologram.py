@@ -193,12 +193,13 @@ class Hologram(_HologramStats):
 
         Parameters
         ----------
-        target : numpy.ndarray OR cupy.ndarray OR (int, int)
+        target : numpy.ndarray OR cupy.ndarray OR (int, int) OR None
             Target to optimize to.
             The user can also pass a shape in :mod:`numpy` ``(h, w)`` form,
             and this constructor will create an empty target of all zeros.
             :meth:`.get_padded_shape()` can be of particular help for calculating the
             shape that will produce desired results (in terms of precision, etc).
+            ``None`` is used internally.
         amp : array_like OR None
             The nearfield amplitude. See :attr:`amp`. Of shape :attr:`slm_shape`.
         phase : array_like OR None
@@ -350,8 +351,8 @@ class Hologram(_HologramStats):
             else:
                 raise ValueError(f"Unexpected target {target}.")
 
-            # Warn the user about powers of two.
-            if any(np.log2(self.shape) != np.round(np.log2(self.shape))):
+            # Warn the user about powers of two if not multiplane hologram.
+            if any(np.log2(self.shape) != np.round(np.log2(self.shape))) and not hasattr(self, "holograms"):
                 warnings.warn(
                     f"Hologram target shape {self.shape} is not a power of 2; consider using "
                     ".get_padded_shape() to pad to powers of 2 and speed up "
@@ -506,20 +507,27 @@ class Hologram(_HologramStats):
         else:
             return cp.random.uniform(-np.pi, np.pi, self.slm_shape, dtype=self.dtype)
 
-    def reset_phase(self, phase=None, quadratic_initial_phase=None):
+    def reset_phase(self, custom_phase=None, random_phase=None, quadratic_phase=None):
         r"""
         Resets the hologram
         to a provided phase,
         to a random state,
-        or to a targeted `quadratic phase <https://doi.org/10.1364/OE.16.002176>`_.
+        or to a `quadratic phase <https://doi.org/10.1364/OE.16.002176>`_
+        which overlaps with the target pattern.
 
         Parameters
         ----------
-        phase : array_like OR None
-            The nearfield initial phase.
+        custom_phase : array_like OR None
+            Custom nearfield initial phase. If not ``None``, then all other parameters
+            are ignored.
             See :attr:`phase`. :attr:`phase` should only be passed if the user wants to
             precondition the optimization. Of shape :attr:`slm_shape`.
-        quadratic_initial_phase : bool OR float OR None
+        random_phase : float OR None
+            Sets the phase to uniformly random phase, scaled to :math:`2\pi`.
+            Setting ``random_phase`` to a fraction of 1 likewise scales the randomness.
+            If ``None``, looks for ``"random_phase"`` in :attr:`flags`.
+            This adds with the ``quadratic_phase`` parameter.
+        quadratic_phase : bool OR float OR None
             We can also precondition the phase analytically (with a lens and blaze)
             to roughly the size of the target hologram, according to the first and
             second order :meth:`~slmsuite.holography.analysis.image_moments()`.
@@ -528,36 +536,43 @@ class Hologram(_HologramStats):
             <https://doi.org/10.1364/OE.16.002176>`_
             compared to random initialization, as the analytic distribution
             is smooth in phase.
-            If ``None``, looks for ``"quadratic_initial_phase"`` in :attr:`flags`.
+            If ``None``, looks for ``"quadratic_phase"`` in :attr:`flags`.
             If a ``float`` is provided, the size of the beam in the
             farfield is scaled accordingly.
             This feature is ignored if ``phase`` is not ``None``.
         """
-        # Parse quadratic_initial_phase
-        if quadratic_initial_phase is None:
-            if "quadratic_initial_phase" in self.flags:
-                quadratic_initial_phase = self.flags["quadratic_initial_phase"]
-            else:
-                quadratic_initial_phase = False
-
-        # Reset phase to random if no phase is given.
-        if phase is None:
-            if quadratic_initial_phase:   # Analytic
-                phase = self._get_quadratic_initial_phase(quadratic_initial_phase)
-            else:                   # Random
-                phase = self._get_random_phase()
-        else:
-            # Otherwise, cast the passed matrix as a cp.array with correct type.
-            phase = cp.array(phase, dtype=self.dtype, copy=None)
-
-            if not np.all(np.array(self.slm_shape) == np.array(phase.shape)):
-                raise ValueError(f"Reset phase of shape {phase.shape} is not of slm_shape {self.slm_shape}")
-
-        # In-place allocation.
         if self.phase is None:
-            self.phase = phase
+            self.phase = cp.zeros(self.slm_shape, dtype=self.dtype)
+
+        if custom_phase is not None:
+            custom_phase = cp.array(custom_phase, dtype=self.dtype, copy=None)
+
+            if not np.all(np.array(self.slm_shape) == np.array(custom_phase.shape)):
+                raise ValueError(f"Reset phase of shape {custom_phase.shape} is not of slm_shape {self.slm_shape}")
+
+            cp.copyto(self.phase, custom_phase)
         else:
-            cp.copyto(self.phase, phase)
+            # Parse quadratic_phase
+            if quadratic_phase is None:
+                if "quadratic_phase" in self.flags:
+                    quadratic_phase = self.flags["quadratic_phase"]
+                else:
+                    quadratic_phase = False
+
+            # Parse quadratic_phase
+            if random_phase is None:
+                if "random_phase" in self.flags:
+                    random_phase = self.flags["random_phase"]
+                else:
+                    random_phase = 1
+
+            self.phase.fill(0)
+
+            # Reset phase to random if no custom_phase is given.
+            if quadratic_phase:   # Analytic
+                self.phase += self._get_quadratic_initial_phase(quadratic_phase)
+            if random_phase:      # Random
+                self.phase += random_phase * self._get_random_phase()
 
     def reset_weights(self):
         """
@@ -864,6 +879,31 @@ class Hologram(_HologramStats):
             self.img_ij = None
         if hasattr(self, "img_knm"):
             self.img_knm = None
+
+    def remove_vortices(self):
+        """
+        Removes the computed phase vortices in the farfield where the target amplitude is positive.
+        Useful for smoothing out the pattern and reducing speckle.
+        The user can call this method by passing a ``callback=`` function containing it.
+        For instance:
+
+        .. code-block:: python
+
+            # Define a function to use a callback.
+            def remove_vortices_callback(holo):
+                if holo.iter % 10 == 9:     # Only remove vortices every 10 iterations.
+                    holo.remove_vortices()  # This method is slightly expensive, so calling every loop is not advised.
+
+            # The function will be called during the loop.
+            hologram.optimize(..., callback=remove_vortices_callback)
+
+        Important
+        ~~~~~~~~~
+        This callback can only applied be during a GS loop. To use for a conjugate
+        gradient hologram, do a single iteration of GS.
+        """
+        if self.phase_ff is not None:
+            analysis.image_vortices_remove(self.phase_ff, self.target > 0)
 
     def _build_nearfield(self, phase_torch=None):
         """Populate nearfield with data from amp and phase."""
@@ -1688,9 +1728,9 @@ class Hologram(_HologramStats):
             feedback_corrected += 1
             xp.reciprocal(feedback_corrected, out=feedback_corrected)
         elif "wu" in method:
-            feedback_corrected = np.exp(feedback_corrected)
+            feedback_corrected = np.exp(self.flags["feedback_exponent"] * feedback_corrected)
         elif "tanh" in method:
-            feedback_corrected = self.flags["feedback_factor"] * np.tanh(feedback_corrected)
+            feedback_corrected = self.flags["feedback_factor"] * np.tanh(self.flags["feedback_exponent"] * feedback_corrected)
             feedback_corrected += 1
         else:
             raise ValueError(

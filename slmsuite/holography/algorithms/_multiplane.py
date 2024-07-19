@@ -43,11 +43,13 @@ class MultiplaneHologram(Hologram):
 
         # Check that all holograms are actually holograms and not MultiplaneHolograms.
         for h in self.holograms:
-            if h.shape != self.holograms[0].shape:
-                raise ValueError("Multiplane composite Holograms must have the same SLM shape.")
-            if isinstance(h, MultiplaneHologram):
+            # if h.shape != self.holograms[0].shape:
+            #     raise ValueError("Multiplane composite Holograms must have the same SLM shape.")
+            # if isinstance(h, MultiplaneHologram):
+            if "MultiplaneHologram" in str(type(h)):
                 raise ValueError("Multiplane hologram recursion is not supported.")
-            if not isinstance(h, (Hologram, SpotHologram, CompressedSpotHologram, FeedbackHologram)):
+            # if not isinstance(h, (Hologram, SpotHologram, CompressedSpotHologram, FeedbackHologram)):
+            if not "Hologram" in str(type(h)):
                 raise ValueError(f"Multiplane hologram must be provided child holograms, not {type(h)}")
 
         # Construct the parent hologram with empty goals but complete context.
@@ -162,6 +164,7 @@ class MultiplaneHologram(Hologram):
         """Have all the holograms populate their own farfield variables."""
         for h in self.holograms:
             h._nearfield2farfield()
+            h.iter = self.iter
 
     def _farfield2nearfield(self):
         """Sum all the complex nearfields together for the meta nearfield."""
@@ -178,15 +181,17 @@ class MultiplaneHologram(Hologram):
             else:
                 # Remove the propagation kernel if necessary.
                 self.nearfield += w * h.nearfield[i0:i1, i2:i3] * cp.exp(-1j * h.propagation_kernel)
+            h.iter = self.iter
 
         # Get meta self phase.
         self._nearfield_extract()
 
     def _mraf_helper_routines(self):
-        return {
-            "mraf_enabled":False,
-            "where_working":None,
-            "signal_region":None,
-            "noise_region":None,
-            "zero_region":None,
-        }
+        return [h._mraf_helper_routines() for h in self.holograms]
+
+    def _gs_farfield_routines(self, mraf_variables):
+        for h, mraf in zip(self.holograms, mraf_variables):
+            h._gs_farfield_routines(mraf)
+
+    def remove_vortices(self):
+        for h in self.holograms: h.remove_vortices()

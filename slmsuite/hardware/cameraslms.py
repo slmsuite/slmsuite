@@ -15,7 +15,7 @@ import warnings
 from slmsuite import __version__
 from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
-from slmsuite.holography.algorithms import SpotHologram
+from slmsuite.holography.algorithms import SpotHologram, CompressedSpotHologram
 from slmsuite.holography.toolbox import imprint, format_2vectors, format_vectors, smallest_distance, fit_3pt
 from slmsuite.holography.toolbox.phase import blaze
 from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
@@ -881,7 +881,7 @@ class FourierSLM(CameraSLM):
 
         # Default optimize settings.
         if "maxiter" not in kwargs:
-            kwargs["maxiter"] = 50
+            kwargs["maxiter"] = 10
 
         # Optimize and project the hologram
         hologram.optimize(**kwargs)
@@ -1185,34 +1185,63 @@ class FourierSLM(CameraSLM):
         elif method == "zernike":
             return self.wavefront_calibrate_zernike(*args, **kwargs)
         else:
-            raise ValueError(f"Wavefront calibration method {method} not recognized.")
+            raise ValueError(f"Wavefront calibration method '{method}' not recognized.")
 
     ### Zernike Wavefront Calibration ###
 
     def wavefront_calibrate_zernike(
         self,
         calibration_points=None,
+        basis="zernike",
         zernike_indices=3,
-        wavefronts=1,
-        phase_steps=11,
+        perturbation=None,
         callback=None,
         metric=None,
+        optimize_focus=True,
         plot=0,
     ):
         """
-        Perform wavefront calibration.
+        Perform wavefront calibration by iteratively scanning and subtracting Zernike
+        coefficients.
 
         Parameters
         ----------
         calibration_points : (float, float) OR numpy.ndarray OR None
             Position(s) in the camera domain where interference occurs.
-            For multiple positions, this must be of shape ``(2, N)``.
-            This is naturally in the ``"ij"`` basis.
             If ``None``, densely fills the camera field of view with calibration points.
+        basis : str
+            pass
         zernike_indices : int OR list of int
+            If list of int, then the (in the order of measurement)
+
+            Note
+            ~~~~
+            Care should be taken with the focus term (ansi index 4) such that the chosen
+            ``callback()`` is
+
+
+
+            If an external ``callback()`` is used (perhaps one that uses atoms to
+            determine the spot aberration), then care should be taken to determine whe
+        perturbation : float OR list of float OR None
             TODO
-        wavefronts : float OR list of float
-            TODO
+        callback : None OR function
+            Measure the system to determine the level of aberration. Expected to return
+            a list of length ``N`` corresponding to the chosen metric evaluated
+            on all the spots.
+        metric : None OR function
+            If ``callback`` is ``None``, then the camera is used to measure the system.
+            This parameter allows the user to impart a custom figure of merit upon the
+            measured camera data. ``metric`` is required to accept a stack of ``N`` images
+            consisting of the regions about each of the ``N`` target spots. It is expected to
+            return a list of length ``N`` corresponding to the chosen metric evaluated
+            on all the images.
+            If ``None``, :meth:`._wavefront_calibrate_zernike_default_metric()`
+            is used, which is just a wrapper for
+            :meth:`slmsuite.holography.analysis.image_areas()`, a measurement of spot
+            size.
+        optimize_focus : bool
+
         plot : int or bool
             Whether to provide visual feedback, options are:
 
@@ -1220,8 +1249,6 @@ class FourierSLM(CameraSLM):
             - ``0``, ``False`` : No plots, but tqdm prints.
             - ``1``, ``True`` : Plots on fits and essentials.
             - ``2`` : Plots on everything.
-            - ``3`` : ``test_index`` not ``None`` only: returns image frames
-              to make a movie from the phase measurement (not for general use).
 
         Returns
         -------
@@ -1236,11 +1263,8 @@ class FourierSLM(CameraSLM):
         ValueError
             If various points are out of range.
         """
-
-
-        # def get_default_callback(cam, points, window_size, metric=None):
-
-        def sweep_me(slm, sweep, perturbation, pattern, callback):
+        # Helper function for sweeping.
+        def sweep_me(sweep, perturbation, pattern, callback):
             result = None
             sweep = np.ravel(sweep)
             N = len(sweep)
@@ -1248,7 +1272,7 @@ class FourierSLM(CameraSLM):
 
             for i, x in enumerate(sweep):
                 phase = pattern + x * perturbation
-                slm.write(phase)
+                self.slm.write(phase)
                 this_result = np.array(callback())
 
                 if result is None:
@@ -1262,14 +1286,11 @@ class FourierSLM(CameraSLM):
 
             return result
 
-        if np.isscalar(zernike_indices):
-            # Default to the lowest indices
-            # + 3 to avoid the piston, x tilt, y tilt
-            zernike_indices = np.arange(zernike_indices) + 3
-
+        # max_window_size =
 
         window_size = None
 
+        # Parse callback.
         if callback is None:
             def default_callback():
                 self.cam.flush()
@@ -1284,19 +1305,61 @@ class FourierSLM(CameraSLM):
 
             callback = default_callback
 
-        sweep = np.linspace(-wavefronts, wavefronts, phase_steps, endpoint=True)
+        # Parse perturbation
+        if perturbation is None:
+            perturbation = np.linspace(-5, 5, 11, endpoint=True)
+        elif np.isscalar(perturbation):
+            perturbation = np.linspace(-perturbation, perturbation, 11, endpoint=True)
+        else:
+            perturbation = np.ravel(perturbation)
 
+        # Build hologram
+        spot_zernike = np.zeros((D, N))
+
+        # spot_zernike = convert_vector(
+        #     spots_kxyz,
+        #     from_units="kxy",
+        #     to_units="zernike",
+        #     hardware=fs
+        # )
+
+        hologram = CompressedSpotHologram(
+            spot_vectors=spot_zernike,
+            basis=basis,
+            cameraslm=self
+        )
+
+        hologram.optimize("GS", maxiter=15, verbose=0)
+
+        # Calibration loop.
         for i in zernike_indices:
-            perturbation = toolbox.phase.zernike(self.slm, i)
+            # Ignore the piston and tilt terms, maybe also the focus too.
+            if i in [0,2,1] or (i == 4 and not optimize_focus):
+                continue
 
-            result = sweep_me(self.slm, sweep, perturbation, pattern, callback)
+            if True:
+                hologram.spot_zernike = spot_zernike
+                hologram.optimize("GS", maxiter=5, verbose=0)
+
+            # Determine which perturbation we are testing.
+            term = toolbox.phase.zernike(self.slm, i)
+
+            # Test the
+            # This returns a (N, S) array, where N is the number of spots and S is the
+            # number of sweep points.
+            result = sweep_me(perturbation, term, hologram.get_phase(), callback)
 
             # analyze
+            correction = fit_me(perturbation, result)
+
+            spot_zernike[i, :] -= correction
 
     @staticmethod
     def _wavefront_calibrate_zernike_default_metric(images):
         """
-        Stack of images
+        Calculates the spot areas of all the spots in the stack of ``images``.
+        Spot area (determinant of the variances) is here a metric of spot aberration,
+        where a spot with smaller and tighter area is better.
         """
         variances = analysis.image_variances(images)
         return analysis.image_areas(variances)
@@ -1320,19 +1383,20 @@ class FourierSLM(CameraSLM):
         plot=0,
     ):
         """
-        Perform wavefront calibration.
-        This procedure involves `iteratively interfering light diffracted from
-        superpixels across an SLM with a reference superpixel
+        Perform wavefront calibration by
+        `iteratively interfering superpixel patches on the SLM
         <https://doi.org/10.1038/nphoton.2010.85>`_.
+        This procedure measures the wavefront phase and amplitude.
+
         Interference occurs at a given ``calibration_points`` in the camera's imaging plane.
         It is at each point where the computed correction is ideal; the further away
         from each point, the less ideal the correction is.
         Correction at many points over the plane permits a better understanding of the
         aberration and greater possibility of compensation.
+
         Sets :attr:`~slmsuite.hardware.cameraslms.FourierSLM.calibrations["wavefront"]`.
         Run :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_process`
-        after to produce the usable calibration which is written to the SLM.
-        This procedure measures the wavefront phase and amplitude.
+        afterwards to produce the usable calibration which can be written to the SLM.
 
         Note
         ~~~~
@@ -1340,12 +1404,12 @@ class FourierSLM(CameraSLM):
 
         Tip
         ~~~
-        If only amplitude calibration is desired,
-        set ``phase_steps=None`` to omit the more time-consuming phase calibration.
+        If *only amplitude calibration* is desired,
+        use ``phase_steps=None`` to omit the more time-consuming phase calibration.
 
         Tip
         ~~~
-        Set ``phase_steps=1`` for faster calibration. This fits the phase fringes of an
+        Use ``phase_steps=1`` for faster calibration. This fits the phase fringes of an
         image rather than scanning the fringes over a single camera pixel over many
         ``phase_steps``. This is usually optimal except in cases with excessive noise.
 

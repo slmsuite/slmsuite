@@ -774,8 +774,8 @@ class SLM:
             # If there is no measured source amplitude, then make guesses based off of the grid.
             self.source["amplitude_center_pix"] = center_grid
             self.source["amplitude_radius"] = .25 * np.min((
-                self.shape[1]*self.pitch[0],
-                self.shape[0]*self.pitch[1]
+                self.shape[1] * self.pitch[0],
+                self.shape[0] * self.pitch[1]
             ))
             self.source["amplitude_extent"] = np.array(
                 [np.max(np.abs(self.grid[0])), np.max(np.abs(self.grid[1]))]
@@ -846,7 +846,7 @@ class SLM:
         :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`.
         """
         self.fit_source_amplitude(force=False)
-        return np.reciprocal(self.source["amplitude_extent_radius"])
+        return np.reciprocal(2 * self.source["amplitude_radius"])
 
     def get_source_center(self):
         """

@@ -257,7 +257,7 @@ class Camera():
         """
         raise NotImplementedError()
 
-    def _get_images_hw(self, image_count, timeout_s=1):
+    def _get_images_hw(self, image_count, timeout_s=1, out=None):
         """
         Abstract method to capture a series of image_count images using camera-specific
         batch acquisition features.
@@ -279,7 +279,10 @@ class Camera():
     # Capture methods one level of abstraction above _get_image_hw().
 
     def _get_dtype(self):
-        self.dtype = np.array(self._get_image_hw()).dtype   # Future: check if cameras change this after init.
+        try:
+            self.dtype = np.array(self._get_image_hw()).dtype   # Future: check if cameras change this after init.
+        except NotImplementedError:
+            self.dtype = np.uint8
 
         if self.dtype(0).nbytes * 8 < self.bitdepth:
             raise warnings.warn(

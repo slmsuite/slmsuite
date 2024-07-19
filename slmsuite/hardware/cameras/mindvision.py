@@ -198,7 +198,7 @@ class MindVision(Camera):
 
             if self.mono:
                 rgb_shape = (self.shape[0], self.shape[1], 3)
-                return np.copy(np.frombuffer(frame_data, dtype=np.uint8).reshape(rbg_shape))
+                return np.copy(np.frombuffer(frame_data, dtype=np.uint8).reshape(rgb_shape))
             else:
                 return np.copy(np.frombuffer(frame_data, dtype=np.uint8).reshape(self.shape))
 

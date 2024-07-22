@@ -51,6 +51,7 @@ extensions = [
     "nbsphinx",
     "sphinx_copybutton",
     "sphinx_last_updated_by_git",
+    "sphinxcontrib.video",
     # "sphinx.ext.autodoc",
     # "sphinx.ext.autosummary",
     # "sphinx.ext.doctest",
@@ -97,6 +98,7 @@ templates_path = ["templates"]
 # numpydoc_xref_ignore = {"optional", "type_without_description", "BadException"}
 # # Run docstring validation as part of build process
 # numpydoc_validation_checks = {"all", "GL01", "SA04", "RT03"}
+toc_object_entries_show_parents = 'hide'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -122,7 +124,7 @@ pygments_style = "sphinx"
 # a list of builtin themes.
 
 # html_theme = "sphinx_rtd_theme"
-
+navigation_with_keys = True
 
 html_sidebars = {
     "**": [],
@@ -157,7 +159,7 @@ html_theme_options = {
         "image_light": "static/slmsuite.svg",
         "image_dark": "static/slmsuite-dark.svg",
     },
-    # "show_prev_next": False,
+    "show_prev_next": True,
     "navbar_end": ["theme-switcher", "navbar-icon-links"], #, "search-field.html"
     "icon_links": [
         {
@@ -219,6 +221,7 @@ def setup(app):
     # Download example notebooks.
     # NOTE: GitHub API only supports downloading files up to 100 MB.
     try:
+        raise
         os.makedirs(examples_path, exist_ok=True)
         tree_url = (
             "https://api.github.com/repos/{}/{}/git/trees/main?recursive=1"

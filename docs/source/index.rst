@@ -6,7 +6,8 @@ spatial light modulator (SLM) control and holography.
 
 .. sidebar:: Hone Your Spots
 
-   |slmsuite|_ enables **spot-specific** Zernike aberration correction.
+   |slmsuite|_ enables **spot-specific** Zernike aberration correction;
+   capable of optimizing spot imaging across a field of view [#note]_.
 
    .. image:: /static/ex-zernike-spots-dark.gif
       :class: only-dark
@@ -24,26 +25,24 @@ spatial light modulator (SLM) control and holography.
          is sourced along a different optical path, and slmsuite can correct for each
          different aberration experienced.
 
-   .. highlights::
-
-      *Zernike spots are one of the main capabilities to be featured in the
-      pending* |slmsuite|_ *paper. If you have an interesting application
-      for Zernike spots, let us know!*
+   |
 
 .. sidebar:: Enhance Your Holography
 
    Camera feedback and phase flattening in |slmsuite|_ lead to crisp and accurate
    holograms, even across multiple planes of focus, color, or basis.
 
-   .. image:: /static/ex-slmsuite-3D-dark.gif
+   .. image:: /static/ex-slmsuite-3d-dark.gif
       :class: only-dark
       :alt:
          Advanced meta-hologram programming optimizes spot and image objectives simultaneously.
 
-   .. image:: /static/ex-slmsuite-3D.gif
+   .. image:: /static/ex-slmsuite-3d.gif
       :class: only-light
       :alt:
          Advanced meta-hologram programming optimizes spot and image objectives simultaneously.
+
+   |
 
 .. raw:: html
 
@@ -56,9 +55,9 @@ spatial light modulator (SLM) control and holography.
 
 Contact us at qp-slm@mit.edu or on
 `GitHub <https://github.com/QPG-MIT/slmsuite>`_
-`Discussions <https://github.com/QPG-MIT/slmsuite/discussions>`_
+`Issues <https://github.com/QPG-MIT/slmsuite/issues>`_
 or
-`Issues <https://github.com/QPG-MIT/slmsuite/issues>`_.
+`Discussions <https://github.com/QPG-MIT/slmsuite/discussions>`_.
 
 .. toctree::
    :maxdepth: 2
@@ -74,6 +73,12 @@ or
    examples
    api
    tips
+
+.. rubric:: Note
+
+.. [#note] *Zernike spots are one of the main capabilities to be featured in the
+   pending* |slmsuite|_ *paper. If you have an interesting application
+   for Zernike spots, let us know!*
 
 .. |slmsuite| replace:: :mod:`slmsuite`
 .. _slmsuite: https://github.com/QPG-MIT/slmsuite

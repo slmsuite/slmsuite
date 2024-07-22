@@ -255,6 +255,74 @@ class SLM:
 
         return self.source["phase"]
 
+
+    def plot(self, phase=None, limits=None, title="Phase", cbar=True):
+        """
+        Plots the provided phase.
+
+        Parameters
+        ----------
+        phase : ndarray OR None
+            Phase to be plotted. If ``None``, grabs the last written :attr:`phase` from the SLM.
+        limits : None OR float OR [[float, float], [float, float]]
+            Scales the limits by a given factor or uses the passed limits directly.
+        title : str
+            Title the axis.
+        cbar : bool
+            Also plot a colorbar.
+
+        Returns
+        -------
+        matplotlib.pyplot.axis
+            Axis of the plotted phase.
+        """
+        if phase is None:
+            phase = self.phase
+        phase = np.array(phase, copy=None)
+        phase = np.mod(phase, 2*np.pi) / np.pi
+
+        if len(plt.get_fignums()) > 0:
+            fig = plt.gcf()
+        else:
+            fig = plt.figure(figsize=(20,8))
+
+        im = plt.imshow(phase, clim=[0, 2], cmap="twilight", interpolation="none")
+        ax = plt.gca()
+
+        if cbar:
+            cax = make_axes_locatable(ax).append_axes("right", size="2%", pad=0.05)
+            fig.colorbar(im, cax=cax, orientation="vertical")
+            ticks = [0,1,2]
+            cax.set_yticks([0,1,2])
+            cax.set_yticklabels([f"${t}\\pi$" for t in ticks])
+
+        # ax.invert_yaxis()
+        ax.set_title(title)
+
+        if limits is not None and limits != 1:
+            if np.isscalar(limits):
+                axlim = [ax.get_xlim(), ax.get_ylim()]
+
+                centers = np.mean(axlim, axis=1)
+                deltas = np.squeeze(np.diff(axlim, axis=1)) * limits / 2
+
+                limits = np.vstack((centers - deltas, centers + deltas)).T
+            elif np.shape(limits) == (2,2):
+                pass
+            else:
+                raise ValueError(f"limits format {limits} not recognized; provide a scalar or limits.")
+
+            ax.set_xlim(limits[0])
+            ax.set_ylim(limits[1])
+
+        if phase.shape == self.shape:
+            ax.set_xlabel("SLM $n$ [pix]")
+            ax.set_ylabel("SLM $m$ [pix]")
+
+        plt.sca(ax)
+
+        return ax
+
     # Writing methods
 
     def _write_hw(self, phase):
@@ -748,6 +816,16 @@ class SLM:
 
         -   ``"amplitude_extent_radius"``
             Guessed as the the radius that circumscribes the SLM field.
+
+        Important
+        ~~~~~~~~~
+        The ``grid`` is recentered upon the detected center of the source.
+        This ``grid`` is used to generated phase functions like
+        :meth:`~slmsuite.holography.toolbox.phase.lens()` or
+        :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`.
+        Such generation works best when centered upon the source; a
+        :meth:`~slmsuite.holography.toolbox.phase.lens()` focuses coaxially and a
+        :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()` appears symmetric.
 
         Parameters
         ----------

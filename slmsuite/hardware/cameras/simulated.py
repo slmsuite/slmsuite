@@ -71,7 +71,7 @@ class SimulatedCamera(Camera):
 
     """
 
-    def __init__(self, slm, resolution=None, M=None, b=None, noise=None, pitch_um=None, **kwargs):
+    def __init__(self, slm, resolution=None, M=None, b=None, noise=None, pitch_um=None, gain=1, **kwargs):
         """
         Initialize simulated camera.
 
@@ -89,6 +89,8 @@ class SimulatedCamera(Camera):
         pitch_um : (float, float) OR None
             Pixel pitch in microns. If ``None``, certain calibrations and conversions
             are not available (e.g. :meth:`build_affine()` for certain units).
+        gain : float
+            Gain to emulate physical cameras while keeping the same values for exposure time.
         **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
@@ -108,6 +110,7 @@ class SimulatedCamera(Camera):
 
         # Digital gain emulates exposure
         self.exposure = 1
+        self.gain = gain
 
         # Add user-defined noise dictionary
         self.noise = noise
@@ -402,14 +405,14 @@ class SimulatedCamera(Camera):
         if cp != np:
             img = img.get()
 
-        img *= self.exposure
+        img *= self.exposure * self.gain
 
         # Basic noise sources.
         if self.noise is not None:
             for key in self.noise.keys():
                 if key == 'dark':
                     # Background/dark current - exposure dependent
-                    dark = self.noise['dark'](np.ones_like(img) * self.bitresolution)/self.exposure
+                    dark = self.noise['dark'](np.ones_like(img) * self.bitresolution) / self.exposure
                     img = img + dark
                 elif key == 'read':
                     # Readout noise - exposure independent

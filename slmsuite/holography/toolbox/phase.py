@@ -236,8 +236,8 @@ def lens(grid, f=(np.inf, np.inf)):
         Focus in normalized :math:`\frac{x}{\lambda}` units.
         Defaults to infinity (no lens).
         Scalars are interpreted as a non-cylindrical isotropic lens.
-        Future: add a ``convert_focal_length`` method to parallel
-        :meth:`.convert_vector()`. TODO: see depth conversion.
+        See :meth:`~slmsuite.holography.toolbox.convert_vector` to convert depths in
+        focal power units (inverse of :math:`f`) into other units and back.
 
     Returns
     -------
@@ -471,6 +471,12 @@ def zernike_aperture(grid, aperture=None):
     Helper function to find the appropriate scaling for between the normalized units in
     the grid and the Zernike aperture (the unit disk).
 
+    Tip
+    ~~~
+    Passing an :class:`~slmsuite.hardware.slms.slm.SLM` for ``grid`` makes this easy.
+    The function :meth:`~slmsuite.hardware.slms.slm.SLM.get_source_zernike_scaling()`
+    determines the optimal scaling of the aperture.
+
     Important
     ~~~~~~~~~
     Zernike polynomials are canonically defined on a circular aperture. However, we may
@@ -563,6 +569,8 @@ def zernike_aperture(grid, aperture=None):
 def zernike(grid, index, weight=1, **kwargs):
     r"""
     Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
+    These polynomials are commonly used as an orthonormal basis for optical aberration
+    and are used in a number of places inside :mod:`slmsuite` for aberration compensation.
 
     Parameters
     ----------
@@ -689,11 +697,55 @@ def _zernike_get_cantor(indices, weights, derivative=(0,0)):
     return final_pairing, final_weights
 
 
+def _zernike_indices_parse(indices=None, D=None, smaller_okay=False):
+    """
+    Parse Zernike indices applied to data expecting size D.
+    """
+    # Deal with the scalar case: a request for DD indices.
+    if np.isscalar(indices):
+        DD = int(indices)
+        if D is None:
+            if not smaller_okay:
+                D = DD
+        elif not ((smaller_okay and D <= DD) or D == DD):
+            raise ValueError(f"Expected data (dimension {D}) to have common size with indices (requested {DD}).")
+
+        D = DD
+
+        # Fill in indices based on D now.
+        indices = None
+
+    # If None, assume list based on D.
+    if indices is None:
+        if D is None:
+            raise ValueError("Either dimension or indices must be defined.")
+        elif D == 2:
+            indices = np.array([2,1])
+        elif D == 3:
+            indices = np.array([2,1,4])
+        elif D == 4:
+            indices = np.array([2,1,4,3])
+        else:
+            indices = np.hstack((np.array([2,1,4,3]), np.arange(5, D+1)))
+
+    # Final checks.
+    indices = np.ravel(indices)
+    if indices.ndim == 0:
+        indices = np.array([indices])
+    if D is not None and not ((smaller_okay and D <= len(indices)) or D == len(indices)):
+        raise ValueError(f"Expected data (dimension {D}) to have common size with indices (length {len(indices)}).")
+
+    return indices
+
+
 def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative=(0,0), out=None):
     r"""
     Returns a summation of
     `Zernike polynomials <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
-    in a computationally-efficient manner. Specifically,
+    in a computationally-efficient manner.
+    These polynomials are commonly used as an orthonormal basis for optical aberration
+    and are used in a number of places inside :mod:`slmsuite` for aberration compensation.
+    This function returns a sum of polynomials:
 
     .. math:: \phi(\vec{x}) = \sum_i w_i Z_{I_i}(\vec{x}).
 
@@ -726,14 +778,9 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     indices : array_like of int OR None
         Which Zernike polynomials to sum, defined by ANSI indices. Of shape ``(D,)``.
 
-        Tip
-        ~~~
         Use :meth:`~slmsuite.holography.toolbox.phase.zernike_convert_index()`
         to convert to ANSI from various other common indexing conventions.
 
-
-        Important
-        ~~~~~~~~~
         If ``None`` is passed, the assumed Zernike basis depends on the
         dimensionality of the provided spots:
 
@@ -745,7 +792,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
             corresponding to the previous, with the addition of the
             :math:`Z_4 = Z_2^0` focus term.
 
-        -   If ``D > 3``, then the basis is assumed to be ``[1,...,D]``.
+        -   If ``D > 3``, then the basis is assumed to be ``[2,1,4,3,5,6...,D]``.
             The piston term (Zernike index 0) is ignored as this constant phase is
             not relevant.
 
@@ -787,7 +834,6 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     if len(derivative) != 2:
         raise ValueError("Expected derivative to be a (int, int)")
 
-
     # Parse weights.
     weights = np.squeeze(weights)
     if weights.ndim <= 1:
@@ -815,21 +861,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     (D, N) = weights.shape
 
     # Parse indices.
-    if indices is None:
-        if D == 2:
-            indices = np.array([2,1])
-        elif D == 3:
-            indices = np.array([2,1,4])
-        else:
-            indices = np.arange(1, D+1)
-
-    indices = np.squeeze(indices)
-    if indices.ndim == 0:
-        indices = np.array([indices])
-    elif indices.ndim > 1:
-        raise ValueError("indices should be a 1D vector.")
-    if weights.shape[0] != len(indices):
-        raise ValueError("Expected weights to have a common dimension with indices.")
+    indices = _zernike_indices_parse(indices, D)
 
     # Parse out.
     out = _parse_out(x_grid, out, stack=N)
@@ -994,6 +1026,7 @@ def _zernike_build_order(o):
     N = (n+1) * (n+2) // 2
     for i in range(N):
         _zernike_coefficients(i)
+
 
 def _zernike_build_indices(indices):
     """Pre-caches Zernike polynomial coefficients up to order :math:`n`."""
@@ -1563,7 +1596,8 @@ def hermite_gaussian(grid, n, m, w=None):
     (x_grid, y_grid) = _process_grid(grid)
     w = _determine_source_radius(grid, w)
 
-    factor = np.sqrt(2) / w
+    # factor = np.sqrt(2) / w
+    factor = 4 / w
 
     # Generate the amplitude of a Hermite-Gaussian mode.
     phase = special.hermite(n)(factor * x_grid) * special.hermite(m)(factor * y_grid)

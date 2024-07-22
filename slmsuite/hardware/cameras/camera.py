@@ -9,6 +9,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import curve_fit
 
 from slmsuite.holography import analysis
+from slmsuite.holography.toolbox import BLAZE_LABELS
 from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
 from slmsuite.misc.math import REAL_TYPES
 
@@ -654,31 +655,66 @@ class Camera():
 
     # Other helper methods.
 
-    @staticmethod
-    def plot_image(img, show=True):
+    def plot(self, image=None, limits=None, title="Image", cbar=True):
         """
         Plots the provided image.
 
         Parameters
         ----------
-        img : ndarray
-            Image to be plotted.
-        show : bool
-            Whether or not to immediately plot the image.
+        image : ndarray OR None
+            Image to be plotted. If ``None``, grabs an image from the camera.
+        limits : None OR float OR [[float, float], [float, float]]
+            Scales the limits by a given factor or uses the passed limits directly.
+        title : str
+            Title the axis.
+        cbar : bool
+            Also plot a colorbar.
 
         Returns
         -------
         matplotlib.pyplot.axis
             Axis of the plotted image.
         """
-        fig, ax = plt.subplots(1, 1)
-        im = ax.imshow(img, clim=[0, img.max()])
-        cax = make_axes_locatable(ax).append_axes("right", size="5%", pad=0.05)
-        fig.colorbar(im, cax=cax, orientation="vertical")
-        ax.set_title("Captured Image")
-        cax.set_ylabel("Intensity")
-        if show:
-            plt.show()
+        if image is None:
+            image = self.get_image()
+        image = np.array(image, copy=None)
+
+        if len(plt.get_fignums()) > 0:
+            fig = plt.gcf()
+        else:
+            fig = plt.figure(figsize=(20,8))
+
+        im = plt.imshow(image)
+        ax = plt.gca()
+
+        if cbar:
+            cax = make_axes_locatable(ax).append_axes("right", size="2%", pad=0.05)
+            fig.colorbar(im, cax=cax, orientation="vertical")
+
+        # ax.invert_yaxis()
+        ax.set_title(title)
+
+        if limits is not None and limits != 1:
+            if np.isscalar(limits):
+                axlim = [ax.get_xlim(), ax.get_ylim()]
+
+                centers = np.mean(axlim, axis=1)
+                deltas = np.squeeze(np.diff(axlim, axis=1)) * limits / 2
+
+                limits = np.vstack((centers - deltas, centers + deltas)).T
+            elif np.shape(limits) == (2,2):
+                pass
+            else:
+                raise ValueError(f"limits format {limits} not recognized; provide a scalar or limits.")
+
+            ax.set_xlim(limits[0])
+            ax.set_ylim(limits[1])
+
+        if image.shape == self.shape:
+            ax.set_xlabel(BLAZE_LABELS["ij"][0])
+            ax.set_ylabel(BLAZE_LABELS["ij"][1])
+
+        plt.sca(ax)
 
         return ax
 

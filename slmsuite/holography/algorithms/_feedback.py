@@ -205,7 +205,6 @@ class FeedbackHologram(Hologram):
         cp.abs(cp_img, out=cp_img)
 
         # Perform affine.
-        print(b)
         target = cp_affine_transform(
             input=cp_img,
             matrix=M,
@@ -298,18 +297,21 @@ class FeedbackHologram(Hologram):
             Helper function to set the ``null_region`` to zero for Fourier space radius fractions above
             ``null_region_radius_frac``. This is useful to prevent power being deflected
             to very high orders, which are unlikely to be properly represented in
-            practice on a physical SLM.
+            practice on a physical SLM. If ``None``, defaults to 1 and there is no null region.
         reset_weights : bool
             Whether to update the :attr:`weights` to this new :attr:`target`.
         """
-        self.target_ij = new_target_ij
+        self.target_ij = new_target_ij.astype(self.dtype)
         # Transformation order of zero to prevent nan-blurring in MRAF cases.
         self.ijcam_to_knmslm(new_target_ij, out=self.target, order=0)
 
         # Set the null region.
         undefined = cp.isnan(self.target)
 
-        if null_region_radius_frac is not None:
+        if null_region_radius_frac is None:
+            null_region_radius_frac = 1
+
+        if null_region_radius_frac < 1:
             # Build up the null region pattern if we have not already done the transform above.
             if null_region is None:
                 null_region = cp.zeros(self.shape, dtype=bool)
@@ -321,7 +323,10 @@ class FeedbackHologram(Hologram):
             mask = cp.square(xg) + cp.square(yg) > null_region_radius_frac**2
             null_region[mask] = True
 
-        self.target[cp.logical_and(undefined, null_region)] = 0
+        if null_region_radius_frac >= 1:
+            self.target[undefined] = 0
+        else:
+            self.target[cp.logical_and(undefined, null_region)] = 0
 
         if reset_weights:
             self.reset_weights()
@@ -386,7 +391,7 @@ class FeedbackHologram(Hologram):
             self.measure("ij")  # Make sure data is there.
 
             stats["experimental_ij"] = self._calculate_stats(
-                self.img_ij.astype(self.dtype),
+                self.img_ij,
                 self.target_ij,
                 xp=np,
                 efficiency_compensation=True,

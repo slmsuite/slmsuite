@@ -451,7 +451,8 @@ class Hologram(_HologramStats):
 
         # Reset complex looping variables.
         self.nearfield = cp.zeros(self.shape, dtype=self.dtype_complex)
-        self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)
+        if not self.target is None:
+            self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)
 
     def _get_target_moments_knm_norm(self):
         """
@@ -736,7 +737,8 @@ class Hologram(_HologramStats):
         else:
             self.target = cp.array(new_target, dtype=self.dtype, copy=None)
             cp.abs(self.target, out=self.target)
-            self.target *= 1 / Hologram._norm(self.target)
+            with warnings.catch_warnings():
+                self.target *= 1 / Hologram._norm(self.target)
 
         if reset_weights:
             self.reset_weights()
@@ -880,7 +882,7 @@ class Hologram(_HologramStats):
         if hasattr(self, "img_knm"):
             self.img_knm = None
 
-    def remove_vortices(self):
+    def remove_vortices(self, plot=False):
         """
         Removes the computed phase vortices in the farfield where the target amplitude is positive.
         Useful for smoothing out the pattern and reducing speckle.
@@ -901,9 +903,23 @@ class Hologram(_HologramStats):
         ~~~~~~~~~
         This callback can only applied be during a GS loop. To use for a conjugate
         gradient hologram, do a single iteration of GS.
+
+        Parameters
+        ----------
+        plot : bool
+            Enable debug plots.
         """
         if self.phase_ff is not None:
-            analysis.image_vortices_remove(self.phase_ff, self.target > 0)
+            limits = self.plot_farfield(self.target)
+
+            if plot:
+                self.plot_farfield(self.phase_ff, title="phase original", limits=limits)
+                self.plot_farfield(analysis.image_vortices(self.phase_ff), title="vortices coords", limits=limits)
+                self.plot_farfield((self.target > 0).astype(float), title="target_mask", limits=limits)
+                self.plot_farfield((self.target > 0).astype(float) + analysis.image_vortices(self.phase_ff), title="vortices coords + target_mask", limits=limits)
+                self.plot_farfield(analysis.image_vortices_remove(self.phase_ff, self.target > 0, True), title="phase vortices", limits=limits)
+                analysis.image_vortices_remove(self.phase_ff, self.target > 0)
+                self.plot_farfield(self.phase_ff, title="phase removal after", limits=limits)
 
     def _build_nearfield(self, phase_torch=None):
         """Populate nearfield with data from amp and phase."""
@@ -1409,9 +1425,10 @@ class Hologram(_HologramStats):
         noise_region = cp.isnan(self.target)
 
         zero_region = cp.abs(self.target) == 0
-        Z = int(cp.sum(zero_region))
-        if Z > 0 and not hasattr(self, "zero_weights"):
-            self.zero_weights = cp.zeros((Z,), dtype=self.dtype_complex)
+        if ("zero_factor" in self.flags and self.flags["zero_factor"] != 0):
+            Z = int(cp.sum(zero_region))
+            if Z > 0 and not hasattr(self, "zero_weights"):
+                self.zero_weights = cp.zeros((Z,), dtype=self.dtype_complex)
 
         signal_region = cp.logical_not(cp.logical_or(noise_region, zero_region))
         mraf_factor = self.flags.get("mraf_factor", None)
@@ -1508,8 +1525,11 @@ class Hologram(_HologramStats):
             where_working = mraf_variables["where_working"]
 
             if hasattr(self, "zero_weights"):
-                self.zero_weights -= self.flags.get("zero_factor", 1) * np.abs(self.farfield[zero_region]) * self.farfield[zero_region]
+                fz = self.farfield[zero_region]
+                self.zero_weights -= self.flags.get("zero_factor", 1) * cp.abs(fz) * fz
                 self.farfield[zero_region] = self.zero_weights
+            else:
+                self.farfield[zero_region] = 0
 
             # # Handle signal and noise regions.
             # if ("fixed_phase" in self.flags and self.flags["fixed_phase"]):
@@ -1545,6 +1565,14 @@ class Hologram(_HologramStats):
                 cp.exp(1j * self.phase_ff, _where=signal_region, out=self.farfield)
                 cp.multiply(self.farfield, self.weights, _where=signal_region, out=self.farfield)
                 if mraf_factor is not None: cp.multiply(self.farfield, mraf_factor, _where=noise_region, out=self.farfield)
+
+            # self.plot_farfield(signal_region.astype(float))
+            # self.plot_farfield(noise_region.astype(float))
+            # self.plot_farfield(zero_region.astype(float))
+            # self.plot_farfield(np.isnan(self.farfield).astype(float))
+            # self.plot_farfield(self.farfield)
+
+        # self.farfield /= Hologram._norm(self.farfield, xp=cp)
 
     # Conjugate gradient optimization.
     def optimize_cg(self, iterations, callback):

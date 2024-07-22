@@ -37,7 +37,7 @@ BLAZE_LABELS = {
     "freq": (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
     "lpmm": (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
     "zernike":  (r"$Z_1^1$ [Zernike rad]", r"$Z_1^{-1}$ [Zernike rad]"),
-    "ij":   (r"Camera $x$ [pix]", r"Camera $y$ [pix]"),
+    "ij":   (r"Camera $i$ [pix]", r"Camera $j$ [pix]"),
 }
 for prefix, name in zip(["", "mag_"], ["Camera", "Experiment"]):
     for k in LENGTH_FACTORS.keys():
@@ -1071,7 +1071,7 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
     J = np.linalg.inv(np.squeeze(np.array([[dx1[0], dx2[0]], [dx1[1], dx2[1]]])))
 
     # Construct the matrix.
-    M = np.matmul(np.squeeze(np.array([[y1[0], y2[0]], [y1[1], y2[1]]])), J)
+    M = np.matmul(np.squeeze(np.array([[y1[0,0], y2[0,0]], [y1[1,0], y2[1,0]]])), J)
     b = y0 - np.matmul(M, x0)
 
     # Deal with N and make indices.
@@ -1110,7 +1110,7 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
         if orientation_check:
             indices = indices[:, 0:-2]
 
-        return np.matmul(M, indices) + b
+        return np.array(np.matmul(M, indices) + b)
 
 
 def smallest_distance(vectors, metric="chebyshev"):

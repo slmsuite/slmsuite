@@ -4,6 +4,7 @@ from slmsuite.holography.algorithms._hologram import Hologram
 from slmsuite.holography.algorithms._spots import SpotHologram, CompressedSpotHologram
 from slmsuite.holography.algorithms._feedback import FeedbackHologram
 
+
 class MultiplaneHologram(Hologram):
     """
     Holography combining multiple objectives, potentially across planes of focus or color.
@@ -25,6 +26,10 @@ class MultiplaneHologram(Hologram):
     ----------
     holograms : list of :class:`Hologram`
         List of sub-holograms to optimize simultaneously.
+    weights : list of float
+        Weight for each hologram. This allows the user to redistribute power between
+        holograms. Keep in mind that each hologram will normalize itself, so differences
+        in intensity between target patterns cannot be relied upon.
     """
     def __init__(self, holograms, weights=None):
         """
@@ -36,7 +41,7 @@ class MultiplaneHologram(Hologram):
         holograms : list of :class:`Hologram`
             List of ``N`` sub-holograms to optimize simultaneously.
         weights : array_like of float OR None
-            List of ``N`` floats
+            List of ``N`` floats.
             If ``None``, defaults to even power.
         """
         self.holograms = holograms
@@ -76,6 +81,92 @@ class MultiplaneHologram(Hologram):
 
     def __len__(self):
         return len(self.holograms)
+
+    @staticmethod
+    def get_multiplane_defocus_blur(
+        cameraslm,
+        targets,
+        target_depths,
+        return_depths=None,
+        sharp_focus=True,
+    ):
+        """
+        From a stack of target (power) images at ``target_depths``, generate a stack
+        of images at ``return_depths``, accounting for defocus blur.
+        Power is summed as if all depths were transparent; i.e. objects do no block
+        objects further behind.
+        This is a partial farfield implementation of
+        `realistic defocus blur <https://doi.org/10.48550/arXiv.2205.07030>`_.
+
+        Warning
+        -------
+        This feature seems to lead to less stable holography without, perhaps, some
+        additional optimizations.
+
+        Parameters
+        ----------
+        cameraslm : ~slmsuite.hardware.cameraslms.FourierSLM
+            Hardware to implement blur for. Calibrations are necessary to determine how
+            much to blur.
+
+            Tip
+            ---
+            Right now, the blurring is Gaussian and analytic, but in the future, the
+            measurement of the point spread function should be used.
+        targets : array_like
+            Stack of images of shape ``(image_count, h, w)``.
+        target_depths : list of float
+            Depths in ``"kxy"`` focal power units corresponding to the ``targets``.
+        return_depths : list of float
+            Depths to return images at.
+            If ``None``, use ``target_depths``.
+        sharp_focus : bool
+            If ``False``, depths at focal planes are blurred by the point spread radius
+            of a focussed spot.
+            If ``True``, all the blurring is reduced by the focused point spread radius,
+            keeping images that are in focus sharp.
+        """
+        # Parse return_depths.
+        if return_depths is None:
+            return_depths = target_depths
+
+        # Parse targets.
+        if len(np.shape(targets)) != 3:
+            raise ValueError("Expected 3D stack of 2D images.")
+
+        (image_count, h, w) = np.shape(targets)
+
+        # Check target_depths.
+        if image_count != len(target_depths):
+            raise ValueError("There should be the same number of images as target_depths.")
+
+        # Make the return data and gather useful parameters.
+        canvas = np.zeros((len(return_depths), h, w))
+
+        # Gather f_eff in cam_pix/rad.
+        if cameraslm.cam.pitch_um is None:
+            raise ValueError(
+                "Camera pitch_um is necessary to calculate defocus blur. "
+                "Otherwise, we have no reference for the scale of a wavelength."
+            )
+
+        f_eff = np.sqrt(np.abs(np.linalg.det(cameraslm.calibrations["fourier"]["M"])))
+        w0_kxy = cameraslm.slm.get_spot_radius_kxy()
+        w0_pix = f_eff * w0_kxy
+        w0_um = w0_pix * np.mean(cameraslm.cam.pitch_um)
+
+        zr = np.pi * w0_um * w0_um / cameraslm.slm.wav_um     # (what if n != 1?)
+
+        for j, z2 in enumerate(return_depths):
+            for i, z1 in enumerate(target_depths):
+                dz = (z1 - z2) * (f_eff * f_eff)
+
+                blur = w0_pix * (np.sqrt(1 + (dz / zr) ** 2) - (1 if sharp_focus else 0))
+                blur = 2 * int(blur) + 1
+
+                canvas[j, :, :] += cv2.GaussianBlur(targets[i], (blur, blur), 0)
+
+        return canvas
 
     # Overload user functions with meta functionality.
 

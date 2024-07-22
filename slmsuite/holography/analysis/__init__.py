@@ -8,6 +8,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from functools import reduce
 from scipy.optimize import curve_fit, minimize
+from scipy.ndimage import binary_erosion
 import warnings
 try:
     import cupy as cp   # type: ignore
@@ -1131,7 +1132,7 @@ def image_vortices_coordinates(phase_image, mask=None):
 
     return coordinates, weights
 
-def image_vortices_remove(phase_image, mask=None):
+def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False):
     """
     Find and then remove all the phase vortices in a phase image.
 
@@ -1141,25 +1142,40 @@ def image_vortices_remove(phase_image, mask=None):
         Image to remove vortices upon.
     mask : array_like OR None
         Boolean mask to remove within. This is advisable for large images.
+    return_vortices_negative : bool
+        If ``False``, the original image is modified in-place with vortices removed
+        inside the mask and returned.
+        If ``True``, what would be added to the original image is returned instead.
 
     Returns
     -------
     phase_image
-        The image with vortices removed inside the mask, modified in-place.
+        The image or vortices, depending upon ``return_vortices``
     """
     xp = get_module(phase_image)
 
-    coordinates, weights = image_vortices_coordinates(phase_image, mask=mask)
+    if mask is not None:
+        mask_eroded = binary_erosion(mask, np.ones((5,5)))
+    else:
+        mask_eroded = None
+
+    coordinates, weights = image_vortices_coordinates(phase_image, mask=mask_eroded)
     grid = _generate_grid(phase_image.shape[1], phase_image.shape[0], integer=False)
+
+    if return_vortices_negative:
+        canvas = np.zeros_like(phase_image)
+    else:
+        canvas = phase_image
+
 
     if mask is None:
         for x, y, w in zip(coordinates[1], coordinates[0], weights):
-            phase_image -= w * xp.arctan2(grid[0] - x, grid[1] - y)
+            canvas -= w * xp.arctan2(grid[0] - x, grid[1] - y)
     else:
         for x, y, w in zip(coordinates[1], coordinates[0], weights):
-            phase_image[mask] -= w * xp.arctan2(grid[0][mask] - x, grid[1][mask] - y)
+            canvas[mask] -= w * xp.arctan2(grid[0][mask] - x, grid[1][mask] - y)
 
-    return phase_image
+    return canvas
 
 # Array fitting functions.
 

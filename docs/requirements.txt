@@ -12,6 +12,7 @@ sphinx
 sphinx_copybutton
 sphinx_last_updated_by_git
 sphinx_rtd_theme
+sphinxcontrib-video
 requests
 pandoc
 pydata-sphinx-theme

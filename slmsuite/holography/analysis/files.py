@@ -15,10 +15,13 @@ import warnings
 
 import h5py
 import numpy as np
+import cv2
+import scipy.ndimage as ndimage
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from slmsuite.holography.analysis import _make_8bit
+from slmsuite.holography.toolbox import pad
 
 
 def _max_numeric_id(path, name, extension=None, kind="file", digit_count=5):
@@ -271,6 +274,34 @@ def write_h5(file_path, data, mode="w"):
         recurse(file_, data)
 
 
+def _read_image(path, shape, target_shape=None, angle=0, shift=(-225, -170)):
+    """Helper function for examples."""
+    # Load the image.
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+
+    if img is None:
+        raise ValueError("Image not found at path '{}'".format(path))
+
+    # Invert if necessary such that the majority of the image is dark.
+    if np.mean(img) > np.mean(cv2.bitwise_not(img)):
+        img = cv2.bitwise_not(img)
+
+    if angle != 0:
+        img = ndimage.rotate(img, angle)
+
+    if target_shape is not None:
+        zoom_x = target_shape[0] / img.shape[0]
+        zoom_y = target_shape[1] / img.shape[1]
+        img = ndimage.zoom(img, min(zoom_x, zoom_y))
+
+    # sqrt to get the amplitude.
+    target_ij = pad(np.sqrt(img), shape)
+
+    # Shift to the desired center.
+    target_ij = np.roll(target_ij, shift, axis=(0,1))
+
+    return target_ij
+
 def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=None, **kwargs):
     """
     Save an image or stacks of images as a filetype supported by :mod:`imageio`.
@@ -374,8 +405,8 @@ def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=
 
     # Optimize .gif if pygifsicle is installed
     if extension == "gif":
-        try:
-            from pygifsicle import optimize
-            optimize(file_path)
-        except:
-            warnings.warn("pip install pygifsicle to optimize .gif file size.")
+        # try:
+        from pygifsicle import optimize
+        optimize(file_path, options=["--lossy=20"])
+        # except:
+        #     warnings.warn("pip install pygifsicle to optimize .gif file size.")

@@ -36,6 +36,7 @@ except BaseException as e:  # Provide an informative error should something go w
         "  Check that these files are present and are error-free.\n"
         "Original error: {}".format(e)
     )
+    slm_funcs = None
 
 
 class Santec(SLM):
@@ -105,6 +106,15 @@ class Santec(SLM):
         This is valid for SLM-200, SLM-210, and SLM-300,
         but may not be valid for future Santec models.
         """
+        if slm_funcs is None:
+            raise RuntimeError(
+                "Santec DLLs not installed. Install these to use Santec SLMs."
+                "  Dynamically linked libraries from Santec (usually provided via USB) "
+                "must be present in the runtime directory:\n"
+                "  - SLMFunc.dll\n  - FTD3XX.dll\n"
+                "  Check that these files are present and are error-free."
+            )
+
         # Default max phase. Maybe this should be opened to the user in the future.
         # Otherwise, wav_um and wav_design_um have the same functionality.
         max_phase = 2 * np.pi
@@ -310,6 +320,15 @@ class Santec(SLM):
         list of (int, str) tuples
             The number and name of each potential display.
         """
+        if slm_funcs is None:
+            raise RuntimeError(
+                "Santec DLLs not installed. Install these to use Santec SLMs."
+                "  Dynamically linked libraries from Santec (usually provided via USB) "
+                "must be present in the runtime directory:\n"
+                "  - SLMFunc.dll\n  - FTD3XX.dll\n"
+                "  Check that these files are present and are error-free."
+            )
+
         # Check for the SLM parameters and save them
         display_list = []
 

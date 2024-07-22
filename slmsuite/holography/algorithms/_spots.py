@@ -150,7 +150,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                     corresponding to the previous, with the addition of the
                     :math:`Z_4 = Z_2^0` focus term.
 
-                -   If ``D > 3``, then the basis is assumed to be ``[1,...,D]``.
+                -   If ``D > 3``, then the basis is assumed to be ``[2,1,4,3,5,6...,D]``.
                     The piston term (Zernike index 0) is ignored as this constant phase is
                     not relevant.
 
@@ -194,12 +194,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Parse zernike_basis.
         if isinstance(basis, str):
             # Assume the ANSI basis (slmsuite default), but start without piston.
-            if D == 2:
-                self.zernike_basis = np.array([2,1])
-            elif D == 3:
-                self.zernike_basis = np.array([2,1,4])
-            else:
-                self.zernike_basis = np.arange(1, D+1)
+            self.zernike_basis = tphase._zernike_indices_parse(None, D)
         else:
             # Make sure we are a 1D list.
             self.zernike_basis = np.ravel(basis)

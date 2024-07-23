@@ -807,7 +807,7 @@ class Camera():
 
         return exp_fin
 
-    def autofocus(self, z_get, z_set, z_list=None, plot=False):
+    def autofocus(self, get_z, set_z, z_list=None, plot=False):
         """
         Uses an FFT contrast metric to find optimal focus when scanning over some variable
         ``z``. This ``z`` often takes the form of a vertical stage to position a sample precisely
@@ -816,9 +816,9 @@ class Camera():
 
         Parameters
         ----------
-        z_get : function
+        get_z : function
             Gets the current position of the focusing stage. Should return a ``float``.
-        z_set : function
+        set_z : function
             Sets the position of the focusing stage to a given ``float``.
         z_list : array_like or None
             ``z`` values to sweep over during search.
@@ -831,16 +831,16 @@ class Camera():
 
         self.flush()
 
-        z_base = z_get()
+        z_base = get_z()
         imlist = []
         z_list = z_list + z_base
         counts = np.zeros_like(z_list)
 
-        z_set(z_list[0])
+        set_z(z_list[0])
 
         for i, z in enumerate(z_list):
             print("Moving to " + str(z))
-            z_set(z)
+            set_z(z)
 
             # Take image.
             img = self.get_image()
@@ -888,7 +888,7 @@ class Camera():
 
         # Return to original state except focus z
         print("Moving to optimized value " + str(z_opt))
-        z_set(z_opt)
+        set_z(z_opt)
 
         # Show result if desired
         if plot:

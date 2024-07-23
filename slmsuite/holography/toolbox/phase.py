@@ -612,7 +612,7 @@ def zernike_get_string(index, derivative=(0,0)):
 
     # Sum the monomial terms together.
     for i, w in zip(reversed(range(len(cw))), reversed(cw[:, 0])):
-        result += "{0:+}".format(w)
+        result += "{0:+}".format(int(w))
 
         for j, n in enumerate(["x", "y"]):
             if cxy[i, j] >= 1:
@@ -628,6 +628,9 @@ def zernike_get_string(index, derivative=(0,0)):
 
 
 def _zernike_get_cantor(indices, weights, derivative=(0,0)):
+    indices = np.array(indices)
+    weights = np.array(weights)
+
     # Separate the negative indices (special cases) before processing.
     negative_mask = indices < 0
     positive_mask = indices >= 0
@@ -917,7 +920,7 @@ def zernike_pyramid_plot(
         order,
         scale=1,
         titles=["ansi", "radial", "latex", "name"],
-        cmap="twilight",
+        cmap="twilight_shifted",
         **kwargs
     ):
     r"""
@@ -966,9 +969,7 @@ def zernike_pyramid_plot(
     grid_ = _process_grid(grid)
     phases = np.zeros((len(indices_ansi), *grid_[0].shape))
 
-    t0 = time.time()
     phases = zernike_sum(grid, indices_ansi[np.newaxis, :], np.diag(np.ones_like(indices_ansi)), out=phases, **kwargs)
-    t = time.time() - t0
 
     for i in indices_ansi:
         n, l = indices_radial[i, :]
@@ -984,7 +985,7 @@ def zernike_pyramid_plot(
 
         if "ansi" in titles:
             title += f"#{i}\n"
-        if "noll" in titles:
+        if "radial" in titles:
             title += f"({n}, {l})\n"
         if "latex" in titles:
             latex = zernike_get_string(i, derivative)
@@ -1003,8 +1004,6 @@ def zernike_pyramid_plot(
         box = a.get_position()
         box = box.translated(dx * pitch, 0)
         a.set_position(box)
-
-    return t
 
 
 def _zernike_cache_plot():

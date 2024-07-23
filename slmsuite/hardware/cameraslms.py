@@ -1430,8 +1430,12 @@ class FourierSLM(CameraSLM):
             x = np.clip(x, np.min(sweep), np.max(sweep))
 
             if plot > 0:
-                plt.imshow(result, interpolation="none", extent=[-.5, result.shape[1]-.5, np.max(sweep), np.min(sweep)])
-                plt.colorbar()
+                plt.imshow(
+                    result,
+                    interpolation="none",
+                    extent=[-.5, result.shape[1]-.5, np.max(sweep), np.min(sweep)]
+                )
+                cbar = plt.colorbar()
                 plt.errorbar(
                     np.arange(result.shape[1]),
                     x,
@@ -1444,6 +1448,9 @@ class FourierSLM(CameraSLM):
                 plt.title(f"Zernike #{term}")
                 plt.xlabel("Calibration Point [#]")
                 plt.ylabel("Perturbation [rad]")
+                plt.xlim(-.5, result.shape[1]-.5)
+                plt.ylim(np.max(sweep), np.min(sweep))
+                cbar.ax.set_ylabel("Figure of Merit [a.u.]") #, rotation=270)
                 plt.show()
 
             return x, dx
@@ -1526,11 +1533,7 @@ class FourierSLM(CameraSLM):
                         f"Image might become overexposed during optimization ({max}/{self.cam.bitresolution-1})."
                     )
 
-                if plot > 0:
-                    plt.figure(figsize=(20,10))
-                    plt.imshow(img)
-                    plt.colorbar()
-                    plt.show()
+                self.cam.plot(img)
 
                 return
             else:
@@ -1545,7 +1548,6 @@ class FourierSLM(CameraSLM):
                 continue
 
             # Reoptimize the hologram at each step.
-            hologram.spot_zernike = calibration_points
             hologram.optimize("WGS-Kim", maxiter=10, verbose=0)
 
             # Determine which Zernike polynomial we are testing.
@@ -1561,9 +1563,34 @@ class FourierSLM(CameraSLM):
             # Apply the correction to the spots.
             calibration_points[j, :] += correction
 
+            # Update the hologram.
+            hologram.spot_zernike = calibration_points
+
+            # Hack to subtract the previous order without having to regenerate the basis.
+            if hasattr(hologram, "_cupy_kernel"):
+                if len(correction) == hologram._cupy_kernel.shape[0]:
+                    # Convert the update into the proper format.
+                    if hasattr(hologram._cupy_kernel, "get_array_module"):
+                        cp = hologram._cupy_kernel.get_array_module()
+                        term = cp.array(term, dtype=hologram.dtype_complex)
+                        term *= hologram.dtype_complex(1j)
+                        term = cp.exp(term, out=term)
+                    else:
+                        term = np.array(term, dtype=hologram.dtype_complex)
+                        term *= hologram.dtype_complex(1j)
+                        term = np.exp(term, out=term)
+
+                    # exp is applied mulitiplicatively.
+                    for k in range(len(correction)):
+                        hologram._cupy_kernel[k,:] *= correction[k] * term.ravel()
+
+                    # Tell the cache that it's been updated.
+                    hologram._spot_zernike_cached = np.copy(hologram.spot_zernike)
+
         self.calibrations["wavefront_zernike"] = {
             "zernike_indices": zernike_indices,
-            "corrected_spots": calibration_points
+            "corrected_spots": calibration_points,
+            "calibration_points_ij" : calibration_points_ij
         }
         self.calibrations["wavefront_zernike"].update(self._get_calibration_metadata())
 
@@ -1778,12 +1805,12 @@ class FourierSLM(CameraSLM):
         # Parse calibration_points.
         if calibration_points is None:
             # If None, then use the built-in generator.
-            calibration_points = self.generate_wavefront_calibration_points(
+            calibration_points = self.wavefront_calibration_points(
                 1.5*np.max(interference_window),
                 np.max(interference_window),
                 field_point,
                 field_point_units,
-                plot=False
+                plot=plot
             )
 
         calibration_points = np.rint(format_2vectors(calibration_points)).astype(int)
@@ -2716,7 +2743,7 @@ class FourierSLM(CameraSLM):
         Returns
         -------
         numpy.ndarray
-            List of points of shape ``(2, N)`` to calibrate at.
+            List of points of shape ``(2, N)`` to calibrate at in the ``"ij"`` basis.
 
         Raises
         ------
@@ -2883,7 +2910,7 @@ class FourierSLM(CameraSLM):
 
         raise NotImplementedError(
             "r0.0.2 wavefront calibration processing is not written yet. Considerations:\n"
-            " - variable names have changed between 0.0.1 and 0.0.2\n"
+            " - variable names have changed between 0.0.1 and 0.1.0\n"
             " - Shapes of data have changed from (NY, NX) to (N, NY, NX) where N > 0, to acommodate data from many calibration points.\n"
             " - Zernike fitting will probably give smoother and cleaner results.\n"
             "     - Raw phase is hard to guess because of mod(2pi).\n"

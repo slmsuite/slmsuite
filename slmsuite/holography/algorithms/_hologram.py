@@ -1069,7 +1069,9 @@ class Hologram(_HologramStats):
 
             - ``'WGS-Wu'``
 
-              TODO `exponential <https://doi.org/10.1364/OE.413723>`_
+              Weights using an `exponential <https://doi.org/10.1364/OE.413723>`_
+              function, which is less sensitive to near-zero values of
+              :math:`\mathcal{F}` or :math:`\mathcal{T}`.
 
               .. math:: \mathcal{W} = \mathcal{W}\exp\left( p (\mathcal{T} - \mathcal{F}) \right)
 
@@ -1078,18 +1080,23 @@ class Hologram(_HologramStats):
 
             - ``'WGS-tanh'``
 
-              TODO Hyperbolic tangent
+              Weights by hyperbolic tangent, commonly used as an
+              `activation function
+              <https://en.wikipedia.org/wiki/Activation_function#Table_of_activation_functions>`_
+              in machine learning.
 
               .. math:: \mathcal{W} = \mathcal{W}\left[1 + f\text{tanh}\left( p (\mathcal{T} - \mathcal{F}) \right) \right]
 
               This weighting limits each update to a relative change of :math:`\pm f`,
-              which is passed as ``"feedback_factor"``.
+              passed as ``"feedback_factor"``, which is useful to prevent large changes.
               The speed of correction is controlled by :math:`p`,
               the power passed as ``"feedback_exponent"``.
 
         -   Conjugate Gradient (CG) phase retrieval.
 
             - ``'CG'``
+
+              **(This is a new feature which has not been thoroughly tested.)**
 
               Some holography---especially that with more complicated holographic
               objectives---can be better treated with gradient-based methods.
@@ -1804,7 +1811,7 @@ class Hologram(_HologramStats):
                 N,
                 method,
                 feedback_norm,
-                self.flags.pop("feedback_exponent", 1),     # TODO: fix
+                self.flags.pop("feedback_exponent", 1),
                 self.flags.pop("feedback_factor", 1)
             )
         )
@@ -1890,16 +1897,24 @@ class Hologram(_HologramStats):
         matrix : numpy.ndarray OR cupy.ndarray
             Data, potentially complex.
         xp : module
-            This function is used by both :mod:`cupy` and :mod:`numpy`, so we have the option
-            for either. Defaults to :mod:`cupy`.
+            This function is used by :mod:`cupy`, :mod:`numpy`, and :mod:`torch`,
+            so we have the option for any of the three. Defaults to :mod:`cupy`.
 
         Returns
         -------
         float
             The result.
         """
-        # TODO: test for torch?
-        if xp.iscomplexobj(matrix):
+        if torch is not None:
+            if torch.is_tensor(matrix):
+                xp = torch
+
+        if xp is torch:
+            is_complex = torch.is_complex(matrix)
+        else:
+            is_complex = xp.iscomplexobj(matrix)
+
+        if is_complex:
             return xp.sqrt(xp.nansum(xp.square(xp.abs(matrix))))
         else:
             return xp.sqrt(xp.nansum(xp.square(matrix)))

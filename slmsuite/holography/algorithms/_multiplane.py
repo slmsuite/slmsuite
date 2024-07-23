@@ -22,6 +22,11 @@ class MultiplaneHologram(Hologram):
     :class:`MultiplaneHologram` could also be used to optimize a multicolor hologram and
     account for how the farfield of each color scales with wavelength.
 
+    Tip
+    ~~~
+    Calls to :meth:`.optimize()` which update :attr:`flags` also update the flags of any
+    child hologram.
+
     Attributes
     ----------
     holograms : list of :class:`Hologram`
@@ -174,7 +179,7 @@ class MultiplaneHologram(Hologram):
         # First update the parent flags.
         super()._update_flags(method, verbose, feedback, stat_groups, **kwargs)
 
-        # Then update each of the child flags. TODO: document this behavior.
+        # Then update each of the child flags.
         for h in self.holograms:
             h.flags.update(self.flags)
 
@@ -231,7 +236,7 @@ class MultiplaneHologram(Hologram):
         for h in self.holograms: h.plot_stats(*args, **kwargs)
 
     def _update_stats(self, stat_groups=[]):
-        # TODO: make meta stat group.
+        # FUTURE: make meta stat group.
         for h in self.holograms: h._update_stats(stat_groups)
 
     def set_target(self, *args, **kwargs):

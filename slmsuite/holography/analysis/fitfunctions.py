@@ -349,7 +349,7 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     For fitting a 2D rectangular :math:`\text{sinc}^2` distribution, potentially with a sinusoidal modulation.
 
     .. math:: z(x,y) =  d + \left(c + \frac{a}{2} \left[1+\cos(k_xx+k_yy-b) \right]\right) *
-                        \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
+                        \text{sinc}^2(\pi (x-x_0) / R) * \text{sinc}^2(\pi (y-y_0) / R).
 
     where
 
@@ -386,14 +386,13 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
             * (a * 0.5 * (1 + np.cos(kx * x + ky * y - b)) + c) + d
 
 
-# TODO: Cleanup sinc variations!
+# sinc variations
 
-def sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
-    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+def _sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
     r"""
     For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
 
-    .. math:: z(x,y) =  d + a * \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
+    .. math:: z(x,y) =  d + a * \text{sinc}^2(\pi (x-x_0) / R) * \text{sinc}^2(\pi (y-y_0) / R).
 
     where
 
@@ -421,12 +420,11 @@ def sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
         a * np.square(np.sinc((1 / R) * (xy[0] - x0)) * np.sinc((1 / R) * (xy[1] - y0))) + d
     )
 
-def sinc2d_nomod_taylor(xy, x0, y0, R, a=1, d=0):
-    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+def _sinc2d_nomod_taylor(xy, x0, y0, R, a=1, d=0):
     r"""
     For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
 
-    .. math:: z(x,y) =  d + a * \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
+    .. math:: z(x,y) =  d + a * \text{sinc}^2(\pi (x-x_0) / R) * \text{sinc}^2(\pi (y-y_0) / R).
 
     where
 
@@ -454,13 +452,12 @@ def sinc2d_nomod_taylor(xy, x0, y0, R, a=1, d=0):
         a * np.square(_sinc_taylor((1 / R) * (xy[0] - x0)) * _sinc_taylor((1 / R) * (xy[1] - y0))) + d
     )
 
-def sinc2d_centered(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
-    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+def _sinc2d_centered(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     r"""
     For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
 
     .. math:: z(x,y) =  d + \left(c + \frac{a}{2} \left[1+\cos(k_xx+k_yy-b) \right]\right) *
-                        \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
+                        \text{sinc}^2(\pi (x-x_0) / R) * \text{sinc}^2(\pi (y-y_0) / R).
 
     where
 
@@ -493,13 +490,12 @@ def sinc2d_centered(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
         * (a * 0.5 * (1 + np.cos(kx * xy[0] + ky * xy[1] - b)) + c) + d
     )
 
-def sinc2d_centered_taylor(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
-    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+def _sinc2d_centered_taylor(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     r"""
     For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
 
     .. math:: z(x,y) =  d + \left(c + \frac{a}{2} \left[1+\cos(k_xx+k_yy-b) \right]\right) *
-                        \text{sinc}^2(\pi (x-x_0) / D) * \text{sinc}^2(\pi (y-y_0) / D).
+                        \text{sinc}^2(\pi (x-x_0) / R) * \text{sinc}^2(\pi (y-y_0) / R).
 
     where
 
@@ -554,8 +550,7 @@ def _sinc_taylor(x, order=12):
 
     return result
 
-def sinc2d_centered_jacobian(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
-    # TODO: the sinc will also need a rotation. Not sure how to make this clean.
+def _sinc2d_centered_jacobian(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     r"""
     Jacobian of :meth:`.sinc2d_centered()`.
 

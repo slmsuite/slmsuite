@@ -305,13 +305,8 @@ def _read_image(path, shape, target_shape=None, angle=0, shift=(-225, -170)):
 def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=None, **kwargs):
     """
     Save an image or stacks of images as a filetype supported by :mod:`imageio`.
-    Handles :mod:`matplotlib` colormapping
-
+    Handles :mod:`matplotlib` colormapping.
     Negative values are truncated to zero.
-
-    Important
-    ~~~~~~~~~
-
 
     Parameters
     ----------
@@ -405,8 +400,8 @@ def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=
 
     # Optimize .gif if pygifsicle is installed
     if extension == "gif":
-        # try:
-        from pygifsicle import optimize
-        optimize(file_path, options=["--lossy=20"])
-        # except:
-        #     warnings.warn("pip install pygifsicle to optimize .gif file size.")
+        try:
+            from pygifsicle import optimize
+            optimize(file_path) #, options=["--lossy=20"])
+        except:
+            warnings.warn("pip install pygifsicle to optimize .gif file size.")

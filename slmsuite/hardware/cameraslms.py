@@ -19,9 +19,9 @@ from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import SpotHologram, CompressedSpotHologram
 from slmsuite.holography.toolbox import imprint, format_2vectors, format_vectors, smallest_distance, fit_3pt, convert_vector
 from slmsuite.holography.toolbox.phase import blaze, _zernike_indices_parse, zernike, binary
-from slmsuite.misc.files import read_h5, write_h5, generate_path, latest_path
-from slmsuite.misc.fitfunctions import cos, sinc2d_nomod # sinc2d_centered, sinc2d_centered_taylor, sinc2d_centered_jacobian
-from slmsuite.misc.fitfunctions import sinc2d_centered_taylor as sinc2d_centered
+from slmsuite.holography.analysis.files import read_h5, write_h5, generate_path, latest_path
+from slmsuite.holography.analysis.fitfunctions import cos, _sinc2d_nomod
+from slmsuite.holography.analysis.fitfunctions import _sinc2d_centered_taylor as sinc2d_centered
 from slmsuite.misc.math import REAL_TYPES
 
 from slmsuite.hardware.cameras.simulated import SimulatedCamera
@@ -251,8 +251,8 @@ class FourierSLM(CameraSLM):
             M=copy.copy(self.calibrations["fourier"]["M"]),
             b=copy.copy(self.calibrations["fourier"]["b"]),
             bitdepth=self.cam.bitdepth,
-            averaging=self.cam._buffer.shape[0]   # TODO check this.
-                        if self.cam._buffer is not None else None,
+            averaging=self.cam.averaging,
+            hdr=self.cam.hdr,
             pitch_um=self.cam.pitch_um,
             name=self.cam.name+"_sim"
         )
@@ -673,9 +673,9 @@ class FourierSLM(CameraSLM):
             np.min(np.max(dfield, axis=1))
         ])))
 
-        # Warn the user if any order is outside the field of view.
+        # FUTURE: Warn the user if any order is outside the field of view.
         if False:
-            warnings.warn("TODO")
+            warnings.warn("FUTURE")
 
         # Big sweep.
         for i in [0,1]:                                         # Direction
@@ -1951,7 +1951,8 @@ class FourierSLM(CameraSLM):
             warnings.warn(
                 "The requested calibration points are close to the expected positions of "
                 "the -1th orders of calibration points. Consider shifting the calibration regions "
-                "relative to the 0th order. TODO."
+                "relative to the 0th order. Alternatively, use the avoid_mirrors= parameter "
+                "of wavefront_calibration_points"
             )
 
         # Save the current calibration in case we are just testing (test_index != None)
@@ -2341,7 +2342,7 @@ class FourierSLM(CameraSLM):
 
                 plot_labeled_rects(axs[0], points, labels, colors, superpixel_size, superpixel_size)
 
-                # TODO: fix for multiple
+                # FUTURE: fix for multiple
                 # if plot_zoom:
                 #     for a in [0, 1]:
                 #         ref = reference_superpixels[a] * superpixel_size
@@ -2455,7 +2456,7 @@ class FourierSLM(CameraSLM):
                 ))
             )
 
-            result = analysis.image_fit(imgs, function=sinc2d_nomod, guess=guess) #, plot=True)
+            result = analysis.image_fit(imgs, function=_sinc2d_nomod, guess=guess) #, plot=True)
 
             centers = result[:, 1:3].T
 
@@ -2838,10 +2839,10 @@ class FourierSLM(CameraSLM):
         Parameters
         ----------
         index : int
-            The calibration point index to process.
-            TODO: maybe this should include the option to request an "ij" position,
+            The calibration point index to process, in the case of a multi-point calibration.
+            In the future, this should include the option to request an "ij" position,
             then the return will automatically interpolate between the Zernike results
-            of all the calibration points.
+            of the local calibration points.
         smooth : bool
             Whether to blur the correction data to avoid aliasing.
         r2_threshold : float
@@ -2892,8 +2893,10 @@ class FourierSLM(CameraSLM):
 
         Parameters
         ----------
-        smooth : bool
+        smooth : bool OR int
             Whether to blur the correction data to avoid aliasing.
+            If ``int``, uses this as the number of smoothing iterations. Defaults to 16
+            if ``True``.
         r2_threshold : float
             Threshold for a "good fit". Proxy for whether a datapoint should be used or
             ignored in the final data, depending upon the rsquared value of the fit.
@@ -3088,7 +3091,7 @@ class FourierSLM(CameraSLM):
         if smooth:
             # Iterative smoothing helps to preserve slopes while avoiding superpixel boundaries.
             # Consider, for instance, a fine blaze.
-            for _ in range(16): # TODO: tqdm(range(16 if smooth is True else smooth), desc="smooth"):
+            for _ in tqdm(range(16 if smooth is True else smooth), desc="smooth"):
                 real = np.cos(phase)
                 imag = np.sin(phase)
 
@@ -3156,8 +3159,26 @@ class FourierSLM(CameraSLM):
 
         return wavefront_calibration
 
-    def wavefront_calibration_superpixel_plot_raw(self, index=None, r2_threshold=0, phase_detail=True):
-        """TODO"""
+    def wavefront_calibration_superpixel_plot_raw(self, index=0, r2_threshold=0, phase_detail=True):
+        """
+        Plots raw data from the superpixel-style wavefront calibration. Specifically,
+        plots:
+
+        - The location of the point in the camera plane,
+        - The measured source phase at each superpixel,
+        - The measured source power at each superpixel,
+        - The rsquared of the fit at each superpixel.
+
+        Parameters
+        ----------
+        index : int OR None:
+            For multi-point calibrations, the index of the point to plot data for.
+            If ``None``, displays a single plot with the location of all indices.
+        r2_threshold : float
+            Ignores points with fit quality below this threshold.
+        phase_detail : bool
+            If ``True``, plots the derivatives of the phase instead of the power and rsquared.
+        """
         plt.figure(figsize=(16, 8))
 
         data = self.calibrations["wavefront"]

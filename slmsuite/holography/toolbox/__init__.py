@@ -104,7 +104,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         Computational blaze units for a given Fourier domain ``shape``.
         This corresponds to integer points on the grid of this
         (potentially padded) SLM's Fourier transform.
-        See :class:`~slmsuite.holography.Hologram`.
+        See :class:`~slmsuite.holography.algorithms.Hologram`.
         The ``"knm"`` basis is centered at ``shape/2``, unlike all of the other units.
 
     -  ``"freq"``
@@ -152,8 +152,9 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         Requires a :class:`~slmsuite.hardware.cameraslms.FourierSLM` to be passed to ``hardware``,
         along with knowledge of the camera pixel size ``pitch_um``.
 
-    Important
-    ~~~~~~~~~
+    3D Vectors
+    ~~~~~~~~~~
+
     If an array of 3D vectors is given, then the depth (:math:`z`) direction is handled
     differently than the field (:math:`xy`).
     Most units use the **normalized focal power** :math:`\frac{\lambda}{f}` on the SLM

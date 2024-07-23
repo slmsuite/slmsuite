@@ -261,7 +261,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             )
 
         # Check to make sure spots are within bounds
-        kmax = 1    # TODO: replace with correct value.
+        kmax = 1. / np.min(cameraslm.slm.pitch) / 2.
         if np.any(np.abs(self.spot_kxy[:2, :]) > kmax):
             raise ValueError("Spots laterally outside the bounds of the farfield")
 

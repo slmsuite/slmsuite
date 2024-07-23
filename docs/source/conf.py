@@ -52,15 +52,6 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_last_updated_by_git",
     "sphinxcontrib.video",
-    # "sphinx.ext.autodoc",
-    # "sphinx.ext.autosummary",
-    # "sphinx.ext.doctest",
-    # "sphinx.ext.intersphinx",
-    # "sphinx.ext.todo",
-    # # "numpydoc",
-    # "sphinx.ext.ifconfig",
-    # "sphinx.ext.viewcode",
-    # "sphinx.ext.imgmath",
 ]
 
 extlinks = {

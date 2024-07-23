@@ -304,7 +304,10 @@ class FourierSLM(CameraSLM):
             The file path that the calibration was saved to.
         """
         if not calibration_type in self.calibrations:
-            raise ValueError(f"Could not find calibration '{calibration_type}' in calibrations.")
+            raise ValueError(
+                f"Could not find calibration '{calibration_type}' in calibrations. Options:\n"
+                + str(list(self.calibrations.keys()))
+            )
 
         if name is None:
             name = self.calibration_name(calibration_type)

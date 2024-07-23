@@ -759,7 +759,7 @@ class SLM:
 
         return self.source
 
-    def fit_source_amplitude(self, method="fit", extent_threshold=.1, force=True):
+    def fit_source_amplitude(self, method="moments", extent_threshold=.1, force=True):
         """
         Extracts various :attr:`source` parameters from the source for use in
         analytic functions. This is done by analyzing the :attr:`source` ``["amplitude"]``
@@ -833,6 +833,7 @@ class SLM:
             Whether to use moment calculations ``"moments"``
             or a least squares ``"fit"`` to determine
             ``"amplitude_center_pix"`` and ``"amplitude_radius"``.
+            ``"moments"`` is faster but ``"fit"`` is more accurate.
         extent_threshold : float
             Fraction of the maximal amplitude to use as
             the full extent of the amplitude distribution.

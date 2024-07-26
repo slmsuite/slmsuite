@@ -42,5 +42,5 @@ or directly in
 [source](https://github.com/QPG-MIT/slmsuite-examples).
 
 <p align="center">
-<img alt="qp-slm" src="https://raw.githubusercontent.com/QPG-MIT/slmsuite/main/docs/source/static/readme-example.png" width="256">
+<img alt="qp-slm" src="https://raw.githubusercontent.com/QPG-MIT/slmsuite-examples/main/examples/dynamic/ex-zernike-spots.gif" width="512">
 </p>

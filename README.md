@@ -57,7 +57,7 @@ or directly in
 
 <p align="center">
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/QPG-MIT/slmsuite/main/docs/source/static/readme-example-dark.png">
-<img alt="slmsuite" src="https://raw.githubusercontent.com/QPG-MIT/slmsuite/main/docs/source/static/readme-example.png" width="256">
+<source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/QPG-MIT/slmsuite-examples/main/examples/dynamic/ex-zernike-spots-dark.gif">
+<img alt="slmsuite" src="https://raw.githubusercontent.com/QPG-MIT/slmsuite-examples/main/examples/dynamic/ex-zernike-spots.gif" width="512">
 </picture>
 </p>

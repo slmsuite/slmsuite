@@ -9,7 +9,7 @@ spatial light modulator (SLM) control and holography.
    |slmsuite|_ enables **spot-specific** Zernike aberration correction;
    capable of optimizing spot imaging across a field of view [#note]_.
 
-   .. image:: /static/ex-zernike-spots-dark.gif
+   .. image:: https://raw.githubusercontent.com/QPG-MIT/slmsuite-examples/main/examples/dynamic/ex-zernike-spots-dark.gif
       :class: only-dark
       :alt:
          Alongside steering spots in three dimensions, this feature enables removal of
@@ -17,7 +17,7 @@ spatial light modulator (SLM) control and holography.
          is sourced along a different optical path, and slmsuite can correct for each
          different aberration experienced.
 
-   .. image:: /static/ex-zernike-spots.gif
+   .. image:: https://raw.githubusercontent.com/QPG-MIT/slmsuite-examples/main/examples/dynamic/ex-zernike-spots.gif
       :class: only-light
       :alt:
          Alongside steering spots in three dimensions, this feature enables removal of
@@ -32,12 +32,12 @@ spatial light modulator (SLM) control and holography.
    Camera feedback and phase flattening in |slmsuite|_ lead to crisp and accurate
    holograms, even across multiple planes of focus, color, or basis.
 
-   .. image:: /static/ex-slmsuite-3d-dark.gif
+   .. image:: https://raw.githubusercontent.com/QPG-MIT/slmsuite-examples/main/examples/dynamic/ex-slmsuite-3d-dark.gif
       :class: only-dark
       :alt:
          Advanced meta-hologram programming optimizes spot and image objectives simultaneously.
 
-   .. image:: /static/ex-slmsuite-3d.gif
+   .. image:: https://raw.githubusercontent.com/QPG-MIT/slmsuite-examples/main/examples/dynamic/ex-slmsuite-3d.gif
       :class: only-light
       :alt:
          Advanced meta-hologram programming optimizes spot and image objectives simultaneously.

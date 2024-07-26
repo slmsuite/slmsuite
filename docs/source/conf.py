@@ -212,7 +212,6 @@ def setup(app):
     # Download example notebooks.
     # NOTE: GitHub API only supports downloading files up to 100 MB.
     try:
-        raise
         os.makedirs(examples_path, exist_ok=True)
         tree_url = (
             "https://api.github.com/repos/{}/{}/git/trees/main?recursive=1"

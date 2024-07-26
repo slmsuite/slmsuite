@@ -32,7 +32,7 @@ for module_path in module_paths:
 project = "slmsuite"
 copyright = "2024, slmsuite Developers"
 author = "slmsuite Developers"
-release = "0.0.2"
+release = "0.1.0"
 
 # -- General configuration ---------------------------------------------------
 
@@ -127,7 +127,7 @@ html_context = {
     "default_mode": "auto",
 }
 
-html_title = f"{project} r{release} Manual"
+html_title = f"{project} v{release} Manual"
 html_last_updated_fmt = "%b %d, %Y"
 
 # Add any paths that contain custom static files (such as style sheets) here,

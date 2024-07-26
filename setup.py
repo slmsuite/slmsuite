@@ -5,7 +5,7 @@ setup.py - this module makes the package installable
 from setuptools import setup
 
 NAME = "slmsuite"
-VERSION = "0.0.2"
+VERSION = "0.1.0"
 DEPENDENCIES = [
     "numpy",
     "scipy",
@@ -18,7 +18,7 @@ DESCRIPTION = (
     "Package for high-performance spatial light "
     "modulator (SLM) control and holography."
 )
-AUTHOR = "MIT Quantum Photonics Group"
+AUTHOR = "slmsuite developers"
 AUTHOR_EMAIL = "qp-slm@mit.edu"
 
 setup(author=AUTHOR,

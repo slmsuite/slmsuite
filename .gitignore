@@ -32,7 +32,6 @@
 !docs/source/static/*.svg
 !docs/source/static/*.gif
 !docs/source/static/*.mp4
-docs/source/slmsuite-examples/
 
 # editor
 *.vscode

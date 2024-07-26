@@ -378,7 +378,7 @@ class FourierSLM(CameraSLM):
         Approximates the :math:`1/e` settle time of the SLM.
         This is done by successively removing and applying a blaze to the SLM,
         measuring the intensity at the first order spot versus time delay.
-        
+
         **(This feature is experimental.)**
 
         Parameters
@@ -557,7 +557,7 @@ class FourierSLM(CameraSLM):
         phase (error) and be blurred between pixels (crosstalk).
 
         **(This feature is experimental.)**
-        
+
         We adopt a literature approach to calibrating both phenomena by `measuring the
         system response of binary gratings <https://doi.org/10.1364/OE.20.022334>`.
         In the future, we intend to fit the measured data to `an upgraded asymmetric
@@ -1629,8 +1629,8 @@ class FourierSLM(CameraSLM):
         lim = np.max(np.abs(aberration))
 
         plt.scatter(
-            calibration_points_ij[0, :], 
-            calibration_points_ij[1, :], 
+            calibration_points_ij[0, :],
+            calibration_points_ij[1, :],
             c=aberration,
             cmap="seismic"
         )
@@ -2967,7 +2967,7 @@ class FourierSLM(CameraSLM):
                 return format_2vectors(
                     np.stack((index % slm_supershape[1], index // slm_supershape[1]), axis=0)
                 )
-            
+
             reference_superpixel = index2coord(data["reference_superpixels"][index])
 
             correction_dict = {
@@ -3387,4 +3387,6 @@ class FourierSLM(CameraSLM):
         plt.show()
 
 
+# The arguments for fourier_calibration_build are the same as build_affine,
+# As the one is effectively as wrapper for the other.
 FourierSLM.fourier_calibration_build.__doc__ = SimulatedCamera.build_affine.__doc__

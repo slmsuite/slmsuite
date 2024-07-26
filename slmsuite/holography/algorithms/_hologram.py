@@ -488,7 +488,7 @@ class Hologram(_HologramStats):
         std_amp /= slm_shape
 
         center_knm_norm, std_knm_norm = self._get_target_moments_knm_norm()
-        
+
         grid = analysis._generate_grid(self.slm_shape[1], self.slm_shape[0], centered=True)
         grid = [grid[0].astype(self.dtype), grid[1].astype(self.dtype)]
         grid[0] /= self.slm_shape[1]
@@ -1109,7 +1109,7 @@ class Hologram(_HologramStats):
 
             - ``'CG'``
 
-              **(This is a new feature which has not been thoroughly tested.)**
+              **(This feature is experimental.)**
 
               Some holography---especially that with more complicated holographic
               objectives---can be better treated with gradient-based methods.
@@ -1599,6 +1599,8 @@ class Hologram(_HologramStats):
         """
         Conjugate Gradient (CG) iterative phase retrieval.
 
+        **(This feature is experimental.)**
+
         Solves the "phase problem": approximates the nearfield phase that
         transforms a known nearfield source amplitude to a desired farfield
         target amplitude.
@@ -1698,7 +1700,7 @@ class Hologram(_HologramStats):
     def _get_torch_tensor_from_cupy(array):
         if torch is None:
             raise RuntimeError("Cannot get torch tensor without torch. Something is wrong.")
-        
+
         if array is None:
             return None
         else:

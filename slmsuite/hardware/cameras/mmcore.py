@@ -8,13 +8,14 @@ Implementation unfinished and untested.
 """
 
 import os
+import warnings
 
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
     import pymmcore
 except ImportError:
-    print("mmcore.py: pymmcore not installed. Install to use Micro-Manager cameras.")
+    warnings.warn("pymmcore not installed. Install to use Micro-Manager cameras.")
 
 
 class MMCore(Camera):
@@ -28,7 +29,12 @@ class MMCore(Camera):
     """
 
     def __init__(
-        self, config, path="C:/Program Files/Micro-Manager-2.0", verbose=True, **kwargs
+        self,
+        config,
+        path="C:/Program Files/Micro-Manager-2.0",
+        pitch_um=None,
+        verbose=True,
+        **kwargs
     ):
         """
         Initialize camera and attributes.
@@ -37,19 +43,26 @@ class MMCore(Camera):
         ----------
         config : str
             Name of the config file corresponding to the desired camera. This is assumed to be
-            a ``.cfg`` file stored in the Micro-Manager ``path`` (see below). ``.cfg`` may be included
-            or omitted, but the :attr:`name` of the camera will be without it.
+            a ``.cfg`` file stored in the Micro-Manager ``path`` (see below), unless an
+            absolute path is given.
+            ``.cfg`` may be included or omitted, but the :attr:`name` of the camera will be without it.
         path : str
-            Directory of the Micro-Manager installation. Defaults to the directory of a default
-            Micro-Manager 2.0 installation.
+            Directory of the Micro-Manager installation. Defaults to the default Windows
+            directory of a Micro-Manager 2.0 installation.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations.
         verbose : bool
             Whether or not to print extra information.
-        kwargs
+        **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
 
         if config[-4:] == ".cfg":
             config = config[:-4]
+        config_path, config = os.path.split(config)
+        if not os.path.isabs(config_path):
+            config_path = os.path.join(path, config_path)
 
         if verbose:
             print("CMMCore initializing... ", end="")
@@ -59,15 +72,15 @@ class MMCore(Camera):
             print("success")
 
         if verbose:
-            print('"{}" initializing... '.format(config), end="")
-        self.cam.loadSystemConfiguration(os.path.join(path, config, ".cfg"))
+            print(f"'{config}' initializing... ", end="")
+        self.cam.loadSystemConfiguration(os.path.join(config_path, config, ".cfg"))
         if verbose:
             print("success")
 
         super().__init__(
-            self.cam.getImageWidth(),
-            self.cam.getImageHeight(),
+            (self.cam.getImageWidth(), self.cam.getImageHeight()),
             bitdepth=self.cam.getImageBitDepth(),
+            pitch_um=pitch_um,
             name=config,
             **kwargs
         )
@@ -92,6 +105,6 @@ class MMCore(Camera):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def get_image(self, timeout_s=1):
-        """See :meth:`.Camera.get_image`."""
-        return self.transform(self.cam.getImage())
+    def _get_image_hw(self, timeout_s=1):
+        """See :meth:`.Camera._get_image_hw`."""
+        return self.cam.getImage()

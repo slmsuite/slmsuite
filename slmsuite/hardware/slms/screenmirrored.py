@@ -1,26 +1,25 @@
 """
 An SLM mirrored onto a display, using the :mod:`pyglet` library.
 """
-import numpy as np
-import ctypes
 import os
+import ctypes
+import warnings
+import numpy as np
+
 from slmsuite.hardware.slms.slm import SLM
 
 try:
     import pyglet
     import pyglet.gl as gl
-except ImportError:
-    print("screenmirrored.py: pyglet not installed. Install to use ScreenMirrored SLMs.")
 
+    if pyglet.__version__[0] != "1":
+        raise ImportError("pyglet >=2.0.0 is not supported. Please downgrade to 1.5.29.")
+except ImportError:
+    warnings.warn("pyglet not installed. Install to use ScreenMirrored SLMs.")
 
 class ScreenMirrored(SLM):
     """
     Wraps a :mod:`pyglet` window for displaying data to an SLM.
-
-    Caution
-    ~~~~~~~
-    This class currently supports SLMs with 8-bit precision or less.
-    In the future, this class will support 16-bit SLMs using RG color.
 
     Important
     ~~~~~~~~~
@@ -33,33 +32,33 @@ class ScreenMirrored(SLM):
     ~~~~
     There are a variety of python packages that support blitting images onto a fullscreen display.
 
-    - `Simple DirectMedia Layer (SDL) <https://www.libsdl.org/>`_ wrappers:
+    -   `Simple DirectMedia Layer (SDL) <https://www.libsdl.org/>`_ wrappers:
 
-        - :mod:`pygame` (`link <https://www.pygame.org/docs/>`_),
+        - :mod:`pygame` (`link <https://www.pygame.org/docs/>`__),
           which also supports OpenGL. Only supports one screen.
-        - :mod:`sdl2` (`readthedocs <https://pysdl2.readthedocs.io/en/latest/>`_)
+        - :mod:`sdl2` (`readthedocs <https://pysdl2.readthedocs.io/en/latest/>`__)
           through the ``PySDL2`` package. Requires additional libraries.
 
-    - `Open Graphics Library (OpenGL) <https://www.opengl.org/>`_ wrappers:
+    -   `Open Graphics Library (OpenGL) <https://www.opengl.org/>`_ wrappers:
 
-        - :mod:`moderngl` (`readthedocs <https://moderngl.readthedocs.io/en/latest/>`_),
+        - :mod:`moderngl` (`readthedocs <https://moderngl.readthedocs.io/en/latest/>`__),
           an OpenGL wrapper focusing on a pythonic interface for core OpenGL functions.
-        - :mod:`OpenGL` (`link <http://pyopengl.sourceforge.net/documentation/index.html>`_)
+        - :mod:`OpenGL` (`link <http://pyopengl.sourceforge.net/documentation/index.html>`__)
           through the ``PyOpenGL``/``PyOpenGL_accelerate`` package, a very light OpenGL wrapper.
-        - :mod:`pyglet` (`readthedocs <https://pyglet.readthedocs.io/en/latest/>`_),
+        - :mod:`pyglet` (`readthedocs <https://pyglet.readthedocs.io/en/latest/>`__),
           a light OpenGL wrapper.
 
-    - GUI Library wrappers:
+    -   GUI Library wrappers:
 
-        - :mod:`gi` (`readthedocs <https://pygobject.readthedocs.io/en/latest/>`_),
+        - :mod:`gi` (`readthedocs <https://pygobject.readthedocs.io/en/latest/>`__),
           through the ``PyGObject`` package wrapping ``GTK`` and other GUI libraries.
-        - :mod:`pyqt6` (`link <https://riverbankcomputing.com/software/pyqt/>`_),
+        - :mod:`pyqt6` (`link <https://riverbankcomputing.com/software/pyqt/>`__),
           through the ``PyQt6`` package wrapping the version 6 ``Qt`` GUI library.
-        - :mod:`tkinter` (`link <https://docs.python.org/3/library/tkinter.html>`_),
+        - :mod:`tkinter` (`link <https://docs.python.org/3/library/tkinter.html>`__),
           included in standard ``python``, wrapping the ``Tcl``/``Tk`` GUI library.
-        - :mod:`wx` (`link <https://docs.wxpython.org/>`_),
+        - :mod:`wx` (`link <https://docs.wxpython.org/>`__),
           through the ``wxPython`` package wrapping the ``wxWidgets`` GUI library.
-          :mod:`slmpy` (`GitHub <https://github.com/wavefrontshaping/slmPy>`_) uses :mod:`wx`.
+          :mod:`slmpy` (`GitHub <https://github.com/wavefrontshaping/slmPy>`__) uses :mod:`wx`.
 
     :mod:`slmsuite` uses :mod:`pyglet` as the default display package.
     :mod:`pyglet` is generally more capable than the mentioned SDL wrappers while immediately supporting
@@ -100,15 +99,17 @@ class ScreenMirrored(SLM):
         Identifier for the texture loaded into ``OpenGL`` memory.
     """
 
-    def __init__(self, display_number, bitdepth=8, verbose=True, **kwargs):
+    def __init__(
+            self,
+            display_number,
+            bitdepth=8,
+            wav_um=1,
+            pitch_um=(8,8),
+            verbose=True,
+            **kwargs
+        ):
         """
         Initializes a :mod:`pyglet` window for displaying data to an SLM.
-
-        Caution
-        ~~~~~~~
-        :mod:`slmsuite` makes use of user-supplied knowledge
-        of SLM pixel size: :attr:`.SLM.dx_um`, :attr:`.SLM.dy_um`.
-        Be sure these values are correct.
 
         Caution
         ~~~~~~~
@@ -128,14 +129,21 @@ class ScreenMirrored(SLM):
         ----------
         display_number : int
             Monitor number for frame to be instantiated upon.
+        bitdepth : int
+            Bitdepth of the SLM. Defaults to 8.
+
+            Caution
+            ~~~~~~~
+            This class currently supports SLMs with 8-bit precision or less.
+            In the future, this class will also support 16-bit SLMs using RG color.
+        wav_um : float
+            Wavelength of operation in microns. Defaults to 1 um.
+        pitch_um : (float, float)
+            Pixel pitch in microns. Defaults to 8 micron square pixels.
         verbose : bool
             Whether or not to print extra information.
         **kwargs
             See :meth:`.SLM.__init__` for permissible options.
-
-        References
-        ----------
-        .. [14]
         """
         if verbose:
             print("Initializing pyglet... ", end="")
@@ -166,7 +174,13 @@ class ScreenMirrored(SLM):
 
         screen = screens[display_number]
 
-        super().__init__(screen.width, screen.height, bitdepth=bitdepth, **kwargs)
+        super().__init__(
+            (screen.width, screen.height),
+            bitdepth=bitdepth,
+            wav_um=wav_um,
+            pitch_um=pitch_um,
+            **kwargs
+        )
 
         # Setup the window. If failure, closes elegantly upon except().
         try:
@@ -236,6 +250,7 @@ class ScreenMirrored(SLM):
             # Write nothing.
             self.write(phase=None)
         except:
+            # If we failed, try to clean up before erroring.
             try:
                 self.window.close()
             except:

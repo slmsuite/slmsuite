@@ -10,12 +10,17 @@ After installing the SDK, extract the files in:
 ``~\\Program Files\\Thorlabs\\Scientific Imaging\\Scientific Camera Support\\Scientific_Camera_Interfaces.zip``.
 Follow the instructions in the extracted file Python_README.txt to install into your
 python environment via ``pip``.
+
+Note
+~~~~
+Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
 
 import os
 import sys
 import time
 import numpy as np
+import warnings
 
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -25,7 +30,7 @@ DEFAULT_DLL_PATH = (
     "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"
 )
 
-def configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
+def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
     """
     Adds Thorlabs camera DLLs to the DLL path.
     `"32_lib"` or `"64_lib"` is appended to the default .dll path
@@ -49,23 +54,23 @@ def configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
             os.add_dll_directory(dll_path)
         except:
             if DEFAULT_DLL_PATH == dll_path:
-                print(
-                    "thorlabs.py: thorlabs_tsi_sdk DLLs not found at default path. "
-                    "Resolve to use Thorlabs cameras.\nDefault path: '{}'".format(DEFAULT_DLL_PATH)
+                warnings.warn(
+                    f"thorlabs_tsi_sdk DLLs not found at default path. "
+                    "Resolve to use Thorlabs cameras.\nDefault path: '{DEFAULT_DLL_PATH}'"
                 )
     else:
         os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]
 
-configure_tlcam_dll_path()
+_configure_tlcam_dll_path()
 
 try:
     from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, ROI
 except ImportError:
-    print("thorlabs.py: thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
+    warnings.warn("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
 
 
 class ThorCam(Camera):
-    """
+    r"""
     Thorlabs camera.
 
     Attributes
@@ -75,11 +80,13 @@ class ThorCam(Camera):
     cam : ThorCam
         Object to talk with the desired camera.
     profile : {'free', 'single', 'single_hardware'} or None
-        Current operation mode.\n
-        'free' means always capturing.\n
-        'single' means only gets frame on command.\n
-        'single_hardware' means only gets frame on hardware trigger or command.\n
-        None means camera is disarmed.
+        Current operation mode.
+
+        - ``'free'`` means always capturing.
+        - ``'single'`` means only gets frame on command.
+        - ``'single_hardware'`` means only gets frame on hardware trigger or command.
+
+        ``None`` means camera is disarmed.
     """
 
     sdk = None
@@ -97,7 +104,7 @@ class ThorCam(Camera):
             returned by :meth:`TLCameraSDK.discover_available_cameras()`.
         verbose : bool
             Whether or not to print extra information.
-        kwargs
+        **kwargs
             See :meth:`.Camera.__init__` for permissible options.
 
         Raises
@@ -113,9 +120,9 @@ class ThorCam(Camera):
             except:
                 print("failure")
                 raise RuntimeError(
-                    "thorlabs.py: TLCameraSDK() open failed. "
+                    "TLCameraSDK() open failed. "
                     "Is thorlabs_tsi_sdk installed? "
-                    "Are the .dlls in the directory added by configure_tlcam_dll_path? "
+                    "Are the .dlls in the directory added by _configure_tlcam_dll_path? "
                     "Sometimes adding the .dlls to the working directory can help."
                 )
             if verbose:
@@ -133,12 +140,11 @@ class ThorCam(Camera):
             serial = camera_list[0]
         elif serial not in camera_list:
             raise RuntimeError(
-                "Serial " + serial + " not found by TLCameraSDK. Availible: ",
-                camera_list,
+                f"Serial '{serial}' not found by TLCameraSDK. Availible: {camera_list}"
             )
 
         if verbose:
-            print("ThorCam sn \"{}\" initializing... ".format(serial), end="")
+            print(f"ThorCam sn '{serial}' initializing... ", end="")
         self.cam = ThorCam.sdk.open_camera(serial)
 
         self.cam.is_led_on = False
@@ -202,9 +208,9 @@ class ThorCam(Camera):
                 ThorCam.sdk = TLCameraSDK()
             except:
                 raise RuntimeError(
-                    "thorlabs.py: TLCameraSDK() open failed. "
+                    "TLCameraSDK() open failed. "
                     "Is thorlabs_tsi_sdk installed? "
-                    "Are the .dlls in the directory added by configure_tlcam_dll_path? "
+                    "Are the .dlls in the directory added by _configure_tlcam_dll_path? "
                     "Sometimes adding the .dlls to the working directory can help."
                 )
             close_sdk = True
@@ -216,7 +222,7 @@ class ThorCam(Camera):
         if verbose:
             print("ThorCam serials:")
             for serial in camera_list:
-                print("\"{}\"".format(serial))
+                print(f"'{serial}'")
 
         if close_sdk:
             ThorCam.close_sdk()
@@ -359,13 +365,13 @@ class ThorCam(Camera):
                 self.cam.operation_mode = 1  # Hardware triggered
                 self.cam.arm(2)
             else:
-                raise ValueError("Profile {} not recognized".format(profile))
+                raise ValueError(f"Profile {profile} not recognized")
 
             self.profile = profile
 
-    def get_image(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
+    def _get_image_hw(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
         """
-        See :meth:`.Camera.get_image`. By default ``trigger=True`` and ``grab=True`` which
+        See :meth:`.Camera._get_image_hw`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
         For non-blocking acquisition,
         set ``trigger=True`` and ``grab=False`` to issue a software trigger;
@@ -403,7 +409,7 @@ class ThorCam(Camera):
                 while time.time() - t < timeout_s and frame is None:
                     frame = self.cam.get_pending_frame_or_null()
 
-                ret = self.transform(np.copy(frame.image_buffer)) if frame is not None else None
+                ret = np.copy(frame.image_buffer) if frame is not None else None
 
                 if ret is not None:
                     break

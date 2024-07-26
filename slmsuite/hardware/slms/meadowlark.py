@@ -4,7 +4,7 @@ Tested with Meadowlark (AVR Optics) P1920-400-800-HDMI-T.
 
 Note
 ~~~~
-Check that the Blink SDK, inlcuding DLL files etc, are in the default folder
+Check that the Blink SDK, including DLL files etc, are in the default folder
 or otherwise pass the correct directory in the constructor.
 """
 import os
@@ -27,14 +27,21 @@ class Meadowlark(SLM):
         Path of the Blink SDK folder.
     """
 
-    def __init__(self, verbose=True, sdk_path=DEFAULT_SDK_PATH, lut_path=None, dx_um=8, dy_um=8, **kwargs):
+    def __init__(
+        self,
+        verbose=True,
+        sdk_path=DEFAULT_SDK_PATH,
+        lut_path=None,
+        wav_um=1,
+        pitch_um=(8,8),
+        **kwargs
+    ):
         r"""
         Initializes an instance of a Meadowlark SLM.
 
         Caution
         ~~~~~~~
-        :class:`.Meadowlark` defaults to 8 micron SLM pixel size
-        (:attr:`.SLM.dx_um` = :attr:`.SLM.dy_um` = 8).
+        :class:`.Meadowlark` defaults to 8 micron SLM pixel size.
         This is valid for most Meadowlark models, but not true for all!
 
         Arguments
@@ -42,10 +49,25 @@ class Meadowlark(SLM):
         verbose : bool
             Whether to print extra information.
         sdk_path : str
-            Path of the Blink SDK folder. Stored in :attr:`sdk_path`.
+            Path of the Blink SDK installation folder. Stored in :attr:`sdk_path`.
+
+            Important
+            ~~~~~~~~~
+            If the installation is not in the default folder,
+            then this path needs to be corrected from the default.
         lut_path : str OR None
-            Passed to :meth:`load_lut`.
-        kwargs
+            Passed to :meth:`load_lut`. Looks for the voltage 'look-up table' data
+            which is necessary to run the SLM.
+
+            Tip
+            ~~~
+            See :meth:`load_lut` for how the default
+            argument and other options are parsed.
+        wav_um : float
+            Wavelength of operation in microns. Defaults to 1 um.
+        pitch_um : (float, float)
+            Pixel pitch in microns. Defaults to 8 micron square pixels.
+        **kwargs
             See :meth:`.SLM.__init__` for permissible options.
         """
         # Validates the DPI awareness of this context, which is presumably important for scaling.
@@ -58,7 +80,7 @@ class Meadowlark(SLM):
 
         if not success:
             raise RuntimeError(
-                "Meadowlark failed to validate DPI awareness."
+                "Meadowlark failed to validate DPI awareness. "
                 "Errors: get={}, set={}, awareness={}".format(error_get, error_set, awareness.value)
             )
         if verbose: print("success")
@@ -73,8 +95,8 @@ class Meadowlark(SLM):
         except:
             print("failure")
             raise ImportError(
-                "Meadowlark .dlls did not did not import correctly. Is '{}' the correct path?"
-                .format(dll_path)
+                f"Meadowlark .dlls did not did not import correctly. "
+                f"Is '{dll_path}' the correct path?"
             )
 
         self.sdk_path = sdk_path
@@ -97,33 +119,34 @@ class Meadowlark(SLM):
 
         try:
             true_lut_path = self.load_lut(lut_path)
-        except RuntimeError:
-            print("failure\n(could not find .lut file)")
+        except RuntimeError as e:
+            if verbose: print("failure\n(could not find .lut file)")
+            raise e
         else:
             if verbose and true_lut_path != lut_path:
-                print("success\n(loaded from '{}')".format(true_lut_path))
+                print(f"success\n(loaded from '{true_lut_path}')")
 
         # Construct other variables.
         super().__init__(
-            self.slm_lib.Get_Width(),
-            self.slm_lib.Get_Height(),
+            (self.slm_lib.Get_Width(), self.slm_lib.Get_Height()),
             bitdepth=self.slm_lib.Get_Depth(),
-            name="Meadowlark",
-            dx_um=dx_um,
-            dy_um=dy_um,
+            name=kwargs.pop("name", "Meadowlark"),
+            wav_um=wav_um,
+            pitch_um=pitch_um,
             **kwargs
         )
 
         if self.bitdepth > 8:
             warnings.warn(
-                "Bitdepth of {} > 8 detected; this has not been tested and might fail.".format(self.bitdepth)
+                f"Bitdepth of {self.bitdepth} > 8 detected; "
+                "this has not been tested and might fail."
             )
 
         self.write(None)
 
     def load_lut(self, lut_path=None):
         """
-        Loads a voltage lookup table (LUT) to the SLM.
+        Loads a voltage 'look-up table' (LUT) to the SLM.
         This converts requested phase values to physical voltage perturbing
         the liquid crystals.
 
@@ -131,12 +154,14 @@ class Meadowlark(SLM):
         ----------
         lut_path : str OR None
             Path to look for an LUT file in.
-            If this is a .lut file, then this file is loaded to the SLM.
-            If this is a directory, then searches all files inside the
-            directory, and loads either the first .lut file, or if possible
-            an .lut file starting with `"slm"`
-            (which is more likely to correspond to the LUT customized to an SLM,
-            as Meadowlark sends such files prefiexed by `"slm"` such as `"slm5758_at532.lut"`).
+
+            -   If this is a .lut file, then this file is loaded to the SLM.
+            -   If this is a directory, then searches all files inside the
+                directory, and loads either the alphabetically first .lut file,
+                or if possible the alphabetically first .lut file starting with ``"slm"``
+                which is more likely to correspond to the LUT customized to an SLM,
+                as Meadowlark sends such files prefixed by
+                ``"slm"`` such as ``"slm5758_at532.lut"``.
 
         Raises
         ------
@@ -175,7 +200,7 @@ class Meadowlark(SLM):
                 lut_path = os.path.join(lut_path, lut_file)
             else:
                 raise RuntimeError(
-                    "Could not find a .lut file at path '{}'".format(lut_path)
+                    f"Could not find a .lut file at path '{lut_path}'"
                 )
 
         # Finally, load the lookup table.

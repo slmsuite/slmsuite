@@ -3,10 +3,14 @@
 Examples
 ========
 
-.. toctree::
-   :maxdepth: 2
+.. nbgallery::
+   :glob:
 
-   _examples/computational_holography.ipynb
-   _examples/experimental_holography.ipynb
-   _examples/wavefront_calibration.ipynb
-   _examples/structured_light.ipynb
+   _examples/computational_holography
+   _examples/experimental_holography
+   _examples/wavefront_calibration
+   _examples/structured_light
+   _examples/zernike_holography
+   _examples/multipoint_calibration
+   _examples/multiplane_holography
+   _examples/nearfield_calibration

@@ -18,6 +18,8 @@ import inspect
 
 import requests
 
+# import numpydoc
+
 module_paths = [
     os.path.abspath("../.."),
     os.path.abspath("../../slmsuite"),
@@ -28,9 +30,9 @@ for module_path in module_paths:
 # -- Project information -----------------------------------------------------
 
 project = "slmsuite"
-copyright = "2023, slmsuite Developers"
+copyright = "2024, slmsuite Developers"
 author = "slmsuite Developers"
-release = "0.0.1"
+release = "0.0.2"
 
 # -- General configuration ---------------------------------------------------
 
@@ -43,11 +45,13 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.extlinks",
     "sphinx.ext.linkcode",
+    "sphinx_design",
     "IPython.sphinxext.ipython_directive",
     "IPython.sphinxext.ipython_console_highlighting",
     "nbsphinx",
     "sphinx_copybutton",
-    "sphinx_last_updated_by_git"
+    "sphinx_last_updated_by_git",
+    "sphinxcontrib.video",
 ]
 
 extlinks = {
@@ -81,6 +85,12 @@ def linkcode_resolve(domain, info):
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["templates"]
 
+# numpydoc_xref_param_type = True
+# numpydoc_xref_ignore = {"optional", "type_without_description", "BadException"}
+# # Run docstring validation as part of build process
+# numpydoc_validation_checks = {"all", "GL01", "SA04", "RT03"}
+toc_object_entries_show_parents = 'hide'
+
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
@@ -94,6 +104,9 @@ add_module_names = False # Remove namespaces from class/method signatures
 nbsphinx_execute = "never"
 nbsphinx_allow_errors = True #continue through jupyter errors
 
+# The name of the Pygments (syntax highlighting) style to use.
+pygments_style = "sphinx"
+
 # copybutton_prompt_text = "$ "
 
 # -- Options for HTML output -------------------------------------------------
@@ -101,19 +114,72 @@ nbsphinx_allow_errors = True #continue through jupyter errors
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 
-html_theme = "sphinx_rtd_theme"
+# html_theme = "sphinx_rtd_theme"
+navigation_with_keys = True
+
+html_sidebars = {
+    "**": [],
+}
+# html_sidebars = {
+#     "**": ["sidebar-nav-bs", "sidebar-ethical-ads"]
+# }
+html_context = {
+    "default_mode": "auto",
+}
+
+html_title = f"{project} r{release} Manual"
+html_last_updated_fmt = "%b %d, %Y"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the built-in "default.css".
-html_static_path = ["static"]
+# html_static_path = [] # ["static"]
+# html_static_path = ['static']
+# html_css_files = ['custom.css']
 
 # Add a logo
-html_theme_options = {"logo_only": True}
-html_logo = "static/qp-slm.svg"
+# html_theme_options = {"logo_only": True}
+html_logo = "static/slmsuite.svg"
 
 # Add a favicon
-html_favicon = "static/qp-slm-notext-32x32.ico"
+html_favicon = "static/slmsuite-notext-32x32.ico"
+
+html_theme = "pydata_sphinx_theme"
+html_theme_options = {
+    "logo": {
+        "image_light": "static/slmsuite.svg",
+        "image_dark": "static/slmsuite-dark.svg",
+    },
+    "show_prev_next": True,
+    "navbar_end": ["theme-switcher", "navbar-icon-links"], #, "search-field.html"
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/QPG-MIT/slmsuite/",
+            "icon": "fab fa-github",
+        },
+        {
+            "name": "PyPI",
+            "url": "https://pypi.org/project/slmsuite/",
+            "icon": "fab fa-python",
+        },
+    ],
+    "footer_start": ["copyright", "sphinx-version"],
+    "footer_end": ["last-updated", "theme-version"],
+    # "content_footer_items": ["last-updated"],
+    "navbar_center": ["navbar-nav"],   # "version-switcher",  # https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/version-dropdown.html
+    # "switcher": {
+    #     "version_match": switcher_version,
+    #     "json_url": "https://numpy.org/doc/_static/versions.json",
+    # },
+    "secondary_sidebar_items": {
+        "**" : ["page-toc", "edit-this-page", "sourcelink"],
+        "index" : [],
+        "examples" : [],
+    }, # , "breadcrumbs"
+    "show_toc_level": 4
+    # "secondary_sidebar_end": ["sidebar-ethical-ads"],
+}
 
 # https://stackoverflow.com/questions/5599254/how-to-use-sphinxs-autodoc-to-document-a-classs-init-self-method
 def skip(app, what, name, obj, would_skip, options):
@@ -146,6 +212,7 @@ def setup(app):
     # Download example notebooks.
     # NOTE: GitHub API only supports downloading files up to 100 MB.
     try:
+        raise
         os.makedirs(examples_path, exist_ok=True)
         tree_url = (
             "https://api.github.com/repos/{}/{}/git/trees/main?recursive=1"

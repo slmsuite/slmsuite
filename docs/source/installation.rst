@@ -3,11 +3,17 @@
 Installation
 ============
 
-Install the stable version of |slmsuite|_ from `PyPi <https://pypi.org/project/slmsuite/>`_ using:
+PyPI
+----
+
+Install the stable version of |slmsuite|_ from `PyPI <https://pypi.org/project/slmsuite/>`_ using:
 
 .. code-block:: console
 
     pip install slmsuite
+
+GitHub
+------
 
 Install the latest version of |slmsuite|_ from `GitHub <https://github.com/QPG-MIT/slmsuite>`_ using:
 
@@ -15,13 +21,18 @@ Install the latest version of |slmsuite|_ from `GitHub <https://github.com/QPG-M
 
     pip install git+https://github.com/QPG-MIT/slmsuite
 
+One can also clone |slmsuite|_ directly and add its directory to the Python path.
+*Remember to install the dependencies (next sections)*.
+
+.. code-block:: console
+
+    git clone https://github.com/QPG-MIT/slmsuite
+
 Required Dependencies
 ---------------------
 
-The following python packages are necessary to run |slmsuite|_. These are listed as PyPi
-dependencies and thus are installed automatically if ``pip`` is used to install. One can
-also use ``pip install -r requirements.txt`` to install these dependencies directly
-without using ``pip`` to install |slmsuite|_.
+The following python packages are necessary to run |slmsuite|_. These are listed as PyPI
+dependencies and thus are installed automatically if PyPI (``pip``) is used to install.
 
 - `python <https://www.python.org/>`_
 - `numpy <https://numpy.org/>`_
@@ -31,26 +42,44 @@ without using ``pip`` to install |slmsuite|_.
 - `h5py <https://www.h5py.org/>`_
 - `tqdm <https://github.com/tqdm/tqdm>`_
 
+One can also install these dependencies directly.
+
+.. code-block:: console
+
+    pip install -r requirements.txt
+
 Hardware Dependencies
 ---------------------
 
 The following python packages are optional acceleration or hardware requirements, which
 the user can install selectively.
 
-- `cupy <https://cupy.dev/>`_ (highly recommended for GPU-accelerated holography)
-    - Installation via ``conda install -c conda-forge cupy`` is
-    `recommended <https://docs.cupy.dev/en/stable/install.html>`_.
+- GPU
+    - `cupy <https://cupy.dev/>`_, highly recommended for GPU-accelerated holography.
+      Sometimes, installation is made complicated by a pre-installed version of CUDA.
+      You can find the CUDA version with `nvcc --version` in a terminal, and then
+      install an installation of :mod:`cupy` specific to CUDA version `YY` with
+      `pip install cupy-cudaYYx`.
+- Gradients
+    - `pytorch <https://pytorch.org/>`_, required for conjugate gradient hologram
+      optimization, either in GPU or CPU mode. Uses :mod:`cupy` - :mod:`torch`
+      `interoperability <https://docs.cupy.dev/en/stable/user_guide/interoperability.html#pytorch>`_
+      to pass data between modules without copying overhead, even on the GPU.
 - Cameras
     - `instrumental-lib <https://github.com/mabuchilab/Instrumental>`_
     - `pymmcore <https://github.com/micro-manager/pymmcore>`_
     - `pypylon <https://github.com/basler/pypylon>`_
-    - `PySpin <https://www.flir.com/products/spinnaker-sdk/>`_ (non-PyPi)
-    - `thorlabs_tsi_sdk <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ (non-PyPi)
-    - `VimbaPython <https://github.com/alliedvision/VimbaPython>`_ (non-PyPi)
+    - `PySpin <https://www.flir.com/products/spinnaker-sdk/>`_ (non-PyPI)
+    - `thorlabs_tsi_sdk <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ (non-PyPI)
+    - `VimbaPython <https://github.com/alliedvision/VimbaPython>`_ (non-PyPI)
     - Other cameras are loaded directly via .dll.
 - SLMs
     - `pyglet <https://pyglet.org/>`_
     - Other SLMs are loaded directly via .dll.
+- Image saving
+    - For most images and videos, `imageio <https://imageio.readthedocs.io/en/stable/>`_
+    - Many video formats additionally require `pyav <https://pypi.org/project/av/>`_
+    - For .gif optimization, `pygifsicle <https://pypi.org/project/pygifsicle/>`_
 
 Jupyter
 -------
@@ -61,7 +90,6 @@ and also list useful packages for code profiling which can be included via
 `IPython <https://ipython.org/>`_
 `magic <https://ipython.readthedocs.io/en/stable/interactive/tutorial.html#magics-explained>`_,
 along with other features like |autoreload|_ or |matplotlibs|_ which are packaged with IPython.
-To install recommended jupyter-related packages, use ``pip install -r requirements_ipython.txt``.
 
 - `jupyter <https://jupyter.org>`_
     - `line-profiler <https://github.com/pyutils/line_profiler>`_
@@ -70,6 +98,13 @@ To install recommended jupyter-related packages, use ``pip install -r requiremen
 If Jupyter is not used, the default :mod:`matplotlib` plots will block further
 execution, so the user should avoid plotting with ``plot=False`` flags on functions
 or develop a workaround.
+
+Use the following to install recommended jupyter-related packages.
+
+.. code-block:: console
+
+    pip install -r requirements_ipython.txt
+
 
 .. |slmsuite| replace:: :mod:`slmsuite`
 .. _slmsuite: https://github.com/QPG-MIT/slmsuite

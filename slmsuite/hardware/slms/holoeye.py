@@ -1,21 +1,36 @@
 """
-Template for writing a subclass for SLM hardware control in :mod:`slmsuite`.
-Outlines which SLM superclass functions must be implemented.
+**(NotImplemented)** Hardware control for Holoeye SLMs.
+This is a partial skeleton that can be completed if desired.
 """
+import os
+import warnings
 from .slm import SLM
 
-class Template(SLM):
+try:  # Load Holoeye's SDK module.
+    from holoeye import slmdisplaysdk
+except BaseException as e:  # Provide an informative error should something go wrong.
+    warnings.warn(
+        "Holoeye SDK failed to load.\n"
+        "Original error: {}".format(e)
+    )
+
+class Holoeye(SLM):
     """
-    Template for implementing a new SLM subclass. Replace :class:`Template`
-    with the desired subclass name. :class:`~slmsuite.hardware.slms.slm.SLM` is the
-    superclass that sets the requirements for :class:`Template`.
+    Interfaces with Holoeye SLMs via the ``slmdisplaysdk``.
+
+    Attributes
+    ----------
+    slm_lib : TODO
+        Object handle for the Holoeye SLM.
+    sdk_path : str
+        Path of the Blink SDK folder.
     """
 
     def __init__(
         self,
-        bitdepth=8,         # TODO: Remove these arguments if the SLM SDK
-        wav_um=1,           #       has some function to read them in.
-        pitch_um=(8,8),     #       Otherwise, the user must supply.
+        verbose=True,
+        wav_um=1,
+        pitch_um=(8,8),
         **kwargs
     ):
         r"""
@@ -23,8 +38,6 @@ class Template(SLM):
 
         Parameters
         ----------
-        bitdepth : int
-            Depth of SLM pixel well in bits. Defaults to 10.
         wav_um : float
             Wavelength of operation in microns. Defaults to 1 um.
         pitch_um : (float, float)
@@ -39,12 +52,25 @@ class Template(SLM):
         See the other implemented SLM subclasses for examples.
         """
 
-        # TODO: Insert code here to initialize the SLM hardware, load properties, etc.
+        # Get the SLM.
+        if verbose: print("Creating SLM instance...", end="")
+        self.slm_lib = slmdisplaysdk.SLMInstance()  # ?
+        # self.slm_lib = slmdisplaysdk.SLMDisplay() # ?
 
-        # Mandatory functions:
-        # - Opening a connection to the device.
+        # Check version somehow.
+        if self.slm_lib.requiresVersion(3):
+            if verbose: print("failure")
+            raise RuntimeError("TODO")
+        if verbose: print("success")
 
-        sdk = TODO()
+        # Open the SLM.
+        if verbose: print("Opening SLM...", end="")
+        error = self.slm_lib.open()
+
+        if error != slmdisplaysdk.ErrorCode.NoError:
+            if verbose: print("failure")
+            self._handle_error(error)
+        if verbose: print("success")
 
         # Other possibilities to consider:
         # - Setting the SLM's operating wavelength (wav_um).
@@ -57,8 +83,8 @@ class Template(SLM):
 
         # Instantiate the superclass
         super().__init__(
-            (sdk.width(), sdk.height()),
-            bitdepth=bitdepth,
+            (self.slm_lib.width(), self.slm_lib.height()),
+            bitdepth=self.slm_lib.depth(),
             wav_um=wav_um,
             pitch_um=pitch_um,
             **kwargs
@@ -66,6 +92,10 @@ class Template(SLM):
 
         # Zero the display using the superclass `write()` function.
         self.write(None)
+
+    def _handle_error(self, error):
+        if error != slmdisplaysdk.ErrorCode.NoError:
+            raise RuntimeError(self.slm_lib.errorString(error))
 
     @staticmethod
     def info(verbose=True):
@@ -94,4 +124,5 @@ class Template(SLM):
         :class:`.SLM`, ``phase`` is error checked before calling
         :meth:`_write_hw()`. See :meth:`.SLM._write_hw` for further detail.
         """
-        # TODO: Insert code here to write raw phase data to the SLM.
+        error = self.slm_lib.showData(phase, self.flags)
+        self._handle_error(error)

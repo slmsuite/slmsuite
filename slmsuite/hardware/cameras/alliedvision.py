@@ -2,21 +2,26 @@
 Hardware control for AlliedVision cameras via the :mod:`vimba` interface.
 Install :mod:`vimba` by following the
 `provided instructions <https://github.com/alliedvision/VimbaPython>`_.
-Include the ``numpy-export`` flag in the ``pip install`` command,
+Be sure to include the ``numpy-export`` flag in the ``pip install`` command,
 as the :class:`AlliedVision` class makes use of these features. See especially the
 `vimba python manual <https://github.com/alliedvision/VimbaPython/blob/master/Documentation/Vimba%20Python%20Manual.pdf>`_
 for reference.
+
+Note
+~~~~
+Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
 
 import time
 import numpy as np
+import warnings
 
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
     import vimba
 except ImportError:
-    print("alliedvision.py: vimba not installed. Install to use AlliedVision cameras.")
+    warnings.warn("vimba not installed. Install to use AlliedVision cameras.")
 
 
 class AlliedVision(Camera):
@@ -46,7 +51,7 @@ class AlliedVision(Camera):
 
     sdk = None
 
-    def __init__(self, serial="", verbose=True, **kwargs):
+    def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
         """
         Initialize camera and attributes.
 
@@ -55,9 +60,12 @@ class AlliedVision(Camera):
         serial : str
             Serial number of the camera to open. If empty, defaults to the first camera in the list
             returned by :meth:`vimba.get_all_cameras()`.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations.
         verbose : bool
             Whether or not to print extra information.
-        kwargs
+        **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
         if AlliedVision.sdk is None:
@@ -79,7 +87,7 @@ class AlliedVision(Camera):
             if len(camera_list) == 0:
                 raise RuntimeError("No cameras found by vimba.")
             if len(camera_list) > 1 and verbose:
-                print("No serial given... Choosing first of ", serial_list)
+                print(f"No serial given... Choosing first of {serial_list}")
 
             self.cam = camera_list[0]
             serial = self.cam.get_serial()
@@ -88,27 +96,28 @@ class AlliedVision(Camera):
                 self.cam = camera_list[serial_list.index(serial)]
             else:
                 raise RuntimeError(
-                    "Serial " + serial + " not found by vimba. Available: ", serial_list
+                    f"Serial {serial} not found by vimba. Available: {serial_list}"
                 )
 
         if verbose:
-            print("vimba sn " "{}" " initializing... ".format(serial), end="")
+            print(f"vimba sn '{serial}' initializing... ", end="")
         self.cam.__enter__()
         if verbose:
             print("success")
 
         super().__init__(
-            self.cam.SensorWidth.get(),
-            self.cam.SensorHeight.get(),
+            (self.cam.SensorWidth.get(), self.cam.SensorHeight.get()),
             bitdepth=int(self.cam.PixelSize.get()),
-            dx_um=None,
-            dy_um=None,
+            pitch_um=pitch_um,
             name=serial,
             **kwargs
         )
 
-        self.cam.BinningHorizontal.set(1)
-        self.cam.BinningVertical.set(1)
+        try:
+            self.cam.BinningHorizontal.set(1)
+            self.cam.BinningVertical.set(1)
+        except:
+            pass    # Some cameras do not have the option to set binning.
 
         self.cam.GainAuto.set("Off")
 
@@ -136,6 +145,8 @@ class AlliedVision(Camera):
 
         if close_sdk:
             self.close_sdk()
+
+        del self.cam
 
     @staticmethod
     def info(verbose=True):
@@ -165,7 +176,7 @@ class AlliedVision(Camera):
         if verbose:
             print("AlliedVision serials:")
             for serial in serial_list:
-                print("\"{}\"".format(serial))
+                print(f"'{serial}'")
 
         if close_sdk:
             AlliedVision.close_sdk()
@@ -201,7 +212,7 @@ class AlliedVision(Camera):
             try:
                 print(prop.get_name(), end="\t")
             except BaseException as e:
-                print("Error accessing property dictionary, '{}':{}".format(key, e))
+                print(f"Error accessing property dictionary, '{key}':{e}")
                 continue
 
             try:
@@ -235,7 +246,7 @@ class AlliedVision(Camera):
             if str(bitdepth) in value[0]:
                 self.cam.SensorBitDepth.set(value[1])
                 break
-            raise RuntimeError("ADC bitdepth {} not found.".format(bitdepth))
+            raise RuntimeError(f"ADC bitdepth {bitdepth} not found.")
 
     def get_adc_bitdepth(self):
         """
@@ -262,8 +273,8 @@ class AlliedVision(Camera):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def get_image(self, timeout_s=1):
-        """See :meth:`.Camera.get_image`."""
+    def _get_image_hw(self, timeout_s=5):
+        """See :meth:`.Camera._get_image_hw`."""
         t = time.time()
 
         # Convert timeout_s to ms
@@ -278,11 +289,12 @@ class AlliedVision(Camera):
             frame = self.cam.get_frame(timeout_ms=int(1e3 * timeout_s))
             frame = frame.as_numpy_ndarray()
 
-        return self.transform(np.squeeze(frame))
+        return np.squeeze(frame)
 
-    def flush(self, timeout_s=1e-3):
+    def flush(self, timeout_s=1):
         """See :meth:`.Camera.flush`."""
-        pass
+        for _ in range(2):
+            self._get_image_hw_tolerant()
 
     def reset(self):
         """See :meth:`.Camera.reset`."""

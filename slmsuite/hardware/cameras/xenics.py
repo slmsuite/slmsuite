@@ -313,7 +313,14 @@ class Cheetah640(Camera):
 
     ### Camera Interface ###
 
-    def __init__(self, virtual=False, temperature=None, verbose=True, **kwargs):
+    def __init__(
+            self,
+            virtual=False,
+            temperature=None,
+            pitch_um=(20,20),
+            verbose=True,
+            **kwargs
+        ):
         """
         Initialize camera. Default ``profile`` is ``'free'``.
 
@@ -323,9 +330,12 @@ class Cheetah640(Camera):
             Whether or not the camera is virtual.
         temperature : float or None
             Temperature in degrees celcius to set on startup. ``None`` defaults to no cooling.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations. Defaults to 20 micron square pixels.
         verbose : bool
             Whether or not to print camera initialization information.
-        kwargs
+        **kwargs
             See :meth:`.Camera.__init__` for permissible options.
 
         Raises
@@ -369,8 +379,7 @@ class Cheetah640(Camera):
                 self.xeneth.XC_GetWidth(self.cam),
                 self.xeneth.XC_GetHeight(self.cam),
                 bitdepth=12,
-                dx_um=20,
-                dy_um=20,
+                pitch_um=pitch_um,
                 name=name,
                 **kwargs
             )
@@ -1380,10 +1389,10 @@ class Cheetah640(Camera):
                 if err != I_OK:
                     print("Could not stop capturing, errorCode: %lu" % (err))
                 else:
-                    return self.transform(im)
+                    return im
         return -1
 
-    def get_image(self, timeout_s=10, frame_type=FT_NATIVE, block=True, convert=True):
+    def _get_image_hw(self, timeout_s=10, frame_type=FT_NATIVE, block=True, convert=True):
         """
         Main grabbing function; captures latest image into single frame buffer.
 
@@ -1433,9 +1442,9 @@ class Cheetah640(Camera):
             )
             # Delete frame tag to avoid issues w/ autfocus/exposure.
             self.last_capture[:2] = 0
-            self.last_capture = self.transform(self.last_capture.reshape(self.shape))
+            self.last_capture = self.last_capture.reshape(self.shape)
             self.last_process_time = time.perf_counter() - t
-            ret = self.transform(self.last_capture)
+            ret = self.last_capture
 
         return ret
 
@@ -1477,9 +1486,9 @@ class Cheetah640(Camera):
     def flush(self):
         """See :meth:`.Camera.flush`"""
         time.sleep(0.1)  # Allow some time to grab free-running images
-        err = self._get_image(block=False, convert=False, return_img=False)
+        err = self._get_image_hw(block=False, convert=False, return_img=False)
         while not err:
-            err = self._get_image(block=False, convert=False, return_img=False)
+            err = self._get_image_hw(block=False, convert=False, return_img=False)
 
     def is_capturing(self):
         """
@@ -1533,7 +1542,7 @@ class Cheetah640(Camera):
             self.filters["autoexposure"] = tag
             t_start = time.perf_counter()
             while time.perf_counter() - t_start < t_settle:
-                self._get_image()
+                self._get_image_hw()
 
         elif (not enable) and "autoexposure" in self.filters.keys():
             print("Disabling autoexposure...")

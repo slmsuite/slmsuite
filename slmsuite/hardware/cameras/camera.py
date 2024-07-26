@@ -38,6 +38,11 @@ class Camera():
         Default setting for averaging. See :meth:`.get_image()`.
     hdr : (int, int) OR None
         Default setting for multi-exposure High Dynamic Range imaging. See :meth:`.get_image()`.
+    capture_attempts : int
+        If the camera returns an error or exceeds a timeout, 
+        try again for a total of `capture_attempts` attempts.
+        This is useful for resilience against errors that happen with low probability.
+        Defaults to 5.
     pitch_um : (float, float) OR None
         Pixel pitch in microns.
     exposure_bounds_s : (float, float) OR None
@@ -65,6 +70,7 @@ class Camera():
         pitch_um=None,
         name="camera",
         averaging=None,
+        capture_attempts=5,
         hdr=None,
         rot="0",
         fliplr=False,
@@ -99,6 +105,11 @@ class Camera():
         hdr : int OR (int, int) OR None OR False
             Exposure information for `Multi-exposure High Dynamic Range (HDR) imaging
             <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
+        capture_attempts : int
+            If the camera returns an error or exceeds a timeout, 
+            try again for a total of `capture_attempts` attempts.
+            This is useful for resilience against errors that happen with low probability.
+            Defaults to 5.
         rot : str or int
             Rotates returned image by the corresponding degrees in ``["90", "180", "270"]``
             or :meth:`numpy.rot90` code in ``[1, 2, 3]``. Defaults to no rotation.
@@ -119,6 +130,11 @@ class Camera():
         else:
             self.shape = (height, width)
             self.default_shape = (height, width)
+
+        # Parse capture_attempts.
+        self.capture_attempts = int(capture_attempts)
+        if capture_attempts <= 0:
+            raise ValueError("capture_attempts must be positive.")
 
         # Create image transformation.
         self.transform = analysis.get_orientation_transformation(rot, fliplr, flipud)
@@ -279,17 +295,49 @@ class Camera():
 
     # Capture methods one level of abstraction above _get_image_hw().
 
+    def _get_image_hw_tolerant(self, *args, **kwargs):
+        err = None
+
+        for i in range(self.capture_attempts):
+            try:
+                return self._get_image_hw(*args, **kwargs)
+            except Exception as e:
+                if i > 0: warnings.warn(f"'{self.name}' _get_image_hw() failed on attempt {i}.")
+                err = e
+
+        raise err
+
+    def _get_images_hw_tolerant(self, *args, **kwargs):
+        e = None
+        
+        for i in range(self.capture_attempts):
+            try:
+                return self._get_images_hw(*args, **kwargs)
+            except Exception as e:
+                if i > 0: warnings.warn(f"'{self.name}' _get_images_hw() failed on attempt {i}.")
+                err = e
+
+        raise err
+
     def _get_dtype(self):
         try:
-            self.dtype = np.array(self._get_image_hw()).dtype   # Future: check if cameras change this after init.
+            self.dtype = np.array(self._get_image_hw_tolerant()).dtype   # Future: check if cameras change this after init.
         except NotImplementedError:
-            self.dtype = np.uint8
+            if self.bitdepth > 16:
+                self.dtype = float
+            elif self.bitdepth > 8:
+                self.dtype = np.uint16
+            else:
+                self.dtype = np.uint8
 
-        if self.dtype(0).nbytes * 8 < self.bitdepth:
-            raise warnings.warn(
-                f"Camera '{self.name}' bitdepth of {self.bitdepth} does not conform "
-                f"with the image type {self.dtype} with {self.dtype.itemsize} bytes."
-            )
+        try:
+            if self.dtype(0).nbytes * 8 < self.bitdepth:
+                raise warnings.warn(
+                    f"Camera '{self.name}' bitdepth of {self.bitdepth} does not conform "
+                    f"with the image type {self.dtype} with {self.dtype.itemsize} bytes."
+                )
+        except:     # The above sometimes fails for non-numpy datatypes.
+            pass
 
     def _parse_averaging(self, averaging=None, preserve_none=False):
         """
@@ -322,7 +370,7 @@ class Camera():
             if not hasattr(self, "hdr") or self.hdr is None:
                 (exposures, exposure_power) = (1, 0)
             else:
-                (exposures, exposure_power) = self.hdr
+                (exposures, exposure_power) = self._parse_hdr(self.hdr)
         elif exposures is False:
             exposures = 1
             exposure_power = 0
@@ -454,9 +502,9 @@ class Camera():
                 img = np.zeros(self.default_shape, dtype=averaging_dtype)
 
                 for _ in range(averaging):
-                    img += self._get_image_hw(timeout_s=timeout_s).astype(averaging_dtype)
+                    img += self._get_image_hw_tolerant(timeout_s=timeout_s).astype(averaging_dtype)
         else:                   # Normal image
-            img = self._get_image_hw(timeout_s=timeout_s)
+            img = self._get_image_hw_tolerant(timeout_s=timeout_s)
 
         # self.transform implements the flipping and rotating keywords passed to the
         # superclass constructor.
@@ -516,7 +564,7 @@ class Camera():
         except NotImplementedError:
             # Brute-force collection as a backup
             for i in range(image_count):
-                imgs[i, :, :] = self._get_image_hw(timeout_s=timeout_s)
+                imgs[i, :, :] = self._get_image_hw_tolerant(timeout_s=timeout_s)
 
         # Transform if desired.
         if transform:
@@ -655,7 +703,7 @@ class Camera():
 
     # Other helper methods.
 
-    def plot(self, image=None, limits=None, title="Image", cbar=True):
+    def plot(self, image=None, limits=None, title="Image", ax=None, cbar=True):
         """
         Plots the provided image.
 
@@ -667,6 +715,8 @@ class Camera():
             Scales the limits by a given factor or uses the passed limits directly.
         title : str
             Title the axis.
+        ax : matplotlib.pyplot.axis OR None
+            Axis to plot upon.
         cbar : bool
             Also plot a colorbar.
 
@@ -676,13 +726,17 @@ class Camera():
             Axis of the plotted image.
         """
         if image is None:
+            self.flush()
             image = self.get_image()
-        image = np.array(image, copy=None)
+        image = np.array(image, copy=(False if np.__version__[0] == '1' else None))
 
         if len(plt.get_fignums()) > 0:
             fig = plt.gcf()
         else:
             fig = plt.figure(figsize=(20,8))
+
+        if ax is not None:
+            plt.sca(ax)
 
         im = plt.imshow(image)
         ax = plt.gca()

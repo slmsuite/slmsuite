@@ -2,7 +2,7 @@
 Hardware control for AlliedVision cameras via the :mod:`vimba` interface.
 Install :mod:`vimba` by following the
 `provided instructions <https://github.com/alliedvision/VimbaPython>`_.
-Include the ``numpy-export`` flag in the ``pip install`` command,
+Be sure to include the ``numpy-export`` flag in the ``pip install`` command,
 as the :class:`AlliedVision` class makes use of these features. See especially the
 `vimba python manual <https://github.com/alliedvision/VimbaPython/blob/master/Documentation/Vimba%20Python%20Manual.pdf>`_
 for reference.
@@ -273,7 +273,7 @@ class AlliedVision(Camera):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def _get_image_hw(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s=5):
         """See :meth:`.Camera._get_image_hw`."""
         t = time.time()
 
@@ -291,9 +291,10 @@ class AlliedVision(Camera):
 
         return np.squeeze(frame)
 
-    def flush(self, timeout_s=1e-3):
+    def flush(self, timeout_s=1):
         """See :meth:`.Camera.flush`."""
-        pass
+        for _ in range(2):
+            self._get_image_hw_tolerant()
 
     def reset(self):
         """See :meth:`.Camera.reset`."""

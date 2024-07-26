@@ -378,7 +378,7 @@ class Hologram(_HologramStats):
         if amp is None:  # Uniform amplitude by default (scalar).
             self.amp = 1 / np.sqrt(np.prod(self.slm_shape))
         else:               # Otherwise, initialize and normalize.
-            self.amp = cp.array(amp, dtype=self.dtype, copy=None)
+            self.amp = cp.array(amp, dtype=self.dtype, copy=(False if np.__version__[0] == '1' else None))
             self.amp *= 1 / Hologram._norm(self.amp)
 
         # Check propagation_kernel.
@@ -387,7 +387,7 @@ class Hologram(_HologramStats):
         elif isinstance(propagation_kernel, REAL_TYPES):
             self.propagation_kernel
         else:
-            self.propagation_kernel = cp.array(propagation_kernel, dtype=self.dtype, copy=None)
+            self.propagation_kernel = cp.array(propagation_kernel, dtype=self.dtype, copy=(False if np.__version__[0] == '1' else None))
             if self.propagation_kernel.shape != self.slm_shape:
                 raise ValueError("Expected the propagation kernel to be the same shape as the SLM.")
 
@@ -406,7 +406,7 @@ class Hologram(_HologramStats):
 
         # Custom GPU kernels for speedy weighting.
         self._update_weights_generic_cuda_kernel = None
-        if np != cp:
+        if np != cp and False:   # Disabled until 0.1.1
             try:
                 self._update_weights_generic_cuda_kernel = cp.RawKernel(
                     CUDA_KERNELS,
@@ -480,12 +480,15 @@ class Hologram(_HologramStats):
         """
         Analytically guesses a phase pattern (lens, blaze) that will overlap with the target.
         """
-        std_amp = np.sqrt(analysis.image_variances(self.amp)[:2, 0])
+        if hasattr(self.amp, "get"):
+            std_amp = np.sqrt(analysis.image_variances(self.amp.get())[:2, 0])
+        else:
+            std_amp = np.sqrt(analysis.image_variances(self.amp)[:2, 0])
         slm_shape = np.flip(self.slm_shape).astype(float)
         std_amp /= slm_shape
 
         center_knm_norm, std_knm_norm = self._get_target_moments_knm_norm()
-
+        
         grid = analysis._generate_grid(self.slm_shape[1], self.slm_shape[0], centered=True)
         grid = [grid[0].astype(self.dtype), grid[1].astype(self.dtype)]
         grid[0] /= self.slm_shape[1]
@@ -493,12 +496,11 @@ class Hologram(_HologramStats):
 
         # Figure out what lens and blaze we should apply to initialize to cover
         # the target, based upon the moments we calculated.
-        # std_knm_norm *= slm_shape * slm_shape
         return cp.array(
             tphase.blaze(grid, slm_shape * center_knm_norm) +
             tphase.lens(grid, np.reciprocal(scaling * slm_shape * std_knm_norm / std_amp)),
             dtype=self.dtype,
-            copy=None
+            copy=(False if np.__version__[0] == '1' else None)
         )
 
     def _get_random_phase(self):
@@ -546,7 +548,7 @@ class Hologram(_HologramStats):
             self.phase = cp.zeros(self.slm_shape, dtype=self.dtype)
 
         if custom_phase is not None:
-            custom_phase = cp.array(custom_phase, dtype=self.dtype, copy=None)
+            custom_phase = cp.array(custom_phase, dtype=self.dtype, copy=(False if np.__version__[0] == '1' else None))
 
             if not np.all(np.array(self.slm_shape) == np.array(custom_phase.shape)):
                 raise ValueError(f"Reset phase of shape {custom_phase.shape} is not of slm_shape {self.slm_shape}")
@@ -735,7 +737,7 @@ class Hologram(_HologramStats):
         if new_target is None:
             self.target = cp.zeros(shape=self.shape, dtype=self.dtype)
         else:
-            self.target = cp.array(new_target, dtype=self.dtype, copy=None)
+            self.target = cp.array(new_target, dtype=self.dtype, copy=(False if np.__version__[0] == '1' else None))
             cp.abs(self.target, out=self.target)
             with warnings.catch_warnings():
                 self.target *= 1 / Hologram._norm(self.target)
@@ -758,21 +760,32 @@ class Hologram(_HologramStats):
         """
         self._set_target(new_target=new_target, reset_weights=reset_weights)
 
-    def get_phase(self):
+    def get_phase(self, include_propagation=False):
         r"""
         Collects the current nearfield phase from the GPU with :meth:`cupy.ndarray.get()`.
         Also shifts the :math:`[-\pi, \pi]` range of :meth:`numpy.arctan2()` to :math:`[0, 2\pi]`
         for faster writing to the SLM (see :meth:`~slmsuite.hardware.slms.slm.SLM.write()`).
+
+        Parameters
+        ----------
+        include_propagation : bool
+            Whether to include the :attr:`propagation_kernel`, if available.
 
         Returns
         -------
         numpy.ndarray
             Current nearfield phase of the optimization.
         """
-        if cp != np:
-            return self.phase.get() + np.pi
+        if include_propagation and self.propagation_kernel is not None:
+            if cp != np:
+                return (self.phase + self.propagation_kernel).get()
+            else:
+                return self.phase + self.propagation_kernel
         else:
-            return self.phase + np.pi
+            if cp != np:
+                return self.phase.get() + np.pi
+            else:
+                return self.phase + np.pi
 
     def get_farfield(self, shape=None, propagation_kernel=None, affine=None, get=True):
         r"""
@@ -815,7 +828,7 @@ class Hologram(_HologramStats):
         if propagation_kernel is None:
             propagation_kernel = 0
         if not np.isscalar(propagation_kernel):
-            propagation_kernel = cp.array(propagation_kernel, copy=None)
+            propagation_kernel = cp.array(propagation_kernel, copy=(False if np.__version__[0] == '1' else None))
 
         # This doesn't use self.nearfield, self.farfield because we might be using different shape.
         nearfield = toolbox.pad(self.amp * cp.exp(1j * (self.phase + propagation_kernel)), shape)
@@ -1683,6 +1696,9 @@ class Hologram(_HologramStats):
 
     @staticmethod
     def _get_torch_tensor_from_cupy(array):
+        if torch is None:
+            raise RuntimeError("Cannot get torch tensor without torch. Something is wrong.")
+        
         if array is None:
             return None
         else:
@@ -1741,13 +1757,13 @@ class Hologram(_HologramStats):
 
         if ("wu" in method or "tanh" in method):    # Additive
             feedback_corrected *= -self.flags["feedback_exponent"]
-            feedback_corrected += xp.array(target_amp, copy=None)
+            feedback_corrected += xp.array(target_amp, copy=(False if np.__version__[0] == '1' else None))
         else:                                       # Multiplicative
-            xp.divide(feedback_corrected, xp.array(target_amp, copy=None), out=feedback_corrected)
+            xp.divide(feedback_corrected, xp.array(target_amp, copy=(False if np.__version__[0] == '1' else None)), out=feedback_corrected)
 
             if nan_checks:
                 feedback_corrected[feedback_corrected == np.inf] = 1
-                feedback_corrected[xp.array(target_amp, copy=None) == 0] = 1
+                feedback_corrected[xp.array(target_amp, copy=(False if np.__version__[0] == '1' else None)) == 0] = 1
 
                 xp.nan_to_num(feedback_corrected, copy=False, nan=1)
 
@@ -1790,7 +1806,7 @@ class Hologram(_HologramStats):
     def _update_weights_generic_cuda(self, weight_amp, feedback_amp, target_amp):
         N = weight_amp.size
 
-        feedback_amp = cp.array(feedback_amp, copy=None)
+        feedback_amp = cp.array(feedback_amp, copy=(False if np.__version__[0] == '1' else None))
         feedback_norm = Hologram._norm(feedback_amp, xp=cp)
 
         method = ALGORITHM_INDEX[self.flags["method"]]

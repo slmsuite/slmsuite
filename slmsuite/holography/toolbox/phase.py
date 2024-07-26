@@ -419,7 +419,7 @@ def zernike_convert_index(indices, from_index="ansi", to_index="ansi"):
 
     dimension = ZERNIKE_INDEXING_DIMENSION[from_index]
 
-    indices = np.array(indices, dtype=int, copy=None)
+    indices = np.array(indices, dtype=int, copy=(False if np.__version__[0] == '1' else None))
     if indices.size == dimension:
         indices = indices.reshape((1, dimension))
     if dimension > 1 and indices.shape[1] != dimension:
@@ -1185,8 +1185,8 @@ def _zernike_test(grid, indices):
     scale = 1
     if hasattr(grid, "get_source_zernike_scaling"):
         scale = grid.get_source_zernike_scaling()
-    x_grid = cp.array(x_grid * scale, copy=None, dtype=np.float32)
-    y_grid = cp.array(y_grid * scale, copy=None, dtype=np.float32)
+    x_grid = cp.array(x_grid * scale, copy=(False if np.__version__[0] == '1' else None), dtype=np.float32)
+    y_grid = cp.array(y_grid * scale, copy=(False if np.__version__[0] == '1' else None), dtype=np.float32)
 
     (H, W) = x_grid.shape
     WH = int(W*H)
@@ -1203,9 +1203,9 @@ def _zernike_test(grid, indices):
         (threads_per_block,),
         (
             WH, D, M,
-            cp.array(c_md.ravel(), copy=None),
-            cp.array(i_md.ravel(), copy=None),
-            cp.array(pxy_m.ravel(), copy=None),
+            cp.array(c_md.ravel(), copy=(False if np.__version__[0] == '1' else None)),
+            cp.array(i_md.ravel(), copy=(False if np.__version__[0] == '1' else None)),
+            cp.array(pxy_m.ravel(), copy=(False if np.__version__[0] == '1' else None)),
             x_grid.ravel(),
             y_grid.ravel(),
             out.ravel()
@@ -1222,7 +1222,7 @@ def _cantor_pairing(xy):
     Converts a 2D index to a unique 1D index according to the
     `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
     """
-    xy = np.array(xy, dtype=int, copy=None).reshape((-1, 2))
+    xy = np.array(xy, dtype=int, copy=(False if np.__version__[0] == '1' else None)).reshape((-1, 2))
     return np.rint(.5 * (xy[:,0] + xy[:,1]) * (xy[:,0] + xy[:,1] + 1) + xy[:,1]).astype(int)
 
 
@@ -1233,7 +1233,7 @@ def _inverse_cantor_pairing(z):
 
     Returns shape ``(D, 2)``
     """
-    z = np.array(z, dtype=int, copy=None)
+    z = np.array(z, dtype=int, copy=(False if np.__version__[0] == '1' else None))
     if z.ndim != 1:
         raise ValueError("Expected a list of shape (D,)")
 
@@ -1274,7 +1274,7 @@ def _term_pathing(xy):
         Array of shape ``(M,)``. Best coefficient order.
     """
     # Prepare helper variables.
-    xy = np.array(xy, dtype=int, copy=None)
+    xy = np.array(xy, dtype=int, copy=(False if np.__version__[0] == '1' else None))
 
     order = np.sum(xy, axis=1)
     delta = np.squeeze(np.diff(xy, axis=1))
@@ -1563,7 +1563,7 @@ def laguerre_gaussian(grid, l, p=0, w=None):
     if l != 0:
         canvas += l * theta_grid
     if p != 0:
-        canvas += np.pi * np.heaviside(-special.genlaguerre(p, np.abs(l))(2 * rr_grid / w / w), 0)
+        canvas += np.pi * np.heaviside(-special.genlaguerre(p, np.abs(l))(16 * rr_grid / w / w), 0)
 
     return canvas
 

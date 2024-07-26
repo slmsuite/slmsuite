@@ -408,7 +408,7 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
     for unit in BLAZE_UNITS:
         result = convert_vector(vector, from_units=from_units, to_units=unit, **kwargs)
 
-        print("'{}' : {}".format(unit, tuple(result.T[0])))
+        print("'{}' : {}".format(unit, result.T[0, :]))
 
 
 def convert_radius(radius, from_units="norm", to_units="norm", hardware=None, shape=None):

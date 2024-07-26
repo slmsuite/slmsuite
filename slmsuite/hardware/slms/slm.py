@@ -7,7 +7,6 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from PIL import Image
 import warnings
 
 from slmsuite import __version__
@@ -163,7 +162,7 @@ class SLM:
         # Make normalized coordinate grids.
         xpix = (width  - 1) * np.linspace(-0.5, 0.5, width)
         ypix = (height - 1) * np.linspace(-0.5, 0.5, height)
-        self.grid = np.meshgrid(self.pitch[0] * xpix, self.pitch[1] * ypix)
+        self.grid = list(np.meshgrid(self.pitch[0] * xpix, self.pitch[1] * ypix))
 
         # Source profile dictionary
         self.source = {}
@@ -255,8 +254,7 @@ class SLM:
 
         return self.source["phase"]
 
-
-    def plot(self, phase=None, limits=None, title="Phase", cbar=True):
+    def plot(self, phase=None, limits=None, title="Phase", ax=None, cbar=True):
         """
         Plots the provided phase.
 
@@ -268,6 +266,8 @@ class SLM:
             Scales the limits by a given factor or uses the passed limits directly.
         title : str
             Title the axis.
+        ax : matplotlib.pyplot.axis OR None
+            Axis to plot upon.
         cbar : bool
             Also plot a colorbar.
 
@@ -278,13 +278,16 @@ class SLM:
         """
         if phase is None:
             phase = self.phase
-        phase = np.array(phase, copy=None)
+        phase = np.array(phase, copy=(False if np.__version__[0] == '1' else None))
         phase = np.mod(phase, 2*np.pi) / np.pi
 
         if len(plt.get_fignums()) > 0:
             fig = plt.gcf()
         else:
             fig = plt.figure(figsize=(20,8))
+
+        if ax is not None:
+            plt.sca(ax)
 
         im = plt.imshow(phase, clim=[0, 2], cmap="twilight", interpolation="none")
         ax = plt.gca()

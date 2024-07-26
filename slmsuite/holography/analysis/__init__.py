@@ -146,7 +146,7 @@ def take(
         region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
     )).astype(int)
 
-    images = xp.array(images, copy=None)
+    images = xp.array(images, copy=(False if np.__version__[0] == '1' else None))
     shape = xp.shape(images)
 
     if clip:  # Prevent out-of-range errors by clipping.
@@ -272,9 +272,9 @@ def image_remove_field(images, deviations=1, out=None):
         ``images`` or a copy of ``images``, with each image background-subtracted.
     """
     # Parse images. Convert to float.
-    images = np.array(images, copy=None)
+    images = np.array(images, copy=(False if np.__version__[0] == '1' else None))
     if not isinstance(images.dtype, np.floating):
-        images = np.array(images, copy=None, dtype=float)  # Hack to prevent integer underflow.
+        images = np.array(images, copy=(False if np.__version__[0] == '1' else None), dtype=float)  # Hack to prevent integer underflow.
 
     # Parse out.
     if out is None:
@@ -385,7 +385,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
         for provided ``images`` data of shape ``(image_count, h, w)``.
     """
     # Parse arguments.
-    images = np.array(images, copy=None)
+    images = np.array(images, copy=(False if np.__version__[0] == '1' else None))
     if len(images.shape) == 2:
         images = np.reshape(images, (1, images.shape[0], images.shape[1]))
     (img_count, w_y, w_x) = images.shape
@@ -518,14 +518,14 @@ def image_normalize(images, nansum=False, remove_field=False):
     if remove_field:
         images = image_remove_field(images)
     else:
-        images = np.array(images, copy=None, dtype=float)
+        images = np.array(images, copy=(False if np.__version__[0] == '1' else None), dtype=float)
 
     single_image = len(images.shape) == 2
 
     normalization = image_normalization(images, nansum=nansum)
 
     if single_image:
-        normalization = np.asscalar(normalization)
+        normalization = float(normalization)
         if normalization == 0:
             return np.zeros_like(images)
         else:
@@ -1630,7 +1630,7 @@ def blob_array_detect(
         lv = np.array([centers[:,0], centers[:,np.where(dot<1e-2)[0][0]+1]]).T
         # lv = centers[np.argsort(np.linalg.norm(centers, axis=1))[:2]].T
 
-        if plot:
+        if plot > 1:
             # Plot the points, kNN, and the chosen lattice vecs
             fig, ax = plt.subplots(constrained_layout=True)
             kNN_plt = ax.scatter(kNN[:,0],kNN[:,1],fc='none',ec='k')
@@ -1651,7 +1651,7 @@ def blob_array_detect(
         M = fftsize*lv/(np.linalg.norm(lv, axis=0)**2)
 
         # Plot which diffraction orders we used
-        if plot:
+        if plot > 1:
             fig, axs = plt.subplots(1, 2, figsize=(12, 6), facecolor='white')
 
             plt_img = _make_8bit(dft_amp.copy())

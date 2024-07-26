@@ -389,11 +389,11 @@ class SimulatedCamera(Camera):
         # self._hologram.reset_phase(self._slm.phase + self._slm.source["phase_sim"])
 
         # Quantized phase
-        self._hologram.amp = self._slm.source["amplitude_sim"]
+        self._hologram.amp = cp.array(self._slm.source["amplitude_sim"], dtype=self._hologram.dtype)
         phase = -self._slm.display.astype(self._hologram.dtype) * (2 * np.pi / self._slm.bitresolution)
         self._hologram.reset_phase(phase - phase.min() + self._slm.source["phase_sim"].astype(self._hologram.dtype))
 
-        ff = self._hologram.get_farfield(get=True)
+        ff = self._hologram.get_farfield(get=False)
 
         # Use map_coordinates for fastest interpolation
         # Note: by default, map_coordinates sets pixels outside the SLM k-space to 0 as desired

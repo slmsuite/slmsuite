@@ -99,7 +99,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             More general or complicated functionality requires full use of the GPU
             and thus the following option requires :mod:`cupy` and underlying CUDA.
 
-        #.  A custom CUDA kernel loaded into :mod:`cupy`.
+        #.  **(This feature is currently disabled until 0.1.1 due 
+            to discovered instability on different systems.)**
+            A custom CUDA kernel loaded into :mod:`cupy`.
             Above a certain number of spots (:math:`O(10^3)`),
             saving and transporting a set of Zernike polynomial kernels would
             consume unacceptable  amounts of memory and memory bandwidth.
@@ -182,7 +184,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         # Parse spot_amp.
         if spot_amp is not None:
-            self.spot_amp = np.array(spot_amp, copy=None)
+            self.spot_amp = np.array(spot_amp, copy=(False if np.__version__[0] == '1' else None))
             if self.spot_amp.size != N:
                 raise ValueError(
                     f"spot_amp (length {self.spot_amp.size}) must "
@@ -224,7 +226,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         # Parse spot_vectors.
         if basis == "zernike":
-            self.spot_zernike = np.array(spot_vectors, copy=None)
+            self.spot_zernike = np.array(spot_vectors, copy=(False if np.__version__[0] == '1' else None))
             self.spot_kxy = toolbox.convert_vector(
                 spot_vectors[self.zernike_basis_cartesian, :],  # Special case to crop the basis.
                 from_units="zernike",
@@ -335,7 +337,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Storage variable to use cp.sum on the intermediate sum.
         self._nearfield2farfield_cuda_intermediate = None
 
-        if np != cp:
+        if np != cp and False:
             # Move the Zernike spots to the GPU.
             # self.spot_zernike = cp.array(self.spot_zernike, dtype=self.dtype)
 
@@ -363,11 +365,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self.cuda = True
 
                 # Test the kernel.
-                self._farfield2nearfield(
-                    self._nearfield2farfield(
-                        cp.full(self.slm_shape, self.dtype_complex(1j), dtype=self.dtype_complex)
-                    )
-                )
+                self._nearfield2farfield()
+                self._farfield2nearfield()
             except Exception as e:
                 raise e
                 warnings.warn("Raw CUDA kernels failed to load. Falling back to cupy.\n" + str(e))
@@ -745,7 +744,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             Whether to overwrite ``weights`` with ``target``.
         """
         if new_target is None:
-            self.target = cp.array(self.spot_amp, dtype=self.dtype, copy=None)
+            self.target = cp.array(self.spot_amp, dtype=self.dtype, copy=(False if np.__version__[0] == '1' else None))
         else:
             new_target = np.squeeze(new_target.ravel())
             if new_target.shape != (len(self),):
@@ -754,8 +753,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                     "Initialize a new Hologram if a different shape is desired."
                 )
 
-            self.target = cp.array(new_target, dtype=self.dtype, copy=None)
-            self.spot_amp = np.array(new_target, dtype=self.dtype, copy=None)
+            self.target = cp.array(new_target, dtype=self.dtype, copy=(False if np.__version__[0] == '1' else None))
+            self.spot_amp = np.array(new_target, dtype=self.dtype, copy=(False if np.__version__[0] == '1' else None))
 
         cp.abs(self.target, out=self.target)
         self.target *= 1 / Hologram._norm(self.target)
@@ -774,6 +773,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         if feedback == "computational":
             feedback = self.flags["feedback"] = "computational_spot"
 
+        if feedback == "experimental":
+            feedback = self.flags["feedback"] = "computational_spot"    # experimental_spot will have trouble for 3D.
+
         # Weighting strategy depends on the chosen feedback method.
         if feedback == "computational_spot":
             amp_feedback = self.amp_ff
@@ -781,7 +783,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             self.measure(basis="ij")
 
             amp_feedback = np.sqrt(analysis.take(
-                np.square(np.array(self.img_ij, copy=None, dtype=self.dtype)),
+                np.square(np.array(self.img_ij, copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype)),
                 self.spot_ij,
                 self.spot_integration_width_ij,
                 centered=True,
@@ -795,7 +797,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Apply weights.
         self._update_weights_generic(
             self.weights,
-            cp.array(amp_feedback, copy=None, dtype=self.dtype),
+            cp.array(amp_feedback, copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype),
             self.target,
             nan_checks=True
         )
@@ -839,7 +841,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             )
 
         if "external_spot" in stat_groups:
-            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=None, dtype=self.dtype))
+            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype))
             stats["external_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,
@@ -1439,7 +1441,7 @@ class SpotHologram(_AbstractSpotHologram):
 
                 amp_feedback = np.sqrt(
                     analysis.take(
-                        np.square(np.array(self.img_ij, copy=None, dtype=self.dtype)),
+                        np.square(np.array(self.img_ij, copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype)),
                         self.spot_ij,
                         self.spot_integration_width_ij,
                         centered=True,
@@ -1455,7 +1457,7 @@ class SpotHologram(_AbstractSpotHologram):
             self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = (
                 self._update_weights_generic(
                     self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]],
-                    cp.array(amp_feedback, copy=None, dtype=self.dtype),
+                    cp.array(amp_feedback, copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype),
                     self.spot_amp,
                     nan_checks=True
                 )
@@ -1540,7 +1542,7 @@ class SpotHologram(_AbstractSpotHologram):
             )
 
         if "external_spot" in stat_groups:
-            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=None, dtype=self.dtype))
+            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype))
             stats["external_spot"] = self._calculate_stats(
                 np.sqrt(pwr_feedback),
                 self.spot_amp,

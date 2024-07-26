@@ -53,12 +53,8 @@ class MultiplaneHologram(Hologram):
 
         # Check that all holograms are actually holograms and not MultiplaneHolograms.
         for h in self.holograms:
-            # if h.shape != self.holograms[0].shape:
-            #     raise ValueError("Multiplane composite Holograms must have the same SLM shape.")
-            # if isinstance(h, MultiplaneHologram):
             if "MultiplaneHologram" in str(type(h)):
                 raise ValueError("Multiplane hologram recursion is not supported.")
-            # if not isinstance(h, (Hologram, SpotHologram, CompressedSpotHologram, FeedbackHologram)):
             if not "Hologram" in str(type(h)):
                 raise ValueError(f"Multiplane hologram must be provided child holograms, not {type(h)}")
 
@@ -81,8 +77,8 @@ class MultiplaneHologram(Hologram):
         if weights is None:
             weights = np.ones(len(self), dtype=self.dtype)
 
-        self.weights = np.array(weights, copy=None, dtype=self.dtype)
-        self.weights /= Hologram._norm(weights)
+        self.weights = np.array(weights, copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype)
+        self.weights /= Hologram._norm(self.weights, xp=np)
 
     def __len__(self):
         return len(self.holograms)
@@ -200,7 +196,7 @@ class MultiplaneHologram(Hologram):
 
         # Weight the centers.
         centers = np.vstack(centers)
-        center = np.sum(np.square(self.weights).reshape(-1, 1) * centers, axis=0)
+        center = np.nansum(np.square(self.weights).reshape(-1, 1) * centers, axis=0)
 
         # With the center, now weight the stds. We're doing an analytic integration of
         # x^2 over rectangles corresponding to the center \pm sqrt(3) * std of each hologram.
@@ -211,7 +207,7 @@ class MultiplaneHologram(Hologram):
         r = c + stds * np.sqrt(3)
 
         integral_normalized = (r * r * r - l * l * l) / (2 * stds * np.sqrt(3)) / 3
-        std = np.sqrt(np.sum(np.square(self.weights).reshape(-1, 1) * integral_normalized, axis=0))
+        std = np.sqrt(np.nansum(np.square(self.weights).reshape(-1, 1) * integral_normalized, axis=0))
 
         return center, std
 

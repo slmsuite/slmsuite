@@ -330,7 +330,7 @@ def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=
         If ``False`` and using floating point data, 1 is taken to be the maximum, and
         this is scaled to the ``lut``.
     **kwargs
-        Passed to ``imageio.imwrite()``. Useful for choosing a ``plugin`` or ``format``.
+        Passed to ``imageio.imsave()`` or ``imageio.mimsave()``. Useful for choosing a ``plugin`` or ``format``.
 
     Returns
     -------
@@ -339,7 +339,7 @@ def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=
         for provided ``images`` data of shape ``(image_count, h, w)``.
     """
     # Parse images.
-    images = np.array(images, copy=None)
+    images = np.array(images, copy=(False if np.__version__[0] == '1' else None))
     if len(images.shape) == 2:
         images = np.reshape(images, (1, images.shape[0], images.shape[1]))
     # (img_count, w_y, w_x) = images.shape
@@ -392,11 +392,14 @@ def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=
 
     # Check that imageio is there and write the data
     try:
-        from imageio import mimsave
+        from imageio import mimsave, imsave
     except:
         raise ValueError("imageio is required for write_image().")
 
-    mimsave(file_path, images, **kwargs)
+    if images.shape[0] == 1:
+        imsave(file_path, images[0], **kwargs)
+    else:
+        mimsave(file_path, images, **kwargs)
 
     # Optimize .gif if pygifsicle is installed
     if extension == "gif":

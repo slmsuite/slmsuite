@@ -3,6 +3,7 @@ Common fit functions.
 """
 
 import numpy as np
+from scipy.special import factorial
 
 
 # 1D
@@ -546,7 +547,7 @@ def _sinc_taylor(x, order=12):
     for n in range(2, order+2, 2):
         if n != 2:
             monomial *= squared
-        result += monomial * ((-1 if n % 4 == 2 else 1) / np.math.factorial(n+1))
+        result += monomial * ((-1 if n % 4 == 2 else 1) / factorial(n+1))
 
     return result
 

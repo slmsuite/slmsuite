@@ -48,8 +48,8 @@ class _HologramStats(object):
             if total is not None:
                 total = float(total)
 
-        feedback_amp = xp.array(feedback_amp, copy=None)
-        target_amp = xp.array(target_amp, copy=None)
+        feedback_amp = xp.array(feedback_amp, copy=(False if np.__version__[0] == '1' else None))
+        target_amp = xp.array(target_amp, copy=(False if np.__version__[0] == '1' else None))
 
         feedback_pwr = xp.square(feedback_amp)
         target_pwr = xp.square(target_amp)
@@ -301,7 +301,7 @@ class _HologramStats(object):
             for key in from_save.keys():
                 if key != "stats":
                     if key in is_cupy:
-                        setattr(self, key, cp.array(from_save[key], dtype=self.dtype, copy=None))
+                        setattr(self, key, cp.array(from_save[key], dtype=self.dtype, copy=(False if np.__version__[0] == '1' else None)))
                     else:
                         setattr(self, key, from_save[key])
 

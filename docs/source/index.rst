@@ -9,10 +9,10 @@ spatial light modulator (SLM) control and holography.
    |slmsuite|_ enables **spot-specific**
    `Zernike
    <https://slmsuite.readthedocs.io/en/latest/_examples/zernike_holography.html>`_
-   aberration correction; capable of
-   `optimizing
+   aberration correction; capable of optimizing spot imaging
+   `across a field of view
    <https://slmsuite.readthedocs.io/en/latest/_examples/multipoint_calibration.html>`_
-   spot imaging across a field of view [#note]_.
+   [#note]_.
 
    .. image:: https://raw.githubusercontent.com/QPG-MIT/slmsuite-examples/main/examples/ex-zernike-spots-dark.gif
       :class: only-dark
@@ -40,12 +40,12 @@ spatial light modulator (SLM) control and holography.
    and phase
    `flattening
    <https://slmsuite.readthedocs.io/en/latest/_autosummary/slmsuite.holography.algorithms.Hologram.html#slmsuite.holography.algorithms.Hologram.reset_phase>`_
-   in |slmsuite|_ lead to crisp and accurate
+   in |slmsuite|_ lead to crisp and accurate experimental
    `holograms
    <https://slmsuite.readthedocs.io/en/latest/_examples/experimental_holography.html>`_,
    even across
    `multiple planes
-   <https://slmsuite.readthedocs.io/en/latest/_examples/multiplane_holography.html>`_  of focus, color, or basis .
+   <https://slmsuite.readthedocs.io/en/latest/_examples/multiplane_holography.html>`_  of focus, color, or basis.
 
    .. image:: https://raw.githubusercontent.com/QPG-MIT/slmsuite-examples/main/examples/ex-slmsuite-3d-dark.gif
       :class: only-dark

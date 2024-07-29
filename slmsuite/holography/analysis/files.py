@@ -302,7 +302,7 @@ def _read_image(path, shape, target_shape=None, angle=0, shift=(-225, -170)):
 
     return target_ij
 
-def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=None, **kwargs):
+def gray2rgb(images, cmap=False, lut=None, normalize=True, out=None):
     """
     Save an image or stacks of images as a filetype supported by :mod:`imageio`.
     Handles :mod:`matplotlib` colormapping.
@@ -310,8 +310,6 @@ def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=
 
     Parameters
     ----------
-    file_path : str
-        Full path to the file to save the data in.
     images : numpy.ndarray
         A 2D matrix (image formats) or stack of 2D matrices (video formats).
     cmap : str OR bool OR None
@@ -379,7 +377,39 @@ def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=
         images = c[images]
         images = 255 * images[:, :, :, :3]  # Remove alpha channel
 
-    images = images.astype(np.uint8)
+    return images.astype(np.uint8)
+
+def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=None, **kwargs):
+    """
+    Save an image or stacks of images as a filetype supported by :mod:`imageio`.
+    Handles :mod:`matplotlib` colormapping.
+    Negative values are truncated to zero.
+
+    Parameters
+    ----------
+    file_path : str
+        Full path to the file to save the data in.
+    images : numpy.ndarray
+        A 2D matrix (image formats) or stack of 2D matrices (video formats).
+    cmap : str OR bool OR None
+        If ``str``, the :mod:`matplotlib` colormap under this name is used.
+        If ``None`` or ``False``, the images are directly saved as grayscale 8-bit images.
+        If ``True``, the default colormap is used.
+    lut : int OR None
+        Size of the lookup table for the colormap. This determines the number of colors
+        the resulting image has. This can be larger than 256 values because RGB data can
+        realize more colors than grayscale.
+        If ``None`, Defaults to ``mpl.rcParams['image.lut']`` (if the image is floating
+        point) or the maximum of the image (if the image )
+    normalize : bool
+        If ``True``, the maximum of the image is taken as the image maximum.
+        If ``False`` and using integer data, the data is unchanged.
+        If ``False`` and using floating point data, 1 is taken to be the maximum, and
+        this is scaled to the ``lut``.
+    **kwargs
+        Passed to ``imageio.imsave()`` or ``imageio.mimsave()``. Useful for choosing a ``plugin`` or ``format``.
+    """
+    images = gray2rgb(images)
 
     if border is not None:
         images[:, 0, :, :] = border

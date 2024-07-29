@@ -125,4 +125,4 @@ optimization when using |cupy|_, compared with the |numpy|_ equivalent.
 .. _cupy: https://cupy.dev/
 
 .. |slmsuite| replace:: :mod:`slmsuite`
-.. _slmsuite: https://github.com/QPG-MIT/slmsuite
+.. _slmsuite: https://github.com/slmsuite/slmsuite

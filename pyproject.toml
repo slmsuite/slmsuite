@@ -14,5 +14,5 @@ classifiers = [
 dynamic = ["version", "dependencies", "description", "authors"]
 
 [project.urls]
-"Homepage" = "https://github.com/QPG-MIT/slmsuite"
+"Homepage" = "https://github.com/slmsuite/slmsuite"
 "Documentation" = "https://slmsuite.readthedocs.io/en/latest/"

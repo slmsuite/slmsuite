@@ -1,10 +1,10 @@
 # Contributions
 
 Pull requests are always welcome, and the slmsuite community appreciates any help you give.
-Note that a [code of conduct](https://github.com/QPG-MIT/blob/main/CODE_OF_CONDUCT.md)
+Note that a [code of conduct](https://github.com/slmsuite/slmsuite/blob/main/CODE_OF_CONDUCT.md)
 applies to all spaces managed by the ``slmsuite`` project, including issues and pull requests.
 Additionally, all contributed code will be licensced under slmsuite's
-[license](https://github.com/QPG-MIT/blob/main/LICENSE).
+[license](https://github.com/slmsuite/slmsuite/blob/main/LICENSE).
 
 ## Style
 - Code should be consistent with [PEP 8](https://peps.python.org/pep-0008/).

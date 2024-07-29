@@ -15,18 +15,18 @@ Install the stable version of |slmsuite|_ from `PyPI <https://pypi.org/project/s
 GitHub
 ------
 
-Install the latest version of |slmsuite|_ from `GitHub <https://github.com/QPG-MIT/slmsuite>`_ using:
+Install the latest version of |slmsuite|_ from `GitHub <https://github.com/slmsuite/slmsuite>`_ using:
 
 .. code-block:: console
 
-    pip install git+https://github.com/QPG-MIT/slmsuite
+    pip install git+https://github.com/slmsuite/slmsuite
 
 One can also clone |slmsuite|_ directly and add its directory to the Python path.
 *Remember to install the dependencies (next sections)*.
 
 .. code-block:: console
 
-    git clone https://github.com/QPG-MIT/slmsuite
+    git clone https://github.com/slmsuite/slmsuite
 
 Required Dependencies
 ---------------------
@@ -107,7 +107,7 @@ Use the following to install recommended jupyter-related packages.
 
 
 .. |slmsuite| replace:: :mod:`slmsuite`
-.. _slmsuite: https://github.com/QPG-MIT/slmsuite
+.. _slmsuite: https://github.com/slmsuite/slmsuite
 
 .. |autoreload| replace:: ``%autoreload 2``
 .. _autoreload: https://ipython.readthedocs.io/en/stable/config/extensions/autoreload.html

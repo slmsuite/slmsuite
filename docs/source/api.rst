@@ -3,7 +3,7 @@ API Reference
 *************
 
 This page provides an auto-generated summary of |slmsuite|_'s API. You can
-find the source on `GitHub <https://github.com/QPG-MIT/slmsuite>`_.
+find the source on `GitHub <https://github.com/slmsuite/slmsuite>`_.
 
 |slmsuite|_ is divided into two modules:
 algorithms and analysis in :mod:`~slmsuite.holography` and
@@ -42,7 +42,7 @@ Hardware
 A central concept of |slmsuite|_ is **experimental** holography.
 Thus, we require interfaces to control the hardware used in experiment.
 While some common hardware implementions are included, we welcome
-`contributions <https://github.com/QPG-MIT/slmsuite/blob/main/CONTRIBUTING.md>`_
+`contributions <https://github.com/slmsuite/slmsuite/blob/main/CONTRIBUTING.md>`_
 to expand the scope and utility of the package!
 Hardware is divided into two main categories:
 
@@ -155,4 +155,4 @@ See the first tip in :class:`~slmsuite.holography.algorithms.Hologram`
 to learn more about ``"kxy"`` and ``"knm"`` space.
 
 .. |slmsuite| replace:: :mod:`slmsuite`
-.. _slmsuite: https://github.com/QPG-MIT/slmsuite
+.. _slmsuite: https://github.com/slmsuite/slmsuite

@@ -55,8 +55,8 @@ extensions = [
 ]
 
 extlinks = {
-    "issue": ("https://github.com/QPG-MIT/slmsuite/issues/%s", "GH"),
-    "pull": ("https://github.com/QPG-MIT/slmsuite/pull/%s", "PR"),
+    "issue": ("https://github.com/slmsuite/slmsuite/issues/%s", "GH"),
+    "pull": ("https://github.com/slmsuite/slmsuite/pull/%s", "PR"),
 }
 
 # Adapted from https://github.com/DisnakeDev/disnake/blob/7853da70b13fcd2978c39c0b7efa59b34d298186/docs/conf.py#L192
@@ -80,7 +80,7 @@ def linkcode_resolve(domain, info):
         return None
 
     path = f"{path}#L{lineno}-L{lineno + len(src) - 1}"
-    return f"https://github.com/QPG-MIT/slmsuite/blob/main/slmsuite/" + path
+    return f"https://github.com/slmsuite/slmsuite/blob/main/slmsuite/" + path
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["templates"]
@@ -155,7 +155,7 @@ html_theme_options = {
     "icon_links": [
         {
             "name": "GitHub",
-            "url": "https://github.com/QPG-MIT/slmsuite/",
+            "url": "https://github.com/slmsuite/slmsuite/",
             "icon": "fab fa-github",
         },
         {
@@ -196,7 +196,7 @@ def skip(app, what, name, obj, would_skip, options):
 
     return skip_
 
-examples_repo_owner = "QPG-MIT"
+examples_repo_owner = "slmsuite"
 examples_repo_name = "slmsuite-examples"
 # relative to this directory
 examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_examples")

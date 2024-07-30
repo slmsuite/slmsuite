@@ -361,8 +361,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         if from_units in CAMERA_UNITS:
             if from_units != "ij":
                 unit = from_units.split("_")[-1]
-                vector_z *= np.mean(cam_pitch_um) / LENGTH_FACTORS[unit]
-                if "mag_" in from_units: vector_z *= cameraslm.mag
+                vector_z *= LENGTH_FACTORS[unit] / np.mean(cam_pitch_um)
+                if "mag_" in from_units: vector_z /= cameraslm.mag
 
             focal_power = cameraslm._ijcam_to_kxyslm_depth(vector_z)
 
@@ -377,8 +377,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
 
             if to_units != "ij":
                 unit = to_units.split("_")[-1]
-                vector_z /= LENGTH_FACTORS[unit] / np.mean(cam_pitch_um)
-                if "mag_" in to_units: vector_z /= cameraslm.mag
+                vector_z *= np.mean(cam_pitch_um) / LENGTH_FACTORS[unit]
+                if "mag_" in to_units: vector_z *= cameraslm.mag
 
         elif to_units == "zernike":
             vector_z = focal_power * ((zernike_scale * zernike_scale) / (8 * np.pi))

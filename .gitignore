@@ -3,6 +3,7 @@
 *.py[cod]
 *$py.class
 *egg-info
+.conda/
 
 # jupyter
 *.ipynb_checkpoints/

@@ -140,8 +140,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 Zernike polynomials on the unit disk.
                 See :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
 
-                Important
-                ~~~~~~~~~
                 The assumed Zernike basis depends on the dimensionality of the provided spots:
 
                 -   If ``D == 2``, then the basis is assumed to be ``[2,1]``

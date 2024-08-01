@@ -2,25 +2,25 @@ from slmsuite.holography.algorithms._header import *
 from slmsuite.holography.algorithms._stats import _HologramStats
 
 
+if torch is not None:
+    class ComplexMSELoss(torch.nn.modules.loss._Loss):
+        __constants__ = ['reduction']
 
-class ComplexMSELoss(torch.nn.modules.loss._Loss):
-    __constants__ = ['reduction']
+        def __init__(self, size_average=None, reduce=None, reduction: str = 'mean') -> None:
+            super().__init__(size_average, reduce, reduction)
 
-    def __init__(self, size_average=None, reduce=None, reduction: str = 'mean') -> None:
-        super().__init__(size_average, reduce, reduction)
+        def forward(self, input, target):
+            input_abs = torch.abs(input)
+            return torch.nn.functional.mse_loss(input_abs / Hologram._norm(input_abs, torch), target, reduction=self.reduction)
 
-    def forward(self, input, target):
-        input_abs = torch.abs(input)
-        return torch.nn.functional.mse_loss(input_abs / Hologram._norm(input_abs, torch), target, reduction=self.reduction)
+    class MaxUniformLoss(torch.nn.modules.loss._Loss):
+        __constants__ = ['reduction']
 
-class MaxUniformLoss(torch.nn.modules.loss._Loss):
-    __constants__ = ['reduction']
+        def __init__(self, size_average=None, reduce=None, reduction: str = 'mean') -> None:
+            super().__init__(size_average, reduce, reduction)
 
-    def __init__(self, size_average=None, reduce=None, reduction: str = 'mean') -> None:
-        super().__init__(size_average, reduce, reduction)
-
-    def forward(self, input, target):
-        return -torch.sum(torch.square(torch.abs(input))) + 10 * torch.std(torch.abs(input))
+        def forward(self, input, target):
+            return -torch.sum(torch.square(torch.abs(input))) + 10 * torch.std(torch.abs(input))
 
 
 class Hologram(_HologramStats):

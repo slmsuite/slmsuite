@@ -1705,7 +1705,7 @@ class Hologram(_HologramStats):
         # Parse loss.
         loss = self.flags["loss"]
         if loss is None:
-            loss = MaxUniformLoss()
+            loss = ComplexMSELoss()
 
         # Evaluate loss depending on the feedback mechanism.
         feedback = self.flags["feedback"]

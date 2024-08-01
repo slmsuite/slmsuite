@@ -99,7 +99,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             More general or complicated functionality requires full use of the GPU
             and thus the following option requires :mod:`cupy` and underlying CUDA.
 
-        #.  **(This feature is currently disabled until 0.1.1 due 
+        #.  **(This feature is currently disabled until 0.1.1 due
             to discovered instability on different systems.)**
             A custom CUDA kernel loaded into :mod:`cupy`.
             Above a certain number of spots (:math:`O(10^3)`),
@@ -411,7 +411,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             hardware=self.cameraslm,
             shape=(1,1)
         )
-        grid = (spot_knm_norm[0,:].reshape(-1, 1), spot_knm_norm[1,:].reshape(-1, 1))
+        grid = (spot_knm_norm[0,:].reshape(-1, 1) - .5, spot_knm_norm[1,:].reshape(-1, 1) - .5)
 
         # Figure out the size of the target in knm space
         center_knm_norm = analysis.image_positions(target, grid=grid, nansum=True)  # Note this is centered knm space.
@@ -461,6 +461,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Convert from real phase to complex amplitude.
         out *= self.dtype_complex(1j)
         out = cp.exp(out, out=out)
+        out /= np.sqrt(out.shape[1])
 
         return out
 
@@ -515,11 +516,17 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 warnings.warn(
                     "Custom compressed CUDA kernel is not supported for torch."
                 )
+                self.cuda = False
 
         if not self.cuda:
-            self.farfield = self._nearfield2farfield_cupy(nearfield)
-
-        self._midloop_cleaning()
+            if phase_torch is None:
+                self.farfield = self._nearfield2farfield_cupy(nearfield)
+                self._midloop_cleaning()
+            else:
+                farfield_torch = self._nearfield2farfield_cupy(nearfield)
+                self.farfield = cp.asarray(farfield_torch.detach())
+                self._midloop_cleaning()
+                return farfield_torch
 
     def _nearfield2farfield_cuda(self, nearfield):
         H, W = np.int32(self.shape)
@@ -581,11 +588,11 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             farfield = self._get_torch_tensor_from_cupy(self.farfield)
             def collapse_kernel(kernel, out):
                 # (N, H*W), (H*W, 1) x  = (N,1)
-                torch.matmul(
+                result = torch.matmul(
                     self._get_torch_tensor_from_cupy(kernel),
-                    nearfield.ravel()[:, np.newaxis],
-                    out=out[:, np.newaxis]
+                    nearfield.ravel()[:, np.newaxis]
                 )
+                out[:, np.newaxis] = result
         else:
             nearfield = cp.conj(nearfield, out=nearfield)
             farfield = self.farfield
@@ -613,6 +620,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Restore the in-place memory.
         if not istorch:
             nearfield = cp.conj(nearfield, out=nearfield)
+        else:
+            return farfield
 
         # Normalize. This might need to be brought into torch?
         farfield *= (1 / Hologram._norm(farfield, xp=torch if istorch else cp))

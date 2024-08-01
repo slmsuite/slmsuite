@@ -108,7 +108,7 @@ def take(
         If ``images`` are :mod:`cupy` objects, then :mod:`cupy` must be passed as
         ``xp``. Very useful to minimize the cost of moving data between the GPU and CPU.
         If ``None``, defaults to :mod:`numpy`.
-        Indexing variables inside `:meth:`take` still use :mod:`numpy` for speed, no
+        Indexing variables inside :meth:`take` still use :mod:`numpy` for speed, no
         matter what module is used.
 
     Returns
@@ -1063,7 +1063,7 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
     return vectors_zernike[1:, :]
 
 
-def get_module(matrix):
+def _get_module(matrix):
     if np == cp:
         return np
     else:
@@ -1085,7 +1085,7 @@ def image_vortices(phase_image):
     winding_number
         Image with the integer winding number at each pixel.
     """
-    xp = get_module(phase_image)
+    xp = _get_module(phase_image)
 
     # Discrete derivatives, with appropriate wrapping.
     dd = [
@@ -1120,7 +1120,7 @@ def image_vortices_coordinates(phase_image, mask=None):
     coordinates, weights
         The coordinates and winding number of each coordinate.
     """
-    xp = get_module(phase_image)
+    xp = _get_module(phase_image)
 
     winding_number = image_vortices(phase_image)
 
@@ -1152,7 +1152,7 @@ def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False
     phase_image
         The image or vortices, depending upon ``return_vortices``
     """
-    xp = get_module(phase_image)
+    xp = _get_module(phase_image)
 
     if mask is not None:
         mask_eroded = binary_erosion(mask, np.ones((5,5)))

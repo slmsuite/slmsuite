@@ -2,6 +2,27 @@ from slmsuite.holography.algorithms._header import *
 from slmsuite.holography.algorithms._stats import _HologramStats
 
 
+
+class ComplexMSELoss(torch.nn.modules.loss._Loss):
+    __constants__ = ['reduction']
+
+    def __init__(self, size_average=None, reduce=None, reduction: str = 'mean') -> None:
+        super().__init__(size_average, reduce, reduction)
+
+    def forward(self, input, target):
+        input_abs = torch.abs(input)
+        return torch.nn.functional.mse_loss(input_abs / Hologram._norm(input_abs, torch), target, reduction=self.reduction)
+
+class MaxUniformLoss(torch.nn.modules.loss._Loss):
+    __constants__ = ['reduction']
+
+    def __init__(self, size_average=None, reduce=None, reduction: str = 'mean') -> None:
+        super().__init__(size_average, reduce, reduction)
+
+    def forward(self, input, target):
+        return -torch.sum(torch.square(torch.abs(input))) + 10 * torch.std(torch.abs(input))
+
+
 class Hologram(_HologramStats):
     r"""
     Phase retrieval methods applied to holography (DFT-based).
@@ -954,9 +975,9 @@ class Hologram(_HologramStats):
             self.optimizer.zero_grad()
 
             if prop_torch is None:
-                nearfield_torch[i0:i1, i2:i3] = amp_torch * cp.exp(1j * phase_torch)
+                nearfield_torch[i0:i1, i2:i3] = amp_torch * torch.exp(1j * phase_torch)
             else:
-                nearfield_torch[i0:i1, i2:i3] = amp_torch * cp.exp(1j * (phase_torch + prop_torch))
+                nearfield_torch[i0:i1, i2:i3] = amp_torch * torch.exp(1j * (phase_torch + prop_torch))
 
             return nearfield_torch
 
@@ -986,7 +1007,9 @@ class Hologram(_HologramStats):
         else:
             farfield_torch = self._get_torch_tensor_from_cupy(self.farfield)
             farfield_torch = torch.fft.fftshift(torch.fft.fft2(torch.fft.fftshift(nearfield), norm="ortho"))
-            self.farfield = cp.array(farfield_torch)
+            self.farfield = cp.asarray(farfield_torch.detach())
+
+            return farfield_torch
 
         self._midloop_cleaning()
 
@@ -1126,7 +1149,7 @@ class Hologram(_HologramStats):
               `interoperability <https://docs.cupy.dev/en/stable/user_guide/interoperability.html#pytorch>`_.
 
               The objective ``loss`` is expected to be a :class:`torch.nn.Module`
-              and defaults to ``torch.nn.MSELoss()``.
+              and defaults to a complex variant of ``torch.nn.MSELoss()``.
               ``loss`` is called in the style of :mod:`pytorch`, using (as arguments)
               the computed ``farfield`` (with gradient tree intact) and
               the ``target`` values for the farfield. Internally, this looks like:
@@ -1645,6 +1668,9 @@ class Hologram(_HologramStats):
             # and then passes these values to the current ``loss`` function.
             result = self._cg_loss(phase_torch)
 
+            if hasattr(iterations, "set_description"):
+                iterations.set_description("loss="+str(float(result.detach())))
+
             # (A.2) Compute the gradients of the phase pattern with respect to loss.
             result.backward(retain_graph=True)
 
@@ -1663,6 +1689,8 @@ class Hologram(_HologramStats):
             # Increment iteration.
             self.iter += 1
 
+        self.phase = cp.asarray(phase_torch.detach())
+
         # Update the final farfield using phase and amp.
         self._populate_results()
 
@@ -1677,7 +1705,7 @@ class Hologram(_HologramStats):
         # Parse loss.
         loss = self.flags["loss"]
         if loss is None:
-            loss = torch.nn.MSELoss()
+            loss = MaxUniformLoss()
 
         # Evaluate loss depending on the feedback mechanism.
         feedback = self.flags["feedback"]
@@ -1705,7 +1733,7 @@ class Hologram(_HologramStats):
             return None
         else:
             if cp == np:
-                return torch.as_tensor(array, device='cpu')
+                return torch.from_numpy(array)
             else:
                 return torch.as_tensor(array, device='cuda')
 

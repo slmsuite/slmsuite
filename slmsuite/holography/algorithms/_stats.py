@@ -610,12 +610,16 @@ class _HologramStats(object):
         # If _cam_points is defined (i.e. is a FeedbackHologram or subclass),
         # plot a yellow rectangle for the extents of the camera
         if hasattr(self, "_cam_points") and self._cam_points is not None:
+            _cam_points = self._cam_points.copy()
+            _cam_points[0] *= float(npsource.shape[1]) / self.shape[1]
+            _cam_points[1] *= float(npsource.shape[0]) / self.shape[0]
+
             # Check to see if the camera extends outside of knm space.
             plot_slm_fov = (
-                np.any(self._cam_points[0, :4] < 0)
-                or np.any(self._cam_points[1, :4] < 0)
-                or np.any(self._cam_points[0, :4] >= npsource.shape[1])
-                or np.any(self._cam_points[1, :4] >= npsource.shape[1])
+                np.any(_cam_points[0, :4] < 0)
+                or np.any(_cam_points[1, :4] < 0)
+                or np.any(_cam_points[0, :4] >= npsource.shape[1])
+                or np.any(_cam_points[1, :4] >= npsource.shape[1])
             )
 
             # If so, plot a labeled green rectangle to show the extents of knm space.
@@ -640,11 +644,9 @@ class _HologramStats(object):
                 )
 
             # Convert _cam_points to knm.
-            if units == "knm":
-                _cam_points = self._cam_points
-            else:
+            if units != "knm":
                 _cam_points = toolbox.convert_vector(
-                    self._cam_points,
+                    _cam_points,
                     from_units="knm",
                     to_units=units,
                     hardware=slm,

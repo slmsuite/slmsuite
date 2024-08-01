@@ -552,14 +552,16 @@ class FourierSLM(CameraSLM):
         field_period=10,
     ):
         """
+        Measure the pixel crosstalk and phase response of the SLM.
+
+        **(This feature is experimental.)**
+
         Physical SLMs do not produce perfectly sharp and discrete blocks of a desired
         phase at each pixel. Rather, the realized phase might deviate from the desired
         phase (error) and be blurred between pixels (crosstalk).
 
-        **(This feature is experimental.)**
-
         We adopt a literature approach to calibrating both phenomena by `measuring the
-        system response of binary gratings <https://doi.org/10.1364/OE.20.022334>`.
+        system response of binary gratings <https://doi.org/10.1364/OE.20.022334>`_.
         In the future, we intend to fit the measured data to `an upgraded asymmetric
         model of phase crosstalk <https://doi.org/10.1364/OE.27.025046>`_, and then
         apply the model to beam propagation during holographic optimization. A better

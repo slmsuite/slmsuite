@@ -32,7 +32,7 @@ except ImportError:
     )
 
 try:
-    import pytorch as torch
+    import torch
 except ImportError:
     torch = None
 
@@ -65,7 +65,7 @@ ALGORITHM_DEFAULTS = {
     "CG" : {
         "feedback": "computational",
         "optimizer": "Adam",
-        "optimizer_kwargs": {"lr": 1e-4},
+        "optimizer_kwargs": {"lr": .1},
         "loss": None
     }
 }

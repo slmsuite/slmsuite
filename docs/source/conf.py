@@ -212,37 +212,37 @@ def setup(app):
 
     # Download example notebooks.
     # NOTE: GitHub API only supports downloading files up to 100 MB.
-    try:
-        os.makedirs(examples_path, exist_ok=True)
-        os.makedirs(images_path, exist_ok=True)
-        tree_url = (
-            "https://api.github.com/repos/{}/{}/git/trees/main?recursive=1"
-            "".format(examples_repo_owner, examples_repo_name)
-        )
-        tree_response = requests.get(tree_url).json()
-        for path_object in tree_response["tree"]:
-            path_str = path_object["path"]
-            if path_str[0:9] == "examples/" and ((path_str[-6:] == ".ipynb") or (path_str[-4:] == ".gif")):
-                print("Downloading ", path_str)
-                file_name = path_str[9:]
-                file_url = (
-                    "https://api.github.com/repos/{}/{}/git/blobs/{}"
-                    "".format(examples_repo_owner, examples_repo_name, path_object["sha"])
-                )
-                if path_str[-6:] == ".ipynb":
-                    file_path = os.path.join(examples_path, file_name)
-                    file_response = requests.get(file_url).json()
-                    file_content = file_response["content"]
-                    file_str = base64.b64decode(file_content.encode("utf8")).decode("utf8")
-                    with open(file_path, "w", encoding='utf8') as file_:
-                        file_.write(file_str)
-                else:
-                    file_path = os.path.join(images_path, file_name)
-                    with open(file_path, "wb") as file_:
-                        file_.write(requests.get(file_url).content)
-                    file_path = os.path.join(examples_path, file_name)
-                    with open(file_path, "wb") as file_:
-                        file_.write(requests.get(file_url).content)
-    except BaseException as e:
-        print("WARNING: Unable to download example notebooks. "
-              "Building without examples. Error:\n{}".format(e))
+    # try:
+    #     os.makedirs(examples_path, exist_ok=True)
+    #     os.makedirs(images_path, exist_ok=True)
+    #     tree_url = (
+    #         "https://api.github.com/repos/{}/{}/git/trees/main?recursive=1"
+    #         "".format(examples_repo_owner, examples_repo_name)
+    #     )
+    #     tree_response = requests.get(tree_url).json()
+    #     for path_object in tree_response["tree"]:
+    #         path_str = path_object["path"]
+    #         if path_str[0:9] == "examples/" and ((path_str[-6:] == ".ipynb") or (path_str[-4:] == ".gif")):
+    #             print("Downloading", path_str)
+    #             file_name = path_str[9:]
+    #             file_url = (
+    #                 "https://api.github.com/repos/{}/{}/git/blobs/{}"
+    #                 "".format(examples_repo_owner, examples_repo_name, path_object["sha"])
+    #             )
+    #             if path_str[-6:] == ".ipynb":
+    #                 file_path = os.path.join(examples_path, file_name)
+    #                 file_response = requests.get(file_url).json()
+    #                 file_content = file_response["content"]
+    #                 file_str = base64.b64decode(file_content.encode("utf8")).decode("utf8")
+    #                 with open(file_path, "w", encoding='utf8') as file_:
+    #                     file_.write(file_str)
+    #             else:
+    #                 file_path = os.path.join(images_path, file_name)
+    #                 with open(file_path, "wb") as file_:
+    #                     file_.write(requests.get(file_url).content)
+    #                 file_path = os.path.join(examples_path, file_name)
+    #                 with open(file_path, "wb") as file_:
+    #                     file_.write(requests.get(file_url).content)
+    # except BaseException as e:
+    #     print("WARNING: Unable to download example notebooks. "
+    #           "Building without examples. Error:\n{}".format(e))

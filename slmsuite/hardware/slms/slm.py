@@ -1059,7 +1059,7 @@ class SLM:
         self.fit_source_amplitude(force=False)
 
         rad_norm = self.source["amplitude_radius"]
-        rad_pix = rad_norm * np.mean(self.pitch)
+        rad_pix = rad_norm / np.mean(self.pitch)
         rad_freq = np.reciprocal(rad_pix)
 
         psf_kxy = toolbox.convert_vector(

@@ -372,13 +372,13 @@ class FourierSLM(CameraSLM):
     ### Settle Time Calibration ###
 
     def settle_calibrate(
-        self, vector=(0.1, 0.1), size=None, times=None, settle_time_s=1
+        self, vector=(.005, .005), size=None, times=None, settle_time_s=1
     ):
         """
         Approximates the :math:`1/e` settle time of the SLM.
         This is done by successively removing and applying a blaze to the SLM,
         measuring the intensity at the first order spot versus time delay.
-
+        
         **(This feature is experimental.)**
 
         Parameters
@@ -398,14 +398,14 @@ class FourierSLM(CameraSLM):
         """
         # Parse vector.
         point = self.kxyslm_to_ijcam(vector)
-        blaze = toolbox.blaze(grid=self.slm, vector=vector)
+        blaze = toolbox.phase.blaze(grid=self.slm, vector=vector)
 
         # Parse size.
         if size is None:
             size = 16 * toolbox.convert_radius(
                 self.slm.get_spot_radius_kxy(),
                 to_units="ij",
-                slm=self
+                hardware=self
             )
         size = int(size)
 
@@ -423,14 +423,21 @@ class FourierSLM(CameraSLM):
 
         results = []
 
+        verbose = True
+        iterations = times
+        if verbose:
+            iterations = tqdm(times)
+
         # Collect data
-        for t in times:
+        for t in iterations:
+            self.cam.flush()
+
             # Reset the pattern and wait for it to settle
-            self.slm.write(None, settle=False)
+            self.slm.write(None, settle=False, phase_correct=False)
             time.sleep(settle_time_s)
 
             # Turn on the pattern and wait for time t
-            self.slm.write(blaze, settle=False)
+            self.slm.write(blaze, settle=False, phase_correct=False)
             time.sleep(t)
 
             image = self.cam.get_image()
@@ -438,7 +445,7 @@ class FourierSLM(CameraSLM):
 
         self.calibrations["settle"] = {
             "times" : times,
-            "data" : results
+            "data" : np.array(results)
         }
         self.calibrations["settle"].update(self._get_calibration_metadata())
 
@@ -465,68 +472,46 @@ class FourierSLM(CameraSLM):
         results = self.calibrations["settle"]["data"]
 
         if plot:
-            plt.plot(times, np.squeeze(results), "k*")
+            plt.plot(times, np.squeeze(results), "k.")
             plt.ylabel("Signal [a.u.]")
             plt.xlabel("Time [sec]")
             plt.show()
 
-        times_clean = []
-        results_clean = []
-
-        # TODO: Fit to step + exp instead.
-
-        # Index of first non-null value
-        exp_start = -1
-
-        # Number of consecutive non-null values for considering that the transient has started
-        to_check = 3
-
-        # Remove outliers
-        for i in range(len(results)):
-            # Check n consecutive elements, if they are non-null consider them valid from the previous one
-            if exp_start == -1 and i + to_check < len(results):
-                all_valid = True
-                for j in range(to_check):   # Check the following numbers
-                    if results[i+j] == 0:
-                        all_valid = False
-                if all_valid == True:       # Found n consecutive non-null elements
-                    if i == 0:              # Add the previous element to the results cleaned
-                        exp_start = 0
-                    else:
-                        exp_start = i-1
-                        results_clean.append(results[exp_start])
-                        times_clean.append(times[exp_start])
-                    results_clean.append(results[i])
-                    times_clean.append(times[i])
-            else:
-                if results[i] != 0:         # Remove zeros given by camera errors
-                    results_clean.append(results[i])
-                    times_clean.append(times[i])
-
-        # Save communication delay, time tag before start of the transient
-        com_time = times[exp_start]
-
         # Function to interpolate
-        def exponential(x, a, b, c):
-            return c - a*np.exp(b*x)
+        def exponential_jump(x, x0, a, b, c):
+            return (c - a*np.exp(-(x-x0) / b)) * np.heaviside(x - x0, 0)
+
+        guess = (np.max(times)/2, np.max(results), np.max(times), np.max(results))
 
         # Fit the date with the function
-        params, _ = optimize.curve_fit(exponential, times_clean, results_clean, maxfev = 10000)
-        a, b, c = params
+        params, _ = optimize.curve_fit(
+            exponential_jump, 
+            times, 
+            results,
+            p0=guess,
+            maxfev=10000
+        )
+        x0, a, b, c = params
+        print(params)
 
-        set_time = -1/b
+        relax_time = b
+        com_time = x0
+        settle_time = com_time + relax_time*4
 
         # Evaluate the fitting function in the interval
-        x_interp = np.linspace(min(times_clean), max(times_clean), 100)
-        y_interp = exponential(x_interp, a, b, c)
+        x_interp = np.linspace(min(times), max(times), 100)
+        g_interp = exponential_jump(x_interp, *guess)
+        y_interp = exponential_jump(x_interp, *params)
 
         if plot:
             title = (
                 f"Communication time: {int((1e3*com_time))} ms\n"
-                f"Settle time: {int((1e3*set_time))} ms"
+                f"$1/e$ Relaxation time: {int((1e3*relax_time))} ms\n"
+                f"Suggested $1/e^4$ Settle time: {int((1e3*settle_time))} ms"
             )
+            # plt.plot(x_interp, g_interp, "--", linewidth=1, color='g', alpha=.5, label='interpolation')
             plt.plot(x_interp, y_interp, "--", linewidth=2, color='red', label='interpolation')
-            plt.plot(times, results, "k*", markersize=7, label='capta')
+            plt.plot(times, results, "k.", markersize=7, label='capta')
             plt.xlabel("Time [sec]")
             plt.ylabel("Signal [a.u.]")
             plt.title(title)
@@ -534,7 +519,8 @@ class FourierSLM(CameraSLM):
 
         # Update dictionary with results. FUTURE: Return error bars?
         processed = {
-            "settle_time" : set_time,
+            "settle_time" : settle_time,
+            "relax_time" : relax_time,
             "communication_time" : com_time
         }
         self.calibrations["settle"].update(processed)
@@ -1629,8 +1615,8 @@ class FourierSLM(CameraSLM):
         lim = np.max(np.abs(aberration))
 
         plt.scatter(
-            calibration_points_ij[0, :],
-            calibration_points_ij[1, :],
+            calibration_points_ij[0, :], 
+            calibration_points_ij[1, :], 
             c=aberration,
             cmap="seismic"
         )
@@ -2967,7 +2953,7 @@ class FourierSLM(CameraSLM):
                 return format_2vectors(
                     np.stack((index % slm_supershape[1], index // slm_supershape[1]), axis=0)
                 )
-
+            
             reference_superpixel = index2coord(data["reference_superpixels"][index])
 
             correction_dict = {
@@ -3387,6 +3373,4 @@ class FourierSLM(CameraSLM):
         plt.show()
 
 
-# The arguments for fourier_calibration_build are the same as build_affine,
-# As the one is effectively as wrapper for the other.
 FourierSLM.fourier_calibration_build.__doc__ = SimulatedCamera.build_affine.__doc__

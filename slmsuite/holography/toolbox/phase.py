@@ -187,7 +187,7 @@ def binary(grid, vector=(0, 0), shift=0, a=np.pi, b=0, duty_cycle=.5):
     # If we have not set result, then we have to use the slow np.mod option.
     if result is None:
         result = np.where(
-            np.mod(blaze(grid, vector, shift), 2*np.pi) < (2 * np.pi * duty_cycle),
+            np.mod(blaze(grid, vector) + shift, 2*np.pi) < (2 * np.pi * duty_cycle),
             b,
             a,
         )

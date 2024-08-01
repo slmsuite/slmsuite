@@ -210,7 +210,7 @@ class FourierSLM(CameraSLM):
     """
 
     def __init__(self, *args, **kwargs):
-        # """See :attr:`CameraSLM.__init__`."""
+        r"""See :meth:`CameraSLM.__init__`."""
         super().__init__(*args, **kwargs)
 
         # Size of the calibration point window relative to the spot radius.
@@ -378,7 +378,7 @@ class FourierSLM(CameraSLM):
         Approximates the :math:`1/e` settle time of the SLM.
         This is done by successively removing and applying a blaze to the SLM,
         measuring the intensity at the first order spot versus time delay.
-        
+
         **(This feature is experimental.)**
 
         Parameters
@@ -485,8 +485,8 @@ class FourierSLM(CameraSLM):
 
         # Fit the date with the function
         params, _ = optimize.curve_fit(
-            exponential_jump, 
-            times, 
+            exponential_jump,
+            times,
             results,
             p0=guess,
             maxfev=10000
@@ -1617,8 +1617,8 @@ class FourierSLM(CameraSLM):
         lim = np.max(np.abs(aberration))
 
         plt.scatter(
-            calibration_points_ij[0, :], 
-            calibration_points_ij[1, :], 
+            calibration_points_ij[0, :],
+            calibration_points_ij[1, :],
             c=aberration,
             cmap="seismic"
         )
@@ -2955,7 +2955,7 @@ class FourierSLM(CameraSLM):
                 return format_2vectors(
                     np.stack((index % slm_supershape[1], index // slm_supershape[1]), axis=0)
                 )
-            
+
             reference_superpixel = index2coord(data["reference_superpixels"][index])
 
             correction_dict = {

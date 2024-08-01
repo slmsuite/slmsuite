@@ -223,7 +223,7 @@ def setup(app):
         for path_object in tree_response["tree"]:
             path_str = path_object["path"]
             if path_str[0:9] == "examples/" and ((path_str[-6:] == ".ipynb") or (path_str[-4:] == ".gif")):
-                print("Downloading ", path_str)
+                print("Downloading", path_str)
                 file_name = path_str[9:]
                 file_url = (
                     "https://api.github.com/repos/{}/{}/git/blobs/{}"

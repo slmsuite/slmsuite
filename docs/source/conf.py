@@ -215,8 +215,7 @@ def setup(app):
 
     # Download example notebooks.
     # NOTE: GitHub API only supports downloading files up to 100 MB.
-    # try:
-    if True:
+    try:
         os.makedirs(examples_path, exist_ok=True)
         os.makedirs(images_path, exist_ok=True)
         tree_url = (
@@ -245,25 +244,12 @@ def setup(app):
                     with open(file_path, "w", encoding='utf8') as file_:
                         file_.write(file_str)
                 else:
-                    print(file_url)
-                    print(file_url2)
-
                     file_path = os.path.join(examples_path, file_name)
                     with open(file_path, "wb") as file_:
                         file_.write(requests.get(file_url2).content)
 
-
-                    # r = requests.get(file_url2, stream=True)
-                    # if r.status_code == 200:
-                    #     with open(file_path, 'wb') as file_:
-                    #         r.raw.decode_content = True
-                    #         shutil.copyfileobj(r.raw, file_)
-
                     image_path = os.path.join(images_path, file_name)
-
-                    print(image_path)
-
                     shutil.copy(file_path, image_path)
-    # except BaseException as e:
-    #     print("WARNING: Unable to download example notebooks. "
-    #           "Building without examples. Error:\n{}".format(e))
+    except BaseException as e:
+        print("WARNING: Unable to download example notebooks. "
+              "Building without examples. Error:\n{}".format(e))

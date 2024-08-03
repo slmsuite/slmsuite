@@ -54,7 +54,7 @@ class Meadowlark(SLM):
             Important
             ~~~~~~~~~
             If the installation is not in the default folder,
-            then this path needs to be corrected from the default.
+            then this path needs to be corrected.
         lut_path : str OR None
             Passed to :meth:`load_lut`. Looks for the voltage 'look-up table' data
             which is necessary to run the SLM.
@@ -157,8 +157,8 @@ class Meadowlark(SLM):
 
             -   If this is a .lut file, then this file is loaded to the SLM.
             -   If this is a directory, then searches all files inside the
-                directory, and loads either the alphabetically first .lut file,
-                or if possible the alphabetically first .lut file starting with ``"slm"``
+                directory, and loads either the alphabetically-first .lut file
+                or if possible the alphabetically-first .lut file starting with ``"slm"``
                 which is more likely to correspond to the LUT customized to an SLM,
                 as Meadowlark sends such files prefixed by
                 ``"slm"`` such as ``"slm5758_at532.lut"``.

@@ -1,5 +1,5 @@
 """
-An SLM mirrored onto a display, using the :mod:`pyglet` library.
+Projects data onto the SLM's virtual display, using the :mod:`pyglet` library.
 """
 import os
 import ctypes

@@ -10,11 +10,11 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 
-# import shutil
 import base64
 import os
 import sys
 import inspect
+import shutil
 
 import requests
 
@@ -200,7 +200,10 @@ examples_repo_owner = "slmsuite"
 examples_repo_name = "slmsuite-examples"
 # relative to this directory
 examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_examples")
-images_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_images")
+images_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../_build/html/_images")
+
+# print(html_static_path)
+# html_static_path = [examples_path, images_path]
 
 def setup(app):
     app.connect("autodoc-skip-member", skip)
@@ -212,7 +215,8 @@ def setup(app):
 
     # Download example notebooks.
     # NOTE: GitHub API only supports downloading files up to 100 MB.
-    try:
+    # try:
+    if True:
         os.makedirs(examples_path, exist_ok=True)
         os.makedirs(images_path, exist_ok=True)
         tree_url = (
@@ -229,6 +233,10 @@ def setup(app):
                     "https://api.github.com/repos/{}/{}/git/blobs/{}"
                     "".format(examples_repo_owner, examples_repo_name, path_object["sha"])
                 )
+                file_url2 = (
+                    "https://github.com/{}/{}/blob/main/{}?raw=true"
+                    "".format(examples_repo_owner, examples_repo_name, path_str)
+                )
                 if path_str[-6:] == ".ipynb":
                     file_path = os.path.join(examples_path, file_name)
                     file_response = requests.get(file_url).json()
@@ -237,12 +245,25 @@ def setup(app):
                     with open(file_path, "w", encoding='utf8') as file_:
                         file_.write(file_str)
                 else:
-                    file_path = os.path.join(images_path, file_name)
-                    with open(file_path, "wb") as file_:
-                        file_.write(requests.get(file_url).content)
+                    print(file_url)
+                    print(file_url2)
+
                     file_path = os.path.join(examples_path, file_name)
                     with open(file_path, "wb") as file_:
-                        file_.write(requests.get(file_url).content)
-    except BaseException as e:
-        print("WARNING: Unable to download example notebooks. "
-              "Building without examples. Error:\n{}".format(e))
+                        file_.write(requests.get(file_url2).content)
+
+
+                    # r = requests.get(file_url2, stream=True)
+                    # if r.status_code == 200:
+                    #     with open(file_path, 'wb') as file_:
+                    #         r.raw.decode_content = True
+                    #         shutil.copyfileobj(r.raw, file_)
+
+                    image_path = os.path.join(images_path, file_name)
+
+                    print(image_path)
+
+                    shutil.copy(file_path, image_path)
+    # except BaseException as e:
+    #     print("WARNING: Unable to download example notebooks. "
+    #           "Building without examples. Error:\n{}".format(e))

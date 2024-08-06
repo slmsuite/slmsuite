@@ -1,0 +1,3 @@
+"""
+Use :class:`screenmirrored`.
+"""

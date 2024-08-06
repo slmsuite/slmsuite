@@ -1681,3 +1681,25 @@ def matheui_gaussian(grid, r, q, w=None):
 
     raise NotImplementedError()
 
+
+def airy(grid, f=(np.inf, np.inf)):
+    """
+    **(NotImplemented)** Returns the cubic phase farfield for an
+    `Airy <http://dx.doi.org/10.1103/PhysRevLett.99.213901>`_ beam.
+
+    Maybe also
+    `parabolic <https://doi.org/10.1117/12.826193>`_,
+    `symmetric Airy <http://dx.doi.org/10.1364/OL.39.002370>`_,
+    or
+    `circular symmetric Airy <https://doi.org/10.1016/j.optcom.2020.126190>`_
+    beams.
+
+    Returns
+    -------
+    numpy.ndarray
+        The phase for this function.
+    """
+    (x_grid, y_grid) = _process_grid(grid)
+    w = _determine_source_radius(grid, w)
+
+    raise NotImplementedError()

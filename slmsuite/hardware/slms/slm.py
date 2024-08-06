@@ -169,13 +169,13 @@ class SLM:
 
         # Decide dtype
         if self.bitdepth <= 8:
-            dtype = np.uint8
+            self.dtype = np.uint8
         else:
-            dtype = np.uint16
+            self.dtype = np.uint16
 
         # Display caches for user reference.
         self.phase = np.zeros(self.shape)
-        self.display = np.zeros(self.shape, dtype=dtype)
+        self.display = np.zeros(self.shape, dtype=self.dtype)
 
     def close(self):
         """Abstract method to close the SLM and delete related objects."""

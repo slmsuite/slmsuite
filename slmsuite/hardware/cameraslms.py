@@ -9,14 +9,14 @@ import cv2
 import copy
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy import optimize
+from scipy import optimize, ndimage
 from tqdm.auto import tqdm
 import warnings
 
 from slmsuite import __version__
 from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
-from slmsuite.holography.algorithms import SpotHologram, CompressedSpotHologram
+from slmsuite.holography.algorithms import Hologram, SpotHologram, CompressedSpotHologram
 from slmsuite.holography.toolbox import imprint, format_2vectors, format_vectors, smallest_distance, fit_3pt, convert_vector
 from slmsuite.holography.toolbox.phase import blaze, _zernike_indices_parse, zernike, binary
 from slmsuite.holography.analysis.files import read_h5, write_h5, generate_path, latest_path
@@ -579,8 +579,10 @@ class FourierSLM(CameraSLM):
             If an integer is passed, the integer is rounded to the next largest power of
             two, and this number of bitlevels are sampled.
         periods : int OR array_like of int
-            Periods (in pixels) of the binary gratings that we will apply.
+            List of periods (in pixels) of the binary gratings that we will apply.
             Must be even integers.
+            If a single ``int`` is provided, then a list containing the given number of 
+            periods is chosen, based upon the field of view of the camera.
         orders : int OR array_like of int
             Orders (..., -1st, 0th, 1st, ...) of the binary gratings to measure data at.
             If scalar is provided, measures orders between -nth and nth order, inclusive.
@@ -604,13 +606,19 @@ class FourierSLM(CameraSLM):
                 levels = self.slm.bitresolution
 
             levels = np.arange(levels) * (self.slm.bitresolution / levels)
-        levels = np.mod(levels, self.slm.bitresolution).astype(self.slm.dtype)
+        levels = np.mod(levels, self.slm.bitresolution).astype(self.slm.display.dtype)
         N = len(levels)
 
         # Parse periods by forcing integer.
-        periods = periods.astype(int)
+        if np.isscalar(periods):
+            raise NotImplementedError("TODO")
+
+        periods = np.array(periods).astype(int)
         periods = 2 * (periods // 2)
         P = len(periods)
+
+        if len(np.unique(periods)) != len(periods):
+            raise RuntimeError(f"Repeated periods in {periods}")
 
         if np.any(periods <= 0):
             raise ValueError("period should not be negative.")
@@ -621,6 +629,9 @@ class FourierSLM(CameraSLM):
             orders = np.arange(-orders, orders+1)
         orders = orders.astype(int)
         M = len(orders)
+        
+        if not 1 in orders:
+            raise ValueError("1st order must be included.")
 
         # Figure out our shape.
         shape = (2, P, N, N, M)
@@ -638,15 +649,15 @@ class FourierSLM(CameraSLM):
 
         # Make the y-pointing field vector, then the x-pointing field vector.
         field_freq = np.zeros((2, 2))
-        field_freq[0, 0] = field_freq[1, 1] = np.reciprocal(field_period.astype(float))
+        field_freq[0, 0] = field_freq[1, 1] = 1 / float(field_period)
         field_kxy = toolbox.convert_vector(
             field_freq,
             from_units="freq",
             to_units="norm",
             hardware=self
         )
-        field_hi = self.slm.dtype(self.slm.bitresolution / 2)
-        field_lo = self.slm.dtype(0)
+        field_values = np.array([self.slm.bitresolution / 2, 0]).astype(self.slm.display.dtype)
+        field_hi, field_lo = field_values
 
         field_ij = toolbox.convert_vector(
             field_freq,
@@ -675,12 +686,16 @@ class FourierSLM(CameraSLM):
         if False:
             warnings.warn("FUTURE")
 
+        # if True: iterations = tqdm(range(P*(N-1)*N))
+        if True: iterations = tqdm(range(2*P*N*N))
+
         # Big sweep.
         for i in [0,1]:                                         # Direction
             prange = np.arange(P) + i*P
             for j in range(P):                                  # Period
                 for k in range(N):                              # Upper triangular gray level selection.
-                    for l in range(k, N):                       # Periodic normalization when equal.
+                    for l in range(N):                          # Periodic normalization when equal.
+                    # for l in range(k, N):                       # Periodic normalization when equal.
                         if window is None:
                             phase = binary(
                                 self.slm,
@@ -709,14 +724,18 @@ class FourierSLM(CameraSLM):
 
                         # We're writing integers, so this goes directly to the SLM,
                         # bypassing phase2gray.
-                        self.slm.write(phase, phase_calibrate=False, settle=True)
+                        self.slm.write(phase, phase_correct=False, settle=True)
 
-                        data[i,j,k,l,:] = data[i,j,l,k,:] = analysis.take(
+                        data[i,j,k,l,:] = analysis.take(    # = data[i,j,l,k,:] 
                             images=self.cam.get_image(),
                             vectors=order_ij[prange[j]],
                             size=integration_size,
                             integrate=True,
                         ).astype(float)
+
+                        if True: iterations.update()
+
+        if True: iterations.close()
 
         # Assemble the return dictionary.
         self.calibrations["pixel"] = {
@@ -728,7 +747,7 @@ class FourierSLM(CameraSLM):
         self.calibrations["pixel"].update(self._get_calibration_metadata())
 
         # Process by default because we currently don't have any arguments.
-        self.pixel_calibration_process()
+        # self.pixel_calibration_process()
 
         return self.calibrations["pixel"]
 
@@ -738,16 +757,81 @@ class FourierSLM(CameraSLM):
         In the future, the measurements will be fit in a way that can be applied to
         propagation.
         """
-        periods = self.calibrations["pixel"]["periods"]
-        orders = self.calibrations["pixel"]["orders"]
-        data = self.calibrations["pixel"]["data"]
+        cal = self.calibrations["pixel"]
+        periods = cal["periods"]
+        orders = cal["orders"]
+        levels = cal["levels"]
+        data = cal["data"]
 
-        for i, direction in enumerate(["x", "y"]):
-            for j, period in enumerate(periods):
+        first_order = np.arange(len(orders))[orders == 1][0]
+
+        rolled = data.copy()
+
+        # rolled /= rolled[:,:,:,:,[first_order]]
+
+        # for i in range(1, len(levels)):
+        #     # print(rolled[:,:,[i],:,:].shape)
+        #     rolled[:,:,[i],:,:] = np.roll(rolled[:,:,[i],:,:], -i, axis=3)
+
+        for i, direction in enumerate(["x"]): #, "y"]):
+            for j, period in enumerate(periods[[0]]):
                 for o, order in enumerate(orders):
-                    plt.imshow(data[i,j,:,:,o])
+                    plt.imshow(rolled[i,j,:,:,o], vmin=0)
                     plt.title(f"{period}-pixel, ${direction}$ grating; measuring order {order}")
+                    # plt.clim(0,1)
                     plt.show()
+
+    @staticmethod
+    def pixel_kernel(x, a1_pix=.1, a2_pix=.1, n1=1, n2=1):
+        r"""
+        Blurring kernel
+
+        .. math:: K(x) =    \left\{
+                                \begin{array}{ll}
+                                    \exp\left(-\left|\frac{x}{\alpha_1}\right|^{n_1}\right), & x < 0, \\
+                                    \exp\left(-\left|\frac{x}{\alpha_2}\right|^{n_2}\right), & x \ge 0.
+                                \end{array}
+                            \right.
+        """
+        kernel = np.where(
+            x >= 0,
+            np.exp(-np.power(np.abs(x) / a1_pix, n1)),
+            np.exp(-np.power(np.abs(x) / a2_pix, n2)),
+        )
+        kernel[len(kernel) // 2] = 1
+        kernel /= np.sum(kernel)
+
+        return kernel
+
+    def pixel_calibrate_simulate(self, period=16, supersample=16, **kwargs):
+        N = int(period * supersample)
+
+        x = np.linspace(-supersample, supersample, N)
+        x -= np.mean(x)
+
+        y = np.zeros_like(x)
+        y[x < 0] = 1
+
+        plt.plot(x, y)
+
+        x2 = np.linspace(-supersample, supersample, N-1)
+        x2 -= np.mean(x2)
+        K = FourierSLM.pixel_kernel(x2, **kwargs)
+
+        y = ndimage.convolve1d(y, K, mode="wrap")
+
+        plt.plot(x, y)
+
+        plt.show()
+
+        kx = np.arange(float(N))
+        kx -= np.mean(kx)
+
+        Y = np.fft.fftshift(np.fft.fft(np.exp(1j * np.pi * y)))
+
+        plt.plot(kx, np.square(np.abs(Y)))
+        plt.xlim(-10, 10)
+        plt.show()
 
     ### Fourier Calibration ###
 

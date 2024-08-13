@@ -2,6 +2,7 @@
 Repository of common analytic phase patterns.
 """
 import os
+import warnings
 import time
 import numpy as np
 try:
@@ -17,14 +18,17 @@ from slmsuite.holography.toolbox import _process_grid
 
 # Load CUDA code. This is used for cupy.RawKernels in this file and elsewhere.
 
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuda.cu"), 'r') as file:
-    CUDA_KERNELS = file.read()
-
 def _load_cuda():
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuda.cu"), 'r') as file:
         CUDA_KERNELS = file.read()
 
     return CUDA_KERNELS
+
+try:
+    CUDA_KERNELS = _load_cuda()
+except:
+    warnings.warn("Unable to load toolbox/cuda.cu; cannot use custom GPU kernels.")
+    CUDA_KERNELS = None
 
 # Basic gratings.
 

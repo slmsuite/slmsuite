@@ -1383,6 +1383,9 @@ def _process_grid(grid):
     (array_like, array_like)
         The grids in ``(x_grid, y_grid)`` form.
     """
+    # Check if it's a cameraSLM, then default to the SLM.
+    if hasattr(grid, "slm"):
+        grid = grid.slm
 
     # See if grid is an object with grid fields.
     if hasattr(grid, "grid"):

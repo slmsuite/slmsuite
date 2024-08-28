@@ -1010,6 +1010,49 @@ def zernike_pyramid_plot(
         a.set_position(box)
 
 
+def _zernike_overlap(
+    grid, indices, aperture=None, use_mask=True
+):
+    r"""
+    **(Incomplete)**
+
+    Computes the overlaps
+
+    .. math::
+        O_{ij} = \iint dy \, dx \,\, |w(\vec{x})|^2 \cdot
+        \exp\left( i \left[Z_{I_i}(\vec{x}) - Z_{I_j}(\vec{x})\right] \right).
+    """
+    if len(indices) == 0:
+        return [[]]
+    if len(indices) == 1:
+        return [[1]]
+
+    (x_grid, y_grid) = _process_grid(grid)
+
+    # Check if it's a cameraSLM, then default to the SLM.
+    if not hasattr(grid, "source") and hasattr(grid, "slm"):
+        grid = grid.slm
+
+    if hasattr(grid, "source") and "amplitude" in grid.source:
+        source = grid.source["amplitude"]
+    else:
+        source = np.ones_like(x_grid)
+
+
+    result = np.diag(len(indices))
+
+    functions = zernike_sum(
+        grid=grid,
+        indices=indices,
+        weights=result,
+        aperture=aperture,
+        use_mask=use_mask,
+    )
+
+    functions = source.reshape() * np.exp(1j * functions)
+
+    return result
+
 def _zernike_cache_plot():
     plt.figure(figsize=(10,10))
     plt.imshow(np.log2(_zernike_cache_vectorized))

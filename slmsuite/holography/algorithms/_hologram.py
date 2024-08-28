@@ -1668,8 +1668,10 @@ class Hologram(_HologramStats):
             # and then passes these values to the current ``loss`` function.
             result = self._cg_loss(phase_torch)
 
+            self.flags["loss_result"] = float(result.detach())
+
             if hasattr(iterations, "set_description"):
-                iterations.set_description("loss="+str(float(result.detach())))
+                iterations.set_description("loss="+str(self.flags["loss_result"]))
 
             # (A.2) Compute the gradients of the phase pattern with respect to loss.
             result.backward(retain_graph=True)
@@ -1705,7 +1707,7 @@ class Hologram(_HologramStats):
         # Parse loss.
         loss = self.flags["loss"]
         if loss is None:
-            loss = ComplexMSELoss()
+            loss = self.flags["loss"] = ComplexMSELoss()
 
         # Evaluate loss depending on the feedback mechanism.
         feedback = self.flags["feedback"]

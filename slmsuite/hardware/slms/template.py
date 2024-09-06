@@ -64,8 +64,8 @@ class Template(SLM):
             **kwargs
         )
 
-        # Zero the display using the superclass `write()` function.
-        self.write(None)
+        # Zero the display using the superclass `set_phase()` function.
+        self.set_phase(None)
 
     @staticmethod
     def info(verbose=True):
@@ -87,11 +87,11 @@ class Template(SLM):
         serial_list = get_serial_list()     # TODO: Fill in proper function.
         return serial_list
 
-    def _write_hw(self, phase):
+    def _set_phase_hw(self, phase):
         """
-        Low-level hardware interface to write ``phase`` data onto the SLM.
+        Low-level hardware interface to set_phase ``phase`` data onto the SLM.
         When the user calls the :meth:`.SLM.write` method of
         :class:`.SLM`, ``phase`` is error checked before calling
-        :meth:`_write_hw()`. See :meth:`.SLM._write_hw` for further detail.
+        :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
         """
         # TODO: Insert code here to write raw phase data to the SLM.

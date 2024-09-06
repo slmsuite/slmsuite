@@ -90,8 +90,8 @@ class Holoeye(SLM):
             **kwargs
         )
 
-        # Zero the display using the superclass `write()` function.
-        self.write(None)
+        # Zero the display using the superclass `set_phase()` function.
+        self.set_phase(None)
 
     def _handle_error(self, error):
         if error != slmdisplaysdk.ErrorCode.NoError:
@@ -117,12 +117,12 @@ class Holoeye(SLM):
         serial_list = get_serial_list()     # TODO: Fill in proper function.
         return serial_list
 
-    def _write_hw(self, phase):
+    def _set_phase_hw(self, phase):
         """
-        Low-level hardware interface to write ``phase`` data onto the SLM.
-        When the user calls the :meth:`.SLM.write` method of
+        Low-level hardware interface to set_phase ``phase`` data onto the SLM.
+        When the user calls the :meth:`.SLM.set_phase` method of
         :class:`.SLM`, ``phase`` is error checked before calling
-        :meth:`_write_hw()`. See :meth:`.SLM._write_hw` for further detail.
+        :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
         """
         error = self.slm_lib.showData(phase, self.flags)
         self._handle_error(error)

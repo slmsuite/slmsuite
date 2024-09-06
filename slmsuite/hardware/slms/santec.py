@@ -92,7 +92,7 @@ class Santec(SLM):
         Santec SLMs can reconfigure their phase table: the correspondence between
         grayscale values and applied voltages. This is configured based upon the wavelength
         supplied to :attr:`.SLM.wav_design_um`. This allows :attr:`.SLM.phase_scaling`
-        to be one if desired, and make use of optimized routines (see :meth`.write()`).
+        to be one if desired, and make use of optimized routines (see :meth`.set_phase()`).
         However, sometimes setting the phase table runs into issues, where the maximum value
         doesn't correspond to exactly :math:`2\pi` at the target wavelength. This is noted
         in the initialization, and the user should update :attr:`.SLM.wav_design_um` or otherwise
@@ -227,7 +227,7 @@ class Santec(SLM):
                 )
                 if wav_um / wav_design_fixed_um != 1:
                     print(
-                        "    This results in phase_scaling={0:.4f} != 1, which has negative speed implications (see .write()).".format(
+                        "    This results in phase_scaling={0:.4f} != 1, which has negative speed implications (see .set_phase()).".format(
                             wav_um / wav_design_fixed_um
                         )
                     )
@@ -291,7 +291,7 @@ class Santec(SLM):
                 **kwargs,
             )
 
-            self.write(None)
+            self.set_phase(None)
         except Exception as init_error:
             try:
                 Santec._parse_status(slm_funcs.SLM_Ctrl_Close(self.slm_number))
@@ -411,8 +411,8 @@ class Santec(SLM):
         slm_funcs.SLM_Disp_Close(self.display_number)
         slm_funcs.SLM_Ctrl_Close(self.slm_number)
 
-    def _write_hw(self, phase):
-        """See :meth:`.SLM._write_hw`."""
+    def _set_phase_hw(self, phase):
+        """See :meth:`.SLM._set_phase_hw`."""
         matrix = phase.astype(slm_funcs.USHORT)
         n_h, n_w = self.shape
 
@@ -630,6 +630,6 @@ class Santec(SLM):
     #     return (start.value, end.value)
 
     # def write_memory(self, phase):
-    #     # Needs to be combined with write(), probably.
+    #     # Needs to be combined with set_phase(), probably.
     #     slm_funcs.SLM_Ctrl_WriteMI()
     #     raise NotImplementedError()

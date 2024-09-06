@@ -117,7 +117,7 @@ class ScreenMirrored(SLM):
         ``wav_um=.780`` and ``wav_design_um=1.064``,
         thus causing the SLM to use only a fraction (780/1064)
         of the full dynamic range. Be sure these values are correct.
-        Note that there are some performance losses from using this modality (see :meth:`.write()`).
+        Note that there are some performance losses from using this modality (see :meth:`.set_phase()`).
 
         Caution
         ~~~~~~~
@@ -248,7 +248,7 @@ class ScreenMirrored(SLM):
             gl.glFlush()
 
             # Write nothing.
-            self.write(phase=None)
+            self.set_phase(phase=None)
         except:
             # If we failed, try to clean up before erroring.
             try:
@@ -267,7 +267,7 @@ class ScreenMirrored(SLM):
                 "design wavelength {} um".format(self.wav_um, self.wav_design_um)
             )
 
-    def _write_hw(self, data):
+    def _set_phase_hw(self, data):
         """Writes to screen. See :class:`.SLM`."""
         # Write to buffer (self.buffer is the same as self.cbuffer).
         # Unfortunately, OpenGL needs the data copied three times.

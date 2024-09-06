@@ -253,7 +253,7 @@ class FeedbackHologram(Hologram):
         """
         if self.img_ij is None and (basis == "knm" or basis == "ij"):
             # Apply the pattern to the SLM at the desired depth (implemented by propagation_kernel)
-            self.cameraslm.slm.write(self.get_phase(include_propagation=True), settle=True)
+            self.cameraslm.slm.set_phase(self.get_phase(include_propagation=True), settle=True)
 
             # Measure the result.
             self.cameraslm.cam.flush()

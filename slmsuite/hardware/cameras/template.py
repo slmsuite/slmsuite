@@ -126,7 +126,7 @@ class Template(Camera):
         raise NotImplementedError()
         # The core method: grabs an image from the camera.
         # Note: the camera superclass' get_image function performs follow-on processing
-        # (similar to how the SLM superclass' write method pairs with _write_hw methods
+        # (similar to how the SLM superclass' set_phase method pairs with _set_phase_hw methods
         # for each subclass) -- frame averaging, transformations, and so on -- so this
         # method should be limited to camera-interface specific functions.
         return self.cam.get_image_function()     # TODO: Fill in proper function.

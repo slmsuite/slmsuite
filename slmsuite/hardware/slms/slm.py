@@ -56,7 +56,7 @@ class SLM:
     settle_time_s : float
         Delay in seconds to allow the SLM to settle. This is mostly useful for applications
         requiring high precision. This delay is applied if the user flags ``settle``
-        in :meth:`write()`. Defaults to .3 sec for precision.
+        in :meth:`set_phase()`. Defaults to .3 sec for precision.
     pitch_um : (float, float)
         Pixel pitch in microns.
     pitch : float
@@ -226,7 +226,7 @@ class SLM:
             :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]`,
             the vendor-provided phase correction.
         """
-        # Load an invert the image file (see phase sign convention rules in write).
+        # Load an invert the image file (see phase sign convention rules in set_phase).
         phase_correction = self.bitresolution - 1 - np.array(Image.open(file_path), dtype=float)
 
         if phase_correction.ndim != 2:
@@ -328,19 +328,33 @@ class SLM:
 
     # Writing methods
 
-    def _write_hw(self, phase):
+    def write(
+        self,
+        phase,
+        phase_correct=True,
+        settle=False,
+    ):
+        "Backwards-compatibility alias for :meth:`set_phase()`."
+        warnings.warn(
+            "The backwards-compatible alias SLM.write will be depreciated "
+            "in favor of SLM.set_phase in a future release."
+        )
+
+        self.set_phase(phase, phase_correct, settle)
+
+    def _set_phase_hw(self, phase):
         """
         Abstract method to communicate with the SLM. Subclasses **should** overwrite this.
-        :meth:`write()` contains error checks and overhead, then calls :meth:`_write_hw()`.
+        :meth:`set_phase()` contains error checks and overhead, then calls :meth:`_set_phase_hw()`.
 
         Parameters
         ----------
         phase
-            See :meth:`write`.
+            See :meth:`set_phase`.
         """
         raise NotImplementedError()
 
-    def write(
+    def set_phase(
         self,
         phase,
         phase_correct=True,
@@ -349,12 +363,12 @@ class SLM:
         r"""
         Checks, cleans, and adds to data, then sends the data to the SLM and
         potentially waits for settle. This method calls the SLM-specific private method
-        :meth:`_write_hw()` which transfers the data to the SLM.
+        :meth:`_set_phase_hw()` which transfers the data to the SLM.
 
         Warning
         ~~~~~~~
         Subclasses implementing vendor-specific software *should not* overwrite this
-        method. Subclasses *should* overwrite :meth:`_write_hw()` instead.
+        method. Subclasses *should* overwrite :meth:`_set_phase_hw()` instead.
 
         Caution
         ~~~~~~~
@@ -370,7 +384,7 @@ class SLM:
         ~~~~~~~~~
         The user does not need to wrap (e.g. :mod:`numpy.mod(data, 2*numpy.pi)`) the passed phase data,
         unless they are pre-caching data for speed (see below).
-        :meth:`.write()` uses optimized routines to wrap the phase (see the
+        :meth:`.set_phase()` uses optimized routines to wrap the phase (see the
         private method :meth:`_phase2gray()`).
         Which routine is used depends on :attr:`phase_scaling`:
 
@@ -395,18 +409,21 @@ class SLM:
         After scale conversion, data is ``floor()`` ed to integers with ``np.copyto``, rather than
         rounded to the nearest integer (``np.rint()`` equivalent). While this is
         irrelevant for the average user, it may be significant in some cases.
-        If this behavior is undesired consider either: :meth:`write()` integer data
+        If this behavior is undesired consider either: :meth:`set_phase()` integer data
         directly or modifying the behavior of the private method :meth:`_phase2gray()` in
         a pull request. We have not been able to find an example of ``np.copyto``
         producing undesired behavior, but will change this if such behavior is found.
 
         Parameters
         ----------
-        phase : numpy.ndarray or None
+        phase : numpy.ndarray OR slmsuite.holography.algorithms.Hologram OR None
             Phase data to display in units of :math:`2\pi`,
             unless the passed data is of integer type and the data is applied directly.
 
-            -  If ``None`` is passed to :meth:`.write()`, data is zeroed.
+            -  If ``None`` is passed to :meth:`.set_phase()`, data is zeroed.
+            -  If a :class:`~slmsuite.holography.algorithms.Hologram` is passed,
+               the phase is grabbed from
+               :meth:`~slmsuite.holography.algorithms.Hologram.get_phase()`.
             -  If the array has a larger shape than the SLM shape, then the data is
                cropped to size in a centered manner
                (:attr:`~slmsuite.holography.toolbox.unpad`).
@@ -454,6 +471,10 @@ class SLM:
         else:
             # Make sure the array is an ndarray.
             phase = np.array(phase)
+
+        if hasattr(phase, "get_phase"):
+            # If we passed a hologram, grab the phase from there.
+            phase = phase.get_phase()
 
         if phase is not None and np.issubdtype(phase.dtype, np.integer):
             # Check the type.
@@ -505,7 +526,7 @@ class SLM:
                 self.display = self._phase2gray(self.phase, out=self.display)
 
         # Write!
-        self._write_hw(self.display)
+        self._set_phase_hw(self.display)
 
         # Optional delay.
         if settle:
@@ -517,7 +538,7 @@ class SLM:
         r"""
         Helper function to convert an array of phases (units of :math:`2\pi`) to an array of
         :attr:`~slmsuite.hardware.slms.slm.SLM.bitresolution` -scaled and -cropped integers.
-        This is used by :meth:`write()`. See special cases described in :meth:`write()`.
+        This is used by :meth:`set_phase()`. See special cases described in :meth:`set_phase()`.
 
         Parameters
         ----------
@@ -665,7 +686,7 @@ class SLM:
 
         data = read_h5(file_path)
 
-        self._write_hw(data["display"])
+        self._set_phase_hw(data["display"])
         self.display = data["display"]
         self.phase = data["phase"]
 

@@ -142,7 +142,7 @@ class Meadowlark(SLM):
                 "this has not been tested and might fail."
             )
 
-        self.write(None)
+        self.set_phase(None)
 
     def load_lut(self, lut_path=None):
         """
@@ -236,9 +236,9 @@ class Meadowlark(SLM):
         """
         self.slm_lib.Delete_SDK()
 
-    def _write_hw(self, display):
+    def _set_phase_hw(self, display):
         """
-        See :meth:`.SLM._write_hw`.
+        See :meth:`.SLM._set_phase_hw`.
         """
         self.slm_lib.Write_image(
             display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),

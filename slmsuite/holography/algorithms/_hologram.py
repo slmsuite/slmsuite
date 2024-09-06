@@ -785,7 +785,7 @@ class Hologram(_HologramStats):
         r"""
         Collects the current nearfield phase from the GPU with :meth:`cupy.ndarray.get()`.
         Also shifts the :math:`[-\pi, \pi]` range of :meth:`numpy.arctan2()` to :math:`[0, 2\pi]`
-        for faster writing to the SLM (see :meth:`~slmsuite.hardware.slms.slm.SLM.write()`).
+        for faster writing to the SLM (see :meth:`~slmsuite.hardware.slms.slm.SLM.set_phase()`).
 
         Parameters
         ----------

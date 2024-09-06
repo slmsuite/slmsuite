@@ -4,7 +4,6 @@ opencv-python
 matplotlib
 h5py
 tqdm
-# torch
 nbsphinx
 IPython
 docutils #<0.17
@@ -18,3 +17,4 @@ requests
 pandoc
 pydata-sphinx-theme
 sphinx_design
+

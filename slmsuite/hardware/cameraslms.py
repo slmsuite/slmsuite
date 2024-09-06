@@ -78,7 +78,7 @@ class CameraSLM:
             raise ValueError(f"Expected Camera to be passed as cam. Found {type(cam)}")
         self.cam = cam
 
-        if not hasattr(slm, "write"):
+        if not hasattr(slm, "set_phase"):
             raise ValueError(f"Expected SLM to be passed as slm. Found {type(slm)}")
         self.slm = slm
 
@@ -120,7 +120,7 @@ class CameraSLM:
         cbar : bool
             Also plot a colorbar.
         **kwargs
-            Passed to :meth:`write()`
+            Passed to :meth:`set_phase()`
 
         Returns
         -------
@@ -128,7 +128,7 @@ class CameraSLM:
             Axes of the plotted phase and image.
         """
         if image is None and phase is not None and np.shape(phase) == self.slm.shape:
-            self.slm.write(phase, **kwargs)
+            self.slm.set_phase(phase, **kwargs)
 
         if len(plt.get_fignums()) > 0:
             fig = plt.gcf()
@@ -433,11 +433,11 @@ class FourierSLM(CameraSLM):
             self.cam.flush()
 
             # Reset the pattern and wait for it to settle
-            self.slm.write(None, settle=False, phase_correct=False)
+            self.slm.set_phase(None, settle=False, phase_correct=False)
             time.sleep(settle_time_s)
 
             # Turn on the pattern and wait for time t
-            self.slm.write(blaze, settle=False, phase_correct=False)
+            self.slm.set_phase(blaze, settle=False, phase_correct=False)
             time.sleep(t)
 
             image = self.cam.get_image()
@@ -581,7 +581,7 @@ class FourierSLM(CameraSLM):
         periods : int OR array_like of int
             List of periods (in pixels) of the binary gratings that we will apply.
             Must be even integers.
-            If a single ``int`` is provided, then a list containing the given number of 
+            If a single ``int`` is provided, then a list containing the given number of
             periods is chosen, based upon the field of view of the camera.
         orders : int OR array_like of int
             Orders (..., -1st, 0th, 1st, ...) of the binary gratings to measure data at.
@@ -629,7 +629,7 @@ class FourierSLM(CameraSLM):
             orders = np.arange(-orders, orders+1)
         orders = orders.astype(int)
         M = len(orders)
-        
+
         if not 1 in orders:
             raise ValueError("1st order must be included.")
 
@@ -724,9 +724,9 @@ class FourierSLM(CameraSLM):
 
                         # We're writing integers, so this goes directly to the SLM,
                         # bypassing phase2gray.
-                        self.slm.write(phase, phase_correct=False, settle=True)
+                        self.slm.set_phase(phase, phase_correct=False, settle=True)
 
-                        data[i,j,k,l,:] = analysis.take(    # = data[i,j,l,k,:] 
+                        data[i,j,k,l,:] = analysis.take(    # = data[i,j,l,k,:]
                             images=self.cam.get_image(),
                             vectors=order_ij[prange[j]],
                             size=integration_size,
@@ -1032,7 +1032,7 @@ class FourierSLM(CameraSLM):
         # Optimize and project the hologram
         hologram.optimize(**kwargs)
 
-        self.slm.write(hologram.get_phase(), settle=True)
+        self.slm.set_phase(hologram.get_phase(), settle=True)
 
         return hologram
 
@@ -1456,7 +1456,7 @@ class FourierSLM(CameraSLM):
 
             for i, x in iterable:
                 phase = pattern + x * term
-                self.slm.write(phase, settle=True, phase_correct=False)
+                self.slm.set_phase(phase, settle=True, phase_correct=False)
                 this_result = np.array(callback())
 
                 if result is None:
@@ -1611,7 +1611,7 @@ class FourierSLM(CameraSLM):
             perturbation = np.linspace(-1, 1, 11, endpoint=True)
         elif np.isscalar(perturbation):
             if perturbation == 0:
-                self.slm.write(hologram.get_phase(), settle=True, phase_correct=False)
+                self.slm.set_phase(hologram.get_phase(), settle=True, phase_correct=False)
 
                 self.cam.flush()
                 img = self.cam.get_image()
@@ -2226,7 +2226,7 @@ class FourierSLM(CameraSLM):
                 plt.imshow(np.mod(matrix, 2 * np.pi), interpolation="none")
                 plt.show()
 
-            self.slm.write(matrix, settle=True)
+            self.slm.set_phase(matrix, settle=True)
             return self.cam.get_image()
 
         def fit_phase(phases, intensities, plot_fits=False):

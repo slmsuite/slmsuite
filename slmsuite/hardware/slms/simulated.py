@@ -56,9 +56,9 @@ class SimulatedSLM(SLM):
                 self.source["amplitude_sim"] = self.source["amplitude"]
                 self.source["phase_sim"] = -self.source["phase"]
 
-        self.write(None)
+        self.set_phase(None)
 
-    def _write_hw(self, phase):
+    def _set_phase_hw(self, phase):
         """Updates SLM.display to implement various physical artifacts of SLMs."""
 
         # FUTURE: apply physical effects directly to SLM.display

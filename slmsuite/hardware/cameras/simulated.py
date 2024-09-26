@@ -33,9 +33,9 @@ class SimulatedCamera(Camera):
     ~~~~
     For fastest simulation, initialize :class:`SimulatedCamera` with a
     :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM` *only*. Simulated camera images
-    will directly sample the (quickly) computed SLM far-field (`"knm"`) via a one-to-one
+    will directly sample the (quickly) computed SLM far-field (``"knm"``) via a one-to-one
     mapping instead of interpolating the SLM's far-field intensity at
-    each camera pixel location (i.e. `"knm"`->"ij" basis change),
+    each camera pixel location (i.e. ``"knm"``->``"ij"`` basis change),
     which may also require additional padding (computed automatically upon initialization) for
     sufficient resolution.
 
@@ -126,7 +126,7 @@ class SimulatedCamera(Camera):
 
     def set_affine(self, M=None, b=None, **kwargs):
         """
-        Set the camera's placement in the SLM's k-space. `M` and/or `b`, if provided,
+        Set the camera's placement in the SLM's k-space. ``M`` and/or ``b``, if provided,
         are used to transform the :class:`SimulatedCamera`'s ``"ij"`` grid to a ``"knm"`` grid
         for interpolation against the :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`'s
         ``"knm"`` grid. Keyword arguments, if provided, are passed to :meth:`.build_affine()`
@@ -227,7 +227,7 @@ class SimulatedCamera(Camera):
 
             -  ``"norm"``
                 Normalized focal length in wavelengths according to the SLM's
-                :attr:`slmsuite.hardware.slms.slm.SLM.wav_um`.
+                :attr:`~slmsuite.hardware.slms.slm.SLM.wav_um`.
                 This is the default unit.
             -  ``"ij"``
                 Focal length in units of camera pixels.

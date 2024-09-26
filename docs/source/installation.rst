@@ -57,9 +57,9 @@ the user can install selectively.
 - GPU
     - `cupy <https://cupy.dev/>`_, highly recommended for GPU-accelerated holography.
       Sometimes, installation is made complicated by a pre-installed version of CUDA.
-      You can find the CUDA version with `nvcc --version` in a terminal, and then
-      install an installation of :mod:`cupy` specific to CUDA version `YY` with
-      `pip install cupy-cudaYYx`.
+      You can find the CUDA version with ``nvcc --version`` in a terminal, and then
+      install an installation of :mod:`cupy` specific to CUDA version ``YY`` with
+      ``pip install cupy-cudaYYx``.
 - Gradients
     - `pytorch <https://pytorch.org/>`_, required for conjugate gradient hologram
       optimization, either in GPU or CPU mode. Uses :mod:`cupy` - :mod:`torch`

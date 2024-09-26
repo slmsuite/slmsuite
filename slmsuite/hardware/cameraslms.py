@@ -179,34 +179,44 @@ class FourierSLM(CameraSLM):
         "fourier" : dict
             The affine transformation that maps between
             the k-space of the SLM (kxy) and the pixel-space of the camera (ij).
+
             See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibrate()`.
 
             This data is critical for much of :mod:`slmsuite`'s functionality.
         "wavefront" : dict
             Raw data for correcting aberrations in the optical system (``phase``) and
             measuring the optical amplitude distribution incident on the SLM (``amp``).
-            See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate()`.
-            Usable data is produced by running
-            See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_process()`.
+
+            See
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate_zernike()`
+            and
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate_superpixel()`
+            Usable data for the superpixel implementation is produced by running
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibration_superpixel_process()`.
 
             This data is critical for crisp holography.
         "pixel" : dict
             Raw data for measuring the crosstalk and :math:`V_\pi` of sections of the
-            SLM via a
-            Usable data is produced by running
-            See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.pixel_calibration_process()`.
+            SLM via measurements on the diffractive orders of binary gratings.
 
-            **This data is currently unused; trying to figure out a
-            computationally-efficient way to apply the crosstalk without oversampling.**
+            See
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.pixel_calibrate()`.
+            Usable data is produced by running
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.pixel_calibration_process()`.
+
+            **This data is currently unused; exploring
+            computationally-efficient ways to apply the crosstalk without oversampling.**
         "settle" : dict
-            Raw data for determining the system response of the SLM.
-            See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.settle_calibrate()`.
-            Usable data is produced by running
-            See :meth:`~slmsuite.hardware.cameraslms.FourierSLM.settle_calibration_process()`.
+            Raw data for determining the temporal system response of the SLM.
 
-            This data informs the user's choice of `settle_time_s`, or the time to wait to
+            See
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.settle_calibrate()`.
+            Usable data is produced by running
+            :meth:`~slmsuite.hardware.cameraslms.FourierSLM.settle_calibration_process()`.
+
+            This data informs the user's choice of `settle_time_s`, the time to wait to
             acquire data after a pattern is displayed. This is, of course, a tradeoff
-            between measurement speed and precision.
+            between measurement speed and measurement precision.
     """
 
     def __init__(self, *args, **kwargs):
@@ -272,7 +282,7 @@ class FourierSLM(CameraSLM):
 
     def name_calibration(self, calibration_type):
         """
-        Creates ``"<cam.name>-<slm.name>-<calibration_type>-calibration"``.
+        Creates ``"{cam.name}-{slm.name}-{calibration_type}-calibration"``.
 
         Parameters
         ----------
@@ -803,7 +813,7 @@ class FourierSLM(CameraSLM):
 
         return kernel
 
-    def pixel_calibrate_simulate(self, period=16, supersample=16, **kwargs):
+    def _pixel_calibrate_simulate(self, period=16, supersample=16, **kwargs):
         N = int(period * supersample)
 
         x = np.linspace(-supersample, supersample, N)
@@ -1037,6 +1047,24 @@ class FourierSLM(CameraSLM):
         return hologram
 
     def fourier_calibrate_analytic(self, M, b):
+        """
+        Sets the Fourier calibration to a user-selected affine transformation.
+
+        See :meth:`fourier_calibration_build()` to generate this transformation from a
+        known or measured focal length.
+
+        Parameters
+        ----------
+        numpy.ndarray
+            Affine matrix :math:`M`. Shape ``(2, 2)``.
+        numpy.ndarray
+            Affine vector :math:`b`. Shape ``(1, 2)``.
+
+        Returns
+        -------
+        dict
+            :attr:`~slmsuite.hardware.cameraslms.FourierSLM.calibrations["fourier"]`
+        """
         # Parse arguments.
         M = np.squeeze(M)
         if np.any(M.shape != (2,2)):
@@ -1055,6 +1083,8 @@ class FourierSLM(CameraSLM):
         if hasattr(self.cam, "set_affine") and not hasattr(self.cam, "M"):
             self.cam.set_affine(M, b)
 
+        return self.calibrations["fourier"]
+
     def fourier_calibration_build(
             self,
             f_eff,
@@ -1064,7 +1094,7 @@ class FourierSLM(CameraSLM):
             offset=None,
         ):
         """
-        Meta: This docstring will be overwritten by ``SimulatedCamera.build_affine``'s
+        META: This docstring will be overwritten by ``SimulatedCamera.build_affine``'s
         after this class.
         """
         if offset is None:
@@ -1328,6 +1358,12 @@ class FourierSLM(CameraSLM):
         method=None,
         **kwargs,
     ):
+        """
+        Backwards-compatible method to switch between
+        the superpixel :meth:`wavefront_calibrate_superpixel`
+        and Zernike :meth:`wavefront_calibrate_zernike`
+        implementations of wavefront calibration.
+        """
         if method is None:
             method = "superpixel"
 
@@ -1690,7 +1726,7 @@ class FourierSLM(CameraSLM):
 
         return self.calibrations["wavefront_zernike"]
 
-    def wavefront_calibrate_zernike_plot_raw(self, index=0):
+    def _wavefront_calibrate_zernike_plot_raw(self, index=0):
         dat = self.calibrations["wavefront_zernike"]
 
         calibration_points = np.copy(dat["corrected_spots"])
@@ -2980,7 +3016,7 @@ class FourierSLM(CameraSLM):
 
     def wavefront_calibration_superpixel_process(self, index=0, smooth=True, r2_threshold=0.9, apply=True, plot=False):
         """
-        Processes :attr:`~slmsuite.hardware.cameraslms.FourierSLM.calibrations["wavefront"]`
+        Processes :attr:`~slmsuite.hardware.cameraslms.FourierSLM.calibrations` ``["wavefront"]``
         into the desired phase correction and amplitude measurement. Applies these
         parameters to the respective variables in the SLM if ``apply`` is ``True``.
 

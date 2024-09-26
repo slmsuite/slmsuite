@@ -262,7 +262,7 @@ class Hologram(_HologramStats):
                 # Convert a floating point Z depth from a desired units to Zernike units.
                 depth_zernike = convert_vector(
                     (0, 0, depth),
-                    from_units="<depth_units>",
+                    from_units="{depth_units}",
                     to_units="zernike",
                     hardware=cameraslm,
                 )

@@ -39,6 +39,9 @@ class Webcam(Camera):
             (numbered by the OS) or a string URL of a videostream
             (e.g. ``protocol://host:port/script_name?script_params|auth``).
             The OS's default camera (index of ``0``) is used as the default.
+        capture_api : int
+            The ``cv2.VideoCaptureAPI`` to use for capturing.
+            Defaults to ``cv2.CAP_ANY`` (choose OS default).
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
             to use additional calibrations.

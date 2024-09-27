@@ -19,7 +19,7 @@ from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import Hologram, SpotHologram, CompressedSpotHologram
 from slmsuite.holography.toolbox import imprint, format_2vectors, format_vectors, smallest_distance, fit_3pt, convert_vector
 from slmsuite.holography.toolbox.phase import blaze, _zernike_indices_parse, zernike, binary
-from slmsuite.holography.analysis.files import read_h5, write_h5, generate_path, latest_path
+from slmsuite.holography.analysis.files import load_h5, save_h5, generate_path, latest_path
 from slmsuite.holography.analysis.fitfunctions import cos, _sinc2d_nomod
 from slmsuite.holography.analysis.fitfunctions import _sinc2d_centered_taylor as sinc2d_centered
 from slmsuite.misc.math import REAL_TYPES
@@ -297,7 +297,7 @@ class FourierSLM(CameraSLM):
         """
         return f"{self.cam.name}-{self.slm.name}-{calibration_type}-calibration"
 
-    def write_calibration(self, calibration_type, path=".", name=None):
+    def save_calibration(self, calibration_type, path=".", name=None):
         """
         to a file like ``"path/name_id.h5"``.
 
@@ -325,11 +325,11 @@ class FourierSLM(CameraSLM):
         if name is None:
             name = self.name_calibration(calibration_type)
         file_path = generate_path(path, name, extension="h5")
-        write_h5(file_path, self.calibrations[calibration_type])
+        save_h5(file_path, self.calibrations[calibration_type])
 
         return file_path
 
-    def read_calibration(self, calibration_type, file_path=None):
+    def load_calibration(self, calibration_type, file_path=None):
         """
         from a file.
 
@@ -363,7 +363,7 @@ class FourierSLM(CameraSLM):
                     "".format(os.path.join(path, name))
                 )
 
-        self.calibrations[calibration_type] = read_h5(file_path)
+        self.calibrations[calibration_type] = load_h5(file_path)
 
         return file_path
 

@@ -171,7 +171,12 @@ def latest_path(path, name, extension=None, kind="file", digit_count=5):
     return ret
 
 
-def read_h5(file_path, decode_bytes=True):
+def load_h5(file_path, decode_bytes=True):
+    """Backwards-compatible alias of :meth:`load_h5`"""
+    return load_h5(file_path, decode_bytes)
+
+
+def load_h5(file_path, decode_bytes=True):
     """
     Read data from an h5 file into a dictionary.
     In the case of more complicated h5 hierarchy, a dictionary of dictionaries is returned.
@@ -215,7 +220,12 @@ def read_h5(file_path, decode_bytes=True):
     return data
 
 
-def write_h5(file_path, data, mode="w"):
+def save_h5(file_path, data, mode="w"):
+    """Backwards-compatible alias of :meth:`save_h5`"""
+    return save_h5(file_path, data, mode)
+
+
+def save_h5(file_path, data, mode="w"):
     """
     Write data in a dictionary to an `h5 file
     <https://docs.h5py.org/en/stable/high/file.html#opening-creating-files>`_.
@@ -259,7 +269,7 @@ def write_h5(file_path, data, mode="w"):
                     array = np.array(data[key])
                 except ValueError as e:
                     raise ValueError(
-                        "write_h5() does not support saving staggered arrays such as {}. "
+                        "save_h5() does not support saving staggered arrays such as {}. "
                         "Arrays must be uniform. {}".format(str(data[key]), str(e))
                     )
                 except Exception as e:
@@ -274,7 +284,7 @@ def write_h5(file_path, data, mode="w"):
         recurse(file_, data)
 
 
-def _read_image(path, shape, target_shape=None, angle=0, shift=(-225, -170)):
+def _load_image(path, shape, target_shape=None, angle=0, shift=(-225, -170)):
     """Helper function for examples."""
     # Load the image.
     img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
@@ -302,7 +312,8 @@ def _read_image(path, shape, target_shape=None, angle=0, shift=(-225, -170)):
 
     return target_ij
 
-def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=None, **kwargs):
+
+def save_image(file_path, images, cmap=False, lut=None, normalize=True, border=None, **kwargs):
     """
     Save an image or stacks of images as a filetype supported by :mod:`imageio`.
     Handles :mod:`matplotlib` colormapping.
@@ -394,7 +405,7 @@ def write_image(file_path, images, cmap=False, lut=None, normalize=True, border=
     try:
         from imageio import mimsave, imsave
     except:
-        raise ValueError("imageio is required for write_image().")
+        raise ValueError("imageio is required for save_image().")
 
     if images.shape[0] == 1:
         imsave(file_path, images[0], **kwargs)

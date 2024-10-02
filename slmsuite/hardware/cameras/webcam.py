@@ -11,6 +11,11 @@ class Webcam(Camera):
     Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class,
     which supports many webcams and videostreams.
 
+    Warning
+    -------
+    This class does not properly handle color images 
+    and does not properly populate datatype information.
+
     See Also
     --------
     `OpenCV documentation <https://docs.opencv.org/4.x/d8/dfe/classcv_1_1VideoCapture.html>`_.
@@ -58,15 +63,13 @@ class Webcam(Camera):
             raise RuntimeError(f"Failed to initialize webcam {id}")
         if verbose: print("success")
 
-        dtype = np.array(self._get_image_hw_tolerant()).dtype
-
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
             (
                 int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)),
                 int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
             ),
-            bitdepth=dtype(0).nbytes * 8,
+            bitdepth=8,
             pitch_um=pitch_um,
             name=str(identifier),
             **kwargs
@@ -98,4 +101,8 @@ class Webcam(Camera):
         """See :meth:`.Camera._get_image_hw`."""
         (success, img) = self.cam.read()
         if not success: raise RuntimeError("Could not grab frame.")
-        return np.array(img)
+        img = np.array(img)
+        if len(img.shape) == 3:
+            return img[:,:,::-1]    # Flip BGR to RGB; FUTURE: Make more general.
+        else:
+            return img

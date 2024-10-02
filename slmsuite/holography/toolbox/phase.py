@@ -48,7 +48,8 @@ def blaze(grid, vector=(0, 0)):
         such a class can be passed instead of the grids directly.
     vector : (float, float)
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
-        See :meth:`~slmsuite.holography.toolbox.convert_vector()`
+        See :meth:`~slmsuite.holography.toolbox.convert_vector()`.
+        If a 3-dimensional vector is passed, a normalized focusing term is added.
 
     Returns
     -------
@@ -66,6 +67,9 @@ def blaze(grid, vector=(0, 0)):
         result = (2 * np.pi * vector[1]) * y_grid
     else:
         result = (2 * np.pi * vector[0]) * x_grid + (2 * np.pi * vector[1]) * y_grid
+
+    if len(vector) > 2:
+        result += (np.pi * vector[2]) * (np.square(x_grid) + np.square(y_grid))
 
     return result
 

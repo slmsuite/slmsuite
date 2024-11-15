@@ -1290,7 +1290,7 @@ class FourierSLM(CameraSLM):
         elif basis == "ij":
             M = self.calibrations["fourier"]["M"]
             # Compensate for spot rotation s.t. spot size is along camera axes
-            size_kxy = np.linalg.inv(M / np.sqrt(np.linalg.det(M))) @ np.array(
+            size_kxy = np.linalg.inv(M / np.sqrt(np.abs(np.linalg.det(M)))) @ np.array(
                 (1 / slm_size[0], 1 / slm_size[1])
             )
             return np.abs(self.kxyslm_to_ijcam([0, 0]) - self.kxyslm_to_ijcam(size_kxy))
@@ -3199,7 +3199,6 @@ class FourierSLM(CameraSLM):
             size_blur = 4 * int(superpixel_size) + 1
             pwr_large = cv2.GaussianBlur(pwr_large, (size_blur, size_blur), 0)
 
-        amp = np.sqrt(pwr_norm)
         amp_large = np.sqrt(pwr_large)
         amp_large /= np.nanmax(amp_large)
 

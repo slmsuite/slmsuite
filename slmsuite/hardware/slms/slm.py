@@ -975,7 +975,7 @@ class SLM:
         else:
             return np.zeros(self.shape)
 
-    def plot_source(self, sim=False):
+    def plot_source(self, sim=False, power=False):
         """
         Plots measured or simulated amplitude and phase distribution
         of the SLM illumination. Also plots the rsquared goodness of fit value if available.
@@ -985,6 +985,8 @@ class SLM:
         sim : bool
             Plots the simulated source distribution if ``True`` or the measured
             source distribution if ``False``.
+        power : bool
+            If ``True``, plot the power (amplitude squared) instead of the amplitude.
 
         Returns
         --------
@@ -1011,7 +1013,7 @@ class SLM:
             cmap=plt.get_cmap("twilight"),
             interpolation="none",
         )
-        axs[0].set_title("Simulated Source Phase" if sim else "Measured Source Phase")
+        axs[0].set_title("Simulated Source Phase" if sim else "Source Phase")
         axs[0].set_xlabel("SLM $x$ [pix]")
         axs[0].set_ylabel("SLM $y$ [pix]")
         divider = make_axes_locatable(axs[0])
@@ -1019,8 +1021,15 @@ class SLM:
         im.set_clim([0, 2*np.pi])
         plt.colorbar(im, cax=cax)
 
-        im = axs[1].imshow(self.source["amplitude_sim" if sim else "amplitude"], clim=(0, 1))
-        axs[1].set_title("Simulated Source Amplitude" if sim else "Measured Source Amplitude")
+        if power:
+            im = axs[1].imshow(
+                np.square(self.source["amplitude_sim" if sim else "amplitude"]), 
+                clim=(0, 1)
+            )
+            axs[1].set_title("Simulated Source Power" if sim else "Source Power")
+        else:
+            im = axs[1].imshow(self.source["amplitude_sim" if sim else "amplitude"], clim=(0, 1))
+            axs[1].set_title("Simulated Source Amplitude" if sim else "Source Amplitude")
         axs[1].set_xlabel("SLM $x$ [pix]")
         axs[1].set_ylabel("SLM $y$ [pix]")
         # axs[1].set_yticks([])

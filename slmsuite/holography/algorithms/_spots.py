@@ -618,8 +618,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Restore the in-place memory.
         if not istorch:
             nearfield = cp.conj(nearfield, out=nearfield)
+            farfield = cp.conj(farfield, out=farfield)
         else:
-            return farfield
+            return torch.conj(farfield)
 
         # Normalize. This might need to be brought into torch?
         farfield *= (1 / Hologram._norm(farfield, xp=torch if istorch else cp))

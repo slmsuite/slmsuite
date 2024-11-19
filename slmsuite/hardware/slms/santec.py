@@ -543,7 +543,7 @@ class Santec(SLM):
 
         return (status, name, note)
 
-    def save_csv(self, filename):
+    def set_phase_csv(self, filename):
         """
         Write the phase image contained in a .csv file to the SLM.
         This image should have the size of the SLM.

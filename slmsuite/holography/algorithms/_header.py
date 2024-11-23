@@ -41,7 +41,7 @@ from slmsuite.holography import analysis, toolbox
 from slmsuite.holography.toolbox import phase as tphase
 from slmsuite.holography.toolbox.phase import CUDA_KERNELS, _zernike_populate_basis_map, zernike_sum, _load_cuda
 from slmsuite.misc.math import REAL_TYPES
-from slmsuite.misc.files import write_h5, read_h5
+from slmsuite.misc.files import save_h5, load_h5
 
 # List of algorithms and default parameters.
 # See algorithm documentation for parameter definitions.

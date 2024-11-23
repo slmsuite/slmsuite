@@ -222,9 +222,9 @@ class _HologramStats(object):
 
         self._update_stats_dictionary(stats)
 
-    def write_stats(self, file_path, include_state=True):
+    def save_stats(self, file_path, include_state=True):
         """
-        Uses :meth:`write_h5` to export the statistics hierarchy to a given h5 file.
+        Uses :meth:`save_h5` to export the statistics hierarchy to a given h5 file.
 
         Parameters
         ----------
@@ -267,11 +267,11 @@ class _HologramStats(object):
         # Save stats.
         to_save["stats"] = self.stats
 
-        write_h5(file_path, to_save)
+        save_h5(file_path, to_save)
 
-    def read_stats(self, file_path, include_state=True):
+    def load_stats(self, file_path, include_state=True):
         """
-        Uses :meth:`write_h5` to import the statistics hierarchy from a given h5 file.
+        Uses :meth:`save_h5` to import the statistics hierarchy from a given h5 file.
 
         Tip
         ~~~
@@ -287,7 +287,7 @@ class _HologramStats(object):
             If ``True``, also overwrite all other attributes of :class:`Hologram`
             except for :attr:`dtype` and :attr:`amp_ff`.
         """
-        from_save = read_h5(file_path)
+        from_save = load_h5(file_path)
 
         # Overwrite attributes if desired.
         if include_state:

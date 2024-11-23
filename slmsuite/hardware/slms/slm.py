@@ -14,7 +14,7 @@ from slmsuite.holography import toolbox
 from slmsuite.misc import fitfunctions
 from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 from slmsuite.holography import analysis
-from slmsuite.misc.files import generate_path, latest_path, write_h5, read_h5
+from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
 
 
 class SLM:
@@ -206,7 +206,7 @@ class SLM:
             print(".info() NotImplemented.")
         return []
 
-    def read_vendor_phase_correction(self, file_path):
+    def load_vendor_phase_correction(self, file_path):
         """
         Loads vendor-provided phase correction from file,
         setting :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]`.
@@ -614,7 +614,7 @@ class SLM:
 
         return out
 
-    def write_phase(self, path=".", name=None):
+    def save_phase(self, path=".", name=None):
         """
         Saves :attr:`~slmsuite.hardware.slms.slm.SLM.phase` and
         :attr:`~slmsuite.hardware.slms.slm.SLM.display`
@@ -635,7 +635,7 @@ class SLM:
         if name is None:
             name = self.name + '_phase'
         file_path = generate_path(path, name, extension="h5")
-        write_h5(
+        save_h5(
             file_path,
             {
                 "__version__" : __version__,
@@ -646,7 +646,7 @@ class SLM:
 
         return file_path
 
-    def read_phase(self, file_path=None, settle=False):
+    def load_phase(self, file_path=None, settle=False):
         """
         Loads :attr:`~slmsuite.hardware.slms.slm.SLM.display`
         from a file and writes to the SLM.
@@ -684,7 +684,7 @@ class SLM:
                     "".format(os.path.join(path, name))
                 )
 
-        data = read_h5(file_path)
+        data = load_h5(file_path)
 
         self._set_phase_hw(data["display"])
         self.display = data["display"]
@@ -975,7 +975,7 @@ class SLM:
         else:
             return np.zeros(self.shape)
 
-    def plot_source(self, sim=False):
+    def plot_source(self, sim=False, power=False):
         """
         Plots measured or simulated amplitude and phase distribution
         of the SLM illumination. Also plots the rsquared goodness of fit value if available.
@@ -985,6 +985,8 @@ class SLM:
         sim : bool
             Plots the simulated source distribution if ``True`` or the measured
             source distribution if ``False``.
+        power : bool
+            If ``True``, plot the power (amplitude squared) instead of the amplitude.
 
         Returns
         --------
@@ -1011,7 +1013,7 @@ class SLM:
             cmap=plt.get_cmap("twilight"),
             interpolation="none",
         )
-        axs[0].set_title("Simulated Source Phase" if sim else "Measured Source Phase")
+        axs[0].set_title("Simulated Source Phase" if sim else "Source Phase")
         axs[0].set_xlabel("SLM $x$ [pix]")
         axs[0].set_ylabel("SLM $y$ [pix]")
         divider = make_axes_locatable(axs[0])
@@ -1019,8 +1021,15 @@ class SLM:
         im.set_clim([0, 2*np.pi])
         plt.colorbar(im, cax=cax)
 
-        im = axs[1].imshow(self.source["amplitude_sim" if sim else "amplitude"], clim=(0, 1))
-        axs[1].set_title("Simulated Source Amplitude" if sim else "Measured Source Amplitude")
+        if power:
+            im = axs[1].imshow(
+                np.square(self.source["amplitude_sim" if sim else "amplitude"]), 
+                clim=(0, 1)
+            )
+            axs[1].set_title("Simulated Source Power" if sim else "Source Power")
+        else:
+            im = axs[1].imshow(self.source["amplitude_sim" if sim else "amplitude"], clim=(0, 1))
+            axs[1].set_title("Simulated Source Amplitude" if sim else "Source Amplitude")
         axs[1].set_xlabel("SLM $x$ [pix]")
         axs[1].set_ylabel("SLM $y$ [pix]")
         # axs[1].set_yticks([])

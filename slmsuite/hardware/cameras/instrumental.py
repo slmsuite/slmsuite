@@ -7,10 +7,13 @@ Note
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
+import warnings
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
-    import instrumental.drivers.cameras.Camera as InstrumentalCamera
+    import instrumental.drivers.cameras as instrumental_cameras
+    from instrumental.drivers import ParamSet
+    from instrumental import instrument, list_instruments
 except ImportError:
     print("instrumental-lib not installed. Install to use Instrumental cameras.")
 
@@ -31,15 +34,18 @@ class Instrumental(Camera):
 
     ### Initialization and termination ###
 
-    def __init__(self, cam, **kwargs):
+    def __init__(self, cam=None, **kwargs):
         """
         Initialize camera and attributes. Initial profile is ``"single"``.
 
         Parameters
         ----------
-        cam : instrumental.drivers.cameras.Camera
+        cam : instrumental.drivers.cameras.Camera OR instrumental.drivers.ParamSet OR None
             This class is just a wrapper for :mod:`instrumental`, so the user must pass a
             constructed :mod:`instrumental` camera.
+            If a ``ParamSet`` is provided, the camera is constructed.
+            If ``None``, the first instrument in ``instrumental.list_instruments()`` is used,
+            with errors or warnings if there are many or no instruments available.
         kwargs
             See :meth:`.Camera.__init__` for permissible options.
 
@@ -48,7 +54,23 @@ class Instrumental(Camera):
         RuntimeError
            If the camera can not be reached.
         """
-        assert isinstance(cam, InstrumentalCamera), "A subclass of instrumental.drivers.cameras.Camera must be passed as cam."
+        if cam is None:
+            instruments = list_instruments()
+
+            if len(instruments) == 0:
+                raise RuntimeError("No instrumental cameras detected.")
+            else:
+                if len(instruments) > 1:
+                    warnings.warn(f"Multiple instruments detected; using first of {instruments}")
+                cam = list_instruments()[0]
+
+        if isinstance(cam, ParamSet):
+            cam = instrument(cam, reopen_policy="reuse")
+
+        if not isinstance(cam, instrumental_cameras.Camera):
+            raise ValueError(
+                "A subclass of instrumental.drivers.cameras.Camera must be passed as cam."
+            )
         self.cam = cam
         self.exposure_s = .001
 
@@ -162,4 +184,4 @@ class Instrumental(Camera):
         numpy.ndarray
             Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.
         """
-        return self.cam.grab_image(timeouts=str(self.exposure_s) + "s", copy=True)
+        return self.cam.grab_image(timeout=str(timeout_s) + "s", copy=True)

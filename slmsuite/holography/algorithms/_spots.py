@@ -99,7 +99,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             More general or complicated functionality requires full use of the GPU
             and thus the following option requires :mod:`cupy` and underlying CUDA.
 
-        #.  **(This feature is currently disabled until 0.1.1 due
+        #.  **(This feature is currently disabled until 0.1.3 due
             to discovered instability on different systems.)**
             A custom CUDA kernel loaded into :mod:`cupy`.
             Above a certain number of spots (:math:`O(10^3)`),
@@ -618,8 +618,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Restore the in-place memory.
         if not istorch:
             nearfield = cp.conj(nearfield, out=nearfield)
+            farfield = cp.conj(farfield, out=farfield)
         else:
-            return farfield
+            return torch.conj(farfield)
 
         # Normalize. This might need to be brought into torch?
         farfield *= (1 / Hologram._norm(farfield, xp=torch if istorch else cp))

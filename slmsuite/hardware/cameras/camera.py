@@ -39,7 +39,7 @@ class Camera():
     hdr : (int, int) OR None
         Default setting for multi-exposure High Dynamic Range imaging. See :meth:`.get_image()`.
     capture_attempts : int
-        If the camera returns an error or exceeds a timeout, 
+        If the camera returns an error or exceeds a timeout,
         try again for a total of `capture_attempts` attempts.
         This is useful for resilience against errors that happen with low probability.
         Defaults to 5.
@@ -106,7 +106,7 @@ class Camera():
             Exposure information for `Multi-exposure High Dynamic Range (HDR) imaging
             <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
         capture_attempts : int
-            If the camera returns an error or exceeds a timeout, 
+            If the camera returns an error or exceeds a timeout,
             try again for a total of `capture_attempts` attempts.
             This is useful for resilience against errors that happen with low probability.
             Defaults to 5.
@@ -309,7 +309,7 @@ class Camera():
 
     def _get_images_hw_tolerant(self, *args, **kwargs):
         e = None
-        
+
         for i in range(self.capture_attempts):
             try:
                 return self._get_images_hw(*args, **kwargs)

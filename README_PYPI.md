@@ -6,7 +6,6 @@
 
 <p align="center">
 <a href="https://slmsuite.readthedocs.io/en/latest"><img alt="Documentation Status" src="https://readthedocs.org/projects/slmsuite/badge/?version=latest"></a>
-<a href="https://pypi.org/project/slmsuite/"><img alt="PyPi Package" src="https://img.shields.io/badge/pypi-v0.1.1-3776AB.svg"></a>
 <a href="https://github.com/slmsuite/slmsuite/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/slmsuite/slmsuite?color=purple"></a>
 <!--<a href="https://pepy.tech/project/slmsuite"><img alt="Downloads" src="https://pepy.tech/badge/slmsuite"></a>-->
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>

@@ -19,9 +19,9 @@ import warnings
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
-    import vimba
+    import vmbpy
 except ImportError:
-    warnings.warn("vimba not installed. Install to use AlliedVision cameras.")
+    warnings.warn("vmbpy not installed. Install to use AlliedVision cameras.")
 
 
 class AlliedVision(Camera):
@@ -71,7 +71,7 @@ class AlliedVision(Camera):
         if AlliedVision.sdk is None:
             if verbose:
                 print("vimba initializing... ", end="")
-            AlliedVision.sdk = vimba.Vimba.get_instance()
+            AlliedVision.sdk = vmbpy.VmbSystem.get_instance()
             AlliedVision.sdk.__enter__()
             if verbose:
                 print("success")
@@ -110,14 +110,14 @@ class AlliedVision(Camera):
             bitdepth=int(self.cam.PixelSize.get()),
             pitch_um=pitch_um,
             name=serial,
-            **kwargs
+            **kwargs,
         )
 
         try:
             self.cam.BinningHorizontal.set(1)
             self.cam.BinningVertical.set(1)
         except:
-            pass    # Some cameras do not have the option to set binning.
+            pass  # Some cameras do not have the option to set binning.
 
         self.cam.GainAuto.set("Off")
 

@@ -294,7 +294,7 @@ class AlliedVision(Camera):
     def flush(self, timeout_s=1):
         """See :meth:`.Camera.flush`."""
         for _ in range(2):
-            self._get_image_hw_tolerant()
+            self._get_image_hw_tolerant(timeout_s=timeout_s)
 
     def reset(self):
         """See :meth:`.Camera.reset`."""

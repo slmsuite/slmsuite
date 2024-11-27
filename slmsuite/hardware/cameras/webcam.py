@@ -89,6 +89,13 @@ class Webcam(Camera):
 
     ### Property Configuration ###
 
+    def get_auto_exposure(self):
+        return self.cam.get(cv2.CAP_PROP_AUTO_EXPOSURE)
+
+    def set_auto_exposure(self, tf):
+        self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)
+        self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3 if tf else 1)
+
     def get_exposure(self):
         """See :meth:`.Camera.get_exposure`."""
         return 2**float(self.cam.get(cv2.CAP_PROP_EXPOSURE))

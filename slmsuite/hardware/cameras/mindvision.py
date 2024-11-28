@@ -1,4 +1,12 @@
-import _mvsdk
+"""
+**(Untested)** Hardware control for MindVision cameras via :mod:`mvsdk`.
+This requires the :mod:`mvsdk` library and 3rd party python header to be copied
+into the local directory and added to path. The python header used for this 
+camera interface can be found in the `dddomodossola/nastroprint
+<https://github.com/dddomodossola/nastroprint/blob/master/mvsdk.py>`_
+GitHub package.
+"""
+import mvsdk as _mvsdk
 import time
 import numpy as np
 import warnings
@@ -13,9 +21,24 @@ class MindVision(Camera):
     # Class variable (same for all instances of MindVision) pointing to a singleton SDK.
     sdk = None
 
-    def __init__(self, serial="", verbose=True, **kwargs):
+    def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
         """
         Initialize the MindVision camera and attributes.
+
+        Parameters
+        ----------
+        serial : str
+            Serial number of the camera to open. 
+            Use :meth:`.info()` to see detected options.
+            If empty, defaults to the first camera in the list
+            returned by :meth:`.info()`.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations.
+        verbose : bool
+            Whether or not to print extra information.
+        **kwargs
+            See :meth:`.Camera.__init__` for permissible options.
         """
         if MindVision.sdk is None:
             if verbose: print("mvsdk initializing... ", end="")
@@ -53,11 +76,12 @@ class MindVision(Camera):
         # Fill in parameters from the capability class.
         self.capability = _mvsdk.CameraGetCapability(self.handle)
         super().__init__(
-            self.capability.sResolutionRange.iWidthMax,
-            self.capability.sResolutionRange.iHeightMax,
+            (
+                self.capability.sResolutionRange.iWidthMax,
+                self.capability.sResolutionRange.iHeightMax
+            ),
             bitdepth=8,
-            dx_um=None,
-            dy_um=None,
+            pitch_um=pitch_um,
             name=serial,
             **kwargs
         )
@@ -97,7 +121,7 @@ class MindVision(Camera):
     @staticmethod
     def info(verbose=True):
         """
-        Discovers all cameras detected by the mvsdk.
+        Discovers all cameras detected by the :mod:`mvsdk`.
 
         Parameters
         ----------
@@ -107,7 +131,7 @@ class MindVision(Camera):
         Returns
         --------
         list of str
-            List of mvsdk serial numbers.
+            List of :mod:`mvsdk` serial numbers.
         """
         camera_list = _mvsdk.CameraEnumerateDevice()
         serial_list = [cam.GetSn() for cam in camera_list]
@@ -159,23 +183,19 @@ class MindVision(Camera):
             desc = cap.pBayerDecAlmHdDesc[i]
             print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
 
-    def get_exposure(self):
-        """
-        Get the current exposure time of the camera in seconds.
-        """
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return _mvsdk.CameraGetExposureTime(self.handle) / 1e6
 
-    def set_exposure(self, exposure_s):
-        """
-        Set the exposure time of the camera in seconds.
-        """
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         _mvsdk.CameraSetExposureTime(self.handle, exposure_s * 1e6)
 
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def get_image(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s):
         # TODO: are the following two commands necessary for every call?
 
         # Switch camera mode to continuous acquisition.
@@ -204,21 +224,6 @@ class MindVision(Camera):
 
         except _mvsdk.CameraException as e:
             print("CameraGetImageBuffer failed ({}):\n{}".format(e.error_code, e.message))
-
-
-
-    def flush(self, timeout_s=1):
-        """
-        Abstract method to cycle the image buffer (if any)
-        such that all new :meth:`.get_image()`
-        calls yield fresh frames.
-
-        Parameters
-        ----------
-        timeout_s : float
-            The time in seconds to wait for frames to catch up with triggers.
-        """
-        raise NotImplementedError()
 
     def reset(self):
         """See :meth:`.Camera.reset`."""

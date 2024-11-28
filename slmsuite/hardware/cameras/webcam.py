@@ -96,15 +96,15 @@ class Webcam(Camera):
         self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)
         self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3 if tf else 1)
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return 2**float(self.cam.get(cv2.CAP_PROP_EXPOSURE))
 
-    def set_exposure(self, exposure_s):
-        """See :meth:`.Camera.set_exposure`."""
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.set(cv2.CAP_PROP_EXPOSURE, np.log2(exposure_s))
 
-    def _get_image_hw(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""
         (success, img) = self.cam.read()
         if not success: raise RuntimeError("Could not grab frame.")

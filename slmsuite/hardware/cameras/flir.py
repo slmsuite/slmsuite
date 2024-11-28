@@ -93,12 +93,12 @@ class FLIR(Camera):
 
     ### Property Configuration ###
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return
 
-    def set_exposure(self, exposure_s):
-        """See :meth:`.Camera.set_exposure`."""
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         return
 
     def set_woi(self, window=None):

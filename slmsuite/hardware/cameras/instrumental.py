@@ -42,7 +42,7 @@ class Instrumental(Camera):
         ----------
         cam : instrumental.drivers.cameras.Camera OR instrumental.drivers.ParamSet OR None
             This class is just a wrapper for :mod:`instrumental`, so the user must pass a
-            constructed :mod:`instrumental` camera.
+            constructed :mod:`instrumental` camera or equivalent.
             If a ``ParamSet`` is provided, the camera is constructed.
             If ``None``, the first instrument in ``instrumental.list_instruments()`` is used,
             with errors or warnings if there are many or no instruments available.
@@ -120,28 +120,12 @@ class Instrumental(Camera):
         """
         raise RuntimeError("Instrumental cameras do not support reset.")
 
-    def get_exposure(self):
-        """
-        Method to get the integration time in seconds.
-        Used in :meth:`.autoexposure()`.
-
-        Returns
-        -------
-        float
-            Integration time in seconds.
-        """
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.exposure._magnitude) / 1000
 
-    def set_exposure(self, exposure_s):
-        """
-        Method to set the integration time in seconds.
-        Used in :meth:`.autoexposure()`.
-
-        Parameters
-        ----------
-        exposure_s : float
-            The integration time in seconds.
-        """
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.exposure = 1000. * float(exposure_s)
 
     def set_woi(self, woi=None):
@@ -162,30 +146,14 @@ class Instrumental(Camera):
         """
         raise NotImplementedError()
 
-    def flush(self, timeout_s=1):
-        """
-        Method to cycle the image buffer (if any)
-        such that all new :meth:`.get_image()`
-        calls yield fresh frames.
-
-        This is currently implemented by capturing five camera frames, and should be
-        improved in the future.
-
-        Parameters
-        ----------
-        timeout_s : float
-            The time in seconds to wait for frames to catch up with triggers.
-        """
-        self.get_images(5)
-
-    def _get_image_hw(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s):
         """
         Method to pull an image from the camera and return.
 
         Parameters
         ----------
         timeout_s : float
-            The time in seconds to wait for the frame to be fetched (currently unused).
+            The time in seconds to wait for the frame to be fetched.
 
         Returns
         -------

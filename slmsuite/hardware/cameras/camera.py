@@ -145,18 +145,26 @@ class Camera():
             self.set_woi()
         except NotImplementedError:
             pass
-
-        # Set other useful parameters
+        
+        # Remember the name.
         self.name = str(name)
+
+        # Set exposure information.
+        self.exposure_bounds_s = None
+
+        self.exposure_s = 1 # Default to 1s for Simulated cameras.
+        self.exposure_s = self.get_exposure()
+
+        # Set datatype variables.
         self.bitdepth = int(bitdepth)
         self.bitresolution = 2**bitdepth
         self.dtype = self._get_dtype()
 
-        # Frame averaging
+        # Frame averaging variables.
         self.averaging = self._parse_averaging(averaging, preserve_none=True)
         self.hdr = self._parse_hdr(hdr, preserve_none=True)
 
-        # Spatial dimensions
+        # Spatial dimensions.
         if pitch_um is not None:
             if isinstance(pitch_um, REAL_TYPES):
                 pitch_um = [pitch_um, pitch_um]
@@ -166,9 +174,6 @@ class Camera():
             self.pitch_um = np.array([float(self.pitch_um[0]), float(self.pitch_um[1])])
         else:
             self.pitch_um = None
-
-        # Default to None, allow subclass constructors to fill.
-        self.exposure_bounds_s = None
 
     # Core methods - to be implemented by subclass.
 
@@ -205,7 +210,7 @@ class Camera():
 
     def get_exposure(self):
         """
-        Abstract method to get the integration time in seconds.
+        Get the frame integration time in seconds.
         Used in :meth:`.autoexposure()`.
 
         Returns
@@ -213,19 +218,45 @@ class Camera():
         float
             Integration time in seconds.
         """
-        raise NotImplementedError()
+        self.exposure_s = self._get_exposure_hw()
+        return self.exposure_s
 
     def set_exposure(self, exposure_s):
         """
-        Abstract method to set the integration time in seconds.
+        Set the frame integration time in seconds.
         Used in :meth:`.autoexposure()`.
 
         Parameters
         ----------
         exposure_s : float
             The integration time in seconds.
+            
+        Returns
+        -------
+        float
+            Set integration time in seconds.
         """
-        raise NotImplementedError()
+        self._set_exposure_hw(exposure_s)
+        return self.get_exposure()
+
+    def _get_exposure_hw(self):
+        """
+        Abstract method to interface with hardware and get the frame integration time in seconds.
+        Subclasses must implement this.
+        """
+        raise NotImplementedError(f"Camera {self.name} has not implemented _get_exposure_hw")
+
+    def _set_exposure_hw(self, exposure_s):
+        """
+        Abstract method to interface with hardware and set the exposure time in seconds.
+        Subclasses must implement this.
+
+        Parameters
+        ----------
+        exposure_s : float
+            The integration time in seconds.
+        """
+        raise NotImplementedError(f"Camera {self.name} has not implemented _set_exposure_hw")
 
     def set_woi(self, woi=None):
         """
@@ -247,18 +278,23 @@ class Camera():
 
     def flush(self, timeout_s=1):
         """
-        Abstract method to cycle the image buffer (if any)
-        such that all new :meth:`.get_image()`
-        calls yield fresh frames.
+        Cycle the image buffer such that all new :meth:`.get_image()` calls yield fresh frames.
+        Without this feature, optimizations could be working on outdated information.
+
+        Defaults to calling :meth:`.get_image()` twice, though cameras can implement
+        hardware-specific alternatives.
 
         Parameters
         ----------
         timeout_s : float
-            The time in seconds to wait for frames to catch up with triggers.
+            The time in seconds to wait for each frame.
+            The frame exposure time  is **added** to this timeout
+            such that there is always enough time to expose.
         """
-        raise NotImplementedError()
+        for _ in range(2):
+            self._get_image_hw_tolerant(timeout_s=timeout_s+self.exposure_s)
 
-    def _get_image_hw(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s):
         """
         Abstract method to capture camera images.
 
@@ -266,15 +302,17 @@ class Camera():
         ----------
         timeout_s : float
             The time in seconds to wait for the frame to be fetched.
+            The frame exposure time  is **NOT added** to this timeout
+            such that there is always enough time to expose.
 
         Returns
         -------
         numpy.ndarray
             Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"Camera {self.name} has not implemented _get_image_hw")
 
-    def _get_images_hw(self, image_count, timeout_s=1, out=None):
+    def _get_images_hw(self, image_count, timeout_s, out=None):
         """
         Abstract method to capture a series of image_count images using camera-specific
         batch acquisition features.
@@ -284,14 +322,16 @@ class Camera():
         image_count : int
             Number of frames to batch collect.
         timeout_s : float
-            The time in seconds to wait for the frame to be fetched.
+            The time in seconds to wait for **each** frame to be fetched.
+            The frame exposure time  is **NOT added** to this timeout
+            such that there is always enough time to expose.
 
         Returns
         -------
         numpy.ndarray
             Array of shape (n_frames, :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`).
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"Camera {self.name} has not implemented _get_images_hw")
 
     # Capture methods one level of abstraction above _get_image_hw().
 
@@ -302,7 +342,7 @@ class Camera():
             try:
                 return self._get_image_hw(*args, **kwargs)
             except Exception as e:
-                if i > 0: warnings.warn(f"'{self.name}' _get_image_hw() failed on attempt {i}.")
+                if i > 0: warnings.warn(f"'{self.name}' _get_image_hw() failed on attempt {i+1}.")
                 err = e
 
         raise err
@@ -314,7 +354,7 @@ class Camera():
             try:
                 return self._get_images_hw(*args, **kwargs)
             except Exception as e:
-                if i > 0: warnings.warn(f"'{self.name}' _get_images_hw() failed on attempt {i}.")
+                if i > 0: warnings.warn(f"'{self.name}' _get_images_hw() failed on attempt {i+1}.")
                 err = e
 
         raise err
@@ -322,7 +362,7 @@ class Camera():
     def _get_dtype(self):
         try:
             self.dtype = np.array(self._get_image_hw_tolerant()).dtype   # Future: check if cameras change this after init.
-        except NotImplementedError:
+        except:
             if self.bitdepth > 16:
                 self.dtype = float
             elif self.bitdepth > 8:
@@ -433,6 +473,8 @@ class Camera():
         ----------
         timeout_s : float
             The time in seconds to wait for the frame to be fetched.
+            The frame exposure time  is **added** to this timeout
+            such that there is always enough time to expose.
         transform : bool
             Whether or not to transform the output image according to
             :attr:`~slmsuite.hardware.cameras.camera.Camera.transform`.
@@ -492,7 +534,7 @@ class Camera():
             try:
                 # Using the camera-specific batch method if available
                 imgs = self._get_images_hw(
-                    averaging, timeout_s=timeout_s
+                    averaging, timeout_s=timeout_s+self.exposure_s
                 ).astype(averaging_dtype)
 
                 # Cast as the proper type so we can sum.
@@ -502,9 +544,13 @@ class Camera():
                 img = np.zeros(self.default_shape, dtype=averaging_dtype)
 
                 for _ in range(averaging):
-                    img += self._get_image_hw_tolerant(timeout_s=timeout_s).astype(averaging_dtype)
+                    img += self._get_image_hw_tolerant(
+                        timeout_s=timeout_s+self.exposure_s
+                    ).astype(averaging_dtype)
         else:                   # Normal image
-            img = self._get_image_hw_tolerant(timeout_s=timeout_s)
+            img = self._get_image_hw_tolerant(
+                timeout_s=timeout_s+self.exposure_s
+            )
 
         # self.transform implements the flipping and rotating keywords passed to the
         # superclass constructor.
@@ -528,6 +574,8 @@ class Camera():
             Number of images to grab.
         timeout_s : float
             The time in seconds to wait **for each** frame to be fetched.
+            The frame exposure time  is **added** to this timeout
+            such that there is always enough time to expose.
         out : None OR numpy.ndarray
             If not ``None``, output data in this memory. Useful to avoid excessive allocation.
         transform : bool
@@ -560,11 +608,17 @@ class Camera():
         # Grab images (no transformation)
         try:
             # Using the camera-specific method if available
-            imgs = self._get_images_hw(image_count, timeout_s=timeout_s, out=imgs)
+            imgs = self._get_images_hw(
+                image_count, 
+                timeout_s=timeout_s+self.exposure_s, 
+                out=imgs
+            )
         except NotImplementedError:
             # Brute-force collection as a backup
             for i in range(image_count):
-                imgs[i, :, :] = self._get_image_hw_tolerant(timeout_s=timeout_s)
+                imgs[i, :, :] = self._get_image_hw_tolerant(
+                    timeout_s=timeout_s+self.exposure_s
+                )
 
         # Transform if desired.
         if transform:
@@ -635,6 +689,7 @@ class Camera():
         imgs = np.empty((exposures, self.shape[0], self.shape[1]))
 
         for i in range(exposures):
+            # FUTURE: record the set exposures and use these to do better analysis.
             self.set_exposure(int(exposure_power ** i) * original_exposure)
             self.flush()    # Sometimes, cameras return bad frames after exposure change.
             imgs[i, :, :] = self.get_image(hdr=False, **kwargs)
@@ -802,7 +857,7 @@ class Camera():
         average_count : int
             Number of frames to average intensity over for noise reduction.
         timeout_s : float
-            Stop attempting to autoexpose after ``timeout_s`` seconds.
+            Stop attempting adjusting exposure after ``timeout_s`` seconds.
         verbose : bool
             Whether to print exposure updates.
 

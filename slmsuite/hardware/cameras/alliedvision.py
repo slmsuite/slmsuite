@@ -70,7 +70,9 @@ class AlliedVision(Camera):
         Parameters
         ----------
         serial : str
-            Serial number of the camera to open. If empty, defaults to the first camera in the list
+            Serial number of the camera to open. 
+            Use :meth:`.info()` to see detected options.
+            If empty, defaults to the first camera in the list
             returned by :meth:`vmbpy.get_all_cameras()`.
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
@@ -273,19 +275,19 @@ class AlliedVision(Camera):
         bitdepth = int("".join(char for char in value if char.isdigit()))
         return bitdepth
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.ExposureTime.get()) / 1e6
 
-    def set_exposure(self, exposure_s):
-        """See :meth:`.Camera.set_exposure`."""
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.ExposureTime.set(float(exposure_s * 1e6))
 
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def _get_image_hw(self, timeout_s=5):
+    def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""
         t = time.time()
 
@@ -302,11 +304,6 @@ class AlliedVision(Camera):
             frame = frame.as_numpy_ndarray()
 
         return np.squeeze(frame)
-
-    def flush(self, timeout_s=1):
-        """See :meth:`.Camera.flush`."""
-        for _ in range(2):
-            self._get_image_hw_tolerant(timeout_s=timeout_s)
 
     def reset(self):
         """See :meth:`.Camera.reset`."""

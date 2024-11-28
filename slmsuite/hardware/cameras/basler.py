@@ -1,11 +1,8 @@
 """
-Hardware control for Basler cameras
-
-Consider also installing Basler software
-for testing cameras outside of Python
-(See `downloads <https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;language=all;version=7.3.0>`_).
-Install :mod:`pypylon` by following the
-`provided instructions <https://github.com/basler/pypylon>`_.
+**(Untested)** Hardware control for Basler cameras via the :mod:`pypylon` interface.
+Consider also installing Basler software for testing cameras outside of python
+(see `downloads <https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;language=all;version=7.3.0>`_).
+Install :mod:`pypylon` by following the `provided instructions <https://github.com/basler/pypylon>`_.
 """
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -37,7 +34,8 @@ class Basler(Camera):
         Parameters
         ----------
         serial : str
-            Serial number of the camera to open. If empty, defaults to the first camera in the list
+            Serial number of the camera to open. 
+            If empty, defaults to the first camera in the list
             returned by :meth:`.info()`.
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
@@ -119,15 +117,15 @@ class Basler(Camera):
         Parameters
         ----------
         close_sdk : bool
-            Whether or not to close the :mod:'pylon' instance.
+            Does nothing, as the ``pylon.TlFactory`` instance stored in :attr:`sdk`
+            does not appear to need to be closed. 
         """
         #self.cam.__exit__(None, None, None) weird
         self.cam.StopGrabbing()
         self.cam.Close()
 
         if close_sdk:
-            self.cam.Close()
-
+            pass        
 
     @staticmethod
     def info(verbose=True):
@@ -244,12 +242,12 @@ class Basler(Camera):
         bitdepth = int("".join(char for char in value if char.isdigit()))
         return bitdepth
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.ExposureTime.GetValue()) / 1e6   # in seconds
 
-    def set_exposure(self, exposure_s):
-        """See :meth:`.Camera.set_exposure`."""
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.ExposureTime.SetValue(float(1e6 * exposure_s))   # in seconds
 
     def set_woi(self, woi=None):
@@ -257,7 +255,7 @@ class Basler(Camera):
         return
         # Use self.cam to crop the window of interest.
 
-    def _get_image_hw(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera.get_image`."""
         # TODO: ichr added WaitForFrameTriggerReady and ExecuteSoftwareTrigger
         # timeout_s is now used. _get_image_hw is the new subclass hardware method.
@@ -274,6 +272,6 @@ class Basler(Camera):
         grab.Release()
         return im
 
-    def flush(self, timeout_s=1e-3):
-        """See :meth:`.Camera.flush`."""
-        pass
+    def reset(self):
+        """See :meth:`.Camera.reset`."""
+        raise NotImplementedError()

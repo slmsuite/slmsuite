@@ -115,28 +115,12 @@ class PyLabLib(Camera):
         """
         raise RuntimeError("Instrumental cameras do not support reset.")
 
-    def get_exposure(self):
-        """
-        Method to get the integration time in seconds.
-        Used in :meth:`.autoexposure()`.
-
-        Returns
-        -------
-        float
-            Integration time in seconds.
-        """
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return self.cam.get_exposure()
 
-    def set_exposure(self, exposure_s):
-        """
-        Method to set the integration time in seconds.
-        Used in :meth:`.autoexposure()`.
-
-        Parameters
-        ----------
-        exposure_s : float
-            The integration time in seconds.
-        """
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.set_exposure(float(exposure_s))
 
     def set_woi(self, woi=None):
@@ -157,23 +141,7 @@ class PyLabLib(Camera):
         """
         raise NotImplementedError()
 
-    def flush(self, timeout_s=1):
-        """
-        Method to cycle the image buffer (if any)
-        such that all new :meth:`.get_image()`
-        calls yield fresh frames.
-
-        This is currently implemented by capturing five camera frames, and should be
-        improved in the future.
-
-        Parameters
-        ----------
-        timeout_s : float
-            The time in seconds to wait for frames to catch up with triggers.
-        """
-        self.get_images(5, timeout_s=timeout_s)
-
-    def _get_image_hw(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s):
         """
         Method to pull an image from the camera and return.
 
@@ -189,6 +157,6 @@ class PyLabLib(Camera):
         """
         return self.cam.snap(timeout=timeout_s)
 
-    def _get_images_hw(self, image_count, timeout_s=1, out=None):
+    def _get_images_hw(self, image_count, timeout_s, out=None):
         """See :meth:`.Camera._get_images_hw`."""
         return self.cam.grab(nframes=image_count, frame_timeout=timeout_s)

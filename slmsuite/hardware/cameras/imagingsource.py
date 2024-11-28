@@ -1,8 +1,10 @@
 """
-Hardware control for The Imaging Source Cameras via tisgrabber
-tisgrabber is one of several different interfaces that The Imaging Source supports.
-See https://github.com/TheImagingSource/IC-Imaging-Control-Samples/tree/master/Python/tisgrabber
-This was tested at commit 7846b9e and Python 3.9 with DMK 27BUP031 camera
+**(Untested)** Hardware control for The Imaging Source cameras via :mod:`tisgrabber`.
+:mod:`tisgrabber` is one of several different interfaces that The Imaging Source supports.
+See 
+`the tisgrabber source
+<https://github.com/TheImagingSource/IC-Imaging-Control-Samples/tree/master/Python/tisgrabber>`_.
+This was tested at commit 7846b9e and Python 3.9 with DMK 27BUP031 camera.
 The tisgrabber .dll and tisgrabber.py are needed. 
 Please either install tisgrabber.py or have it in your current working directory.
 """
@@ -85,6 +87,7 @@ class ImagingSource(Camera):
         self,
         serial="",
         vid_format=None,
+        pitch_um=None, 
         verbose=True,
         **kwargs
     ):
@@ -95,11 +98,15 @@ class ImagingSource(Camera):
         ----------
         serial : str
             This serial is used to open a camera by unique name (see tisgrabber.h). 
-            It is usually the model name followed by a space and the serial number. 
-            If "", then opens first camera found.
+            It is usually the model name followed by a space and the serial number.
+            Use :meth:`.info()` to see detected options.
+            If empty, then opens the first camera found.
         vid_format : str
             If None, no format is set and will default to whatever the camera is currently. 
-            See tisgrabber.h for more information. Example "Y800 (2592x1944)"
+            See tisgrabber.h for more information. Example ``"Y800 (2592x1944)"``.
+        pitch_um : (float, float) OR None
+            Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
+            to use additional calibrations.
         verbose : bool
             Whether or not to print extra information.
         **kwargs
@@ -149,10 +156,10 @@ class ImagingSource(Camera):
 
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
-            width.value,
-            height.value,
+            (width.value, height.value),
             bitdepth=bitdepth,
             name=serial,
+            pitch_um=pitch_um,
             **kwargs
         )
 
@@ -194,14 +201,14 @@ class ImagingSource(Camera):
 
     ### Property Configuration ###
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         exposure = ctypes.c_float()
         ImagingSource.safe_call(ImagingSource.sdk.IC_GetPropertyAbsoluteValue, 1, self.cam, tis.T("Exposure"), tis.T("Value"), exposure)
         return float(exposure.value)
 
-    def set_exposure(self, exposure_s):
-        """See :meth:`.Camera.set_exposure`."""
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         # Turn off auto exposure and use the value given.
         ImagingSource.safe_call(ImagingSource.sdk.IC_SetPropertySwitch, 1, self.cam, tis.T("Exposure"), tis.T("Auto"), 0)
         ImagingSource.safe_call(ImagingSource.sdk.IC_SetPropertyAbsoluteValue, 1, self.cam, tis.T("Exposure"), tis.T("Value"), ctypes.c_float(exposure_s))
@@ -238,16 +245,16 @@ class ImagingSource(Camera):
 
         self.shape = (height, width)
 
-    def get_image(self, timeout_ms=2000):
+    def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera.get_image`."""
         buffer_size = 3 * self.bitdepth * self.shape[0] * self.shape[1] # times 3 is because even Y800 is RGB
         # Starts the image acquisition
         ImagingSource.safe_call(ImagingSource.sdk.IC_StartLive, 0, self.cam, 0)
         # Snap image 
-        err = ImagingSource.safe_call(ImagingSource.sdk.IC_SnapImage, 0, self.cam, timeout_ms)
+        err = ImagingSource.safe_call(ImagingSource.sdk.IC_SnapImage, 0, self.cam, 1000*timeout_s)
         # If there is an error, then snap image again
         while err <= 0:
-            err = ImagingSource.safe_call(ImagingSource.sdk.IC_SnapImage, 0, self.cam, timeout_ms)
+            err = ImagingSource.safe_call(ImagingSource.sdk.IC_SnapImage, 0, self.cam, 1000*timeout_s)
         # Get image
         ptr = ImagingSource.safe_call(ImagingSource.sdk.IC_GetImagePtr, 0, self.cam)
         img_ptr = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_ubyte * buffer_size))
@@ -258,6 +265,6 @@ class ImagingSource(Camera):
         # We take only the 1st component, assuming that the image is monochromatic.
         return self.transform(img[:,:,0]) 
 
-    def flush(self):
-        """See :meth:`.Camera.flush`."""
-        # No flushing is required for ImagingSource
+    def reset(self):
+        """See :meth:`.Camera.reset`."""
+        raise NotImplementedError()

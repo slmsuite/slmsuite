@@ -7,12 +7,13 @@ import warnings
 import numpy as np
 
 from slmsuite.hardware.slms.slm import SLM
+from slmsuite.hardware._pyglet import _Window
 
 try:
     import pyglet
     import pyglet.gl as gl
 
-    if pyglet.__version__[0] != "1":
+    if pyglet.__version__[:2] != "1;":
         raise ImportError("pyglet >=2.0.0 is not supported. Please downgrade to 1.5.29.")
 except ImportError:
     warnings.warn("pyglet not installed. Install to use ScreenMirrored SLMs.")
@@ -182,80 +183,7 @@ class ScreenMirrored(SLM):
             **kwargs
         )
 
-        # Setup the window. If failure, closes elegantly upon except().
-        try:
-            # Make the window and do basic setup.
-            self.window = pyglet.window.Window( screen=screen,
-                                                fullscreen=True, vsync=True)
-            self.window.set_caption(self.name)
-            self.window.set_mouse_visible(False)
-
-            try:
-                # Icons. Currently hardcoded. Feel free to implement custom icons.
-                path, filename = os.path.split(os.path.realpath(__file__))
-                path = os.path.join(path, '..', '..', '..',
-                                    'docs', 'source', 'static', 'qp-slm-notext-')
-                img16x16 = pyglet.image.load(path + '16x16.png')
-                img32x32 = pyglet.image.load(path + '32x32.png')
-                self.window.set_icon(img16x16, img32x32)
-            except Exception as e:
-                print(e)
-
-            # Set the viewpoint.
-            proj = pyglet.window.Projection2D()
-            proj.set(self.shape[1], self.shape[0], self.shape[1], self.shape[0])
-
-            # Setup shapes
-            texture_shape = tuple(np.power(2, np.ceil(np.log2(self.shape)))
-                                .astype(np.int64))
-            self.tex_shape_ratio = (float(self.shape[0])/float(texture_shape[0]),
-                                    float(self.shape[1])/float(texture_shape[1]))
-            B = 4
-
-            # Setup buffers (texbuffer is power of 2 padded to init the memory in OpenGL)
-            self.buffer = np.zeros(self.shape + (B,), dtype=np.uint8)
-            N = int(self.shape[0] * self.shape[1] * B)
-            self.cbuffer = (gl.GLubyte * N).from_buffer(self.buffer)
-
-            texbuffer = np.zeros(texture_shape + (B,), dtype=np.uint8)
-            Nt = int(texture_shape[0] * texture_shape[1] * B)
-            texcbuffer = (gl.GLubyte * Nt).from_buffer(texbuffer)
-
-            # Setup the texture
-            gl.glEnable(gl.GL_TEXTURE_2D)
-            self.texture = gl.GLuint()
-            gl.glGenTextures(1, ctypes.byref(self.texture))
-            gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture.value)
-
-            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_GENERATE_MIPMAP, gl.GL_FALSE)
-            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_NEAREST)
-            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST)
-
-            # Malloc the OpenGL memory
-            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGBA8,
-                            texture_shape[1], texture_shape[0],
-                            0, gl.GL_BGRA, gl.GL_UNSIGNED_BYTE,
-                            texcbuffer)
-
-            # Make sure we can write to a subset of the memory (as we will do in the future)
-            gl.glTexSubImage2D(gl.GL_TEXTURE_2D, 0, 0, 0,
-                            self.shape[1], self.shape[0],
-                            gl.GL_BGRA, gl.GL_UNSIGNED_BYTE,
-                            self.cbuffer)
-
-            # Cleanup
-            gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
-            gl.glFlush()
-
-            # Write nothing.
-            self.set_phase(phase=None)
-        except:
-            # If we failed, try to clean up before erroring.
-            try:
-                self.window.close()
-            except:
-                pass
-            raise
+        self.window = _Window(self.shape, screen, self.name)
 
         if verbose:
             print("success")
@@ -270,49 +198,12 @@ class ScreenMirrored(SLM):
     def _set_phase_hw(self, data):
         """Writes to screen. See :class:`.SLM`."""
         # Write to buffer (self.buffer is the same as self.cbuffer).
-        # Unfortunately, OpenGL needs the data copied three times.
-        np.copyto(self.buffer[:,:,0], data)
-        np.copyto(self.buffer[:,:,1], data)
-        np.copyto(self.buffer[:,:,2], data)
+        # Unfortunately, OpenGL needs the data copied three times (I think).
+        np.copyto(self.window.buffer[:,:,0], data)
+        np.copyto(self.window.buffer[:,:,1], data)
+        np.copyto(self.window.buffer[:,:,2], data)
 
-        # Setup texture variables.
-        x1 = 0
-        y1 = 0
-        x2 = self.shape[1]
-        y2 = self.shape[0]
-
-        xa = 0
-        ya = 0
-        xb = self.tex_shape_ratio[1]
-        yb = self.tex_shape_ratio[0]
-
-        array = (gl.GLfloat * 32)(
-            xa, ya, 0., 1.,         # tex coord,
-            x1, y1, 0., 1.,         # real coord, ...
-            xb, ya, 0., 1.,
-            x2, y1, 0., 1.,
-            xb, yb, 0., 1.,
-            x2, y2, 0., 1.,
-            xa, yb, 0., 1.,
-            x1, y2, 0., 1.)
-
-        # Update the texture.
-        gl.glEnable(gl.GL_TEXTURE_2D)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture.value)
-        gl.glTexSubImage2D(gl.GL_TEXTURE_2D, 0, 0, 0,
-                        self.shape[1], self.shape[0],
-                        gl.GL_RGBA, gl.GL_UNSIGNED_BYTE,
-                        self.cbuffer)
-
-        # Blit the texture.
-        gl.glPushClientAttrib(gl.GL_CLIENT_VERTEX_ARRAY_BIT)
-        gl.glInterleavedArrays(gl.GL_T4F_V4F, 0, array)
-        gl.glDrawArrays(gl.GL_QUADS, 0, 4)
-        gl.glPopClientAttrib()
-
-        # Display the other side of the double buffer.
-        # (with vsync enabled, this will block until the next frame is ready to display).
-        self.window.flip()
+        self.window.render()
 
     def close(self):
         """Closes frame. See :class:`.SLM`."""
@@ -330,8 +221,8 @@ class ScreenMirrored(SLM):
 
         Returns
         -------
-        list of (int, (int, int, int, int)) tuples
-            The number and geometry of each display.
+        list of (int, (int, int, int, int), bool, bool) tuples
+            The number, geometry of each display.
         """
         # Note: in pyglet, the display is the full arrangement of screens,
         # unlike the terminology in other SLM subclasses
@@ -342,14 +233,18 @@ class ScreenMirrored(SLM):
         windows = display.get_windows()
 
         def parse_screen(screen):
-            return ("x={}, y={}, width={}, height={}"
-                .format(screen.x, screen.y, screen.width, screen.height))
+            return (
+                "x={}, y={}, width={}, height={}"
+                .format(screen.x, screen.y, screen.width, screen.height)
+            )
         def parse_screen_int(screen):
             return (screen.x, screen.y, screen.width, screen.height)
         def parse_window(window):
             x, y = window.get_location()
-            return ("x={}, y={}, width={}, height={}"
-                .format(x, y, window.width, window.height))
+            return (
+                "x={}, y={}, width={}, height={}"
+                .format(x, y, window.width, window.height)
+            )
 
         default_str = parse_screen(default)
 
@@ -379,7 +274,11 @@ class ScreenMirrored(SLM):
             if verbose:
                 print('{},  {}'.format(x, screen_str))
 
-            screen_list.append((x, parse_screen_int(screen),
-                                main_bool, window_bool))
+            screen_list.append((
+                x,
+                parse_screen_int(screen),
+                main_bool,
+                window_bool
+            ))
 
         return screen_list

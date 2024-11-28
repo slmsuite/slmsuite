@@ -2,6 +2,7 @@
 Abstract camera functionality.
 """
 import time
+import asyncio
 import warnings
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,6 +13,7 @@ from slmsuite.holography import analysis
 from slmsuite.holography.toolbox import BLAZE_LABELS
 from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
 from slmsuite.misc.math import REAL_TYPES
+from slmsuite.hardware._pyglet import _CameraWindow
 
 
 class Camera():
@@ -174,6 +176,9 @@ class Camera():
             self.pitch_um = np.array([float(self.pitch_um[0]), float(self.pitch_um[1])])
         else:
             self.pitch_um = None
+
+        # Placeholder for live viewer handle.
+        self.viewer = None
 
     # Core methods - to be implemented by subclass.
 
@@ -827,6 +832,75 @@ class Camera():
 
         return ax
 
+    async def live(self):
+        """
+        Opens a live :mod:`pyglet` window displaying camera data.
+        This function starts an :mod:`asyncio` loop which allows other events to be run
+        on the same thread (limited to one by the python GIL).
+        Currently, multiple cameras running live viewers will fight each other for
+        :mod:`asyncio` time. In the future, trigger and grab methods could be used to
+        avoid this.
+
+        If a live viewer for a given camera ``cam`` is already open, calling this
+        function again ``cam.live()`` will do nothing.
+
+        Display parameters are customizable by setting the parameters of the viewer.
+
+        - ``cam.viewer.min``
+        - ``cam.viewer.max``
+        - ``cam.viewer.cmap``
+        - ``cam.viewer.log``
+
+        .. list-table:: User Inputs
+            :widths: 30 70
+            :header-rows: 1
+
+            * - Command
+              - Meaning
+            * - ``Left Click``
+              - Prints clicked 2D coordinate in the console.
+            * - ``Right Click``
+              - Prints clicked image value in the console.
+            * - ``Window Resize``
+              - Currently disabled. The window will display with the camera's native resolution.
+            * - ``Window Close``
+              - End the live session.
+        """
+            # * - ``Middle Click``
+            #   - TODO.
+            # * - ``Scroll Wheel``
+            #   - Change maximum with 10 pixel steps.
+            # * - ``Shift + Scroll Wheel``
+            #   - Change minimum with 10 pixel steps.
+            # * - ``Ctrl + Scroll Wheel``
+            #   - Change maximum with single pixel steps.
+            # * - ``Ctrl + Shift + Scroll Wheel``
+            #   - Change minimum with single pixel steps.
+
+        if self.viewer is None:
+            self.viewer = _CameraWindow(shape=self.shape, caption=self.name)
+
+        self.viewer.set_visible(True)
+
+        while self.viewer.alive:
+            img = self.get_image()
+
+            self.viewer.buffer
+
+            self.viewer.render()
+            event = self.viewer.dispatch_events()
+
+            await asyncio.sleep(0.1)
+
+        self.viewer.set_visible(False)
+
+    def live_widgets(self):
+        from ipywidgets import FloatSlider, FloatRangeSlider, Dropdown, Checkbox, HBox, VBox
+
+        # min, max, cmap, log
+
+    # Other helper methods.
+
     def autoexposure(
         self,
         set_fraction=0.5,
@@ -1022,6 +1096,10 @@ class Camera():
             plt.show()
 
         return z_opt, imlist
+
+
+def view_continuous(cameras, cmap=None, min=None, max=None, log=False):
+    pass
 
 
 def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):

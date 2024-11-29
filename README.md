@@ -41,6 +41,13 @@ Install the latest version of `slmsuite` from GitHub using:
 pip install git+https://github.com/slmsuite/slmsuite
 ```
 
+Alternatively, if you are using [poetry](https://python-poetry.org/):
+
+```console
+poetry add git+https://github.com/slmsuite/slmsuite
+```
+
+
 ## Documentation and Examples
 
 Extensive

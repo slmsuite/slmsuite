@@ -19,11 +19,24 @@ Install the stable version of `slmsuite` from [PyPI](https://pypi.org/project/sl
 $ pip install slmsuite
 ```
 
+or if you are using [poetry](https://python-poetry.org):
+
+```console
+
+$ poetry add slmsuite
+```
+
 
 Install the latest version of `slmsuite` from GitHub using:
 
 ```console
 $ pip install git+https://github.com/slmsuite/slmsuite
+```
+
+or if you are using [poetry](https://python-poetry.org):
+
+```console
+$ poetry add git+https://github.com/slmsuite/slmsuite
 ```
 
 ## Documentation and Examples

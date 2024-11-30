@@ -1,8 +1,6 @@
 """
 Projects data onto the SLM's virtual display, using the :mod:`pyglet` library.
 """
-import os
-import ctypes
 import warnings
 import numpy as np
 
@@ -11,10 +9,6 @@ from slmsuite.hardware._pyglet import _Window
 
 try:
     import pyglet
-    import pyglet.gl as gl
-
-    if pyglet.__version__[:2] != "1;":
-        raise ImportError("pyglet >=2.0.0 is not supported. Please downgrade to 1.5.29.")
 except ImportError:
     warnings.warn("pyglet not installed. Install to use ScreenMirrored SLMs.")
 
@@ -183,7 +177,14 @@ class ScreenMirrored(SLM):
             **kwargs
         )
 
-        self.window = _Window(self.shape, screen, self.name)
+        self.window = _Window(None, screen, self.name)
+
+        try:
+            self.window._setup_context()
+        except Exception as e:
+            print("failure")
+            self.window.close()
+            raise e
 
         if verbose:
             print("success")
@@ -199,6 +200,7 @@ class ScreenMirrored(SLM):
         """Writes to screen. See :class:`.SLM`."""
         # Write to buffer (self.buffer is the same as self.cbuffer).
         # Unfortunately, OpenGL needs the data copied three times (I think).
+        # FUTURE: For OpenGL3.0 and pyglet 2.0+, use the shader to minimize data transfer.
         np.copyto(self.window.buffer[:,:,0], data)
         np.copyto(self.window.buffer[:,:,1], data)
         np.copyto(self.window.buffer[:,:,2], data)
@@ -224,61 +226,4 @@ class ScreenMirrored(SLM):
         list of (int, (int, int, int, int), bool, bool) tuples
             The number, geometry of each display.
         """
-        # Note: in pyglet, the display is the full arrangement of screens,
-        # unlike the terminology in other SLM subclasses
-        display = pyglet.canvas.get_display()
-
-        screens = display.get_screens()
-        default = display.get_default_screen()
-        windows = display.get_windows()
-
-        def parse_screen(screen):
-            return (
-                "x={}, y={}, width={}, height={}"
-                .format(screen.x, screen.y, screen.width, screen.height)
-            )
-        def parse_screen_int(screen):
-            return (screen.x, screen.y, screen.width, screen.height)
-        def parse_window(window):
-            x, y = window.get_location()
-            return (
-                "x={}, y={}, width={}, height={}"
-                .format(x, y, window.width, window.height)
-            )
-
-        default_str = parse_screen(default)
-
-        window_strs = []
-        for window in windows:
-            window_strs.append(parse_window(window))
-
-        if verbose:
-            print('Display Positions:')
-            print('#,  Position')
-
-        screen_list = []
-
-        for x, screen in enumerate(screens):
-            screen_str = parse_screen(screen)
-
-            main_bool = False
-            window_bool = False
-
-            if screen_str == default_str:
-                main_bool = True
-                screen_str += ' (main)'
-            if screen_str in window_strs:
-                window_bool = True
-                screen_str += ' (has ScreenMirrored)'
-
-            if verbose:
-                print('{},  {}'.format(x, screen_str))
-
-            screen_list.append((
-                x,
-                parse_screen_int(screen),
-                main_bool,
-                window_bool
-            ))
-
-        return screen_list
+        return _Window.info(verbose=verbose)

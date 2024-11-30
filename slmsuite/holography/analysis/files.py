@@ -313,9 +313,77 @@ def _load_image(path, shape, target_shape=None, angle=0, shift=(-225, -170)):
     return target_ij
 
 
+def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
+    """
+    Currently-hidden function to convert a stack of 
+    grayscale images to color with a colormap.
+    """
+    print("lut", lut)
+    # Parse images.
+    images = np.array(images, copy=(False if np.__version__[0] == '1' else None))
+    if len(images.shape) == 2:
+        images = np.reshape(images, (1, images.shape[0], images.shape[1]))
+    elif len(images.shape) >= 3 and images.shape[-1] == 3:  # Already RGB
+        return images
+    elif len(images.shape) > 3:
+        raise RuntimeError(f"Images shape {images.shape} could not be parsed.")
+    
+    isfloat = np.issubdtype(images.dtype, np.floating)
+
+    # Parse cmap.
+    if not isinstance(cmap, str):
+        if cmap is True:
+            cmap = mpl.rcParams['image.cmap']
+        else:
+            # Grayscale is forced to have an lut smaller than 256.
+            if lut is None or lut > 256:
+                lut = 256
+
+    # Parse lut.
+    if lut is None:
+        if isfloat:
+            lut = mpl.rcParams['image.lut']-1
+        else:
+            lut = np.max(images)
+    # lut = np.clip(lut, 0, np.max(images))
+    lut = np.astype(np.array([lut]), images.dtype)[0]
+
+    # Convert images to integers scaled to the lut size.
+    if normalize:
+        images = np.rint(images * ((float(lut)+1) / np.max(images))).astype(int)
+        images = np.clip(images, 0, lut)
+    elif isfloat:
+        images = np.rint(images * (float(lut)+1)).astype(int)
+        images = np.clip(images, 0, int(lut))
+
+    # Convert images to RGB.
+    if isinstance(cmap, str):
+        print(lut)
+        cm = plt.get_cmap(cmap, int(lut)+1)
+        if hasattr(cm, "colors"):
+            c = cm.colors
+        else:
+            print(cm.N)
+            c = cm(np.arange(0, cm.N))
+        images = c[images]
+        images = 255 * images[:, :, :, :3]  # Remove alpha channel
+
+    images = images.astype(np.uint8)
+
+    # Add a border if desired.
+    if border is not None:
+        images[:, 0, :, :] = border
+        images[:, -1, :, :] = border
+        images[:, :, 0, :] = border
+        images[:, :, -1, :] = border
+
+    return images
+
+
 def save_image(file_path, images, cmap=False, lut=None, normalize=True, border=None, **kwargs):
     """
-    Save an image or stacks of images as a filetype supported by :mod:`imageio`.
+    Save a grayscale image or stacks of grayscale images 
+    as a filetype supported by :mod:`imageio`.
     Handles :mod:`matplotlib` colormapping.
     Negative values are truncated to zero.
 
@@ -349,54 +417,7 @@ def save_image(file_path, images, cmap=False, lut=None, normalize=True, border=N
         The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size ``(image_count,)``
         for provided ``images`` data of shape ``(image_count, h, w)``.
     """
-    # Parse images.
-    images = np.array(images, copy=(False if np.__version__[0] == '1' else None))
-    if len(images.shape) == 2:
-        images = np.reshape(images, (1, images.shape[0], images.shape[1]))
-    # (img_count, w_y, w_x) = images.shape
-    isfloat = np.issubdtype(images.dtype, np.floating)
-
-    # Parse cmap.
-    if not isinstance(cmap, str):
-        if cmap is True:
-            cmap = mpl.rcParams['image.cmap']
-        else:
-            if lut is None or lut > 256:
-                lut = 256
-
-    # Parse lut.
-    if lut is None:
-        if isfloat:
-            lut = mpl.rcParams['image.lut']
-        else:
-            lut = np.max(images)+1
-    lut = int(lut)
-
-    if normalize:
-        images = np.rint(images * (float(lut-1) / np.max(images))).astype(int)
-    elif isfloat:
-        images = np.rint(images * float(lut-1)).astype(int)
-
-    images[images < 0] = 0
-    images[images > lut] = lut
-
-    # Convert images.
-    if isinstance(cmap, str):
-        cm = plt.get_cmap(cmap, lut)
-        if hasattr(cm, "colors"):
-            c = cm.colors
-        else:
-            c = cm(np.arange(0, cm.N))
-        images = c[images]
-        images = 255 * images[:, :, :, :3]  # Remove alpha channel
-
-    images = images.astype(np.uint8)
-
-    if border is not None:
-        images[:, 0, :, :] = border
-        images[:, -1, :, :] = border
-        images[:, :, 0, :] = border
-        images[:, :, -1, :] = border
+    images = _gray2rgb(images, cmap=cmap, lut=lut, normalize=normalize, border=border)
 
     # Determine the file format
     extension = file_path.split(".")[-1]

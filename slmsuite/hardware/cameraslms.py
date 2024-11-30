@@ -1028,7 +1028,7 @@ class FourierSLM(CameraSLM):
             if array_center is None
             else (
                 format_2vectors(array_center) +
-                format_2vectors(((shape[1]) / 2.0, (shape[0]) / 2.0))
+                format_2vectors((shape[1] / 2.0, shape[0] / 2.0))
             ),
             basis="knm",
             orientation_check=True,

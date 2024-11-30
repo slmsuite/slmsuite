@@ -8,12 +8,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import curve_fit
+from scipy.ndimage import zoom
+import PIL
+import io
 
 from slmsuite.holography import analysis
 from slmsuite.holography.toolbox import BLAZE_LABELS
 from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
 from slmsuite.misc.math import REAL_TYPES
-from slmsuite.hardware._pyglet import _CameraWindow
+from slmsuite.holography.analysis.files import _gray2rgb
 
 
 class Camera():
@@ -562,6 +565,13 @@ class Camera():
         if transform:
             img = self.transform(img)
 
+        # Push to viewer if active.
+        if self.viewer is not None:
+            if averaging > 1:
+                self.viewer.render(img / averaging)
+            else:
+                self.viewer.render(img)
+
         return img
 
     def get_images(self, image_count, timeout_s=1, out=None, transform=True, flush=False):
@@ -570,7 +580,7 @@ class Camera():
 
         Important
         ~~~~~~~~~
-        This method does not support averaging or HDR features.
+        This method **does not** support averaging or HDR features.
         Rather, it just returns a series of raw images.
 
         Parameters
@@ -635,6 +645,10 @@ class Camera():
                 imgs_[i, :, :] = self.transform(imgs[i])
 
             imgs = imgs_
+
+        # Push to viewer if active.
+        if self.viewer is not None:
+            self.viewer.render(imgs[-1])
 
         return imgs
 
@@ -761,7 +775,7 @@ class Camera():
 
         return img
 
-    # Other helper methods.
+    # Display methods.
 
     def plot(self, image=None, limits=None, title="Image", ax=None, cbar=True):
         """
@@ -832,72 +846,55 @@ class Camera():
 
         return ax
 
-    async def live(self):
+    def live(self, activate=None, widgets=True, backend="ipython", **kwargs):
         """
-        Opens a live :mod:`pyglet` window displaying camera data.
-        This function starts an :mod:`asyncio` loop which allows other events to be run
-        on the same thread (limited to one by the python GIL).
-        Currently, multiple cameras running live viewers will fight each other for
-        :mod:`asyncio` time. In the future, trigger and grab methods could be used to
-        avoid this.
+        Creates and displays an IPython camera viewer.
+        This viewer displays the result of :meth:`get_image()`
+        or the last image of :meth:`get_images()`.
+        Averaging and HDR are displayed with the same color range as without.
 
-        If a live viewer for a given camera ``cam`` is already open, calling this
-        function again ``cam.live()`` will do nothing.
+        Important
+        ~~~~~~~~~
+        This viewer can be used as a live monitor inside a jupyter notebook, though any 
+        user-execution will block the monitoring loop. However, any image polling
+        on the camera will still update the viewer, which provides active feedback
+        for what is happening during the execution. The reason for this functionality 
+        is the python Global Interpreter Lock (GIL) which limits operation,
+        especially operation connecting to a diverse set of camera and SLM hardware,
+        to a single thread. We use :mod:`asyncio` to allow the monitoring loop to be
+        interrupted by user-execution.
+        Running multiple viewers at once might not play nicely right now.
 
-        Display parameters are customizable by setting the parameters of the viewer.
-
-        - ``cam.viewer.min``
-        - ``cam.viewer.max``
-        - ``cam.viewer.cmap``
-        - ``cam.viewer.log``
-
-        .. list-table:: User Inputs
-            :widths: 30 70
-            :header-rows: 1
-
-            * - Command
-              - Meaning
-            * - ``Left Click``
-              - Prints clicked 2D coordinate in the console.
-            * - ``Right Click``
-              - Prints clicked image value in the console.
-            * - ``Window Resize``
-              - Currently disabled. The window will display with the camera's native resolution.
-            * - ``Window Close``
-              - End the live session.
+        Parameters
+        ----------
+        activate : bool OR None
+            If ``True``, creates a live viewer in the current cell, 
+            destroying any other attached viewer.
+            If ``False``, destroys  any other attached viewer.
+            If ``None``, toggles the live viewer, destroying any attached viewer or
+            creating one in the current cell if none is attached.
+        widgets : bool
+            If ``True``, also displays sliders and controls which hone the display properties.
+        backend : str
+            Placeholder option for different types of viewers.
+            The default is ``"ipython"``.
+        **kwargs
+            Options passed to the :class:`_CameraViewer` to customize the defaults.
+            These features will be made less hidden in the future.
         """
-            # * - ``Middle Click``
-            #   - TODO.
-            # * - ``Scroll Wheel``
-            #   - Change maximum with 10 pixel steps.
-            # * - ``Shift + Scroll Wheel``
-            #   - Change minimum with 10 pixel steps.
-            # * - ``Ctrl + Scroll Wheel``
-            #   - Change maximum with single pixel steps.
-            # * - ``Ctrl + Shift + Scroll Wheel``
-            #   - Change minimum with single pixel steps.
+        if (self.viewer is None and activate is None) or activate:
+            if self.viewer is not None:
+                self.viewer.close()
 
-        if self.viewer is None:
-            self.viewer = _CameraWindow(shape=self.shape, caption=self.name)
-
-        self.viewer.set_visible(True)
-
-        while self.viewer.alive:
-            img = self.get_image()
-
-            self.viewer.buffer
-
-            self.viewer.render()
-            event = self.viewer.dispatch_events()
-
-            await asyncio.sleep(0.1)
-
-        self.viewer.set_visible(False)
-
-    def live_widgets(self):
-        from ipywidgets import FloatSlider, FloatRangeSlider, Dropdown, Checkbox, HBox, VBox
-
-        # min, max, cmap, log
+            self.viewer = _CameraViewer(
+                self,
+                widgets,
+                backend,
+                **kwargs
+            )
+        elif self.viewer is not None and (activate is None or not activate):
+            self.viewer.close()
+            self.viewer = None
 
     # Other helper methods.
 
@@ -1098,57 +1095,298 @@ class Camera():
         return z_opt, imlist
 
 
-def view_continuous(cameras, cmap=None, min=None, max=None, log=False):
-    pass
+class _CameraViewer:
 
+    def __init__(
+            self,
+            cam,
+            widgets,
+            backend="ipython", 
+            live=False,
+            min=None,
+            max=None,
+            log=False,
+            cmap=True,
+            scale=1,
+            border=None,
+            cmap_options=[True, False, "turbo", "Blues"]
+        ):
+        self.cam = cam
+        self.backend = backend
 
-def _view_continuous(cameras, cmap=None, facecolor=None, dpi=300):
-    """
-    Continuously get camera frames and plot them. Intended for use in jupyter notebooks.
-    Activate ``%matplotlib notebook`` before calling this function. This method
-    does not halt, exit with a keyboard interrupt.
+        # Parse range.
+        if min is None:
+            min = 0
+        if max is None:
+            max = cam.bitresolution-1
+        range = [min, max]
+        range = [np.min(range), np.max(range)]
 
-    Important
-    ~~~~~~~~~
-    This is probably going to get replaced with a :mod:`pyglet` interface for viewing
-    realtime camera outputs while cameras loaded into python.
+        # Parse scale
+        scale = 2 ** np.round(np.log2(scale))
 
-    Parameters
-    ----------
-    cameras : list of :class:`Camera`
-        The cameras to view continuously.
-    cmap
-        See :meth:`matplotlib.pyplot.imshow`.
-    facecolor
-        See :meth:`matplotlib.pyplot.figure`.
-    dpi
-        See :meth:`matplotlib.pyplot.figure`. Default is 300.
-    """
-    # Get camera information.
-    cam_count = len(cameras)
-    cams_max_height = cams_max_width = 0
-    for cam_idx, cam in enumerate(cameras):
-        cams_max_height = max(cams_max_height, cam.shape[0])
-        cams_max_width = max(cams_max_width, cam.shape[1])
+        self.state = {
+            "backend" : backend,
+            "live" : live,
+            "range" : range,
+            "log" : bool(log),
+            "cmap" : cmap,
+            "scale" : scale,
+            "border" : border,
+            "cmap_options" : cmap_options,
+        }
 
-    # Create figure.
-    plt.ion()
-    figsize = np.array((cam_count * cams_max_width, cams_max_height)) * 2**-9
-    fig, axs = plt.subplots(1, cam_count, figsize=figsize, facecolor=facecolor, dpi=dpi)
-    axs = np.reshape(axs, cam_count)
-    fig.tight_layout()
-    fig.show()
-    fig.canvas.draw()
-    for cam_idx in range(cam_count):
-        axs[cam_idx].tick_params(direction="in")
+        self.task = None
+        self.widgets = {}
+        if widgets: self.init_widgets()
+        self.init_image()
 
-    # Plot continuously.
-    while True:
-        for cam_idx in range(cam_count):
-            cam = cameras[cam_idx]
-            ax = axs[cam_idx]
-            img = cam.get_image()
-            ax.clear()
-            ax.imshow(img, interpolation=None, cmap=cmap)
-        fig.canvas.draw()
-        fig.canvas.flush_events()
+    def parse(self, img=None):
+        if img is not None:
+            self.prev_img = img
+        if self.prev_img is None:
+            return  # Nothing to render.
+
+        # Downscaling can happen before intensive operations.
+        if self.state["scale"] < 1:
+            img = zoom(
+                self.prev_img, 
+                [self.state["scale"], self.state["scale"]] + ([1] if len(self.prev_img.shape) == 3 else []), 
+                order=1
+            )
+        else:
+            img = np.copy(self.prev_img)
+
+        with self.widgets["output"]:
+            print(self.state["range"])
+
+        with self.widgets["output"]:
+            print([np.min(img), np.max(img)])
+
+        # Scale intensity of image
+        r = np.array(self.state["range"]).astype(img.dtype)
+        img = np.clip(img, r[0], r[1])
+        img -= r[0]
+        d = r[1] - r[0]
+
+        if self.state["log"]:
+            img = img / d
+            img += .1/d             # Avoid zeros.
+            img = np.log10(img)
+
+        # with self.widgets["output"]:
+        #     print([np.min(img), np.max(img)])
+        #     plt.imshow(img)
+        #     plt.show()
+
+        # Make image color
+        rgb = _gray2rgb(
+            img, 
+            cmap=self.state["cmap"], 
+            lut=d, 
+            normalize=False, 
+            border=self.state["border"]
+        )
+        
+        with self.widgets["output"]:
+            print([np.min(rgb), np.max(rgb)])
+
+        with self.widgets["output"]:
+            print(rgb.shape)
+
+        # Upscaling can happen after intensive operations.
+        if self.state["scale"] > 1:
+            rgb = zoom(rgb, (1, self.state["scale"], self.state["scale"], 1), order=0)
+
+        buff = io.BytesIO()
+        rgb = PIL.Image.fromarray(rgb[0])    
+        rgb.save(buff, format="png")
+        
+        return buff.getvalue()
+
+    def render(self, img=None):
+        self.image.value = self.parse(img)
+    
+    def update(self, event):
+        with self.widgets["output"]:
+            self.widgets["output"].clear_output(wait=True)
+            # print(event)
+        for key in ["range", "log", "cmap", "scale", "live"]:
+            self.state[key] = self.widgets[key].value
+
+        self.render()
+
+    def live(self, event=None):
+        state = self.state["live"] = self.widgets["live"].value
+        
+        loop = asyncio.get_running_loop()
+        
+        if self.task is not None:
+            try:
+                self.task.cancel()
+            except:
+                pass
+            
+        if not state:
+            self.task = None
+        else:
+            self.task = loop.create_task(self.live_loop())
+
+    async def live_loop(self):
+        while self.state["live"]:
+            self.cam.get_image()
+            await asyncio.sleep(0.01)
+
+    def on_click(self, event):
+        coord = np.array([event["x"], event["y"]])
+        with self.widgets["output"]:
+            self.widgets["output"].clear_output(wait=True)
+            print(np.round(coord / self.state["scale"]).astype(int))
+    
+    def autorange(self, event):
+        if self.prev_img is not None:
+            range = [np.min(self.prev_img), np.max(self.prev_img)]
+            self.state["range"] = self.widgets["range"].value = range
+
+        self.render()
+
+    def init_image(self):
+        from ipywidgets import Image
+        from IPython.display import display
+
+        self.image = Image(value=self.parse(self.cam.get_image()), format="png")
+        self.image.on_click = self.on_click
+        display(self.image)
+
+    def init_widgets(self):
+        from ipywidgets import HTML, IntRangeSlider, ToggleButton, Button, Checkbox, Dropdown, FloatLogSlider, Output, Layout
+
+        item_layout = Layout(width="auto")
+        range_layout = Layout(width="70%")
+
+        self.widgets = {
+            "name" : HTML(
+                value=f"<b>{self.cam.name}</b>",
+                description="Viewing",
+                tooltip="Name of the camera.",
+                layout=item_layout,
+            ),
+            "live" : ToggleButton(
+                value=self.state["live"],
+                description="Live",
+                tooltip="Toggle an asyncio loop to poll images from the camera.",
+                layout=item_layout,
+            ),
+            "range" : IntRangeSlider(
+                value=self.state["range"],
+                min=0,
+                max=self.cam.bitresolution-1,
+                step=1,
+                description="Range",
+                tooltip="Color scale of the plot.",
+                layout=range_layout,
+            ),
+            "autorange" : Button(
+                description="AutoRange",
+                tooltip="Scale the plot to the minimum and maximum of the current image.",
+                layout=item_layout,
+            ),
+            "log" : Checkbox(
+                value=self.state["log"],
+                description="Logarithmic",
+                tooltip="Toggle logarithmic scaling of the current plot.",
+                layout=item_layout,
+            ),
+            "cmap" : Dropdown(
+                options=self.state["cmap_options"],
+                value=self.state["cmap"],
+                description="Colormap",
+                tooltip="Choose the colormap to use for display.",
+                layout=item_layout,
+            ),
+            "scale" : FloatLogSlider(
+                value=self.state["scale"],
+                base=2,
+                min=-3, # 12.5%
+                max=3,  # 800%
+                step=1,
+                description="Scale",
+                tooltip="Scale the image by powers of two.",
+                layout=item_layout,
+            ),
+            "output": Output()
+        }
+
+        for k, w in self.widgets.items():
+            if k == "autorange":
+                w.on_click(self.autorange)
+            elif k == "live":
+                w.observe(self.live, "value")
+            else:
+                w.observe(self.update, "value")
+
+        from ipywidgets import HBox, VBox
+        from IPython.display import display
+
+        # self.widgets["layout"] = VBox([
+        #     HBox([
+        #         self.widgets["name"],
+        #         self.widgets["cmap"],
+        #         self.widgets["log"],
+        #         self.widgets["scale"],
+        #     ]),
+        #     HBox([
+        #         self.widgets["range"],
+        #         self.widgets["autorange"],
+        #     ]),
+        #     self.widgets["output"],
+        # ])
+        
+        box_layout1 = Layout(
+            display="flex",
+            flex_flow="auto",
+            align_items="stretch",
+            width="70%"
+        )
+        box_layout2 = Layout(
+            display="flex",
+            flex_flow="auto",
+            align_items="stretch",
+            width="30%"
+        )
+
+        self.widgets["layout"] = HBox([
+            VBox(
+                [
+                    HBox([
+                        self.widgets["name"],
+                    ]),
+                    HBox([
+                        self.widgets["cmap"],
+                        self.widgets["log"],
+                    ]),
+                    HBox([
+                        self.widgets["range"],
+                    ]),
+                    self.widgets["output"],
+                ],
+                layout=box_layout1,
+            ),
+            VBox(
+                [
+                    self.widgets["live"],
+                    self.widgets["scale"],
+                    self.widgets["autorange"],
+                ],
+                layout=box_layout2,
+            )
+        ])
+
+        display(self.widgets["layout"])
+
+    def close(self):
+        for w in self.widgets.values():
+            w.close()
+        self.image.close()
+
+        del self

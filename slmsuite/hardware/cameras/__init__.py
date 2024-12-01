@@ -9,18 +9,6 @@ the abstract class :class:`.Camera`, which requires subclasses to implement a nu
 relevant for SLM feedback (see below).
 These subclasses are effectively wrappers for the given SDK, but also include
 quality-of-life features such as image transformations (flips, rotates) and useful common methods.
-A number of SDKs are supported, including:
-
--  :class:`.AlliedVision`, for AlliedVision cameras, through :mod:`vimba`
-   (`GitHub <https://github.com/alliedvision/VimbaPython>`__),
--  :class:`.Cheetah640`, for Xenics Cheetah cameras, through the
-   `Xenics SDK <https://www.xenics.com/software/>`_,
--  :class:`.FLIR`, for Teledyne FLIR cameras, through the :mod:`PySpin`
-   interface of the `Spinnaker SDK <https://www.flir.com/products/spinnaker-sdk/>`_,
--  :class:`.MMCore`, for the general microscope control package Micro-Manager,
-   through :mod:`pymmcore` (`GitHub <https://github.com/micro-manager/pymmcore>`__), and
--  :class:`.ThorCam`, for Thorlabs scientific cameras, through :mod:`thorlabs_tsi_sdk`
-   and the `ThorCam SDK <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_.
 
 Tip
 ~~~~~~~~

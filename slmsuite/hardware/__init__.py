@@ -12,7 +12,7 @@ class _Picklable:
     _pickle = []        # Baseline parameters to pickle.
     _pickle_data = []   #
 
-    def pickle(self, attributes=False, metadata=True):
+    def pickle(self, attributes=True, metadata=True):
         """
         Returns a dictionary containing selected attributes of this class.
 
@@ -35,7 +35,7 @@ class _Picklable:
         # Parse attributes.
         recursive_attributes = attributes is True   # Heavy pickling only if True.
         if isinstance(attributes, bool):
-            attributes = self._pickle + (self._pickle_extra if attributes else [])
+            attributes = self._pickle + (self._pickle_data if attributes else [])
 
         # Assemble the dictionary.
         pickled = {}

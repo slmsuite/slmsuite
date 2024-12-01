@@ -86,7 +86,7 @@ class CameraSLM(_Picklable):
             raise ValueError(f"Expected SLM to be passed as slm. Found {type(slm)}")
         self.slm = slm
 
-        self.name = self.cam.name + "_" + self.slm.name
+        self.name = self.cam.name + "-" + self.slm.name
 
         self.mag = float(mag)
 

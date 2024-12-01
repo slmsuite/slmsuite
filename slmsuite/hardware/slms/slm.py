@@ -28,6 +28,21 @@ class SLM(_Picklable):
         Name of the SLM.
     shape : (int, int)
         Stores ``(height, width)`` of the SLM in pixels, the same convention as :attr:`numpy.ndarray.shape`.
+    bitdepth : int
+        Depth of SLM pixel well in bits. This is useful for converting the floats which
+        the user provides to the ``bitdepth``-bit ints that the SLM reads (see the
+        private method :meth:`_phase2gray`).
+    bitresolution : int
+        Stores ``2 ** bitdepth``.
+    settle_time_s : float
+        Delay in seconds to allow the SLM to settle. This is mostly useful for applications
+        requiring high precision. This delay is applied if the user flags ``settle``
+        in :meth:`set_phase()`. Defaults to .3 sec for precision.
+    pitch_um : (float, float)
+        Pixel pitch in microns.
+    pitch : float
+        Pixel pitch normalized to wavelengths ``pitch_um / wav_um``. This value is more
+        useful than ``pitch_um`` when considering conversions to :math:`k`-space.
     wav_um : float
         Operating wavelength targeted by the SLM in microns. Defaults to 780 nm.
     wav_design_um : float
@@ -48,21 +63,6 @@ class SLM(_Picklable):
     phase_scaling : float
         Wavelength normalized to the phase range of the SLM. See :attr:`wav_design_um`.
         Determined by ``phase_scaling = wav_um / wav_design_um``.
-    bitdepth : int
-        Depth of SLM pixel well in bits. This is useful for converting the floats which
-        the user provides to the ``bitdepth``-bit ints that the SLM reads (see the
-        private method :meth:`_phase2gray`).
-    bitresolution : int
-        Stores ``2 ** bitdepth``.
-    settle_time_s : float
-        Delay in seconds to allow the SLM to settle. This is mostly useful for applications
-        requiring high precision. This delay is applied if the user flags ``settle``
-        in :meth:`set_phase()`. Defaults to .3 sec for precision.
-    pitch_um : (float, float)
-        Pixel pitch in microns.
-    pitch : float
-        Pixel pitch normalized to wavelengths ``pitch_um / wav_um``. This value is more
-        useful than ``pitch_um`` when considering conversions to :math:`k`-space.
     grid : (numpy.ndarray<float> (height, width), numpy.ndarray<float> (height, width))
         :math:`x` and :math:`y` coordinates of the SLM's pixels in wavelengths
         (see :attr:`wav_um`, :attr:`pitch_um`)
@@ -96,14 +96,14 @@ class SLM(_Picklable):
     _pickle = [
         "name",
         "shape",
+        "bitdepth",
+        "bitresolution",
+        "pitch_um",
+        "pitch",
+        "settle_time_s",
         "wav_um",
         "wav_design_um",
         "phase_scaling",
-        "bitdepth",
-        "bitresolution",
-        "settle_time_s",
-        "pitch_um",
-        "pitch",
     ]
     _pickle_data = [
         "source",
@@ -153,7 +153,7 @@ class SLM(_Picklable):
         # By default, target wavelength is the design wavelength
         self.wav_um = float(wav_um)
         if wav_design_um is None:
-            self.wav_design_um = wav_um
+            self.wav_design_um = float(wav_um)
         else:
             self.wav_design_um = float(wav_design_um)
 

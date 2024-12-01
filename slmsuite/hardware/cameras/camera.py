@@ -40,6 +40,13 @@ class Camera(_Picklable):
     dtype : type
         Stores the type returned by :meth:`._get_image_hw()`.
         This value is cached upon initialization.
+    pitch_um : (float, float) OR None
+        Pixel pitch in microns.
+    exposure_s : float
+        Caches the last result of :meth:`.get_exposure()`. Can be used if the user wants to
+        avoid the overhead of calling the method.
+    exposure_bounds_s : (float, float) OR None
+        Shortest and longest allowable integration in seconds.
     averaging : int OR None
         Default setting for averaging. See :meth:`.get_image()`.
     hdr : (int, int) OR None
@@ -49,10 +56,6 @@ class Camera(_Picklable):
         try again for a total of `capture_attempts` attempts.
         This is useful for resilience against errors that happen with low probability.
         Defaults to 5.
-    pitch_um : (float, float) OR None
-        Pixel pitch in microns.
-    exposure_bounds_s : (float, float) OR None
-        Shortest and longest allowable integration in seconds.
     woi : tuple
         WOI (window of interest) in ``(x, width, y, height)`` form.
 
@@ -75,15 +78,16 @@ class Camera(_Picklable):
         used and the type of :attr:`averaging`.
         Is ``None`` if no image has ever been taken.
     """
-    to_pickle = [
+    _pickle = [
         "name",
         "shape",
         "bitdepth",
         "bitresolution",
+        "pitch_um",
+        "exposure_s",
+        "exposure_bounds_s",
         "averaging",
         "hdr",
-        "pitch_um",
-        "exposure_bounds_s",
         "woi",
         "default_shape",
     ]

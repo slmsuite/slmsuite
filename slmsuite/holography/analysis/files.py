@@ -233,7 +233,7 @@ def save_h5(file_path, data, mode="w"):
     Note
     ~~~~
     There are some limitations to what the h5 file standard can store, along with
-    limitations on what is currently implemented in this function. A few tips:
+    limitations on what is currently implemented in this function.
 
     Supported types:
 

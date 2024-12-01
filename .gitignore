@@ -22,6 +22,7 @@
 
 # data
 *.mat
+*.npy
 *.npz
 *.csv
 *.pickle

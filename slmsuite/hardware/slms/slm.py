@@ -10,6 +10,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import warnings
 
 from slmsuite import __version__
+from slmsuite.hardware import _Picklable
 from slmsuite.holography import toolbox
 from slmsuite.misc import fitfunctions
 from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
@@ -17,7 +18,7 @@ from slmsuite.holography import analysis
 from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
 
 
-class SLM:
+class SLM(_Picklable):
     """
     Abstract class for SLMs.
 
@@ -92,6 +93,23 @@ class SLM:
     display : numpy.ndarray
         Displayed data in SLM units (integers).
     """
+    _pickle = [
+        "name",
+        "shape",
+        "wav_um",
+        "wav_design_um",
+        "phase_scaling",
+        "bitdepth",
+        "bitresolution",
+        "settle_time_s",
+        "pitch_um",
+        "pitch",
+    ]
+    _pickle_data = [
+        "source",
+        "phase",
+        "display",
+    ]
 
     def __init__(
         self,
@@ -626,12 +644,12 @@ class SLM:
         path : str
             Path to directory to save in. Default is current directory.
         name : str OR None
-            Name of the save file. If ``None``, will use :attr:`name` + ``'_phase'``.
+            Name of the save file. If ``None``, will use :attr:`name` + ``'-phase'``.
 
         Returns
         -------
         str
-            The file path that the fourier calibration was saved to.
+            The file path that the phase was saved to.
         """
         if name is None:
             name = self.name + '_phase'
@@ -657,7 +675,7 @@ class SLM:
         file_path : str OR None
             Full path to the phase file. If ``None``, will
             search the current directory for a file with a name like
-            :attr:`name` + ``'_phase'``.
+            :attr:`name` + ``'-phase'``.
         settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
 
@@ -1024,7 +1042,7 @@ class SLM:
 
         if power:
             im = axs[1].imshow(
-                np.square(self.source["amplitude_sim" if sim else "amplitude"]), 
+                np.square(self.source["amplitude_sim" if sim else "amplitude"]),
                 clim=(0, 1)
             )
             axs[1].set_title("Simulated Source Power" if sim else "Source Power")

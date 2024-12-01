@@ -4,7 +4,6 @@ Datastructures, methods, and calibrations for an SLM monitored by a camera.
 
 import os
 import time
-import datetime
 import cv2
 import copy
 import matplotlib.pyplot as plt
@@ -14,6 +13,7 @@ from tqdm.auto import tqdm
 import warnings
 
 from slmsuite import __version__
+from slmsuite.hardware import _Picklable
 from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import Hologram, SpotHologram, CompressedSpotHologram
@@ -27,7 +27,7 @@ from slmsuite.misc.math import REAL_TYPES
 from slmsuite.hardware.cameras.simulated import SimulatedCamera
 from slmsuite.hardware.slms.simulated import SimulatedSLM
 
-class CameraSLM:
+class CameraSLM(_Picklable):
     """
     Base class for an SLM with camera feedback.
 
@@ -40,6 +40,8 @@ class CameraSLM:
     slm : ~slmsuite.hardware.slms.slm.SLM
         Instance of :class:`~slmsuite.hardware.slms.slm.SLM`
         which interfaces with a phase display.
+    name : str
+        Stores ``cam.name + '-' + slm.name``.
     mag : float
         Magnification of the camera relative to an experiment plane. For instance,
         ``mag = 10`` could refer to the use of a 10x objective (with appropriate
@@ -47,6 +49,8 @@ class CameraSLM:
         In this case, the images apparent on the camera are 10x larger than the true
         objects at the experiment plane.
     """
+    _pickle = ["name", "cam", "slm", "mag"]
+    _pickle_data = []
 
     def __init__(self, cam, slm, mag=1):
         """
@@ -81,6 +85,8 @@ class CameraSLM:
         if not hasattr(slm, "set_phase"):
             raise ValueError(f"Expected SLM to be passed as slm. Found {type(slm)}")
         self.slm = slm
+
+        self.name = self.cam.name + "_" + self.slm.name
 
         self.mag = float(mag)
 
@@ -218,6 +224,8 @@ class FourierSLM(CameraSLM):
             acquire data after a pattern is displayed. This is, of course, a tradeoff
             between measurement speed and measurement precision.
     """
+    _pickle = ["name", "cam", "slm", "mag"]
+    _pickle_data = ["calibrations"]
 
     def __init__(self, *args, **kwargs):
         r"""See :meth:`CameraSLM.__init__`."""
@@ -282,7 +290,7 @@ class FourierSLM(CameraSLM):
 
     def name_calibration(self, calibration_type):
         """
-        Creates ``"{cam.name}-{slm.name}-{calibration_type}-calibration"``.
+        Creates ``"{self.name}-{calibration_type}-calibration"``.
 
         Parameters
         ----------
@@ -295,7 +303,15 @@ class FourierSLM(CameraSLM):
         name : str
             The generated name.
         """
-        return f"{self.cam.name}-{self.slm.name}-{calibration_type}-calibration"
+        return f"{self.name}-{calibration_type}-calibration"
+
+    def write_calibration(self, calibration_type, path, name):
+        "Backwards-compatibility alias for :meth:`save_calibration()`."
+        warnings.warn(
+            "The backwards-compatible alias FourierSLM.write_calibration will be depreciated "
+            "in favor of FourierSLM.save_calibration in a future release."
+        )
+        self.save_calibration(calibration_type, path, name)
 
     def save_calibration(self, calibration_type, path=".", name=None):
         """
@@ -329,6 +345,14 @@ class FourierSLM(CameraSLM):
 
         return file_path
 
+    def read_calibration(self, calibration_type, file_path=None):
+        "Backwards-compatibility alias for :meth:`load_calibration()`."
+        warnings.warn(
+            "The backwards-compatible alias FourierSLM.read_calibration will be depreciated "
+            "in favor of FourierSLM.load_calibration in a future release."
+        )
+        self.load_calibration(calibration_type, file_path)
+
     def load_calibration(self, calibration_type, file_path=None):
         """
         from a file.
@@ -357,27 +381,26 @@ class FourierSLM(CameraSLM):
             path = os.path.abspath(".")
             name = self.name_calibration(calibration_type)
             file_path = latest_path(path, name, extension="h5")
+
             if file_path is None:
                 raise FileNotFoundError(
                     "Unable to find a calibration file like\n{}"
                     "".format(os.path.join(path, name))
                 )
 
-        self.calibrations[calibration_type] = load_h5(file_path)
+        self.calibrations[calibration_type] = cal = load_h5(file_path)
+        cal_ver = "an unknown version" if not "__version__" in cal else cal["__version__"]
+
+        if cal_ver != __version__:
+            warnings.warn(
+                f"You are using slmsuite {__version__}, but the calibration "
+                f"in '{file_path}' was created in {cal_ver}."
+            )
 
         return file_path
 
     def _get_calibration_metadata(self):
-        t = datetime.datetime.now()
-        return {
-            "__version__" : __version__,
-            "__time__" : str(t),
-            "__timestamp__" : t.timestamp(),
-            "__meta__" : {
-                "camera" : self.cam.name,   # Future: pickle hardware.
-                "slm" : self.slm.name
-            }
-        }
+        return self.pickle(attributes=False, metadata=True)      # Pickle without heavy data.
 
     ### Settle Time Calibration ###
 
@@ -917,9 +940,17 @@ class FourierSLM(CameraSLM):
             raise ValueError("array_pitch must be positive.")
 
         # Make and project a GS hologram across a normal grid of kvecs
-        hologram = self.fourier_grid_project(
-            array_shape=array_shape, array_pitch=array_pitch, array_center=array_center, **kwargs
-        )
+        try:
+            hologram = self.fourier_grid_project(
+                array_shape=array_shape, array_pitch=array_pitch, array_center=array_center, **kwargs
+            )
+        except Exception as e:
+            warnings.warn(
+                "fourier_calibrate failed during array holography. Try the following:\n"
+                "- Reducing the array_pitch or array_shape,\n"
+                "- Checking SLM parameters."
+            )
+            raise e
 
         # The rounding of the values might cause the center to shift from the desired
         # value. To compensate for this, we find the true written center.
@@ -953,11 +984,14 @@ class FourierSLM(CameraSLM):
             else:
                 self.cam.autoexposure()
 
-        # self.cam.flush()
         img = self.cam.get_image()
 
         # Get orientation of projected array
-        orientation = analysis.blob_array_detect(img, array_shape, plot=plot)
+        try:
+            orientation = analysis.blob_array_detect(img, array_shape, plot=plot)
+        except Exception as e:
+            warnings.warn("fourier_calibrate failed during array detection and fitting.")
+            raise e
 
         a = format_2vectors(array_center)
         M = np.array(orientation["M"])
@@ -1773,8 +1807,6 @@ class FourierSLM(CameraSLM):
         cbar.ax.set_ylabel("Aberration Correction [rad]") #, rotation=270)
         plt.clim(-lim, lim)
         plt.title(f"Zernike $Z_{zernike_indices[index]}$")
-
-
 
     @staticmethod
     def _wavefront_calibrate_zernike_default_metric(images):

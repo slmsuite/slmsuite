@@ -1071,7 +1071,7 @@ _zernike_cache = {}
 _zernike_cache_vectorized = np.array([[]], dtype=int)
 
 
-def _zernike_build_order(o):
+def _zernike_build_order(n):
     """Pre-caches Zernike polynomial coefficients up to order :math:`n`."""
     N = (n+1) * (n+2) // 2
     for i in range(N):

@@ -12,6 +12,7 @@ from scipy.ndimage import zoom
 import PIL
 import io
 
+from slmsuite.hardware import _Picklable
 from slmsuite.holography import analysis
 from slmsuite.holography.toolbox import BLAZE_LABELS
 from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
@@ -19,7 +20,7 @@ from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography.analysis.files import _gray2rgb
 
 
-class Camera():
+class Camera(_Picklable):
     """
     Abstract class for cameras.
     Comes with transformations, averaging and HDR,
@@ -66,7 +67,26 @@ class Camera():
         The user is expected to apply this transform to the matrix returned in
         :meth:`get_image()`. Note that WOI changes are applied on the camera hardware
         **before** this transformation.
+    last_image : numpy.ndarray TODO
+        Last captured image. Note that this is a pointer to the same data that the user
+        receives (to avoid copying overhead). Thus, if the user modifies the returned data,
+        then this data will be modified also.
     """
+    to_pickle = [
+        "name",
+        "shape",
+        "bitdepth",
+        "bitresolution",
+        "averaging",
+        "hdr",
+        "pitch_um",
+        "exposure_bounds_s",
+        "woi",
+        "default_shape",
+    ]
+    _pickle_data = [
+        "last_image",
+    ]
 
     def __init__(
         self,
@@ -443,7 +463,7 @@ class Camera():
         if self.dtype.kind == "i" or self.dtype.kind == "u":
             dtype_bitdepth = self.dtype.nbytes
 
-            # Remove depth for signed integeter.
+            # Remove depth for signed integer.
             if self.dtype.kind == "i":
                 dtype_bitdepth -= 1
 

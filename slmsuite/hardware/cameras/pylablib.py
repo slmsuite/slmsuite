@@ -7,9 +7,14 @@ Note
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
-
+import warnings
 from slmsuite.hardware.cameras.camera import Camera
-from pylablib.devices.interface.camera import ICamera
+
+try:
+    from pylablib.devices.interface.camera import ICamera
+except:
+    ICamera = None
+    warnings.warn("pylablib not installed. Install to use PyLabLib cameras.")
 
 class PyLabLib(Camera):
     """
@@ -49,6 +54,9 @@ class PyLabLib(Camera):
         RuntimeError
            If the camera can not be reached.
         """
+        if ICamera is None:
+            raise ImportError("pylablib not installed. Install to use PyLabLib cameras.")
+
         if not isinstance(cam, ICamera):
             raise ValueError(
                 "A subclass of pylablib.devices.interface.camera.Camera must be passed as cam."
@@ -105,7 +113,7 @@ class PyLabLib(Camera):
             An empty list.
         """
         raise RuntimeError(
-            ".info() is not applicable to pylablib cameras, which are "
+            ".info() is not applicable to pylablib cameras, which must be "
             "constructed outside this wrapper."
         )
 

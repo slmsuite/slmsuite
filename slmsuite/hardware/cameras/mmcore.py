@@ -13,8 +13,8 @@ from slmsuite.hardware.cameras.camera import Camera
 try:
     import pymmcore
 except ImportError:
+    pymmcore = None
     warnings.warn("pymmcore not installed. Install to use Micro-Manager cameras.")
-
 
 class MMCore(Camera):
     """
@@ -43,7 +43,7 @@ class MMCore(Camera):
             Name of the config file corresponding to the desired camera. This is assumed to be
             a ``.cfg`` file stored in the Micro-Manager ``path`` (see below), unless an
             absolute path is given.
-            The filetype ``.cfg`` may be included or omitted, 
+            The filetype ``.cfg`` may be included or omitted,
             but the :attr:`name` of the camera will be without it.
         path : str
             Directory of the Micro-Manager installation. Defaults to the default Windows
@@ -56,6 +56,9 @@ class MMCore(Camera):
         **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
+        if pymmcore is None:
+            raise ImportError("pymmcore not installed. Install to use Micro-Manager cameras.")
+
         # Parse config.
         if len(config) > 4 and config[-4:] == ".cfg":
             config = config[:-4]
@@ -91,11 +94,11 @@ class MMCore(Camera):
     def info(path="C:\\Program Files\\Micro-Manager-2.0"):
         """
         Detects ``.cfg`` files present in the given path.
-        
+
         Parameters
         ----------
         path : str
-            Path to search. This path defaults to the default Micro-Manager install location, 
+            Path to search. This path defaults to the default Micro-Manager install location,
             as ``.cfg`` files save there by default.
 
         Returns
@@ -103,8 +106,11 @@ class MMCore(Camera):
         list of str
             Names of the detected ``.cfg`` files.
         """
+        if pymmcore is None:
+            raise ImportError("pymmcore not installed. Install to use Micro-Manager cameras.")
+
         cfg_files = []
-        
+
         # Check if the provided path exists and is a directory.
         if os.path.isdir(path):
             # Loop through files in the directory.
@@ -113,7 +119,7 @@ class MMCore(Camera):
                     cfg_files.append(file_name)
         else:
             raise ValueError(f"The provided path '{path}' is not a valid directory.")
-        
+
         return cfg_files
 
 
@@ -137,5 +143,5 @@ class MMCore(Camera):
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""
-        self.cam.snapImage(); 
+        self.cam.snapImage();
         return self.cam.getImage()

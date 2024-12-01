@@ -13,7 +13,7 @@ class Webcam(Camera):
 
     Warning
     -------
-    This class does not properly handle color images 
+    This class does not properly handle color images
     and does not properly populate datatype information.
 
     See Also

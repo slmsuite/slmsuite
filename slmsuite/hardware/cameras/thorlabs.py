@@ -66,6 +66,7 @@ _configure_tlcam_dll_path()
 try:
     from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, ROI
 except ImportError:
+    TLCameraSDK = None
     warnings.warn("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
 
 
@@ -112,6 +113,9 @@ class ThorCam(Camera):
         RuntimeError
            If the camera can not be reached.
         """
+        if TLCameraSDK is None:
+            raise ImportError("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
+
         if ThorCam.sdk is None:
             if verbose:
                 print("TLCameraSDK initializing... ", end="")
@@ -203,6 +207,9 @@ class ThorCam(Camera):
         list of str
             List of ThorCam serial numbers.
         """
+        if TLCameraSDK is None:
+            raise ImportError("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
+
         if ThorCam.sdk is None:
             try:
                 ThorCam.sdk = TLCameraSDK()

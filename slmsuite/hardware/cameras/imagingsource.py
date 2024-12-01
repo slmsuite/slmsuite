@@ -1,18 +1,25 @@
 """
 **(Untested)** Hardware control for The Imaging Source cameras via :mod:`tisgrabber`.
 :mod:`tisgrabber` is one of several different interfaces that The Imaging Source supports.
-See 
+See
 `the tisgrabber source
 <https://github.com/TheImagingSource/IC-Imaging-Control-Samples/tree/master/Python/tisgrabber>`_.
 This was tested at commit 7846b9e and Python 3.9 with DMK 27BUP031 camera.
-The tisgrabber .dll and tisgrabber.py are needed. 
+The tisgrabber .dll and tisgrabber.py are needed.
 Please either install tisgrabber.py or have it in your current working directory.
 """
-
+import warnings
 import ctypes
-import tisgrabber as tis
 import numpy as np
+
 from slmsuite.hardware.cameras.camera import Camera
+
+try:
+    import tisgrabber as tis
+except:
+    tis = None
+    warnings.warn("tisgrabber not installed. Install to use ImagingSource cameras.")
+
 
 # Change this DLL path if necessary
 DLL_PATH = "./tisgrabber_x64.dll"
@@ -87,7 +94,7 @@ class ImagingSource(Camera):
         self,
         serial="",
         vid_format=None,
-        pitch_um=None, 
+        pitch_um=None,
         verbose=True,
         **kwargs
     ):
@@ -97,12 +104,12 @@ class ImagingSource(Camera):
         Parameters
         ----------
         serial : str
-            This serial is used to open a camera by unique name (see tisgrabber.h). 
+            This serial is used to open a camera by unique name (see tisgrabber.h).
             It is usually the model name followed by a space and the serial number.
             Use :meth:`.info()` to see detected options.
             If empty, then opens the first camera found.
         vid_format : str
-            If None, no format is set and will default to whatever the camera is currently. 
+            If None, no format is set and will default to whatever the camera is currently.
             See tisgrabber.h for more information. Example ``"Y800 (2592x1944)"``.
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
@@ -112,6 +119,9 @@ class ImagingSource(Camera):
         **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
+        if tis is None:
+            raise ImportError("tisgrabber not installed. Install to use ImagingSource cameras.")
+
         # Initialize the SDK if needed.
         if verbose: print("TIS Camera SDK initializing... ", end="")
         if ImagingSource.sdk is None:
@@ -122,9 +132,9 @@ class ImagingSource(Camera):
 
         # Then we load the camera from the SDK.
         if verbose: print('"{}" initializing... '.format(serial), end="")
-        
+
         # cam will be the handle that represents the camera.
-        self.cam = ImagingSource.sdk.IC_CreateGrabber()             
+        self.cam = ImagingSource.sdk.IC_CreateGrabber()
         if serial == "":
             connected_devs = ImagingSource.info()
             if len(connected_devs) == 0:
@@ -150,9 +160,9 @@ class ImagingSource(Camera):
 
         ImagingSource.safe_call(ImagingSource.sdk.IC_GetImageDescription, 1, self.cam, width, height, bpp, COLORFORMAT)
 
-        # Dividing by 3 since it seems like even with format Y800 which is monochrome, it still uses 24 bits per pixel. 
+        # Dividing by 3 since it seems like even with format Y800 which is monochrome, it still uses 24 bits per pixel.
         # TODO: fix this to improve read efficiency
-        bitdepth = int(bpp.value / 3) 
+        bitdepth = int(bpp.value / 3)
 
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
@@ -184,19 +194,22 @@ class ImagingSource(Camera):
         list of str
             List of serial numbers or identifiers.
         """
+        if tis is None:
+            raise ImportError("tisgrabber not installed. Install to use ImagingSource cameras.")
+
         if ImagingSource.sdk is None:
             err = ImagingSource.init_sdk()
             if err != 1:
                 raise Exception("Error when loading SDK: " + str(err))
-                
+
         # Get device count and then iterate through each device
         devicecount = ImagingSource.sdk.IC_GetDeviceCount()
         serial_list = []
         for i in range(0, devicecount):
             serial_list.append(tis.D(ImagingSource.sdk.IC_GetUniqueNamefromList(i)))
-            
+
         if verbose: print(serial_list)
-            
+
         return serial_list
 
     ### Property Configuration ###
@@ -250,7 +263,7 @@ class ImagingSource(Camera):
         buffer_size = 3 * self.bitdepth * self.shape[0] * self.shape[1] # times 3 is because even Y800 is RGB
         # Starts the image acquisition
         ImagingSource.safe_call(ImagingSource.sdk.IC_StartLive, 0, self.cam, 0)
-        # Snap image 
+        # Snap image
         err = ImagingSource.safe_call(ImagingSource.sdk.IC_SnapImage, 0, self.cam, 1000*timeout_s)
         # If there is an error, then snap image again
         while err <= 0:
@@ -263,7 +276,7 @@ class ImagingSource(Camera):
         img = np.ndarray(buffer=img_ptr.contents, dtype=np.uint8, shape=(self.shape[0], self.shape[1], 3)) # 3 for RGB
         ImagingSource.safe_call(ImagingSource.sdk.IC_StopLive, 0, self.cam)
         # We take only the 1st component, assuming that the image is monochromatic.
-        return self.transform(img[:,:,0]) 
+        return self.transform(img[:,:,0])
 
     def reset(self):
         """See :meth:`.Camera.reset`."""

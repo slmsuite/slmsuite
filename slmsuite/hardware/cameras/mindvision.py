@@ -1,17 +1,23 @@
 """
 **(Untested)** Hardware control for MindVision cameras via :mod:`mvsdk`.
 This requires the :mod:`mvsdk` library and 3rd party python header to be copied
-into the local directory and added to path. The python header used for this 
+into the local directory and added to path. The python header used for this
 camera interface can be found in the `dddomodossola/nastroprint
 <https://github.com/dddomodossola/nastroprint/blob/master/mvsdk.py>`_
 GitHub package.
 """
-import mvsdk as _mvsdk
 import time
 import numpy as np
 import warnings
 
 from slmsuite.hardware.cameras.camera import Camera
+
+
+try:
+    import mvsdk as _mvsdk
+except:
+    _mvsdk = None
+    warnings.warn("mvsdk not installed. Copy mvsdk.py from dddomodossola/nastroprint to use Mindvision cameras.")
 
 class MindVision(Camera):
     """
@@ -28,7 +34,7 @@ class MindVision(Camera):
         Parameters
         ----------
         serial : str
-            Serial number of the camera to open. 
+            Serial number of the camera to open.
             Use :meth:`.info()` to see detected options.
             If empty, defaults to the first camera in the list
             returned by :meth:`.info()`.
@@ -40,6 +46,9 @@ class MindVision(Camera):
         **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
+        if _mvsdk is None:
+            raise ImportError("mvsdk not installed. Copy mvsdk.py from dddomodossola/nastroprint to use Mindvision cameras.")
+
         if MindVision.sdk is None:
             if verbose: print("mvsdk initializing... ", end="")
             _mvsdk._Init()
@@ -133,6 +142,9 @@ class MindVision(Camera):
         list of str
             List of :mod:`mvsdk` serial numbers.
         """
+        if _mvsdk is None:
+            raise ImportError("mvsdk not installed. Copy mvsdk.py from dddomodossola/nastroprint to use Mindvision cameras.")
+
         camera_list = _mvsdk.CameraEnumerateDevice()
         serial_list = [cam.GetSn() for cam in camera_list]
 

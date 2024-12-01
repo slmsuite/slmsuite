@@ -51,7 +51,7 @@ extensions = [
     "nbsphinx",
     "sphinx_copybutton",
     "sphinx_last_updated_by_git",
-    "sphinxcontrib.video",
+    # "sphinxcontrib.video",
 ]
 
 extlinks = {

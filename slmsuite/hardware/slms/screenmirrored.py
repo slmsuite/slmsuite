@@ -10,6 +10,7 @@ from slmsuite.hardware._pyglet import _Window
 try:
     import pyglet
 except ImportError:
+    pyglet = None
     warnings.warn("pyglet not installed. Install to use ScreenMirrored SLMs.")
 
 class ScreenMirrored(SLM):
@@ -140,6 +141,9 @@ class ScreenMirrored(SLM):
         **kwargs
             See :meth:`.SLM.__init__` for permissible options.
         """
+        if pyglet is None:
+            raise ImportError("pyglet not installed. Install to use ScreenMirrored SLMs.")
+
         if verbose:
             print("Initializing pyglet... ", end="")
         display = pyglet.canvas.get_display()
@@ -226,4 +230,7 @@ class ScreenMirrored(SLM):
         list of (int, (int, int, int, int), bool, bool) tuples
             The number, geometry of each display.
         """
+        if pyglet is None:
+            raise ImportError("pyglet not installed. Install to use ScreenMirrored SLMs.")
+
         return _Window.info(verbose=verbose)

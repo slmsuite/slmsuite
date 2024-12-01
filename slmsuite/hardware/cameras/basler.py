@@ -4,12 +4,14 @@ Consider also installing Basler software for testing cameras outside of python
 (see `downloads <https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;language=all;version=7.3.0>`_).
 Install :mod:`pypylon` by following the `provided instructions <https://github.com/basler/pypylon>`_.
 """
+import warnings
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
     from pypylon import pylon
 except ImportError:
-    print("pypylon not installed. Install to use Basler cameras.")
+    pylon = None
+    warnings.warn("pypylon not installed. Install to use Basler cameras.")
 
 
 class Basler(Camera):
@@ -34,7 +36,7 @@ class Basler(Camera):
         Parameters
         ----------
         serial : str
-            Serial number of the camera to open. 
+            Serial number of the camera to open.
             If empty, defaults to the first camera in the list
             returned by :meth:`.info()`.
         pitch_um : (float, float) OR None
@@ -45,6 +47,9 @@ class Basler(Camera):
         kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
+        if pylon is None:
+            raise ImportError("pypylon not installed. Install to use Basler cameras.")
+
         if Basler.sdk is None:
             if verbose:
                 print("pylon initializing... ", end="")
@@ -118,14 +123,14 @@ class Basler(Camera):
         ----------
         close_sdk : bool
             Does nothing, as the ``pylon.TlFactory`` instance stored in :attr:`sdk`
-            does not appear to need to be closed. 
+            does not appear to need to be closed.
         """
         #self.cam.__exit__(None, None, None) weird
         self.cam.StopGrabbing()
         self.cam.Close()
 
         if close_sdk:
-            pass        
+            pass
 
     @staticmethod
     def info(verbose=True):
@@ -143,6 +148,9 @@ class Basler(Camera):
         list of str
             List of serial numbers or identifiers.
         """
+        if pylon is None:
+            raise ImportError("pypylon not installed. Install to use Basler cameras.")
+
         if Basler.sdk is None:
             Basler.sdk = pylon.TlFactory.GetInstance()
             #Basler.sdk.__enter__()

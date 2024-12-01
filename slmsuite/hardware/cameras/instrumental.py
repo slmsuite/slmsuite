@@ -1,7 +1,8 @@
 """
-Light wrapper for `Instrumental cameras
-<https://instrumental-lib.readthedocs.io/en/stable/install.html>`_.
-The :mod:`instrumental` module must be installed ``pip install instrumental-lib``.
+Light wrapper for the :mod:`instrumental-lib` package.
+The :mod:`instrumental` module must be
+`installed <https://instrumental-lib.readthedocs.io/en/stable/install.html>`_.
+``pip install instrumental-lib``.
 
 Note
 ~~~~
@@ -15,7 +16,8 @@ try:
     from instrumental.drivers import ParamSet
     from instrumental import instrument, list_instruments
 except ImportError:
-    print("instrumental-lib not installed. Install to use Instrumental cameras.")
+    instrument = None
+    warnings.warn("instrumental-lib not installed. Install to use Instrumental cameras.")
 
 
 class Instrumental(Camera):
@@ -59,6 +61,9 @@ class Instrumental(Camera):
         RuntimeError
            If the camera can not be reached.
         """
+        if instrument is None:
+            raise ImportError("instrumental-lib not installed. Install to use Instrumental cameras.")
+
         if cam is None:
             instruments = list_instruments()
 
@@ -110,7 +115,7 @@ class Instrumental(Camera):
             An empty list.
         """
         raise RuntimeError(
-            ".info() is not applicable to instrumental cameras, which are "
+            ".info() is not applicable to instrumental cameras, which must be "
             "constructed outside this wrapper."
         )
 

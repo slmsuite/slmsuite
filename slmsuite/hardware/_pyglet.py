@@ -8,10 +8,11 @@ import numpy as np
 try:
     import pyglet
     import pyglet.gl as gl
+    from pyglet.window import Window as __Window
 except:
-    pass
+    __Window = object
 
-class _Window(pyglet.window.Window):
+class _Window(__Window):
     def __init__(self, shape, screen=None, caption=""):
         # Make the window and do basic setup.
         if screen is None:
@@ -76,7 +77,7 @@ class _Window(pyglet.window.Window):
 
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_NEAREST)
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST)
-            
+
             # Malloc the OpenGL memory
             gl.glTexImage2D(
                 gl.GL_TEXTURE_2D, 0, gl.GL_RGBA8,
@@ -92,18 +93,18 @@ class _Window(pyglet.window.Window):
             # Also allocate the quadrangle using pyglet 2.0+ formalism.
             self.batch = pyglet.graphics.Batch()
             self.vertex_list = self.shader.vertex_list(
-                4, 
-                gl.GL_TRIANGLE_STRIP, 
+                4,
+                gl.GL_TRIANGLE_STRIP,
                 self.batch,
-                position=('i', 
+                position=('i',
                     [
-                        0,  shape[0], 0, 
-                        0, 0, 0, 
-                        shape[1], shape[0], 0, 
-                        shape[1], 0, 0, 
+                        0,  shape[0], 0,
+                        0, 0, 0,
+                        shape[1], shape[0], 0,
+                        shape[1], 0, 0,
                     ]
                 ),  # Vertex positions (x, y)
-                tex_coords= ('f', 
+                tex_coords= ('f',
                     [
                         0., 1., 0.,
                         0., 0., 0.,

@@ -1,7 +1,8 @@
 """
-Light wrapper for `PyLabLib cameras
+Light wrapper for the :mod:`pylablib` package.
+See the supported `cameras
 <https://pylablib.readthedocs.io/en/stable/devices/cameras_root.html>`_.
-The :mod:`pylablib` module must be installed ``pip install pylablib``.
+:mod:`pylablib` must be installed ``pip install pylablib``.
 
 Note
 ~~~~

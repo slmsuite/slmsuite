@@ -118,7 +118,9 @@ class Basler(Camera):
         self.cam.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
 
     def close(self, close_sdk=True):
-        """See :meth:`.Camera.close`.
+        """
+        See :meth:`.Camera.close`.
+
         Parameters
         ----------
         close_sdk : bool

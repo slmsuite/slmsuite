@@ -67,10 +67,13 @@ class Camera(_Picklable):
         The user is expected to apply this transform to the matrix returned in
         :meth:`get_image()`. Note that WOI changes are applied on the camera hardware
         **before** this transformation.
-    last_image : numpy.ndarray TODO
+    last_image : numpy.ndarray OR None
         Last captured image. Note that this is a pointer to the same data that the user
         receives (to avoid copying overhead). Thus, if the user modifies the returned data,
         then this data will be modified also.
+        This may be of :attr:`dtype`, or may be a float, depending on whether :attr:`hdr` is
+        used and the type of :attr:`averaging`.
+        Is ``None`` if no image has ever been taken.
     """
     to_pickle = [
         "name",
@@ -170,7 +173,10 @@ class Camera(_Picklable):
             self.set_woi()
         except NotImplementedError:
             pass
-        
+
+        # Variable for storing the last capture.
+        self.last_image = None
+
         # Remember the name.
         self.name = str(name)
 
@@ -258,7 +264,7 @@ class Camera(_Picklable):
         ----------
         exposure_s : float
             The integration time in seconds.
-            
+
         Returns
         -------
         float
@@ -585,6 +591,9 @@ class Camera(_Picklable):
         if transform:
             img = self.transform(img)
 
+        # Store the result locally.
+        self.last_image = img
+
         # Push to viewer if active.
         if self.viewer is not None:
             if averaging > 1:
@@ -644,8 +653,8 @@ class Camera(_Picklable):
         try:
             # Using the camera-specific method if available
             imgs = self._get_images_hw(
-                image_count, 
-                timeout_s=timeout_s+self.exposure_s, 
+                image_count,
+                timeout_s=timeout_s+self.exposure_s,
                 out=imgs
             )
         except NotImplementedError:
@@ -665,6 +674,9 @@ class Camera(_Picklable):
                 imgs_[i, :, :] = self.transform(imgs[i])
 
             imgs = imgs_
+
+        # Store the result locally.
+        self.last_image = imgs[-1]
 
         # Push to viewer if active.
         if self.viewer is not None:
@@ -743,6 +755,8 @@ class Camera(_Picklable):
             img = self.get_image_hdr_analysis(imgs, exposure_power=exposure_power, overexposure_threshold=self.bitresolution/2)
             if np.max(img) >= self.bitresolution:
                 warnings.warn("HDR image is overexposed.")
+            # Store the result locally.
+            self.last_image = img
             return img
 
     @staticmethod
@@ -875,10 +889,10 @@ class Camera(_Picklable):
 
         Important
         ~~~~~~~~~
-        This viewer can be used as a live monitor inside a jupyter notebook, though any 
+        This viewer can be used as a live monitor inside a jupyter notebook, though any
         user-execution will block the monitoring loop. However, any image polling
         on the camera will still update the viewer, which provides active feedback
-        for what is happening during the execution. The reason for this functionality 
+        for what is happening during the execution. The reason for this functionality
         is the python Global Interpreter Lock (GIL) which limits operation,
         especially operation connecting to a diverse set of camera and SLM hardware,
         to a single thread. We use :mod:`asyncio` to allow the monitoring loop to be
@@ -888,7 +902,7 @@ class Camera(_Picklable):
         Parameters
         ----------
         activate : bool OR None
-            If ``True``, creates a live viewer in the current cell, 
+            If ``True``, creates a live viewer in the current cell,
             destroying any other attached viewer.
             If ``False``, destroys  any other attached viewer.
             If ``None``, toggles the live viewer, destroying any attached viewer or
@@ -1121,7 +1135,7 @@ class _CameraViewer:
             self,
             cam,
             widgets,
-            backend="ipython", 
+            backend="ipython",
             live=False,
             min=None,
             max=None,
@@ -1170,8 +1184,8 @@ class _CameraViewer:
         # Downscaling can happen before intensive operations.
         if self.state["scale"] < 1:
             img = zoom(
-                self.prev_img, 
-                [self.state["scale"], self.state["scale"]] + ([1] if len(self.prev_img.shape) == 3 else []), 
+                self.prev_img,
+                [self.state["scale"], self.state["scale"]] + ([1] if len(self.prev_img.shape) == 3 else []),
                 order=1
             )
         else:
@@ -1201,13 +1215,13 @@ class _CameraViewer:
 
         # Make image color
         rgb = _gray2rgb(
-            img, 
-            cmap=self.state["cmap"], 
-            lut=d, 
-            normalize=False, 
+            img,
+            cmap=self.state["cmap"],
+            lut=d,
+            normalize=False,
             border=self.state["border"]
         )
-        
+
         with self.widgets["output"]:
             print([np.min(rgb), np.max(rgb)])
 
@@ -1219,14 +1233,14 @@ class _CameraViewer:
             rgb = zoom(rgb, (1, self.state["scale"], self.state["scale"], 1), order=0)
 
         buff = io.BytesIO()
-        rgb = PIL.Image.fromarray(rgb[0])    
+        rgb = PIL.Image.fromarray(rgb[0])
         rgb.save(buff, format="png")
-        
+
         return buff.getvalue()
 
     def render(self, img=None):
         self.image.value = self.parse(img)
-    
+
     def update(self, event):
         with self.widgets["output"]:
             self.widgets["output"].clear_output(wait=True)
@@ -1238,15 +1252,15 @@ class _CameraViewer:
 
     def live(self, event=None):
         state = self.state["live"] = self.widgets["live"].value
-        
+
         loop = asyncio.get_running_loop()
-        
+
         if self.task is not None:
             try:
                 self.task.cancel()
             except:
                 pass
-            
+
         if not state:
             self.task = None
         else:
@@ -1262,7 +1276,7 @@ class _CameraViewer:
         with self.widgets["output"]:
             self.widgets["output"].clear_output(wait=True)
             print(np.round(coord / self.state["scale"]).astype(int))
-    
+
     def autorange(self, event):
         if self.prev_img is not None:
             range = [np.min(self.prev_img), np.max(self.prev_img)]
@@ -1361,7 +1375,7 @@ class _CameraViewer:
         #     ]),
         #     self.widgets["output"],
         # ])
-        
+
         box_layout1 = Layout(
             display="flex",
             flex_flow="auto",

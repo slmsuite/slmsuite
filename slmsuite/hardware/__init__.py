@@ -22,6 +22,8 @@ class _Picklable:
             If ``False``, pickles only baseline attributes, usually single floats.
             If ``True``, also pickles 'heavy' attributes such as large images and calibrations.
             If ``list of str``, pickles the keys in the given list.
+            By default, the chosen attributes should be things that can be written to
+            .h5 files: scalars and lists of scalars.
         metadata : bool
             If ``True``, package the dictionary as the
             ``"__meta__"`` value of a superdictionary which also contains:

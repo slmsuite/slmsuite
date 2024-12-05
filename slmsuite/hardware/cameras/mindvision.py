@@ -69,31 +69,21 @@ class MindVision(Camera):
         else:
             self.cam = camera_list[0]
             if len(camera_list) > 1 and verbose:
-                print(f"No serial given... Choosing first of {serial_list}")
+                print(f"No serial given... Choosing first of {serial_list}...")
         if verbose:
             print("success")
         serial = self.cam.GetSn()
 
         # Turn the camera on.
+        if verbose: print(f"Initializing sn '{serial}'...", end="")
         self.handle = 0
         try:
             self.handle = _mvsdk.CameraInit(self.cam, -1, -1)
-            print(f"mvsdk sn '{serial}' initialized.")
         except _mvsdk.CameraException as e:
             print("CameraInit Failed ({}):\n{}".format(e.error_code, e.message))
 
         # Fill in parameters from the capability class.
         self.capability = _mvsdk.CameraGetCapability(self.handle)
-        super().__init__(
-            (
-                self.capability.sResolutionRange.iWidthMax,
-                self.capability.sResolutionRange.iHeightMax
-            ),
-            bitdepth=8,
-            pitch_um=pitch_um,
-            name=serial,
-            **kwargs
-        )
         self.mono = (self.capability.sIspCapacity.bMonoSensor != 0)
         if self.mono:
             _mvsdk.CameraSetIspOutFormat(self.handle, _mvsdk.CAMERA_MEDIA_TYPE_MONO8)
@@ -117,6 +107,19 @@ class MindVision(Camera):
         # (if it is a black and white camera, there is no need to convert the format,
         # but the ISP has other processing, so this buffer also needs to be allocated)
         self.buffer = _mvsdk.CameraAlignMalloc(buffer_size, 16)
+
+        # Fill in superclass parameters from the capability class.
+        super().__init__(
+            (
+                self.capability.sResolutionRange.iWidthMax,
+                self.capability.sResolutionRange.iHeightMax
+            ),
+            bitdepth=8,
+            pitch_um=pitch_um,
+            name=serial,
+            **kwargs
+        )
+        if verbose: print("success")
 
     def close(self):
         """
@@ -236,8 +239,4 @@ class MindVision(Camera):
 
         except _mvsdk.CameraException as e:
             print("CameraGetImageBuffer failed ({}):\n{}".format(e.error_code, e.message))
-
-    def reset(self):
-        """See :meth:`.Camera.reset`."""
-        raise NotImplementedError()
 

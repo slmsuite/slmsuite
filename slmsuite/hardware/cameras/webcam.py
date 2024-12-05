@@ -61,7 +61,6 @@ class Webcam(Camera):
         self.cam = cv2.VideoCapture(identifier, capture_api)
         if not self.cam.isOpened():
             raise RuntimeError(f"Failed to initialize webcam {id}")
-        if verbose: print("success")
 
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
@@ -76,6 +75,7 @@ class Webcam(Camera):
         )
 
         self.backend = self.cam.getBackendName()
+        if verbose: print("success")
 
     def close(self):
         """See :meth:`.Camera.close`."""

@@ -124,14 +124,6 @@ class AlliedVision(Camera):
         if verbose:
             print("success")
 
-        super().__init__(
-            (self.cam.SensorWidth.get(), self.cam.SensorHeight.get()),
-            bitdepth=int(self.cam.PixelSize.get()),
-            pitch_um=pitch_um,
-            name=serial,
-            **kwargs,
-        )
-
         try:
             self.cam.BinningHorizontal.set(1)
             self.cam.BinningVertical.set(1)
@@ -150,6 +142,14 @@ class AlliedVision(Camera):
         self.cam.TriggerMode.set("Off")
         self.cam.TriggerActivation.set("RisingEdge")
         self.cam.TriggerSource.set("Software")
+
+        super().__init__(
+            (self.cam.SensorWidth.get(), self.cam.SensorHeight.get()),
+            bitdepth=int(self.cam.PixelSize.get()),
+            pitch_um=pitch_um,
+            name=serial,
+            **kwargs,
+        )
 
     def close(self, close_sdk=True):
         """
@@ -312,7 +312,3 @@ class AlliedVision(Camera):
             frame = frame.as_numpy_ndarray()
 
         return np.squeeze(frame)
-
-    def reset(self):
-        """See :meth:`.Camera.reset`."""
-        raise NotImplementedError()

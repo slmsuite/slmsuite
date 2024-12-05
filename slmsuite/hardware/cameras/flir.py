@@ -74,8 +74,6 @@ class FLIR(Camera):
         else:
             self.cam = camera_list.GetBySerial(serial)
         self.cam.Init()
-        if verbose:
-            print("success")
 
         super().__init__(
             (self.cam.SensorWidth.get(), self.cam.SensorHeight.get()),
@@ -84,6 +82,8 @@ class FLIR(Camera):
             name=serial,
             **kwargs
         )
+        if verbose:
+            print("success")
 
         raise NotImplementedError()
 

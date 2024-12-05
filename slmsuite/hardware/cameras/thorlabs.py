@@ -169,9 +169,7 @@ class ThorCam(Camera):
             name=serial,
             **kwargs
         )
-
-        if verbose:
-            print("success")
+        if verbose: print("success")
 
     def close(self, close_sdk=False):
         """
@@ -243,11 +241,6 @@ class ThorCam(Camera):
         """
         ThorCam.sdk.dispose()
         ThorCam.sdk = None
-
-    def reset(self):
-        """See :meth:`.Camera.reset`."""
-        self.close()
-        self.__init__()
 
     ### Property Configuration ###
 

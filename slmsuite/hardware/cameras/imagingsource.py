@@ -143,7 +143,6 @@ class ImagingSource(Camera):
         err = ImagingSource.sdk.IC_OpenDevByUniqueName(self.cam, tis.T(serial))
         if err != 1:
             raise Exception("Error when opening Camera: " + str(err))
-        if verbose: print("success")
 
         self.vid_format = vid_format
 
@@ -172,6 +171,7 @@ class ImagingSource(Camera):
             pitch_um=pitch_um,
             **kwargs
         )
+        if verbose: print("success")
 
     def close(self):
         """See :meth:`.Camera.close`."""
@@ -277,7 +277,3 @@ class ImagingSource(Camera):
         ImagingSource.safe_call(ImagingSource.sdk.IC_StopLive, 0, self.cam)
         # We take only the 1st component, assuming that the image is monochromatic.
         return self.transform(img[:,:,0])
-
-    def reset(self):
-        """See :meth:`.Camera.reset`."""
-        raise NotImplementedError()

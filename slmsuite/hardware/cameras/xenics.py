@@ -429,11 +429,6 @@ class Cheetah640(Camera):
         else:
             print("Camera not open!")
 
-    def reset(self):
-        """See :meth:`.Camera.reset`."""
-        self.close()
-        self.__init__()
-
     ### Property Configuration ###
 
     def get_property_status(self, save_file_path=None, verbose=True):

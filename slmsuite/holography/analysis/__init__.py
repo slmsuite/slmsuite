@@ -1427,8 +1427,8 @@ def blob_array_detect(
     orientation_check=True,
     dft_threshold=100,
     dft_padding=0,
-    k=32,
-    tol=0.25,
+    k=8,
+    tol=0.1,
     plot=False,
 ):
     r"""
@@ -1466,11 +1466,11 @@ def blob_array_detect(
         Increasing this value increases the :math:`k`-space resolution of the DFT,
         and can improve orientation detection.
     k : int
-        Number of nearest neighbors to use for each point when lattice matching. Default (2)
-        uses closest neighbors only.
+        Number of nearest neighbors to use for each point when lattice matching.
+        Defaults to 8.
     tol : float
         Difference in normalized displacement between reciprocal lattice points to
-        be considered members of the same group when lattice fitting. Defaults to 5%.
+        be considered members of the same group when lattice fitting. Defaults to 10%.
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
 

@@ -924,7 +924,8 @@ class FourierSLM(CameraSLM):
             and the dictionary is passed to
             :meth:`~slmsuite.hardware.cameras.camera.Camera.autoexposure()`.
         **kwargs : dict
-            Passed to :meth:`.fourier_grid_project()`.
+            Passed to :meth:`.fourier_grid_project()`, which passes them to
+            :meth:`~slmsuite.holography.algorithms.SpotHologram.optimize()`.
 
         Returns
         -------

@@ -119,12 +119,6 @@ class Instrumental(Camera):
             "constructed outside this wrapper."
         )
 
-    def reset(self):
-        """
-        See :meth:`.Camera.reset`.
-        """
-        raise RuntimeError("Instrumental cameras do not support reset.")
-
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.exposure._magnitude) / 1000

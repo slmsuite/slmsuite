@@ -78,8 +78,6 @@ class MMCore(Camera):
         if verbose:
             print(f"'{config}' initializing... ", end="")
         self.cam.loadSystemConfiguration(os.path.join(config_path, config + ".cfg"))
-        if verbose:
-            print("success")
 
         # Fill in slmsuite variables.
         super().__init__(
@@ -89,6 +87,7 @@ class MMCore(Camera):
             name=config,
             **kwargs
         )
+        if verbose: print("success")
 
     @staticmethod
     def info(path="C:\\Program Files\\Micro-Manager-2.0"):

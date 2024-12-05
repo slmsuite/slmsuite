@@ -65,7 +65,8 @@ class Template(Camera):
         if verbose: print(f"'{serial}' initializing... ", end="")
         raise NotImplementedError()
         self.cam = sdk.something(serial)                # TODO: Fill in proper function.
-        if verbose: print("success")
+
+        # ... Other setup.
 
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
@@ -75,8 +76,7 @@ class Template(Camera):
             name=serial,
             **kwargs
         )
-
-        # ... Other setup.
+        if verbose: print("success")
 
     def close(self):
         """See :meth:`.Camera.close`."""

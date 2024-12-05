@@ -86,17 +86,6 @@ class Basler(Camera):
         # first), also camera is opened at the start.
         self.cam.Attach(device)
         self.cam.Open()
-        if verbose:
-            print("success")
-
-        # Initialize the superclass attributes.
-        super().__init__(
-            (self.cam.SensorWidth(), self.cam.SensorHeight()), #pixels
-            bitdepth=self.cam.PixelSize.GetIntValue(), #bits
-            pitch_um=pitch_um,
-            name=serial,
-            **kwargs
-        )
 
         # Apply default settings.
         self.cam.BinningHorizontal.SetValue(1)
@@ -116,6 +105,18 @@ class Basler(Camera):
 
         # TODO: ichr moved this from .get_image() to here. Does this work?
         self.cam.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+
+        # Initialize the superclass attributes.
+        super().__init__(
+            (self.cam.SensorWidth(), self.cam.SensorHeight()), #pixels
+            bitdepth=self.cam.PixelSize.GetIntValue(), #bits
+            pitch_um=pitch_um,
+            name=serial,
+            **kwargs
+        )
+
+        if verbose:
+            print("success")
 
     def close(self, close_sdk=True):
         """
@@ -281,7 +282,3 @@ class Basler(Camera):
         # TODO: ichr added Release(); does this work?
         grab.Release()
         return im
-
-    def reset(self):
-        """See :meth:`.Camera.reset`."""
-        raise NotImplementedError()

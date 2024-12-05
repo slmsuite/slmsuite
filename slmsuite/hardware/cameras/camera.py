@@ -224,7 +224,7 @@ class Camera(_Picklable):
     @staticmethod
     def info(verbose=True):
         """
-        Abstract method to load display information.
+        Abstract method to load information about what cameras are available.
 
         Parameters
         ----------
@@ -239,12 +239,6 @@ class Camera(_Picklable):
         if verbose:
             print(".info() NotImplemented.")
         return []
-
-    def reset(self):
-        """
-        Abstract method to reset the camera to a default state.
-        """
-        raise NotImplementedError()
 
     def get_exposure(self):
         """
@@ -460,7 +454,7 @@ class Camera(_Picklable):
         # Force int so we have a chance of exposure aligning with camera clock.
         return (int(exposures), int(exposure_power))
 
-    def get_averaging_dtype(self, averaging=None):
+    def _get_averaging_dtype(self, averaging=None):
         """Returns the appropriate image datatype for ``averaging`` levels of averaging."""
         if averaging is None:
             averaging = self.averaging
@@ -567,7 +561,7 @@ class Camera(_Picklable):
                 averaging=averaging,
             )
         elif averaging > 1:     # Average many images.
-            averaging_dtype = self.get_averaging_dtype(averaging)
+            averaging_dtype = self._get_averaging_dtype(averaging)
 
             try:
                 # Using the camera-specific batch method if available

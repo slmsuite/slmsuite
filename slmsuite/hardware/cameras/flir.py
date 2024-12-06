@@ -15,6 +15,7 @@ from .camera import Camera
 try:
     import PySpin
 except ImportError:
+    PySpin = None
     warnings.warn("PySpin not installed. Install to use FLIR cameras.")
 
 
@@ -50,6 +51,9 @@ class FLIR(Camera):
         **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
+        if PySpin is None:
+            raise ImportError("PySpin not installed. Install to use FLIR cameras.")
+
         if FLIR.sdk is None:
             if verbose:
                 print("PySpin initializing... ", end="")
@@ -70,8 +74,6 @@ class FLIR(Camera):
         else:
             self.cam = camera_list.GetBySerial(serial)
         self.cam.Init()
-        if verbose:
-            print("success")
 
         super().__init__(
             (self.cam.SensorWidth.get(), self.cam.SensorHeight.get()),
@@ -80,6 +82,8 @@ class FLIR(Camera):
             name=serial,
             **kwargs
         )
+        if verbose:
+            print("success")
 
         raise NotImplementedError()
 
@@ -93,12 +97,12 @@ class FLIR(Camera):
 
     ### Property Configuration ###
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return
 
-    def set_exposure(self, exposure_s):
-        """See :meth:`.Camera.set_exposure`."""
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         return
 
     def set_woi(self, window=None):

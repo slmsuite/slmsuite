@@ -1,6 +1,6 @@
 """
 Hardware control for AlliedVision cameras via the Vimba-X :mod:`vmbpy` interface.
-This class also supports backwards compatibility with the 
+This class also supports backwards compatibility with the
 `archived <https://github.com/alliedvision/VimbaPython>`_ :mod:`vimba` interface.
 Install :mod:`vmbpy` by following the
 `provided instructions <https://github.com/alliedvision/VmbPy>`_.
@@ -33,6 +33,8 @@ except ImportError:
 
         warnings.warn("vmbpy not installed; falling back to vimba")
     except ImportError:
+        vimba_system = None
+        vimba_name = ""
         warnings.warn("vimba or vmbpy are not installed. Install to use AlliedVision cameras.")
 
 
@@ -70,7 +72,9 @@ class AlliedVision(Camera):
         Parameters
         ----------
         serial : str
-            Serial number of the camera to open. If empty, defaults to the first camera in the list
+            Serial number of the camera to open.
+            Use :meth:`.info()` to see detected options.
+            If empty, defaults to the first camera in the list
             returned by :meth:`vmbpy.get_all_cameras()`.
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
@@ -80,6 +84,9 @@ class AlliedVision(Camera):
         **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
+        if vimba_system is None:
+            raise ImportError("vimba or vmbpy are not installed. Install to use AlliedVision cameras.")
+
         if AlliedVision.sdk is None:
             if verbose:
                 print(f"{vimba_name} initializing... ", end="")
@@ -117,14 +124,6 @@ class AlliedVision(Camera):
         if verbose:
             print("success")
 
-        super().__init__(
-            (self.cam.SensorWidth.get(), self.cam.SensorHeight.get()),
-            bitdepth=int(self.cam.PixelSize.get()),
-            pitch_um=pitch_um,
-            name=serial,
-            **kwargs,
-        )
-
         try:
             self.cam.BinningHorizontal.set(1)
             self.cam.BinningVertical.set(1)
@@ -143,6 +142,14 @@ class AlliedVision(Camera):
         self.cam.TriggerMode.set("Off")
         self.cam.TriggerActivation.set("RisingEdge")
         self.cam.TriggerSource.set("Software")
+
+        super().__init__(
+            (self.cam.SensorWidth.get(), self.cam.SensorHeight.get()),
+            bitdepth=int(self.cam.PixelSize.get()),
+            pitch_um=pitch_um,
+            name=serial,
+            **kwargs,
+        )
 
     def close(self, close_sdk=True):
         """
@@ -175,6 +182,9 @@ class AlliedVision(Camera):
         list of str
             List of AlliedVision serial numbers.
         """
+        if vimba_system is None:
+            raise ImportError("vimba or vmbpy are not installed. Install to use AlliedVision cameras.")
+
         if AlliedVision.sdk is None:
             AlliedVision.sdk = vimba_system.get_instance()
             AlliedVision.sdk.__enter__()
@@ -273,19 +283,19 @@ class AlliedVision(Camera):
         bitdepth = int("".join(char for char in value if char.isdigit()))
         return bitdepth
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.ExposureTime.get()) / 1e6
 
-    def set_exposure(self, exposure_s):
-        """See :meth:`.Camera.set_exposure`."""
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.ExposureTime.set(float(exposure_s * 1e6))
 
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def _get_image_hw(self, timeout_s=5):
+    def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""
         t = time.time()
 
@@ -302,12 +312,3 @@ class AlliedVision(Camera):
             frame = frame.as_numpy_ndarray()
 
         return np.squeeze(frame)
-
-    def flush(self, timeout_s=1):
-        """See :meth:`.Camera.flush`."""
-        for _ in range(2):
-            self._get_image_hw_tolerant(timeout_s=timeout_s)
-
-    def reset(self):
-        """See :meth:`.Camera.reset`."""
-        raise NotImplementedError()

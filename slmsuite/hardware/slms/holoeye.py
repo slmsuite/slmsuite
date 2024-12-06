@@ -8,11 +8,9 @@ from .slm import SLM
 
 try:  # Load Holoeye's SDK module.
     from holoeye import slmdisplaysdk
-except BaseException as e:  # Provide an informative error should something go wrong.
-    warnings.warn(
-        "Holoeye SDK failed to load.\n"
-        "Original error: {}".format(e)
-    )
+except ImportError:
+    slmdisplaysdk = None
+    warnings.warn("slmdisplaysdk not installed. Install to use Holoeye slms.")
 
 class Holoeye(SLM):
     """
@@ -51,6 +49,8 @@ class Holoeye(SLM):
         may be more accurately filled by calling the SLM's SDK functions.
         See the other implemented SLM subclasses for examples.
         """
+        if slmdisplaysdk is None:
+            raise ImportError("slmdisplaysdk not installed. Install to use Holoeye slms.")
 
         # Get the SLM.
         if verbose: print("Creating SLM instance...", end="")
@@ -113,6 +113,9 @@ class Holoeye(SLM):
         list of str
             List of serial numbers or identifiers.
         """
+        if slmdisplaysdk is None:
+            raise ImportError("slmdisplaysdk not installed. Install to use Holoeye slms.")
+
         raise NotImplementedError()
         serial_list = get_serial_list()     # TODO: Fill in proper function.
         return serial_list

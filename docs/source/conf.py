@@ -32,7 +32,7 @@ for module_path in module_paths:
 project = "slmsuite"
 copyright = "2024, slmsuite Developers"
 author = "slmsuite Developers"
-release = "0.1.2"
+release = "0.2.0"
 
 # -- General configuration ---------------------------------------------------
 
@@ -51,7 +51,7 @@ extensions = [
     "nbsphinx",
     "sphinx_copybutton",
     "sphinx_last_updated_by_git",
-    "sphinxcontrib.video",
+    # "sphinxcontrib.video",
 ]
 
 extlinks = {

@@ -882,19 +882,20 @@ class Camera(_Picklable):
         """
         Creates and displays an IPython camera viewer.
         This viewer displays the result of :meth:`get_image()`
-        or the last image of :meth:`get_images()`.
-        Averaging and HDR are displayed with the same color range as without.
+        or the last image of :meth:`get_images()` **whenever these methods are called**.
+        Averaging and HDR are displayed with the same color scaling as without.
 
-        Important
-        ~~~~~~~~~
-        This viewer can be used as a live monitor inside a jupyter notebook, though any
-        user-execution will block the monitoring loop. However, any image polling
-        on the camera will still update the viewer, which provides active feedback
-        for what is happening during the execution. The reason for this functionality
-        is the python Global Interpreter Lock (GIL) which limits operation,
-        especially operation connecting to a diverse set of camera and SLM hardware,
-        to a single thread. We use :mod:`asyncio` to allow the monitoring loop to be
-        interrupted by user-execution.
+        By toggling the ``Live`` widget button,
+        this viewer can be used as a realtime monitor inside a jupyter notebook.
+        However, any user-execution will block the monitoring loop.
+        Regardless, any image polling during the blocked period will still update the viewer,
+        which provides useful active feedback for what is happening during the execution.
+
+        The python Global Interpreter Lock (GIL) limits operation to a single thread,
+        especially operation connecting to a diverse set of camera and SLM hardware.
+        We use :mod:`asyncio` to allow the realtime monitoring loop to be
+        interrupted by user-execution (e.g. running a cell in jupyter),
+        blocking until the execution is finished.
         Running multiple viewers at once might not play nicely right now.
 
         Parameters
@@ -904,16 +905,28 @@ class Camera(_Picklable):
             destroying any other attached viewer.
             If ``False``, destroys  any other attached viewer.
             If ``None``, toggles the live viewer, destroying any attached viewer or
-            creating one in the current cell if none is attached.
+            creating one in the current cell if none is attached. Defaults to ``None``.
         widgets : bool
-            If ``True``, also displays sliders and controls which hone the display properties.
+            If ``True``, also displays sliders and controls used to hone the display properties.
         backend : str
             Placeholder option for different types of viewers.
             The default is ``"ipython"``.
         **kwargs
-            Options passed to the :class:`_CameraViewer` to customize the defaults.
+            Options passed to the :class:`_CameraViewer` to customize the default settings.
             These features will be made less hidden in the future.
         """
+        if backend != "ipython":
+            raise ValueError(
+                f"'{backend}' not recognized; "
+                "'ipython' is currently the only supported .live() backend."
+            )
+
+        try:
+            from ipywidgets import Image
+            from IPython.display import display
+        except ImportError:
+            raise ImportError("jupyter must be installed to use .live().")
+
         if (self.viewer is None and activate is None) or activate:
             if self.viewer is not None:
                 self.viewer.close()
@@ -1021,7 +1034,7 @@ class Camera(_Picklable):
 
     def autofocus(self, get_z, set_z, z_list=None, plot=False):
         """
-        Uses an FFT contrast metric to find optimal focus when scanning over some variable
+        Uses a FFT contrast metric to find optimal focus when scanning over some variable
         ``z``. This ``z`` often takes the form of a vertical stage to position a sample precisely
         at the plane of imaging of a lens or objective. The contrast metric works particularly
         well when combined with a projected spot array hologram.
@@ -1128,7 +1141,9 @@ class Camera(_Picklable):
 
 
 class _CameraViewer:
-
+    """
+    Hidden class for live camera viewing enabled by ipython widgets.
+    """
     def __init__(
             self,
             cam,

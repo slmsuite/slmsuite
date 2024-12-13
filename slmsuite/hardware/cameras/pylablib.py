@@ -23,7 +23,7 @@ class PyLabLib(Camera):
 
     Attributes
     ----------
-    cam : instrumental.drivers.cameras.Camera
+    cam : pylablib.devices.interface.camera.ICamera
         Object to talk with the desired camera.
     exposure_s : float
         Instrumental doesn't save exposure. It sets the exposure at each

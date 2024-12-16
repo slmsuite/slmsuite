@@ -888,7 +888,7 @@ class Hologram(_HologramStats):
                 )
             return farfield
 
-    # Propogation: nearfield-farfield helper functions.
+    # Propagation: nearfield-farfield helper functions.
     def _populate_results(self):
         """
         Helper function to populate:
@@ -1137,7 +1137,7 @@ class Hologram(_HologramStats):
               Some holography---especially that with more complicated holographic
               objectives---can be better treated with gradient-based methods.
               In these cases, the phase is guided to an optimized state by following the
-              `back-propogated <https://pytorch.org/tutorials/beginner/basics/autogradqs_tutorial.html>`_
+              `back-propagated <https://pytorch.org/tutorials/beginner/basics/autogradqs_tutorial.html>`_
               gradients (with respect to phase) of given objective ``loss`` which is
               passed as one of the :attr:`flags` to :meth:`.optimize()`.
               Weighting different components of the objective leads to tradeoffs between

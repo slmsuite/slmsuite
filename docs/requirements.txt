@@ -6,15 +6,12 @@ h5py
 tqdm
 nbsphinx
 IPython
-docutils #<0.17
-# sphinx == 5.3.0
+docutils
 sphinx
 sphinx_copybutton
 sphinx_last_updated_by_git
 sphinx_rtd_theme
-sphinxcontrib-video
 requests
 pandoc
 pydata-sphinx-theme
 sphinx_design
-

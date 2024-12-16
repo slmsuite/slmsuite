@@ -429,11 +429,6 @@ class Cheetah640(Camera):
         else:
             print("Camera not open!")
 
-    def reset(self):
-        """See :meth:`.Camera.reset`."""
-        self.close()
-        self.__init__()
-
     ### Property Configuration ###
 
     def get_property_status(self, save_file_path=None, verbose=True):
@@ -610,8 +605,8 @@ class Cheetah640(Camera):
         else:
             print("Camera not open!")
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         exposure_old = c_double(0.0)
         err1 = self.xeneth.XC_GetPropertyValueF(
             self.cam, b"IntegrationTime", byref(exposure_old)
@@ -620,19 +615,8 @@ class Cheetah640(Camera):
             print("\nWarning -- error encountered! Error code: %d" % (err1))
         return exposure_old.value / 1e6
 
-    def set_exposure(self, exposure_s, verbose=True):
-        """
-        See :meth:`.Camera.set_exposure`.
-
-        Parameters
-        ----------
-        verbose : bool
-            Whether or not to print extra information.
-        """
-        print(
-            "Setting integration time to %1.3f ms...          " % (exposure_s * 1e3),
-            end="\r",
-        )
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         exposure_old = c_double(0.0)
         exposure = c_double(exposure_s * 1e6)  # us
         err1 = self.xeneth.XC_GetPropertyValueF(
@@ -644,11 +628,6 @@ class Cheetah640(Camera):
         err3 = self.xeneth.XC_GetPropertyValueF(
             self.cam, b"IntegrationTime", byref(exposure)
         )
-        if verbose:
-            print(
-                "\nPrevious integration time: %ld us\nNew integration time: %ld us"
-                % (exposure_old.value, exposure.value)
-            )
         if err1 or err2 or err3:
             print(
                 "\nWarning -- error encountered! Error codes: %d, %d, %d"
@@ -1392,7 +1371,7 @@ class Cheetah640(Camera):
                     return im
         return -1
 
-    def _get_image_hw(self, timeout_s=10, frame_type=FT_NATIVE, block=True, convert=True):
+    def _get_image_hw(self, timeout_s=None, frame_type=FT_NATIVE, block=True, convert=True):
         """
         Main grabbing function; captures latest image into single frame buffer.
 
@@ -1419,7 +1398,7 @@ class Cheetah640(Camera):
 
         # Update the timeout time (in ms) if different than API default
         # Note: To be renovated to only set timeout if different than current camera value...
-        if timeout_s != 10 and block:
+        if block:
             self.set_timeout_api(int(1000 * timeout_s))
 
         # Set flag based on input options

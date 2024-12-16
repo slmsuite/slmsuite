@@ -65,7 +65,8 @@ class Template(Camera):
         if verbose: print(f"'{serial}' initializing... ", end="")
         raise NotImplementedError()
         self.cam = sdk.something(serial)                # TODO: Fill in proper function.
-        if verbose: print("success")
+
+        # ... Other setup.
 
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
@@ -75,8 +76,7 @@ class Template(Camera):
             name=serial,
             **kwargs
         )
-
-        # ... Other setup.
+        if verbose: print("success")
 
     def close(self):
         """See :meth:`.Camera.close`."""
@@ -106,13 +106,13 @@ class Template(Camera):
 
     ### Property Configuration ###
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         raise NotImplementedError()
         return float(self.cam.get_exposure()) / 1e3     # TODO: Fill in proper function.
 
-    def set_exposure(self, exposure_s):
-        """See :meth:`.Camera.set_exposure`."""
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         raise NotImplementedError()
         self.cam.set_exposure(1e3 * exposure_s)         # TODO: Fill in proper function.
 
@@ -121,7 +121,7 @@ class Template(Camera):
         raise NotImplementedError()
         # Use self.cam to crop the window of interest.
 
-    def _get_image_hw(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""
         raise NotImplementedError()
         # The core method: grabs an image from the camera.
@@ -131,7 +131,7 @@ class Template(Camera):
         # method should be limited to camera-interface specific functions.
         return self.cam.get_image_function()     # TODO: Fill in proper function.
 
-    def _get_images_hw(self, timeout_s=1):
+    def _get_images_hw(self, timeout_s):
         """See :meth:`.Camera._get_images_hw`."""
         raise NotImplementedError()
         # Similar to the core method but for a batch of images.
@@ -140,7 +140,7 @@ class Template(Camera):
         # _get_image_hw images.
         return self.cam.get_images_function()     # TODO: Fill in proper function.
 
-    def flush(self):
-        """See :meth:`.Camera.flush`."""
-        raise NotImplementedError()
-        # Clears ungrabbed images from the queue
+    # def flush(self):
+    #     """See :meth:`.Camera.flush`."""
+    #     raise NotImplementedError()
+    #     # Clears ungrabbed images from the queue; the abstract default calls .get_image twice.

@@ -315,10 +315,9 @@ def _load_image(path, shape, target_shape=None, angle=0, shift=(-225, -170)):
 
 def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
     """
-    Currently-hidden function to convert a stack of 
+    Currently-hidden function to convert a stack of
     grayscale images to color with a colormap.
     """
-    print("lut", lut)
     # Parse images.
     images = np.array(images, copy=(False if np.__version__[0] == '1' else None))
     if len(images.shape) == 2:
@@ -327,10 +326,15 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
         return images
     elif len(images.shape) > 3:
         raise RuntimeError(f"Images shape {images.shape} could not be parsed.")
-    
+
     isfloat = np.issubdtype(images.dtype, np.floating)
 
     # Parse cmap.
+    if cmap == "default":
+        cmap = True
+    if cmap == "grayscale":
+        cmap = False
+
     if not isinstance(cmap, str):
         if cmap is True:
             cmap = mpl.rcParams['image.cmap']
@@ -346,7 +350,7 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
         else:
             lut = np.max(images)
     # lut = np.clip(lut, 0, np.max(images))
-    lut = np.astype(np.array([lut]), images.dtype)[0]
+    lut = np.array([lut]).astype(images.dtype)[0]
 
     # Convert images to integers scaled to the lut size.
     if normalize:
@@ -358,12 +362,10 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
 
     # Convert images to RGB.
     if isinstance(cmap, str):
-        print(lut)
         cm = plt.get_cmap(cmap, int(lut)+1)
         if hasattr(cm, "colors"):
             c = cm.colors
         else:
-            print(cm.N)
             c = cm(np.arange(0, cm.N))
         images = c[images]
         images = 255 * images[:, :, :, :3]  # Remove alpha channel
@@ -382,7 +384,7 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
 
 def save_image(file_path, images, cmap=False, lut=None, normalize=True, border=None, **kwargs):
     """
-    Save a grayscale image or stacks of grayscale images 
+    Save a grayscale image or stacks of grayscale images
     as a filetype supported by :mod:`imageio`.
     Handles :mod:`matplotlib` colormapping.
     Negative values are truncated to zero.

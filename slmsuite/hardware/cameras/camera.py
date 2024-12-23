@@ -914,6 +914,8 @@ class Camera(_Picklable):
         **kwargs
             Options passed to the :class:`_CameraViewer` to customize the default settings.
             These features will be made less hidden in the future.
+            Most things are customizable via these keywords. For instance, the user can pass
+            a custom list of colormaps to appear in the widget dropdown as ``cmap_options=``.
         """
         if backend != "ipython":
             raise ValueError(
@@ -1156,7 +1158,10 @@ class _CameraViewer:
             cmap=True,
             scale=1,
             border=None,
-            cmap_options=[True, False, "turbo", "Blues"]
+            cmap_options=[
+                "default", "gray", "Blues", "turbo",
+                'viridis', 'plasma', 'inferno', 'magma', 'cividis'
+            ]
         ):
         self.cam = cam
         self.backend = backend
@@ -1168,6 +1173,9 @@ class _CameraViewer:
             max = cam.bitresolution-1
         range = [min, max]
         range = [np.min(range), np.max(range)]
+
+        if cmap is True: cmap = "default"
+        if cmap is False: cmap = "grayscale"
 
         # Parse scale
         scale = 2 ** np.round(np.log2(scale))
@@ -1204,12 +1212,6 @@ class _CameraViewer:
         else:
             img = np.copy(self.prev_img)
 
-        with self.widgets["output"]:
-            print(self.state["range"])
-
-        with self.widgets["output"]:
-            print([np.min(img), np.max(img)])
-
         # Scale intensity of image
         r = np.array(self.state["range"]).astype(img.dtype)
         img = np.clip(img, r[0], r[1])
@@ -1217,14 +1219,8 @@ class _CameraViewer:
         d = r[1] - r[0]
 
         if self.state["log"]:
-            img = img / d
-            img += .1/d             # Avoid zeros.
-            img = np.log10(img)
-
-        # with self.widgets["output"]:
-        #     print([np.min(img), np.max(img)])
-        #     plt.imshow(img)
-        #     plt.show()
+            # clip to avoid log(0)
+            img = (np.log10(np.clip(img, 1, np.inf)) / np.log10(d+1))
 
         # Make image color
         rgb = _gray2rgb(
@@ -1234,12 +1230,6 @@ class _CameraViewer:
             normalize=False,
             border=self.state["border"]
         )
-
-        with self.widgets["output"]:
-            print([np.min(rgb), np.max(rgb)])
-
-        with self.widgets["output"]:
-            print(rgb.shape)
 
         # Upscaling can happen after intensive operations.
         if self.state["scale"] > 1:
@@ -1257,7 +1247,6 @@ class _CameraViewer:
     def update(self, event):
         with self.widgets["output"]:
             self.widgets["output"].clear_output(wait=True)
-            # print(event)
         for key in ["range", "log", "cmap", "scale", "live"]:
             self.state[key] = self.widgets[key].value
 

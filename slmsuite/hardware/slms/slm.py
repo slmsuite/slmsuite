@@ -589,7 +589,7 @@ class SLM(_Picklable):
             # Copy and case the data to the output (usually self.display)
             np.rint(phase, out=phase)
             np.copyto(out, phase, casting="unsafe")
-            
+
             # Restore phase (usually self.phase) as these operations are in-place.
             phase *= 1 / factor
 

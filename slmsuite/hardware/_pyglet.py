@@ -19,8 +19,6 @@ class _Window(__Window):
             display = pyglet.canvas.get_display()
             screen = display.get_default_screen()
 
-        self.alive = True
-
         if shape is None:   # Fullscreen
             super().__init__(
                 screen=screen,

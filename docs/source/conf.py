@@ -32,7 +32,7 @@ for module_path in module_paths:
 project = "slmsuite"
 copyright = "2024, slmsuite Developers"
 author = "slmsuite Developers"
-release = "0.1.2"
+release = "0.2.0"
 
 # -- General configuration ---------------------------------------------------
 
@@ -51,7 +51,7 @@ extensions = [
     "nbsphinx",
     "sphinx_copybutton",
     "sphinx_last_updated_by_git",
-    "sphinxcontrib.video",
+    # "sphinxcontrib.video",
 ]
 
 extlinks = {
@@ -167,6 +167,7 @@ html_theme_options = {
     "footer_start": ["copyright", "sphinx-version"],
     "footer_end": ["last-updated", "theme-version"],
     # "content_footer_items": ["last-updated"],
+    "show_version_warning_banner": True,
     "navbar_center": ["navbar-nav"],   # "version-switcher",  # https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/version-dropdown.html
     # "switcher": {
     #     "version_match": switcher_version,

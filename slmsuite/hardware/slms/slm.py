@@ -10,6 +10,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import warnings
 
 from slmsuite import __version__
+from slmsuite.hardware import _Picklable
 from slmsuite.holography import toolbox
 from slmsuite.misc import fitfunctions
 from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
@@ -17,7 +18,7 @@ from slmsuite.holography import analysis
 from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
 
 
-class SLM:
+class SLM(_Picklable):
     """
     Abstract class for SLMs.
 
@@ -27,6 +28,21 @@ class SLM:
         Name of the SLM.
     shape : (int, int)
         Stores ``(height, width)`` of the SLM in pixels, the same convention as :attr:`numpy.ndarray.shape`.
+    bitdepth : int
+        Depth of SLM pixel well in bits. This is useful for converting the floats which
+        the user provides to the ``bitdepth``-bit ints that the SLM reads (see the
+        private method :meth:`_phase2gray`).
+    bitresolution : int
+        Stores ``2 ** bitdepth``.
+    settle_time_s : float
+        Delay in seconds to allow the SLM to settle. This is mostly useful for applications
+        requiring high precision. This delay is applied if the user flags ``settle``
+        in :meth:`set_phase()`. Defaults to .3 sec for precision.
+    pitch_um : (float, float)
+        Pixel pitch in microns.
+    pitch : float
+        Pixel pitch normalized to wavelengths ``pitch_um / wav_um``. This value is more
+        useful than ``pitch_um`` when considering conversions to :math:`k`-space.
     wav_um : float
         Operating wavelength targeted by the SLM in microns. Defaults to 780 nm.
     wav_design_um : float
@@ -47,21 +63,6 @@ class SLM:
     phase_scaling : float
         Wavelength normalized to the phase range of the SLM. See :attr:`wav_design_um`.
         Determined by ``phase_scaling = wav_um / wav_design_um``.
-    bitdepth : int
-        Depth of SLM pixel well in bits. This is useful for converting the floats which
-        the user provides to the ``bitdepth``-bit ints that the SLM reads (see the
-        private method :meth:`_phase2gray`).
-    bitresolution : int
-        Stores ``2 ** bitdepth``.
-    settle_time_s : float
-        Delay in seconds to allow the SLM to settle. This is mostly useful for applications
-        requiring high precision. This delay is applied if the user flags ``settle``
-        in :meth:`set_phase()`. Defaults to .3 sec for precision.
-    pitch_um : (float, float)
-        Pixel pitch in microns.
-    pitch : float
-        Pixel pitch normalized to wavelengths ``pitch_um / wav_um``. This value is more
-        useful than ``pitch_um`` when considering conversions to :math:`k`-space.
     grid : (numpy.ndarray<float> (height, width), numpy.ndarray<float> (height, width))
         :math:`x` and :math:`y` coordinates of the SLM's pixels in wavelengths
         (see :attr:`wav_um`, :attr:`pitch_um`)
@@ -92,6 +93,23 @@ class SLM:
     display : numpy.ndarray
         Displayed data in SLM units (integers).
     """
+    _pickle = [
+        "name",
+        "shape",
+        "bitdepth",
+        "bitresolution",
+        "pitch_um",
+        "pitch",
+        "settle_time_s",
+        "wav_um",
+        "wav_design_um",
+        "phase_scaling",
+    ]
+    _pickle_data = [
+        "source",
+        "phase",
+        "display",
+    ]
 
     def __init__(
         self,
@@ -135,7 +153,7 @@ class SLM:
         # By default, target wavelength is the design wavelength
         self.wav_um = float(wav_um)
         if wav_design_um is None:
-            self.wav_design_um = wav_um
+            self.wav_design_um = float(wav_um)
         else:
             self.wav_design_um = float(wav_design_um)
 
@@ -569,6 +587,7 @@ class SLM:
                 phase -= toshift
 
             # Copy and case the data to the output (usually self.display)
+            np.rint(phase, out=phase)
             np.copyto(out, phase, casting="unsafe")
 
             # Restore phase (usually self.phase) as these operations are in-place.
@@ -625,12 +644,12 @@ class SLM:
         path : str
             Path to directory to save in. Default is current directory.
         name : str OR None
-            Name of the save file. If ``None``, will use :attr:`name` + ``'_phase'``.
+            Name of the save file. If ``None``, will use :attr:`name` + ``'-phase'``.
 
         Returns
         -------
         str
-            The file path that the fourier calibration was saved to.
+            The file path that the phase was saved to.
         """
         if name is None:
             name = self.name + '_phase'
@@ -656,7 +675,7 @@ class SLM:
         file_path : str OR None
             Full path to the phase file. If ``None``, will
             search the current directory for a file with a name like
-            :attr:`name` + ``'_phase'``.
+            :attr:`name` + ``'-phase'``.
         settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
 
@@ -1023,7 +1042,7 @@ class SLM:
 
         if power:
             im = axs[1].imshow(
-                np.square(self.source["amplitude_sim" if sim else "amplitude"]), 
+                np.square(self.source["amplitude_sim" if sim else "amplitude"]),
                 clim=(0, 1)
             )
             axs[1].set_title("Simulated Source Power" if sim else "Source Power")

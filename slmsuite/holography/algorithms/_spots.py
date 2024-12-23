@@ -5,7 +5,7 @@ from slmsuite.holography.algorithms._feedback import FeedbackHologram
 
 class _AbstractSpotHologram(FeedbackHologram):
     """
-    Abstract class to eventally handle :meth:`SpotHologram.refine_offset()`
+    Abstract class to eventually handle :meth:`SpotHologram.refine_offset()`
     and other shared methods for :class:`SpotHologram` and :class:`CompressedSpotHologram`.
     There are many parts of :class:`SpotHologram` with repetition and bloat that
     can be simplified with more modern features from other parts of :mod:`slmsuite`.

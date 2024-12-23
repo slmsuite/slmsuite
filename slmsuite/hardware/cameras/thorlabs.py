@@ -66,6 +66,7 @@ _configure_tlcam_dll_path()
 try:
     from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, ROI
 except ImportError:
+    TLCameraSDK = None
     warnings.warn("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
 
 
@@ -112,6 +113,9 @@ class ThorCam(Camera):
         RuntimeError
            If the camera can not be reached.
         """
+        if TLCameraSDK is None:
+            raise ImportError("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
+
         if ThorCam.sdk is None:
             if verbose:
                 print("TLCameraSDK initializing... ", end="")
@@ -165,9 +169,7 @@ class ThorCam(Camera):
             name=serial,
             **kwargs
         )
-
-        if verbose:
-            print("success")
+        if verbose: print("success")
 
     def close(self, close_sdk=False):
         """
@@ -203,6 +205,9 @@ class ThorCam(Camera):
         list of str
             List of ThorCam serial numbers.
         """
+        if TLCameraSDK is None:
+            raise ImportError("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
+
         if ThorCam.sdk is None:
             try:
                 ThorCam.sdk = TLCameraSDK()
@@ -237,19 +242,14 @@ class ThorCam(Camera):
         ThorCam.sdk.dispose()
         ThorCam.sdk = None
 
-    def reset(self):
-        """See :meth:`.Camera.reset`."""
-        self.close()
-        self.__init__()
-
     ### Property Configuration ###
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.exposure_time_us) / 1e6
 
-    def set_exposure(self, exposure_s):
-        """See :meth:`.Camera.set_exposure`."""
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.exposure_time_us = int(exposure_s * 1e6)
 
     def set_binning(self, bx=None, by=None):
@@ -416,7 +416,7 @@ class ThorCam(Camera):
 
         return ret
 
-    def flush(self, timeout_s=1, verbose=False):
+    def flush(self, timeout_s, verbose=False):
         """
         See :meth:`.Camera.flush`.
 

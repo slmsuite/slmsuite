@@ -13,7 +13,7 @@ class Webcam(Camera):
 
     Warning
     -------
-    This class does not properly handle color images 
+    This class does not properly handle color images
     and does not properly populate datatype information.
 
     See Also
@@ -61,7 +61,6 @@ class Webcam(Camera):
         self.cam = cv2.VideoCapture(identifier, capture_api)
         if not self.cam.isOpened():
             raise RuntimeError(f"Failed to initialize webcam {id}")
-        if verbose: print("success")
 
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
@@ -76,6 +75,7 @@ class Webcam(Camera):
         )
 
         self.backend = self.cam.getBackendName()
+        if verbose: print("success")
 
     def close(self):
         """See :meth:`.Camera.close`."""
@@ -96,15 +96,15 @@ class Webcam(Camera):
         self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)
         self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3 if tf else 1)
 
-    def get_exposure(self):
-        """See :meth:`.Camera.get_exposure`."""
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return 2**float(self.cam.get(cv2.CAP_PROP_EXPOSURE))
 
-    def set_exposure(self, exposure_s):
-        """See :meth:`.Camera.set_exposure`."""
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.set(cv2.CAP_PROP_EXPOSURE, np.log2(exposure_s))
 
-    def _get_image_hw(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""
         (success, img) = self.cam.read()
         if not success: raise RuntimeError("Could not grab frame.")

@@ -41,8 +41,6 @@ class SimulatedCamera(Camera):
 
     Attributes
     ----------
-    exposure : float
-        Digital gain value to simulate exposure time. Directly proportional to imaged power.
     grid : (numpy.ndarray, numpy.ndarray)
         Pixel column/row number (``x_grid``, ``y_grid``) in the ``"ij"`` basis used for
         far-field interpolation.
@@ -58,8 +56,8 @@ class SimulatedCamera(Camera):
         Example
         ~~~~~~~
         The following code adds a Gaussian background with 50% mean and 5% standard
-        deviation (relative to the dynamic range at the default ``self.exposure = 1``) and
-        a Poisson readout noise (independent of ``self.exposure``) with an average value
+        deviation (relative to the dynamic range at the default ``self.exposure_s = 1``) and
+        a Poisson readout noise (independent of ``self.exposure_s``) with an average value
         of 20% of the camera's dynamic range.
 
         .. code-block:: python
@@ -109,7 +107,6 @@ class SimulatedCamera(Camera):
         super().__init__(resolution, pitch_um=pitch_um, **kwargs)
 
         # Digital gain emulates exposure
-        self.exposure = 1
         self.gain = gain
 
         # Add user-defined noise dictionary
@@ -173,10 +170,6 @@ class SimulatedCamera(Camera):
         dkxy_min = dkxy.ravel()[1:].min()
 
         self.shape_padded = Hologram.get_padded_shape(self._slm, precision=dkxy_min)
-        # print(
-        #     "Padded SLM k-space shape set to (%d,%d) to achieve required "
-        #     "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
-        # )
 
         phase = -self._slm.display.astype(float) * (2 * np.pi / self._slm.bitresolution)
         self._hologram = Hologram(
@@ -327,26 +320,15 @@ class SimulatedCamera(Camera):
         """
         See :meth:`.Camera.flush`.
         """
-        return
+        pass
 
-    def set_exposure(self, exposure):
-        """
-        Set the simulated exposure (i.e. digital gain).
-        This factor directly multiplies the normalized (sum of squares norm)
-        image.
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
+        return self.exposure_s
 
-        Parameters
-        ----------
-        exposure : float
-            Digital gain.
-        """
-        self.exposure = exposure
-
-    def get_exposure(self):
-        """
-        Get the simulated exposure (i.e. digital gain).
-        """
-        return self.exposure
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
+        self.exposure_s = exposure_s
 
     def _get_dtype(self):
         """Spoof the datatype because we don't have an image to return"""
@@ -367,7 +349,7 @@ class SimulatedCamera(Camera):
         else:
             raise ValueError(f"Numpy cannot encode bitdepth {self.bitdepth}.")
 
-    def _get_image_hw(self, timeout_s=None):
+    def _get_image_hw(self, timeout_s):
         """
         See :meth:`.Camera._get_image_hw`. Computes and samples the affine-transformed SLM far-field.
 
@@ -405,14 +387,14 @@ class SimulatedCamera(Camera):
         if cp != np:
             img = img.get()
 
-        img *= self.exposure * self.gain
+        img *= self.exposure_s * self.gain
 
         # Basic noise sources.
         if self.noise is not None:
             for key in self.noise.keys():
                 if key == 'dark':
                     # Background/dark current - exposure dependent
-                    dark = self.noise['dark'](np.ones_like(img) * self.bitresolution) / self.exposure
+                    dark = self.noise['dark'](np.ones_like(img) * self.bitresolution) / self.exposure_s
                     img = img + dark
                 elif key == 'read':
                     # Readout noise - exposure independent

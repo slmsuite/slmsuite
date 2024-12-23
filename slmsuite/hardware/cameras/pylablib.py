@@ -1,15 +1,21 @@
 """
-Light wrapper for `PyLabLib cameras
+Light wrapper for the :mod:`pylablib` package.
+See the supported `cameras
 <https://pylablib.readthedocs.io/en/stable/devices/cameras_root.html>`_.
-The :mod:`pylablib` module must be installed ``pip install pylablib``.
+:mod:`pylablib` must be installed ``pip install pylablib``.
 
 Note
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
-
+import warnings
 from slmsuite.hardware.cameras.camera import Camera
-from pylablib.devices.interface.camera import ICamera
+
+try:
+    from pylablib.devices.interface.camera import ICamera
+except:
+    ICamera = None
+    warnings.warn("pylablib not installed. Install to use PyLabLib cameras.")
 
 class PyLabLib(Camera):
     """
@@ -17,7 +23,7 @@ class PyLabLib(Camera):
 
     Attributes
     ----------
-    cam : instrumental.drivers.cameras.Camera
+    cam : pylablib.devices.interface.camera.ICamera
         Object to talk with the desired camera.
     exposure_s : float
         Instrumental doesn't save exposure. It sets the exposure at each
@@ -49,6 +55,9 @@ class PyLabLib(Camera):
         RuntimeError
            If the camera can not be reached.
         """
+        if ICamera is None:
+            raise ImportError("pylablib not installed. Install to use PyLabLib cameras.")
+
         if not isinstance(cam, ICamera):
             raise ValueError(
                 "A subclass of pylablib.devices.interface.camera.Camera must be passed as cam."
@@ -105,38 +114,16 @@ class PyLabLib(Camera):
             An empty list.
         """
         raise RuntimeError(
-            ".info() is not applicable to pylablib cameras, which are "
+            ".info() is not applicable to pylablib cameras, which must be "
             "constructed outside this wrapper."
         )
 
-    def reset(self):
-        """
-        See :meth:`.Camera.reset`.
-        """
-        raise RuntimeError("Instrumental cameras do not support reset.")
-
-    def get_exposure(self):
-        """
-        Method to get the integration time in seconds.
-        Used in :meth:`.autoexposure()`.
-
-        Returns
-        -------
-        float
-            Integration time in seconds.
-        """
+    def _get_exposure_hw(self):
+        """See :meth:`.Camera._get_exposure_hw`."""
         return self.cam.get_exposure()
 
-    def set_exposure(self, exposure_s):
-        """
-        Method to set the integration time in seconds.
-        Used in :meth:`.autoexposure()`.
-
-        Parameters
-        ----------
-        exposure_s : float
-            The integration time in seconds.
-        """
+    def _set_exposure_hw(self, exposure_s):
+        """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.set_exposure(float(exposure_s))
 
     def set_woi(self, woi=None):
@@ -157,23 +144,7 @@ class PyLabLib(Camera):
         """
         raise NotImplementedError()
 
-    def flush(self, timeout_s=1):
-        """
-        Method to cycle the image buffer (if any)
-        such that all new :meth:`.get_image()`
-        calls yield fresh frames.
-
-        This is currently implemented by capturing five camera frames, and should be
-        improved in the future.
-
-        Parameters
-        ----------
-        timeout_s : float
-            The time in seconds to wait for frames to catch up with triggers.
-        """
-        self.get_images(5, timeout_s=timeout_s)
-
-    def _get_image_hw(self, timeout_s=1):
+    def _get_image_hw(self, timeout_s):
         """
         Method to pull an image from the camera and return.
 
@@ -189,6 +160,6 @@ class PyLabLib(Camera):
         """
         return self.cam.snap(timeout=timeout_s)
 
-    def _get_images_hw(self, image_count, timeout_s=1, out=None):
+    def _get_images_hw(self, image_count, timeout_s, out=None):
         """See :meth:`.Camera._get_images_hw`."""
         return self.cam.grab(nframes=image_count, frame_timeout=timeout_s)

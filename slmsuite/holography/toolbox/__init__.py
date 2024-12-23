@@ -204,7 +204,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         Defaults to ``"norm"``.
     hardware : :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`~slmsuite.hardware.cameraslms.FourierSLM` OR None
         Relevant hardware to pull calibration data from in the case of
-        ``"freq"``, ``"knm"``, or ``"lpmm"``.
+        ``"freq"``, ``"knm"``, ``"lpmm"``, or ``"zernike"``.
         If :class:`~slmsuite.hardware.cameraslms.FourierSLM`, the unit ``"ij"`` and other
         length units can be processed too.
     shape : (int, int) OR None

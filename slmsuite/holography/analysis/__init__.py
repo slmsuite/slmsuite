@@ -967,7 +967,7 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
     -   First, an iterative approach is used to subtract Zernike orders from each image.
         If the Zernike aperture is not cropped or occluded, the orthogonality of the Zernike
         basis makes this a good and exact approach apart from sampling error.
-        However, if the polynomials lose orthoganality, then this process produces a
+        However, if the polynomials lose orthogonality, then this process produces a
         good guess at best.
     -   Thus, the second step is to refine the guess with a least squares optimization.
         This can be time consuming.
@@ -1040,7 +1040,7 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
         grid_ravel = (np.ravel(grid[0]), np.ravel(grid[1]))
 
         for j in range(image_count):
-            # Lambda to build the funtion from test parameters.
+            # Lambda to build the function from test parameters.
             def zsum(grid, *p):
                 p = np.reshape(p, vectors_zernike.shape)
 
@@ -1293,11 +1293,6 @@ def blob_detect(
     img,
     filter=None,
     plot=False,
-    title="",
-    fig=None,
-    axs=None,
-    zoom=False,
-    show=False,
     **kwargs
 ):
     """
@@ -1335,6 +1330,8 @@ def blob_detect(
     detector : :class:`cv2.SimpleBlobDetector`
         A blob detector with customized parameters.
     """
+    # Need copy for some reason:
+    # https://github.com/opencv/opencv/issues/18120
     img_8bit = _make_8bit(np.copy(img))
     params = cv2.SimpleBlobDetector_Params()
 
@@ -1358,7 +1355,8 @@ def blob_detect(
     blobs = detector.detect(img_8bit)
 
     if len(blobs) == 0:
-        raise Exception("No blobs found! Try blurring image.")
+        return [], detector
+        #raise Exception("No blobs found! Try blurring image.")
 
     # Sort blobs according to `filter`.
     if filter == "dist_to_center":
@@ -1401,46 +1399,12 @@ def blob_detect(
         zoom_padx = 2 * (blob_xmax - blob_xmin) / blob_count
         zoom_pady = 2 * (blob_ymax - blob_ymin) / blob_count
 
-        # Plot setup.
-        if fig is None and axs is None:
-            if zoom:
-                fig, axs = plt.subplots(1, 2)
-            else:
-                fig, axs = plt.subplots(1, 1)
-                axs = (axs,)
-        if zoom:
-            ax0, ax1 = axs
-        else:
-            ax0, = axs
-        fig.suptitle(title)
-
         # Full image.
         vmin = np.min(img_8bit)
         vmax = np.max(img_8bit)
-        im = ax0.imshow(img_8bit, vmin=vmin, vmax=vmax)
-
-        # Zoomed Image.
-        if zoom:
-            ax1.imshow(img_8bit, vmin=vmin, vmax=vmax)
-            xmax = img.shape[1] + 0.5
-            xmin = 0.5
-            xlims = (
-                np.clip((blob_xmin - zoom_padx), xmin, xmax),
-                np.clip((blob_xmax + zoom_padx), xmin, xmax)
-            )
-            ymax = img.shape[0] + 0.5
-            ymin = 0.5
-            ylims = (
-                np.clip((blob_ymin - zoom_pady), ymin, ymax),
-                np.clip((blob_ymax + zoom_pady), ymin, ymax)
-            )
-            ax1.set_xlim(xlims)
-            ax1.set_ylim(np.flip(ylims))
-            ax1.set_title("Zoom")
-            fig.colorbar(im, ax=ax1)
-            ax0.set_title("Full")
-        else:
-            fig.colorbar(im, ax=ax0)
+        im = plt.imshow(img_8bit, vmin=vmin, vmax=vmax)
+        ax = plt.gca()
+        plt.colorbar()
 
         # Blob patches
         for blob_idx in range(blob_count):
@@ -1451,11 +1415,7 @@ def blob_detect(
                     linewidth=1,
                     fill=None
                 )
-                ax0.add_patch(patch)
-                if zoom:
-                    ax1.add_patch(patch)
-        if show:
-            plt.show()
+                ax.add_patch(patch)
 
     return blobs, detector
 
@@ -1465,10 +1425,10 @@ def blob_array_detect(
     size,
     orientation=None,
     orientation_check=True,
-    dft_threshold=50,
+    dft_threshold=100,
     dft_padding=0,
-    k=4,
-    tol=0.05,
+    k=8,
+    tol=0.1,
     plot=False,
 ):
     r"""
@@ -1506,11 +1466,11 @@ def blob_array_detect(
         Increasing this value increases the :math:`k`-space resolution of the DFT,
         and can improve orientation detection.
     k : int
-        Number of nearest neighbors to use for each point when lattice matching. Default (2)
-        uses closest neighbors only.
+        Number of nearest neighbors to use for each point when lattice matching.
+        Defaults to 8.
     tol : float
         Difference in normalized displacement between reciprocal lattice points to
-        be considered members of the same group when lattice fitting. Defaults to 5%.
+        be considered members of the same group when lattice fitting. Defaults to 10%.
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
 
@@ -1526,6 +1486,12 @@ def blob_array_detect(
 
     img_8bit = _make_8bit(img)
 
+    if np.amax(img_8bit) == 0:
+        raise RuntimeError(
+            "Cannot fit an image of all zeros. "
+            "Check your camera to make sure it is snapping correctly."
+        )
+
     # If an orientation was provided, use this as a guess.
     if orientation is not None:
         M = orientation["M"]
@@ -1533,66 +1499,90 @@ def blob_array_detect(
     # Otherwise, find a guess orientation.
     else:
         # 1) FFT to find array pitch and orientation.
-        # Take the largest dimension rounded up to nearest power of 2.
+        # Take the largest dimension rounded down to nearest power of 2.
         # FUTURE: clean this up to behave like other parts of the package.
-        fftsize = int(2 ** np.ceil(np.log2(np.max(np.shape(img))))) * 2 ** dft_padding
-        dft = np.fft.fftshift(np.fft.fft2(img_8bit, s=[fftsize, fftsize]))
-        fft_blur_size = (
-            int(2 * np.ceil(fftsize / 1000)) + 1
-        )
-
-        dft_amp = cv2.GaussianBlur(np.abs(dft), (fft_blur_size, fft_blur_size), 0)
-
-        # Filter 0 order (dominates in the presence of a slowly varying background)
-        x,y = np.meshgrid(np.linspace(-fftsize/2,fftsize/2,fftsize),
-                          np.linspace(-fftsize/2,fftsize/2,fftsize))
-        filter = gaussian2d([x,y], 0, 0, -1, 1, 2*fft_blur_size, 2*fft_blur_size)
-        dft_amp = dft_amp * filter
+        fft_size = int(2 ** (np.floor(np.log2(np.max(np.shape(img)))) + dft_padding))
+        dft = np.abs(np.fft.fftshift(np.fft.fft2(img, s=[fft_size, fft_size])))
 
         # 2) Detect and plot FFT peaks
-        # Need copy for some reason:
-        # https://github.com/opencv/opencv/issues/18120
-        thresholdStep = 10
-        blobs, _ = blob_detect(
-            dft_amp.copy(),
-            plot=False,
-            minThreshold=dft_threshold,
-            thresholdStep=thresholdStep,
+        # 2.1) Prepare some helper variables, mainly for filtering out the 0th order.
+        fft_blur_size = 11
+        downscaling = 1
+        dft_amp = None
+        zo_size = 8*fft_blur_size
+        if fft_size <= zo_size*4:
+            raise ValueError(f"Image of shape {img.shape} is too small to use with blob_array_detect.")
+        zo_x, zo_y = np.meshgrid(
+            np.linspace(-zo_size/2, zo_size/2, zo_size),
+            np.linspace(-zo_size/2, zo_size/2, zo_size)
         )
-        blobs = np.array(blobs)
-        dft_fit_failed = len(blobs) < 5
+        zo_filter = gaussian2d([zo_x, zo_y], 0, 0, -1, 1, fft_blur_size/2, fft_blur_size/2)
+        points = []
+        blobs = None
+        i = 0
 
-        if dft_fit_failed:
+        # 2.2) Look for peaks with progressively greater downscaled blurring. This helps
+        # to mitigate noise on the DFT peaks and enhance the most prominent peaks.
+        while fft_size / downscaling > zo_size*4:
+            dft_amp = cv2.GaussianBlur(dft, (fft_blur_size, fft_blur_size), fft_blur_size/4)
+
+            # Filter 0 order (dominates in the presence of a slowly varying background)
+            zo_i = int(fft_size/2/downscaling-zo_size/2)
+            zo_j = zo_i+zo_size
+            dft_amp[zo_i:zo_j, zo_i:zo_j] *= zo_filter
+
+            thresholdStep = 10
             blobs, _ = blob_detect(
-                dft_amp.copy(),
-                plot=True,
+                dft_amp,
                 minThreshold=dft_threshold,
                 thresholdStep=thresholdStep,
             )
+            points += [np.array(blob.pt) * downscaling for blob in blobs]
 
+            # Exit if we've already got enough points.
+            if len(points) > 4 * (i+1):
+                break
+
+            # Downscale so we can try to find peaks again with greater blurring.
+            if fft_size / downscaling > zo_size*4:
+                dft = dft[0::2, 0::2] + dft[0::2, 1::2] + dft[1::2, 0::2] + dft[1::2, 1::2]
+                downscaling *= 2
+                i += 1
+
+        if len(points) < 4:
             raise RuntimeError(
-                "Not enough spots found in DFT, expected 5. Try:\n"
-                "- increasing exposure time\n"
-                "- increasing `dft_padding`\n"
-                "- decreasing `dft_threshold`"
+                "Array fitting looks for prominent periodicity, "
+                "but failed to find such in the given image. Try the following:\n"
+                "- Increasing exposure time to enhance the prominence of spots,\n"
+                "- Increasing the pitch of the array in the image, "
+                "which can isolate spots from neighboring crosstalk,\n"
+                "- Create an issue at https://github.com/slmsuite/slmsuite/issues, "
+                "attaching the image data that is resulting in failure. "
             )
 
         # 3) Fit the primitive lattice vectors
         # 3.1) Make a list of displacements to each peak's k nearest neighbors
-        def get_kNN(x, k):
+        def get_kNN(points, k):
             "Return list of k closest points for each x"
-            points = np.array([np.array(blob.pt) for blob in blobs])
             dx = points[:,0][:,np.newaxis] - points[:,0][:,np.newaxis].T
             dy = points[:,1][:,np.newaxis] - points[:,1][:,np.newaxis].T
-            d = np.sqrt(dx**2+dy**2)
-            inds = np.argsort(d,axis=0)
-            kNN = points[inds[1:k+1,:]]-points
+            d = np.sqrt(dx**2 + dy**2)
+            inds = np.argsort(d, axis=0)
+            kNN = points[inds[1:k+1,:]] - points
             kNN = kNN.reshape((points.shape[0]*k, 2))
             kNN[kNN[:,0]<0] = -kNN[kNN[:,0]<0] #* np.array([-1,1])
             return kNN
 
-        points = [blob.pt for blob in blobs]
-        kNN = get_kNN(points,k)
+        # Get rid of the points closest to the center - these are noise on the 0th order.
+        points = np.array(points)
+
+        points_lengths = np.sqrt((points[:,0]-fft_size/2)**2 + (points[:,1]-fft_size/2)**2)
+        points = points[points_lengths > .5*np.mean(points_lengths), :]
+        points = np.concatenate((points, np.array([[fft_size/2, fft_size/2]])))
+
+        # Now compute the differences of lattice vectors.
+        k = min(k, len(points)-1)
+        kNN = get_kNN(points, k)
 
         # 3.2) Cluster into lattice vectors.
         def cluster(points, k, tol=tol):
@@ -1622,33 +1612,36 @@ def blob_array_detect(
 
             return centers
 
-        centers = cluster(kNN,k).T
+        centers = cluster(kNN, k).T
 
-        # 3.3) Primitive lattice vectors are the shortest orthogonal two
-        centers_norm = centers / np.linalg.norm(centers, axis=0)
-        dot = np.sum(centers_norm * np.roll(centers_norm,-1,axis=1), axis=0)
-        lv = np.array([centers[:,0], centers[:,np.where(dot<1e-2)[0][0]+1]]).T
-        # lv = centers[np.argsort(np.linalg.norm(centers, axis=1))[:2]].T
+        # 3.3) Primitive lattice vectors are the best two.
+        lv = np.array([centers[:,0], centers[:,1]]).T
 
         if plot > 1:
             # Plot the points, kNN, and the chosen lattice vecs
             fig, ax = plt.subplots(constrained_layout=True)
-            kNN_plt = ax.scatter(kNN[:,0],kNN[:,1],fc='none',ec='k')
+            kNN_plt = ax.scatter(kNN[:,0], kNN[:,1], fc='none', ec='k', zorder=0)
 
             for center in centers.T:
-                cir = matplotlib.patches.Circle((center[0],center[1]),
-                                                np.linalg.norm(center)*tol,
-                                                fill=False,ec='g')
+                cir = matplotlib.patches.Circle(
+                    (center[0], center[1]),
+                    np.linalg.norm(center)*.1,
+                    fill=False,
+                    ec='r',
+                    zorder=10,
+                )
                 circ = ax.add_patch(cir)
-            lv_plt = ax.scatter(lv[0,:],lv[1,:],marker='x',c='r')
+
+            lv_plt = ax.scatter(lv[0,:], lv[1,:], marker='x', c='b')
+
             ax.set_aspect('equal')
             ax.set_title('Reciprocal Lattice Vector Fitting')
-            ax.legend([kNN_plt, circ, lv_plt], ['Peak Spacing', '$k$ Clusters', 'Lattice Vecs'])
+            ax.legend([kNN_plt, circ, lv_plt], ['Peak Spacing', '$k$ Clusters', 'Lattice Vectors'])
             ax.grid()
             plt.show()
 
         # 3.4) Convert to image space (dx = 1/dk)
-        M = fftsize*lv/(np.linalg.norm(lv, axis=0)**2)
+        M = fft_size*lv/(np.linalg.norm(lv, axis=0)**2)
 
         # Plot which diffraction orders we used
         if plot > 1:
@@ -1659,13 +1652,15 @@ def blob_array_detect(
             # Determine the bounds of the zoom region, padded by zoom_pad
             zoom_pad = 50
 
-            x = np.array([blob.pt[0] for blob in blobs])
+            # x = np.array([blob.pt[0] for blob in blobs])
+            x = points[:, 0] / downscaling
             xl = [
                 np.clip(np.amin(x) - zoom_pad, 0, dft_amp.shape[1]),
                 np.clip(np.amax(x) + zoom_pad, 0, dft_amp.shape[1]),
             ]
 
-            y = np.array([blob.pt[1] for blob in blobs])
+            # y = np.array([blob.pt[1] for blob in blobs])
+            y = points[:, 1] / downscaling
             yl = [
                 np.clip(np.amin(y) - zoom_pad, 0, dft_amp.shape[0]),
                 np.clip(np.amax(y) + zoom_pad, 0, dft_amp.shape[0]),
@@ -1681,7 +1676,7 @@ def blob_array_detect(
                 ec="r", fc="none"
             )
             axs[0].add_patch(rect)
-            axs[0].set_title("DFT Result - Full")
+            axs[0].set_title(f"DFT Result ({downscaling}x downscale) - Full")
             axs[0].set_xticks([])
             axs[0].set_yticks([])
 
@@ -1696,10 +1691,14 @@ def blob_array_detect(
                 s=100,
                 linewidths=0.5
             )
+            c = fft_size/2/downscaling
+            lv /= downscaling
+            axs[1].scatter(c+lv[0,:], c+lv[1,:], marker='.', c='r')
+            axs[1].scatter(c-lv[0,:], c-lv[1,:], marker='.', c='r')
             for spine in ["top", "bottom", "right", "left"]:
                 axs[1].spines[spine].set_color("r")
                 axs[1].spines[spine].set_linewidth(1.5)
-            axs[1].set_title("DFT Result - Zoom")
+            axs[1].set_title(f"DFT Result ({downscaling}x downscale) - Zoom")
             axs[1].set_xticks([])
             axs[1].set_yticks([])
             axs[1].set_xlim(xl)
@@ -1883,6 +1882,7 @@ def blob_array_detect(
     # We do this multiple times to allow outliers (1 std error above) to stabilize.
     # FUTURE: Use a more physics-based psf, optimize for speed, maybe remove_field.
     hone_count = 3
+    region_fraction = 1
     for _ in range(hone_count):
         guess_positions = np.matmul(orientation["M"], centers) + orientation["b"]
 
@@ -1894,6 +1894,7 @@ def blob_array_detect(
         regions = take(
             img, guess_positions, psf, centered=True, integrate=False, clip=True
         )
+        region_fraction = np.sum(regions) / np.sum(img)
 
         # Get the first order moment rint each of the guess windows.
         shift = image_positions(regions) - (guess_positions - np.rint(guess_positions))
@@ -1913,12 +1914,18 @@ def blob_array_detect(
             "The computed Fourier grid size exceeds or approaches the camera size; "
             "calibration results may be improperly centered as a result."
         )
-    # Also warn if computed postions approach camera FOV boundary
-    elif np.any(np.nanmax(true_positions,axis=1) > 0.95 * np.array(img_8bit.shape)) or \
-         np.any(np.nanmin(true_positions,axis=1) < 0.05 * np.array(img_8bit.shape)):
+    # Also warn if computed positions approach camera FOV boundary
+    elif np.any(np.nanmax(true_positions, axis=1) > 0.95 * np.array(img_8bit.shape)) or \
+         np.any(np.nanmin(true_positions, axis=1) < 0.05 * np.array(img_8bit.shape)):
         warnings.warn(
             "The fitted spot array approaches or exceeds the camera FOV; "
             "calibration results may be improperly centered as a result."
+        )
+    # Warn if the array
+    if region_fraction < .5:
+        warnings.warn(
+            f"{(1-region_fraction)*100:.1f}% of the image's power outside the spot array. "
+            "This might have caused the array fit to be poor."
         )
 
     if plot:
@@ -1946,12 +1953,12 @@ def blob_array_detect(
         # Plot the zoom window, with red axes.
         axs[1].imshow(img)
         axs[1].scatter(
-            x, y, facecolors="none", edgecolors="r", marker="o", s=80, linewidths=0.5
+            x[:-2], y[:-2], facecolors="none", edgecolors="r", marker="o", s=80, linewidths=0.5
         )
 
-        for i, ctr in enumerate(true_centers.T):
-            if i < 2 or i > len(true_centers.T) - 3:
-                axs[1].annotate(i, (ctr[0] + 4, ctr[1] - 4), c="r", size="x-small")
+        # for i, ctr in enumerate(true_centers.T):
+        #     if i < 2 or i > len(true_centers.T) - 3:
+        #         axs[1].annotate(i, (ctr[0] + 4, ctr[1] - 4), c="r", size="x-small")
 
         axs[1].scatter(array_center[0], array_center[1], c="r", marker="x", s=10)
         axs[1].set_title("Result - Zoom")
@@ -2012,7 +2019,8 @@ def _make_8bit(img):
     img = img.astype(float)
 
     img -= np.amin(img)
-    img = img / np.amax(img) * (2 ** 8 - 1)
+    max = np.amax(img)
+    if max > 0: img = img / max * (2 ** 8 - 1)
 
     return img.astype(np.uint8)
 

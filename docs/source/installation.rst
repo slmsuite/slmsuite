@@ -51,7 +51,7 @@ One can also install these dependencies directly.
 Hardware Dependencies
 ---------------------
 
-The following python packages are optional acceleration or hardware requirements, which
+The following python packages are *optional* acceleration or hardware requirements, which
 the user can install selectively.
 
 - GPU
@@ -67,11 +67,14 @@ the user can install selectively.
       to pass data between modules without copying overhead, even on the GPU.
 - Cameras
     - `instrumental-lib <https://github.com/mabuchilab/Instrumental>`_
+    - `pylablib <https://github.com/AlexShkarin/pyLabLib>`_
     - `pymmcore <https://github.com/micro-manager/pymmcore>`_
     - `pypylon <https://github.com/basler/pypylon>`_
+    - `mvsdk <https://www.mindvision.com.cn/category/software/demo-development-routine/>`_ (non-PyPI)
     - `PySpin <https://www.flir.com/products/spinnaker-sdk/>`_ (non-PyPI)
+    - `tisgrabber <https://github.com/TheImagingSource/IC-Imaging-Control-Samples/tree/master/Python/tisgrabber>`_ (non-PyPI)
     - `thorlabs_tsi_sdk <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ (non-PyPI)
-    - `VimbaPython <https://github.com/alliedvision/VimbaPython>`_ (non-PyPI)
+    - `VmbPy <https://github.com/alliedvision/VmbPy>`_ (non-PyPI)
     - Other cameras are loaded directly via .dll.
 - SLMs
     - `pyglet <https://pyglet.org/>`_
@@ -85,19 +88,15 @@ Jupyter
 -------
 
 We highly recommended using `Jupyter <https://jupyter.org>`_
-notebooks for interactive computing,
-and also list useful packages for code profiling which can be included via
+notebooks for interactive computing. Consider also using
 `IPython <https://ipython.org/>`_
 `magic <https://ipython.readthedocs.io/en/stable/interactive/tutorial.html#magics-explained>`_,
-along with other features like |autoreload|_ or |matplotlibs|_ which are packaged with IPython.
+features like |autoreload|_ or |matplotlibs|_.
 
 - `jupyter <https://jupyter.org>`_
-    - `line-profiler <https://github.com/pyutils/line_profiler>`_
-    - `snakeviz <https://github.com/jiffyclub/snakeviz>`_
 
 If Jupyter is not used, the default :mod:`matplotlib` plots will block further
-execution, so the user should avoid plotting with ``plot=False`` flags on functions
-or develop a workaround.
+execution, so the user should avoid plotting with ``plot=False`` flags on functions.
 
 Use the following to install recommended jupyter-related packages.
 

@@ -165,7 +165,7 @@ class ScreenMirrored(SLM):
                 .format(display_number))
 
         if verbose and screen_info[display_number][2]:
-            print("warning: this is the main display... ")
+            print("warning: this is the main display... ", end="")
 
         if verbose:
             print("success")
@@ -202,8 +202,8 @@ class ScreenMirrored(SLM):
 
     def _set_phase_hw(self, data):
         """Writes to screen. See :class:`.SLM`."""
-        # Write to buffer (self.buffer is the same as self.cbuffer).
-        # Unfortunately, OpenGL needs the data copied three times (I think).
+        # Write to buffer (.buffer points to the same data as .cbuffer).
+        # Unfortunately, OpenGL2.0 needs the data copied three times (I think).
         # FUTURE: For OpenGL3.0 and pyglet 2.0+, use the shader to minimize data transfer.
         np.copyto(self.window.buffer[:,:,0], data)
         np.copyto(self.window.buffer[:,:,1], data)

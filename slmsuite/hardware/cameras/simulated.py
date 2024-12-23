@@ -170,10 +170,6 @@ class SimulatedCamera(Camera):
         dkxy_min = dkxy.ravel()[1:].min()
 
         self.shape_padded = Hologram.get_padded_shape(self._slm, precision=dkxy_min)
-        # print(
-        #     "Padded SLM k-space shape set to (%d,%d) to achieve required "
-        #     "imaging resolution." % (self.shape_padded[1], self.shape_padded[0])
-        # )
 
         phase = -self._slm.display.astype(float) * (2 * np.pi / self._slm.bitresolution)
         self._hologram = Hologram(
@@ -329,7 +325,7 @@ class SimulatedCamera(Camera):
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
         return self.exposure_s
-    
+
     def _set_exposure_hw(self, exposure_s):
         """See :meth:`.Camera._set_exposure_hw`."""
         self.exposure_s = exposure_s
@@ -391,14 +387,14 @@ class SimulatedCamera(Camera):
         if cp != np:
             img = img.get()
 
-        img *= self.exposure * self.gain
+        img *= self.exposure_s * self.gain
 
         # Basic noise sources.
         if self.noise is not None:
             for key in self.noise.keys():
                 if key == 'dark':
                     # Background/dark current - exposure dependent
-                    dark = self.noise['dark'](np.ones_like(img) * self.bitresolution) / self.exposure
+                    dark = self.noise['dark'](np.ones_like(img) * self.bitresolution) / self.exposure_s
                     img = img + dark
                 elif key == 'read':
                     # Readout noise - exposure independent

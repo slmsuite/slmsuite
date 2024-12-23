@@ -167,6 +167,7 @@ html_theme_options = {
     "footer_start": ["copyright", "sphinx-version"],
     "footer_end": ["last-updated", "theme-version"],
     # "content_footer_items": ["last-updated"],
+    "show_version_warning_banner": True,
     "navbar_center": ["navbar-nav"],   # "version-switcher",  # https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/version-dropdown.html
     # "switcher": {
     #     "version_match": switcher_version,

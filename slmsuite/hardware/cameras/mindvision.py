@@ -1,8 +1,10 @@
 """
 **(Untested)** Hardware control for MindVision cameras via :mod:`mvsdk`.
-This requires the :mod:`mvsdk` library and 3rd party python header to be copied
-into the local directory and added to path. The python header used for this
-camera interface can be found in the `dddomodossola/nastroprint
+This requires the :mod:`mvsdk` library and python header to be copied
+into the local directory and added to path.
+These files can be downloaded from `MindVision's download page
+<https://www.mindvision.com.cn/category/software/demo-development-routine/>`_.
+The python header can also be found in the `dddomodossola/nastroprint
 <https://github.com/dddomodossola/nastroprint/blob/master/mvsdk.py>`_
 GitHub package.
 """
@@ -17,7 +19,7 @@ try:
     import mvsdk as _mvsdk
 except:
     _mvsdk = None
-    warnings.warn("mvsdk not installed. Copy mvsdk.py from dddomodossola/nastroprint to use Mindvision cameras.")
+    warnings.warn("mvsdk not installed.")
 
 class MindVision(Camera):
     """
@@ -47,7 +49,7 @@ class MindVision(Camera):
             See :meth:`.Camera.__init__` for permissible options.
         """
         if _mvsdk is None:
-            raise ImportError("mvsdk not installed. Copy mvsdk.py from dddomodossola/nastroprint to use Mindvision cameras.")
+            raise ImportError("mvsdk not installed.")
 
         if MindVision.sdk is None:
             if verbose: print("mvsdk initializing... ", end="")

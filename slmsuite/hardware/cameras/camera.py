@@ -885,17 +885,24 @@ class Camera(_Picklable):
         or the last image of :meth:`get_images()` **whenever these methods are called**.
         Averaging and HDR are displayed with the same color scaling as without.
 
+        If ``True`` is passed to the ``widgets`` argument, this viewer is accompanied by
+        a series of `IPython widgets
+        <https://ipywidgets.readthedocs.io/en/latest/examples/Widget%20List.html>`_
+        in the form of slides and buttons
+        for controlling the color scale, colormap, viewer scale, and live viewing.
         By toggling the ``Live`` widget button,
-        this viewer can be used as a realtime monitor inside a jupyter notebook.
-        However, any user-execution will block the monitoring loop.
+        this viewer can be used as a realtime camera monitor within the jupyter notebook.
+        Note that any user-execution will block the monitoring loop.
         Regardless, any image polling during the blocked period will still update the viewer,
         which provides useful active feedback for what is happening during the execution.
 
-        The python Global Interpreter Lock (GIL) limits operation to a single thread,
+        This limitation is imposed by the
+        python Global Interpreter Lock (GIL) which restricts operation to a single thread,
         especially operation connecting to a diverse set of camera and SLM hardware.
         We use :mod:`asyncio` to allow the realtime monitoring loop to be
         interrupted by user-execution (e.g. running a cell in jupyter),
         blocking until the execution is finished.
+
         Running multiple viewers at once might not play nicely right now.
 
         Parameters

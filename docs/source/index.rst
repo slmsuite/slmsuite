@@ -11,8 +11,7 @@ spatial light modulator (SLM) control and holography.
    <https://slmsuite.readthedocs.io/en/latest/_examples/zernike_holography.html>`_
    aberration correction; capable of optimizing spot imaging
    `across a field of view
-   <https://slmsuite.readthedocs.io/en/latest/_examples/multipoint_calibration.html>`_
-   [#note]_.
+   <https://slmsuite.readthedocs.io/en/latest/_examples/multipoint_calibration.html>`_.
 
    .. image:: https://raw.githubusercontent.com/slmsuite/slmsuite-examples/main/examples/ex-zernike-spots-dark.gif
       :class: only-dark
@@ -88,12 +87,6 @@ or
    examples
    api
    tips
-
-.. rubric:: Note
-
-.. [#note] *Zernike spots are one of the main capabilities to be featured in the
-   pending* |slmsuite|_ *paper. If you have an interesting application
-   for Zernike spots, let us know!*
 
 .. |slmsuite| replace:: :mod:`slmsuite`
 .. _slmsuite: https://github.com/slmsuite/slmsuite

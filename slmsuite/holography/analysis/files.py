@@ -317,6 +317,12 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
     """
     Currently-hidden function to convert a stack of
     grayscale images to color with a colormap.
+
+    Returns
+    -------
+    numpy.ndarray
+        The converted images. This is of size ``(image_count, h, w, 4)``,
+        where the last axis is RGBA color.
     """
     # Parse images.
     images = np.array(images, copy=(False if np.__version__[0] == '1' else None))
@@ -348,14 +354,20 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
         if isfloat:
             lut = mpl.rcParams['image.lut']-1
         else:
-            lut = np.max(images)
+            lut = np.nanmax(images)
     # lut = np.clip(lut, 0, np.max(images))
     lut = np.array([lut]).astype(images.dtype)[0]
+
+    # Check for nan.
+    nanmask = np.isnan(images)
+    hasnan = np.any(nanmask)
+    if hasnan:
+        images[nanmask] = 0
 
     # Convert images to integers scaled to the lut size.
     if normalize:
         images = np.rint(images * ((float(lut)+1) / np.max(images))).astype(int)
-        images = np.clip(images, 0, lut)
+        images = np.clip(images, 0, int(lut))
     elif isfloat:
         images = np.rint(images * (float(lut)+1)).astype(int)
         images = np.clip(images, 0, int(lut))
@@ -367,17 +379,18 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
             c = cm.colors
         else:
             c = cm(np.arange(0, cm.N))
-        images = c[images]
-        images = 255 * images[:, :, :, :3]  # Remove alpha channel
+        images = 255 * c[images]
+        if hasnan:
+            images[nanmask, 3] = 0
 
     images = images.astype(np.uint8)
 
     # Add a border if desired.
     if border is not None:
-        images[:, 0, :, :] = border
-        images[:, -1, :, :] = border
-        images[:, :, 0, :] = border
-        images[:, :, -1, :] = border
+        images[:,  0, :, :len(border)] = border
+        images[:, -1, :, :len(border)] = border
+        images[:, :,  0, :len(border)] = border
+        images[:, :, -1, :len(border)] = border
 
     return images
 
@@ -388,6 +401,7 @@ def save_image(file_path, images, cmap=False, lut=None, normalize=True, border=N
     as a filetype supported by :mod:`imageio`.
     Handles :mod:`matplotlib` colormapping.
     Negative values are truncated to zero.
+    ``np.nan`` values are set to transparent.
 
     Parameters
     ----------
@@ -395,6 +409,7 @@ def save_image(file_path, images, cmap=False, lut=None, normalize=True, border=N
         Full path to the file to save the data in.
     images : numpy.ndarray
         A 2D matrix (image formats) or stack of 2D matrices (video formats).
+
     cmap : str OR bool OR None
         If ``str``, the :mod:`matplotlib` colormap under this name is used.
         If ``None`` or ``False``, the images are directly saved as grayscale 8-bit images.
@@ -412,12 +427,6 @@ def save_image(file_path, images, cmap=False, lut=None, normalize=True, border=N
         this is scaled to the ``lut``.
     **kwargs
         Passed to ``imageio.imsave()`` or ``imageio.mimsave()``. Useful for choosing a ``plugin`` or ``format``.
-
-    Returns
-    -------
-    numpy.ndarray
-        The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size ``(image_count,)``
-        for provided ``images`` data of shape ``(image_count, h, w)``.
     """
     images = _gray2rgb(images, cmap=cmap, lut=lut, normalize=normalize, border=border)
 

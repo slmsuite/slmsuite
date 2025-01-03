@@ -1506,7 +1506,7 @@ def blob_array_detect(
 
         # 2) Detect and plot FFT peaks
         # 2.1) Prepare some helper variables, mainly for filtering out the 0th order.
-        fft_blur_size = 11
+        fft_blur_size = int(np.clip(fft_size/200, 1, 5))*2 + 1
         downscaling = 1
         dft_amp = None
         zo_size = 8*fft_blur_size
@@ -1545,11 +1545,28 @@ def blob_array_detect(
 
             # Downscale so we can try to find peaks again with greater blurring.
             if fft_size / downscaling > zo_size*4:
+                if not fft_size / (2*downscaling) > zo_size*4:
+                    break
                 dft = dft[0::2, 0::2] + dft[0::2, 1::2] + dft[1::2, 0::2] + dft[1::2, 1::2]
                 downscaling *= 2
                 i += 1
 
         if len(points) < 4:
+
+            # Plot which diffraction orders we used
+            if plot:
+                plt.imshow(img)
+                plt.title("Image")
+                plt.show()
+
+                plt.imshow(dft)
+                plt.title("DFT")
+                plt.show()
+
+                plt.imshow(dft_amp)
+                plt.title("Processed DFT")
+                plt.show()
+
             raise RuntimeError(
                 "Array fitting looks for prominent periodicity, "
                 "but failed to find such in the given image. Try the following:\n"
@@ -1570,7 +1587,10 @@ def blob_array_detect(
             inds = np.argsort(d, axis=0)
             kNN = points[inds[1:k+1,:]] - points
             kNN = kNN.reshape((points.shape[0]*k, 2))
-            kNN[kNN[:,0]<0] = -kNN[kNN[:,0]<0] #* np.array([-1,1])
+
+            # Make inverted copies to avoid group separation based upon arb. branch cut.
+            kNN = np.vstack((kNN, -kNN))
+
             return kNN
 
         # Get rid of the points closest to the center - these are noise on the 0th order.
@@ -1588,27 +1608,45 @@ def blob_array_detect(
         def cluster(points, k, tol=tol):
             "Cluster points from k nearest neighbors into groups and return the centers"
 
-            # Find matrix of normalized displacements between points
+            # Find matrix of normalized displacements between points.
             dx = points[:,0][:,np.newaxis] - points[:,0][:,np.newaxis].T
             dy = points[:,1][:,np.newaxis] - points[:,1][:,np.newaxis].T
-            d = np.sqrt(dx**2+dy**2)
-            l = np.linalg.norm(points,axis=1)
-            dnorm = d/l
+            dnorm = np.sqrt(dx**2 + dy**2) / np.linalg.norm(points, axis=1)
 
-            # Find groups of points separated by dnorm less than tol
+            # Normalized inverted displacements.
+            dx = points[:,0][:,np.newaxis] + points[:,0][:,np.newaxis].T
+            dy = points[:,1][:,np.newaxis] + points[:,1][:,np.newaxis].T
+            inorm = np.sqrt(dx**2 + dy**2) / np.linalg.norm(points, axis=1)
+
+            # Find groups of points separated by dnorm less than tol.
             group = 1
             tags = np.zeros(points.shape[0])
             for i in np.arange(points.shape[0]):
-                new = (dnorm[i,:] < tol) & np.array(tags==0)
+                # Assign if they are within tol and have not been assigned yet.
+                new = ((dnorm[i,:] < tol) | (inorm[i,:] < tol)) & np.array(tags == 0) #  | (inorm[i,:] < tol)
                 tags[new] = group
-                if np.any(new):
-                    group = group+1
+                if np.any(new): group += 1
 
-            # Calc centers of k most populated clusters
-            tag,count = np.unique(tags,return_counts=True)
+            # Calc centers of k most populated clusters.
+            tag, count = np.unique(tags, return_counts=True)
             best_groups = np.argsort(-count)[:k]
-            centers = np.array([np.mean(points[tags == tag[group]],axis=0)
-                                for group in best_groups])
+
+            def mean_group(points):
+                len0 = np.sum(np.square(points[0, :]))
+                diff = np.sum(np.square(points - points[[0], :]), axis=1)
+                points[diff > len0] = -points[diff > len0]
+
+                final = np.mean(points, axis=0)
+
+                if final[0] < 0:
+                    final *= -1
+
+                return final
+
+            centers = np.array([
+                mean_group(points[tags == tag[group]])
+                for group in best_groups
+            ])
 
             return centers
 
@@ -1623,16 +1661,19 @@ def blob_array_detect(
             kNN_plt = ax.scatter(kNN[:,0], kNN[:,1], fc='none', ec='k', zorder=0)
 
             for center in centers.T:
-                cir = matplotlib.patches.Circle(
-                    (center[0], center[1]),
-                    np.linalg.norm(center)*.1,
-                    fill=False,
-                    ec='r',
-                    zorder=10,
-                )
-                circ = ax.add_patch(cir)
+                for s in [-1, 1]:
+                    cir = matplotlib.patches.Circle(
+                        (s*center[0], s*center[1]),
+                        np.linalg.norm(center)*.1,
+                        fill=False,
+                        ec='r',
+                        zorder=10,
+                    )
+                    circ = ax.add_patch(cir)
 
-            lv_plt = ax.scatter(lv[0,:], lv[1,:], marker='x', c='b')
+            for i in [0, 1]:
+                lv_plt = ax.plot([-lv[0,i], lv[0,i]], [-lv[1,i], lv[1,i]], marker='.', c='r')
+            lv_plt = ax.scatter(lv[0,:], lv[1,:], marker='.', c='r')
 
             ax.set_aspect('equal')
             ax.set_title('Reciprocal Lattice Vector Fitting')
@@ -1693,8 +1734,9 @@ def blob_array_detect(
             )
             c = fft_size/2/downscaling
             lv /= downscaling
-            axs[1].scatter(c+lv[0,:], c+lv[1,:], marker='.', c='r')
-            axs[1].scatter(c-lv[0,:], c-lv[1,:], marker='.', c='r')
+            for i in [0, 1]:
+                lv_plt = axs[1].plot([c-lv[0,i], c+lv[0,i]], [c-lv[1,i], c+lv[1,i]], marker='.', c='r')
+
             for spine in ["top", "bottom", "right", "left"]:
                 axs[1].spines[spine].set_color("r")
                 axs[1].spines[spine].set_linewidth(1.5)
@@ -1908,20 +1950,20 @@ def blob_array_detect(
         true_positions = guess_positions + shift
         orientation = fit_affine(centers, true_positions, orientation)
 
-    # Warn the user if the mask was >= (or close to) camera size
+    # Warn the user if the mask was >= (or close to) camera size.
     if np.any(mask.shape > 0.95 * np.array(img_8bit.shape)):
         warnings.warn(
             "The computed Fourier grid size exceeds or approaches the camera size; "
             "calibration results may be improperly centered as a result."
         )
-    # Also warn if computed positions approach camera FOV boundary
+    # Also warn if computed positions approach camera FOV boundary.
     elif np.any(np.nanmax(true_positions, axis=1) > 0.95 * np.array(img_8bit.shape)) or \
          np.any(np.nanmin(true_positions, axis=1) < 0.05 * np.array(img_8bit.shape)):
         warnings.warn(
             "The fitted spot array approaches or exceeds the camera FOV; "
             "calibration results may be improperly centered as a result."
         )
-    # Warn if the array
+    # Warn if the array does not match the received pattern on the camera.
     if region_fraction < .5:
         warnings.warn(
             f"{(1-region_fraction)*100:.1f}% of the image's power outside the spot array. "
@@ -1938,7 +1980,7 @@ def blob_array_detect(
             1, 2 + showmatch, figsize=(12, 12)
         )
 
-        # Determine the bounds of the zoom region, padded by 50
+        # Determine the bounds of the zoom region, padded by 50.
         x = true_centers[0, :]
         xl = [
             np.clip(np.amin(x) - max_pitch, 0, img.shape[1]),

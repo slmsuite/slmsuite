@@ -758,16 +758,18 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     and are used in a number of places inside :mod:`slmsuite` for aberration compensation.
     This function returns a sum of polynomials:
 
-    .. math:: \phi(\vec{x}) = \sum_i w_i Z_{I_i}(\vec{x}).
+    .. math:: \phi(\vec{x}) = \sum_k w_k Z_{J_k}(\vec{x}).
 
-    where :math:`I_i` are the ANSI ``indices`` of the polynomials and
-    :math:`w_i` are the floating point ``weights`` of each polynomial.
+    where :math:`J_k` are the ANSI ``indices`` of the polynomials and
+    :math:`w_k` are the floating point ``weights`` of each polynomial.
     To improve performance, especially for higher order polynomials,
     we store a cache of Zernike coefficients to avoid regeneration.
     See the below example to generate
     :math:`Z_1 - Z_2 + Z_4 = Z_1^{-1} - Z_1^1 + Z_2^0`,
     where the standard radial Zernike indexing :math:`Z_n^l`
-    is instead represented as :math:`Z_j` by the 1-dimensional ANSI index :math:`j`.
+    is instead represented as :math:`Z_j` by the 1-dimensional `ANSI
+    <https://en.wikipedia.org/wiki/Zernike_polynomials#OSA/ANSI_standard_indices>`_.
+    index :math:`j`.
 
     .. highlight:: python
     .. code-block:: python
@@ -820,12 +822,14 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`
         to avoid subtle issues with lateral scaling.
 
-    use_mask : bool OR "return"
+    use_mask : bool OR "return" OR np.nan
         If ``True``, sets the area where standard Zernike polynomials are undefined to zero.
         If ``False``, the polynomial is not cropped. This should be used carefully, as
         the wavefront correction outside the unit circle quickly explodes with
         :math:`r^O` for terms of high order :math:`O`.
         If ``"return"``, returns the 2D mask ``x_grid**2 + y_grid**2 <= 1``.
+        If ``np.nan``, the clipped area is set to ``np.nan`` instead of zero;
+        this is used for plotting transparency in this undefined region.
     derivative : (int, int)
         If non-negative, returns the Zernike derivative of the given order. For instance,
         ``(1, 0)`` corresponds to the first derivative in the :math:`x` direction.
@@ -885,6 +889,10 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
         if use_mask == "return":
             return mask
+        mask_value = 0
+        if np.isnan(use_mask):
+            use_mask = True
+            mask_value = np.nan
         use_mask = use_mask and np.any(mask == 0)
 
     # Make the new grids.
@@ -903,6 +911,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
 
     # The masked case only computes on a fraction of the full space.
     if use_mask:
+        out.fill(mask_value)
         out[:, mask] = polynomial(
             grid=(x_grid_scaled, y_grid_scaled),
             weights=cantor_weights,
@@ -929,6 +938,7 @@ def zernike_pyramid_plot(
         scale=1,
         titles=["ansi", "radial", "latex", "name"],
         cmap="twilight_shifted",
+        noborder=False,
         **kwargs
     ):
     r"""
@@ -956,6 +966,8 @@ def zernike_pyramid_plot(
         -   ``"name"`` the name of the aberration produced by the polynomial.
     cmap : str
         Colormap to use in plotting.
+    noborder : bool
+        If ``True`` does not plot the axis border and removes color from clipped areas.
     **kwargs
         Passed to :meth:`.zernike()`.
     """
@@ -977,13 +989,28 @@ def zernike_pyramid_plot(
     grid_ = _process_grid(grid)
     phases = np.zeros((len(indices_ansi), *grid_[0].shape))
 
-    phases = zernike_sum(grid, indices_ansi[np.newaxis, :], np.diag(np.ones_like(indices_ansi)), out=phases, **kwargs)
+    if noborder:
+        if "use_mask" in kwargs and kwargs["use_mask"] is False:
+            pass
+        else:
+            kwargs["use_mask"] = np.nan
+
+    phases = zernike_sum(
+        grid,
+        indices_ansi[np.newaxis, :],
+        np.diag(np.ones_like(indices_ansi)),
+        out=phases,
+        **kwargs
+    )
+
+    axes = []
 
     for i in indices_ansi:
         n, l = indices_radial[i, :]
         m = (n + l) // 2
 
         a = plt.subplot(order, order, 1 + m + n*order)
+        axes.append(a)
 
         # Plot the phase.
         plt.imshow(phases[i], cmap=cmap)
@@ -992,7 +1019,7 @@ def zernike_pyramid_plot(
         title = ""
 
         if "ansi" in titles:
-            title += f"#{i}\n"
+            title += f"{i}\n"
         if "radial" in titles:
             title += f"({n}, {l})\n"
         if "latex" in titles:
@@ -1003,12 +1030,20 @@ def zernike_pyramid_plot(
 
         plt.title(title.strip("\n"))
 
-        # Set scales and move the axis.
+        # Set scales.
         plt.clim([-scale, scale])
         plt.xticks([])
         plt.yticks([])
 
-        dx = .5 * (3*order - n)
+        if noborder:
+            a.axis("off")
+
+    # Center the axes.
+    for i, a in enumerate(axes):
+        n, l = indices_radial[i, :]
+        m = (n + l) // 2
+
+        dx = .5 * (order - 1 - n)
         box = a.get_position()
         box = box.translated(dx * pitch, 0)
         a.set_position(box)

@@ -30,7 +30,7 @@ for module_path in module_paths:
 # -- Project information -----------------------------------------------------
 
 project = "slmsuite"
-copyright = "2024, slmsuite Developers"
+copyright = "2025, slmsuite Developers"
 author = "slmsuite Developers"
 release = "0.2.1"
 

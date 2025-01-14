@@ -1483,6 +1483,8 @@ def blob_array_detect(
         - ``"M"`` : ``numpy.ndarray`` (2, 2).
         - ``"b"`` : ``numpy.ndarray`` (2, 1).
     """
+    if len(np.shape(img)) != 2:
+        raise RuntimeError(f"Cannot interpret image with shape {np.shape(img)}")
 
     img_8bit = _make_8bit(img)
 

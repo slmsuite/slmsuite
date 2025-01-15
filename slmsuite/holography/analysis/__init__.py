@@ -1572,11 +1572,17 @@ def blob_array_detect(
             raise RuntimeError(
                 "Array fitting looks for prominent periodicity, "
                 "but failed to find such in the given image. Try the following:\n"
+                "- Verify that the camera is returning an image of the array. "
+                "For instance, the SLM `settle_time_s` could be too fast for the "
+                "camera to record the settled response, or "
+                "the camera interface could be returning stale frames. "
+                "Pass `plot>=1` to see debug plots. You can also view `cam.last_image`.\n"
                 "- Increasing exposure time to enhance the prominence of spots,\n"
                 "- Increasing the pitch of the array in the image, "
                 "which can isolate spots from neighboring crosstalk,\n"
                 "- Create an issue at https://github.com/slmsuite/slmsuite/issues, "
                 "attaching the image data that is resulting in failure. "
+                "You can use `cam.save()` to record the last image alongside metadata."
             )
 
         # 3) Fit the primitive lattice vectors

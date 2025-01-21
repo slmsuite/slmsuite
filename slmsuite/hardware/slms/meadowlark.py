@@ -432,7 +432,7 @@ class Meadowlark(SLM):
         """
         if self._sdk_mode == _SDK_MODE.HDMI:
             return self.slm_lib.Get_SLMTemp()
-        elif self._sdk_mode == self._sdk_mode == _SDK_MODE.PCIE_MODERN:
+        elif self._sdk_mode == _SDK_MODE.PCIE_MODERN:
             self.slm_lib.Get_SLMTemp.restype = ctypes.c_double
             return self.slm_lib.Get_SLMTemp(self.slm_number)
         else:
@@ -456,7 +456,7 @@ class Meadowlark(SLM):
         """
         if self._sdk_mode == _SDK_MODE.HDMI:
             return self.slm_lib.Get_SLMVCom()
-        elif self._sdk_mode == self._sdk_mode == _SDK_MODE.PCIE_MODERN:
+        elif self._sdk_mode == _SDK_MODE.PCIE_MODERN:
             self.slm_lib.Get_SLMVCom.restype = ctypes.c_double
             return self.slm_lib.Get_cover_voltage(self.slm_number)
         else:

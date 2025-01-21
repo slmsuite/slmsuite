@@ -2026,6 +2026,7 @@ class FourierSLM(CameraSLM):
                 plot=plot
             )
 
+        # TODO: warn if matrix is transposed.
         calibration_points = np.rint(format_2vectors(calibration_points)).astype(int)
         num_points = calibration_points.shape[1]
 
@@ -2155,11 +2156,15 @@ class FourierSLM(CameraSLM):
         if num_points > 1:
             calibration_distance = smallest_distance(calibration_points, "euclidean")
             if np.max(interference_window) > calibration_distance:
-                raise ValueError(
+                message = (
                     "Requested calibration points are too close together. "
-                    "The minimum distance {} pix is smaller than twice the window size {} pix."
-                    .format(calibration_distance, 2 * interference_window)
+                    "The minimum distance {} pix is smaller than the window size {} pix."
+                    .format(calibration_distance, interference_window)
                 )
+                if test_index is None:
+                    raise ValueError(message)
+                else:
+                    warnings.warn(message)
 
         # Error check interference point proximity to the 0th order.
         dorder = field_point - base_point

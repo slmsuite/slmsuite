@@ -1,9 +1,11 @@
 """
 Hardware control for Meadowlark SLMs.
+
 Tested with:
-    Meadowlark (AVR Optics) P1920-400-800-HDMI-T.
-    Meadowlark  (AVR Optics) HSPDM512–1064-PCIe8-ODP
-    Meadowlark  (AVR Optics) HSP1920-1064-HSP8
+- Meadowlark P1920-400-800-HDMI-T.
+- Meadowlark HSPDM512-1064-PCIe8-ODP
+- Meadowlark HSP1920-1064-HSP8
+
 Note
 ~~~~
 Check that the Blink SDK, including DLL files etc, are in the default folder
@@ -23,6 +25,17 @@ from slmsuite.hardware.slms.slm import SLM
 _DEFAULT_MEADOWLARK_PATH = "C:\\Program Files\\Meadowlark Optics\\"
 
 
+class _SDK_MODE(IntEnum):
+    #: No connection
+    NULL = 0
+    #: HDMI connection
+    HDMI = 1
+    #: High-Speed PCIe connection (512x512 Models Only)
+    PCIE_LEGACY = 2
+    #: High-Speed PCIe connection
+    PCIE_MODERN = 3
+
+
 class Meadowlark(SLM):
     """
     Interfaces with Meadowlark SLMs.
@@ -37,12 +50,12 @@ class Meadowlark(SLM):
 
     def __init__(  # noqa: R0913, R0917
         self,
-        verbose: bool = True,
+        slm_number: int = 1,
         sdk_path: str | None = None,
         lut_path: str | None = None,
         wav_um: float = 1,
-        pitch_um: tuple[float, float] = (8, 8),
-        slm_number: int = 1,
+        pitch_um: tuple[float, float] | None = None,
+        verbose: bool = True,
         **kwargs,
     ):
         r"""
@@ -57,6 +70,9 @@ class Meadowlark(SLM):
         ---------
         verbose : bool
             Whether to print extra information.
+        slm_number : int
+            The board number of the SLM to connect to, in the case of PCIe SLMs.
+            Defaults to 1.
         sdk_path : str
             Path of the Blink SDK installation folder. Stored in :attr:`sdk_path`.
 
@@ -74,19 +90,15 @@ class Meadowlark(SLM):
             argument and other options are parsed.
         wav_um : float
             Wavelength of operation in microns. Defaults to 1 um.
-        pitch_um : (float, float)
+        pitch_um : (float, float) OR None
             Pixel pitch in microns. Defaults to 8 micron square pixels.
-        slm_number : int
-            The board number of the SLM to connect to. Defaults to 1.
         **kwargs
             See :meth:`.SLM.__init__` for permissible options.
         """
         # Locate the blink wrapper file in the sdk_path. If no sdk_path is provided,
         # search for the most recently installed SDK (if it exists)
         self.sdk_path: str = self._locate_blink_c_wrapper(sdk_path)
-        self.slm_number: ctypes.c_int = (
-            ctypes.c_int(slm_number) if slm_number else ctypes.c_int(1)
-        )
+        self.slm_number: ctypes.c_int = ctypes.c_int(int(slm_number))
         self._number_of_boards: ctypes.c_uint(0)
         self._sdk_mode: _SDK_MODE = _SDK_MODE.NULL
 
@@ -163,11 +175,11 @@ class Meadowlark(SLM):
 
         # Construct other variables.
         super().__init__(
-            (self.get_width(self.slm_number), self.slm_lib.get_height(self.slm_number)),
-            bitdepth=self.slm_lib.get_depth(self.slm_number),
+            (self._get_width(), self._get_height()),
+            bitdepth=self._get_bitdepth(),
             name=kwargs.pop("name", "Meadowlark"),
             wav_um=wav_um,
-            pitch_um=pitch_um,
+            pitch_um=(pitch_um if pitch_um else self._get_pitch()),
             **kwargs,
         )
 
@@ -273,7 +285,7 @@ class Meadowlark(SLM):
             or self._sdk_mode == _SDK_MODE.PCIE_MODERN
         ):
             info = [
-                (board, f"{self.slm_lib.get_width(board)}x{self.get_height(board)}")
+                (board, f"{self._get_width(board)}x{self._get_height(board)}")
                 for board in range(1, self._number_of_boards + 1)
             ]
             if verbose:
@@ -283,7 +295,7 @@ class Meadowlark(SLM):
         else:
             raise NotImplementedError("Multiple SLMs not supported for this SDK")
 
-    def get_width(self, slm_number: int | None = None) -> int:
+    def _get_width(self, slm_number: int | None = None) -> int:
         """
         Get the width of the SLM.
 
@@ -305,7 +317,7 @@ class Meadowlark(SLM):
         else:
             raise NotImplementedError("Width retrieval not supported for this model")
 
-    def get_height(self, slm_number: int | None = None) -> int:
+    def _get_height(self, slm_number: int | None = None) -> int:
         """
         Get the height of the SLM
 
@@ -327,7 +339,7 @@ class Meadowlark(SLM):
         else:
             raise NotImplementedError("Height retrieval not supported for this model")
 
-    def get_image_depth(self, slm_number: int | None = None) -> int:
+    def _get_bitdepth(self, slm_number: int | None = None) -> int:
         """
         Get the image depth of the SLM.
 
@@ -351,7 +363,7 @@ class Meadowlark(SLM):
                 "Image depth retrieval not supported for this model"
             )
 
-    def get_pitch(self) -> tuple[float, float]:
+    def _get_pitch(self) -> tuple[float, float]:
         """
         Get the pitch of the SLM.
 
@@ -368,7 +380,7 @@ class Meadowlark(SLM):
         if self._sdk_mode == _SDK_MODE.PCIE_LEGACY or _SDK_MODE.PCIE_MODERN:
             self.slm_lib.Get_pitch.restype = ctypes.c_double
             pitch = self.slm_lib.Get_pitch(self.slm_number)
-            return pitch, pitch
+            return (pitch, pitch)
         else:
             raise NotImplementedError("Pitch retrieval not supported for this model")
 
@@ -412,8 +424,9 @@ class Meadowlark(SLM):
             self.slm_lib.Get_version_info.restype = ctypes.c_char_p
             return self.slm_lib.Get_version_info().decode("utf-8")
         else:
+            # TODO : I think this is supported for HDMI?
             raise NotImplementedError(
-                "Version information not supported for this " "model"
+                "Version information not supported for this model."
             )
 
     def get_temperature(self) -> float:
@@ -521,8 +534,8 @@ class Meadowlark(SLM):
 
         # Ensure the board that is found is a 512x512
         try:
-            assert self.slm_lib.Get_image_width(ctypes.c_uint(self.slm_number)) == 512
-            assert self.slm_lib.Get_image_height(ctypes.c_uint(self.slm_number)) == 512
+            assert self._get_width() == 512
+            assert self._get_height() == 512
         except AssertionError:
             self.slm_lib.Delete_SDK()
             return False
@@ -581,11 +594,15 @@ class Meadowlark(SLM):
             self._sdk_mode == _SDK_MODE.PCIE_LEGACY
             or self._sdk_mode == _SDK_MODE.PCIE_MODERN
         ):
+            # FUTURE: implement triggered mode.
+            # Santec also has a triggered mode that is not currently implemented.
             wait_for_trigger = ctypes.c_bool(False)
+            # TODO: why is this dangerous?
             flip_immediate = ctypes.c_bool(False)  # DO NOT CHANGE ME!!! DANGER!!!
             output_pulse_image_flip = ctypes.c_bool(False)
             output_pulse_image_refresh = ctypes.c_bool(False)
             trigger_timeout = ctypes.c_uint(5000)
+
             self.slm_lib.Write_image(
                 slm_number,
                 display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
@@ -633,6 +650,8 @@ class Meadowlark(SLM):
             return str(files.pop().parent)
         elif len(files) >= 1:
             sdk_path = max(files, key=os.path.getctime).parent
+            # TODO: what happens if the user wants to load an HDMI SLM, but the PCIe
+            # interface was installed most recently.
             warnings.warn(
                 f"Multiple Meadowlark SDKs located. Defaulting to the most recent one"
                 f" {sdk_path}.",
@@ -666,22 +685,15 @@ class Meadowlark(SLM):
         FileNotFoundError
             If no .lut files are found in provided path.
         """
-        # Locate all .lut files. If there are multiple, return the most recent
-        # file with ".slm" in the name. If there are none with ".slm" in the name,
-        # simply return the most recent ".lut" file.
         files = {file for file in Path(search_path).rglob("*.lut")}
+
         if len(files) == 1:
             return str(files.pop())
         elif len(files) > 1:
-            if (
-                len(
-                    slm_files := {
-                        file for file in files if "slm" in files.stem.lower(0)
-                    }
-                )
-                >= 1
-            ):
+            slm_files = {file for file in files if "slm" in files.stem.lower(0)}
+            if (len(slm_files) >= 1):
                 files = slm_files
+
             lut_path_ = max(files, key=os.path.getctime)
             warnings.warn(
                 f"Multiple LUT files located. Defaulting to the most recent one"
@@ -691,14 +703,3 @@ class Meadowlark(SLM):
             return str(lut_path_)
         else:
             raise FileNotFoundError(f"No .lut file found in '{search_path}'.")
-
-
-class _SDK_MODE(IntEnum):
-    #: No connection
-    NULL = 0
-    #: HDMI connection
-    HDMI = 1
-    #: High-Speed PCIe connection (512x512 Models Only)
-    PCIE_LEGACY = 2
-    #: High-Speed PCIe connection
-    PCIE_MODERN = 3

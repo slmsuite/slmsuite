@@ -370,19 +370,17 @@ class Meadowlark(SLM):
         Returns
         -------
         tuple[float, float]
-            The pitch of the SLM
-
-        Raises
-        ------
-        NotImplementedError
-            If the pitch retrieval is not supported for the SLM.
+            The pitch of the SLM. Defaults to (8,8) if this method is not supported.
         """
-        if self._sdk_mode == _SDK_MODE.PCIE_LEGACY or _SDK_MODE.PCIE_MODERN:
-            self.slm_lib.Get_pitch.restype = ctypes.c_double
-            pitch = self.slm_lib.Get_pitch(self.slm_number)
-            return (pitch, pitch)
-        else:
-            raise NotImplementedError("Pitch retrieval not supported for this model")
+        try:
+            if self._sdk_mode == _SDK_MODE.PCIE_LEGACY or _SDK_MODE.PCIE_MODERN:
+                self.slm_lib.Get_pitch.restype = ctypes.c_double
+                pitch = self.slm_lib.Get_pitch(self.slm_number)
+                return (pitch, pitch)
+            else:
+                raise NotImplementedError("Pitch retrieval not supported for this model")
+        except:
+            return (8,8)
 
     def get_last_error_message(self) -> str:
         """

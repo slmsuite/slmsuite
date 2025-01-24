@@ -139,6 +139,28 @@ def binary(grid, vector=(0, 0), shift=0, a=np.pi, b=0, duty_cycle=.5):
             \end{array}
         \right.
 
+    To realize a binary grating with a given pixel period, use the unit conversion:
+
+    .. highlight:: python
+    .. code-block:: python
+
+        n_x = 4     # Period in pixels
+
+        binary_integer_period = toolbox.phase.binary(
+            grid=slm,
+            vector=toolbox.convert_vector(
+                (1./n_x, 0),
+                from_units="freq",
+                to_units="kxy",
+                hardware=slm
+            )
+        )
+
+        binary_integer_period = toolbox.phase.binary(
+            grid=slm,
+            vector=(4,0)
+        )
+
     Note
     ----
     When parameters are chosen to produce integer period,
@@ -153,9 +175,12 @@ def binary(grid, vector=(0, 0), shift=0, a=np.pi, b=0, duty_cycle=.5):
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    vector : (float, float)
+    vector : (float, float) OR (int, int)
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
-        See :meth:`~slmsuite.holography.toolbox.convert_vector()`
+        See :meth:`~slmsuite.holography.toolbox.convert_vector()`.
+
+        If the user passes data greater than 1, this is interpreted
+        as requesting a binary grating with the given period.
     shift : float
         Radians to laterally shift the period of the grating by.
     a : float
@@ -172,6 +197,9 @@ def binary(grid, vector=(0, 0), shift=0, a=np.pi, b=0, duty_cycle=.5):
         The phase for this function.
     """
     result = None
+
+    if np.any(np.array(vector) > 1):
+        pass
 
     if vector[0] == 0 and vector[1] == 0:
         (x_grid, _) = _process_grid(grid)

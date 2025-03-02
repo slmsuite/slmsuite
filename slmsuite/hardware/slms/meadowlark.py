@@ -18,12 +18,13 @@ import warnings
 from enum import IntEnum
 from pathlib import Path
 import numpy as np
+from typing import Callable
 from slmsuite.hardware.slms.slm import SLM
-
+from functools import partial
+from platform import system
 
 #: str: Default location in which Meadowlark Optics software is installed
 _DEFAULT_MEADOWLARK_PATH = "C:\\Program Files\\Meadowlark Optics\\"
-
 
 class _SDK_MODE(IntEnum):
     #: No connection
@@ -102,6 +103,7 @@ class Meadowlark(SLM):
         self.slm_number: ctypes.c_int = ctypes.c_int(int(slm_number))
         self._number_of_boards: ctypes.c_uint(0) = ctypes.c_uint(0)
         self._sdk_mode: _SDK_MODE = _SDK_MODE.NULL
+
         # Validates the DPI awareness of this context, which is presumably important
         # for scaling.
         if verbose:
@@ -120,33 +122,22 @@ class Meadowlark(SLM):
                 f"Errors: get={error_get}, set={error_set}, awareness="
                 f"{awareness.value}"
             )
+
         if verbose:
             print("success")
 
-        # Open the SLM library
-        if verbose:
-            print("Constructing Blink SDK...", end="")
-
-        # TODO: Unload CDLL?
-        self._dll_path = os.path.join(self.sdk_path, "Blink_C_wrapper")
-        try:
-            self._load_lib()
-        except OSError as exc:
-            print("failure")
-            raise ImportError(
-                f"Meadowlark .dlls did not did not import correctly. "
-                f"Is '{self._dll_path}' the correct path?"
-            ) from exc
-
-        # Initialize the SDK.
-        if self._load_hdmi():
-            self._sdk_mode = _SDK_MODE.HDMI
-        if self._load_pcie_legacy():
-            self._sdk_mode = _SDK_MODE.PCIE_LEGACY
-        elif self._load_pcie_modern():
+        load_slm = partial(self._load_slm, verbose=verbose)
+        # Open & Initialize the SDK.
+        if load_slm(self._load_pcie_modern):
             self._sdk_mode = _SDK_MODE.PCIE_MODERN
+        elif load_slm(self._load_pcie_legacy):
+            self._sdk_mode = _SDK_MODE.PCIE_LEGACY
+        elif load_slm(self._load_hdmi):
+            self._sdk_mode = _SDK_MODE.HDMI
         else:
             raise RuntimeError("Failed to initialize Meadowlark SDK")
+        if verbose:
+            print(f"Using {self._sdk_mode.name} SDK")
 
         # Adjust pre- and post-ramp slopes for accurate voltage setting
         # (otherwise, custom LUT calibration is not properly implemented [this feature
@@ -228,18 +219,27 @@ class Meadowlark(SLM):
         #  multiple different SLMs are installed, I'm using the dimensions of the SLM
         #  to narrow down the search.
         slm_dims = (self._get_width(), self._get_height())
-        try:
-            if lut_path is None or os.path.isdir(lut_path):
-                lut_path = self._locate_lut_file(self.sdk_path, slm_dims)
-        except FileNotFoundError:
-            # Some versions have a separate folder for LUTs rather than being alongside
-            # the SDK files.
-            lut_path = self._locate_lut_file(Path(self.sdk_path).parent, slm_dims)
+        _locate_lut_file = partial(self._locate_lut_file, slm_dims=slm_dims)
 
-        # If the search path somehow still doesn't exist, short circuit
+        # None, default to the SDK path. Use parent since SDK path has
+        # 'Blink_C_Wrapper.dll' appended
+        if lut_path is None:
+            lut_path = Path(self.sdk_path).parent
+
+        # Find the exact LUT file
+        if os.path.isdir(lut_path):
+            try:
+                lut_path = self._locate_lut_file(lut_path)
+            except FileNotFoundError:
+                # If no LUT file is file, try the parent directory as sometimes the LUTs
+                # are in the parent directory of the SDK path in 'LUT'
+                lut_path = self._locate_lut_file(Path(lut_path).parent)
+
+        # If the search path doesn't exist, short circuit
         if not os.path.exists(lut_path):
             raise FileNotFoundError(f"Failed to locate LUT file: {lut_path}")
 
+        # Finally, actually load the LUT file
         try:
             if self._sdk_mode == _SDK_MODE.HDMI:
                 self.slm_lib.Load_LUT(lut_path)
@@ -247,8 +247,6 @@ class Meadowlark(SLM):
                 self._sdk_mode == _SDK_MODE.PCIE_LEGACY
                 or self._sdk_mode == _SDK_MODE.PCIE_MODERN
             ):
-                # It's not documented what the return value is, but it seems to be
-                # 0 given no errors are logged.
                 EXIT_SUCCESS = self.slm_lib.Load_LUT_file(
                     self.slm_number, lut_path.encode("utf-8")
                 )
@@ -490,12 +488,65 @@ class Meadowlark(SLM):
                 "Coverglass voltage reading not supported for this model"
             )
 
-    def _load_lib(self) -> None:
+    def _load_slm(self, method: Callable[..., bool], verbose: bool = True) \
+            -> bool:
+        self.slm_lib = self._load_lib(verbose)
+        try:
+            assert method()
+            return True
+        except AssertionError:
+            self._unload_lib()
+            return False
+
+    def _load_lib(self, verbose: bool = True) -> ctypes.CDLL:
         """
         Loads the Meadowlark SDK.
         """
-        self._dll = ctypes.cdll.LoadLibrary(self._dll_path)
-        self.slm_lib = ctypes.CDLL("Blink_C_wrapper", mode=ctypes.RTLD_LOCAL)
+        if verbose:
+            print("Constructing Blink SDK...", end="")
+        try:
+            return ctypes.CDLL(self.sdk_path, mode=ctypes.RTLD_LOCAL)
+        except OSError as exc:
+            print("failure")
+            raise ImportError(
+                f"Meadowlark .dlls did not did not import correctly. "
+                f"Is '{self.sdk_path}' the correct path?"
+            ) from exc
+
+    def _unload_lib(self) -> None:
+        """
+        Unloads the Meadowlark SDK.
+        """
+        if self.slm_lib is None:
+            return
+
+        # Review: This feels hacky because it is. If you try to unload a DLL
+        #  by setting to None and calling garbage collector it will not work
+        OS = system()
+        if OS == "Windows":
+            # Warn: Don't call FreeLibrary directly, as it will not work due to
+            #  the CDLL handle will be a 64-bit integer (integer overflow)
+            unloader = ctypes.WinDLL('kernel32',
+                                     use_last_error=True).FreeLibrary
+            unloader.argtypes = [ctypes.wintypes.HMODULE] # Handle to memory addr
+            unloader.restype = ctypes.wintypes.BOOL
+        elif OS == "Linux":
+            unloader = ctypes.cdll.LoadLibrary('libc.so.6').dlclose
+            unloader.argtypes = [ctypes.c_void_p]
+            unloader.restype = None
+        else:
+            unloader = lambda x: True
+
+        try:
+            self.slm_lib.Delete_SDK()
+        except OSError as exc:
+            warnings.warn(f"Failed to delete SDK: {e}", stacklevel=2)
+        finally:
+            # noinspection PyProtectedMember
+            if not unloader(self.slm_lib._handle):
+                raise OSError(f"Failed to unload DLL {self.sdk_path}; "
+                              f"error_code: {ctypes.get_last_error()}.")
+            self.slm_lib = None
 
     def _load_hdmi(self) -> bool:
         """
@@ -510,10 +561,6 @@ class Meadowlark(SLM):
         try:
             self.slm_lib.Create_SDK(bool_cpp_or_python)
         except OSError:
-            # Make sure to delete the SDK if it fails to load, otherwise it will
-            # interfere with subsequent attempts to load the SDK.
-            self.slm_lib.Delete_SDK()
-
             return False
         else:
             return True
@@ -554,9 +601,6 @@ class Meadowlark(SLM):
             )
             assert constructed_okay.value
         except (AssertionError, OSError):
-            # Make sure to delete the SDK if it fails to load, otherwise it will
-            # interfere with subsequent attempts to load the SDK.
-            self.slm_lib.Delete_SDK()
             return False
 
         # Ensure the board that is found is a 512x512
@@ -566,7 +610,6 @@ class Meadowlark(SLM):
             assert self._get_height() == 512
         except AssertionError:
             self._sdk_mode = _SDK_MODE.NULL
-            self.slm_lib.Delete_SDK()
             return False
         else:
             return True
@@ -605,9 +648,6 @@ class Meadowlark(SLM):
             )
             assert constructed_okay == ctypes.c_bool(True)
         except (AssertionError, OSError):
-            # Make sure to delete the SDK if it fails to load, otherwise it will
-            # interfere with subsequent attempts to load the SDK.
-            self.slm_lib.Delete_SDK()
             return False
         else:
             return True
@@ -682,7 +722,7 @@ class Meadowlark(SLM):
         # give false alarm warnings.
         files = {file for file in Path(search_path).rglob("*Blink_C_Wrapper*dll")}
         if len(files) == 1:
-            return str(files.pop().parent)
+            return str(files.pop())
         elif len(files) >= 1:
             # REVIEW: If the user has BOTH HDMI & PCIe SDKs, the one most recently
             #  installed one will be used. Currently, in this case the user ought to
@@ -690,7 +730,7 @@ class Meadowlark(SLM):
             #  there's a reliable way around this. To make it more explicit to the user
             #  which SDK is being used, there is a warning that is raised if multiple
             #  SDKs are found.
-            sdk_path = Path(max(files, key=os.path.getctime)).parent
+            sdk_path = Path(max(files, key=os.path.getctime))
             warnings.warn(
                 f"Multiple Meadowlark SDKs located. "
                 f"Defaulting to the most recent one"
@@ -709,7 +749,7 @@ class Meadowlark(SLM):
     ) -> str:
         """
         Locates the LUT file in the given path. If there are multiple, returns the
-        most recent file with ".slm" in the name. If there are none with ".slm" in the
+        most recent file.. If there are none with ".slm" in the
         name, simply returns the most recent ".lut" file.
 
         Parameters
@@ -732,8 +772,8 @@ class Meadowlark(SLM):
         if len(files) == 1:
             return str(files.pop())
         elif len(files) > 1:
-            # If there are multiple LUTs, first check if only one matches the
-            # current slm's dimensions'.
+            # REVIEW: If there are multiple LUTs, first check if only one matches the
+            #  current slm's dimensions (if possible).
             if slm_dims:
                 files = {
                     file
@@ -745,8 +785,8 @@ class Meadowlark(SLM):
             # If there are still multiple LUTs, default to the most recent one.
             lut_path_ = max(files, key=os.path.getctime)
             warnings.warn(
-                f"Multiple LUT files located. Defaulting to the most recent one"
-                f" {lut_path_}.",
+                f"Multiple LUT files located. Defaulting to the most recent one: "
+                f"{lut_path_}.",
                 stacklevel=3,
             )
             return str(lut_path_)

@@ -540,7 +540,7 @@ class Meadowlark(SLM):
         try:
             self.slm_lib.Delete_SDK()
         except OSError as exc:
-            warnings.warn(f"Failed to delete SDK: {e}", stacklevel=2)
+            warnings.warn(f"Failed to delete SDK: {exc}", stacklevel=2)
         finally:
             # noinspection PyProtectedMember
             if not unloader(self.slm_lib._handle):

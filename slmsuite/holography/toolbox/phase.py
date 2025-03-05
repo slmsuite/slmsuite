@@ -533,7 +533,7 @@ def zernike_aperture(grid, aperture=None):
     ----------
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR float OR None
         How to scale the polynomials relative to the grid shape. This is relative
-        to the :math:`R = 1` edge of a standard Zernike pupil.
+        to the :math:`r = 1` edge of a standard Zernike pupil.
 
         - ``None``
           If a :class:`~slmsuite.hardware.slms.slm.SLM` is passed for ``grid``, then
@@ -606,7 +606,11 @@ def zernike(grid, index, weight=1, **kwargs):
     r"""
     Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
     These polynomials are commonly used as an orthonormal basis for optical aberration
-    and are used in a number of places inside :mod:`slmsuite` for aberration compensation.
+    and are used in a number of places inside :mod:`slmsuite` for aberration
+    compensation.
+
+    Under the hood, this calls :meth:`.zernike_sum()` with a single term. See
+    :meth:`.zernike_sum()` for more information about normalization and scaling.
 
     Parameters
     ----------
@@ -788,10 +792,22 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
 
     .. math:: \phi(\vec{x}) = \sum_k w_k Z_{J_k}(\vec{x}).
 
-    where :math:`J_k` are the ANSI ``indices`` of the polynomials and
+    where :math:`J_k` are the 1-dimensional `ANSI
+    <https://en.wikipedia.org/wiki/Zernike_polynomials#OSA/ANSI_standard_indices>`_
+    ``indices`` of the polynomials and
     :math:`w_k` are the floating point ``weights`` of each polynomial.
-    To improve performance, especially for higher order polynomials,
-    we store a cache of Zernike coefficients to avoid regeneration.
+
+    Important
+    ~~~~~~~~~
+    These polynomials :math:`Z_j` are normalized within the edge of a standard
+    Zernike pupil to a peak-to-valley amplitude of 2, corresponding to :math:`\pm 1` for all
+    polynomials except for the piston, which is identically 1.
+    When ``use_mask=False``, the polynomial is not cropped outside the standard Zernike pupil.
+    This should be used carefully, as polynomials outside the unit circle quickly explode with
+    :math:`r^O` for terms of order :math:`O`.
+
+    Tip
+    ~~~
     See the below example to generate
     :math:`Z_1 - Z_2 + Z_4 = Z_1^{-1} - Z_1^1 + Z_2^0`,
     where the standard radial Zernike indexing :math:`Z_n^l`
@@ -808,6 +824,16 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
             weights=(1, -1,  1),    # Request Z_1 - Z_2 + Z_4
             aperture="circular"
         )
+
+    To improve performance, especially for higher order polynomials,
+    we store a cache of Zernike coefficients to avoid regeneration.
+
+    Tip
+    ~~~
+    slmsuite uses `ANSI
+    <https://en.wikipedia.org/wiki/Zernike_polynomials#OSA/ANSI_standard_indices>`_
+    by default, but the user can convert between other common indexing conventions with
+    :meth:`~slmsuite.holography.toolbox.phase.zernike_convert_index()`
 
     Parameters
     ----------
@@ -853,8 +879,8 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     use_mask : bool OR "return" OR np.nan
         If ``True``, sets the area where standard Zernike polynomials are undefined to zero.
         If ``False``, the polynomial is not cropped. This should be used carefully, as
-        the wavefront correction outside the unit circle quickly explodes with
-        :math:`r^O` for terms of high order :math:`O`.
+        polynomials outside the unit circle quickly explode with
+        :math:`r^O` for terms of order :math:`O`.
         If ``"return"``, returns the 2D mask ``x_grid**2 + y_grid**2 <= 1``.
         If ``np.nan``, the clipped area is set to ``np.nan`` instead of zero;
         this is used for plotting transparency in this undefined region.

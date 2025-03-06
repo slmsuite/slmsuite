@@ -3,10 +3,12 @@ import socket, sys, json, time
 import urllib.parse as urllib
 from datetime import date, datetime, timedelta
 import traceback
-from typing import Any
+from typing import Any, List, Tuple
 import zlib
+import base64
 
 from slmsuite.hardware import _Picklable
+from slmsuite import __version__
 
 DEFAULT_HOST = 'localhost'
 DEFAULT_PORT = 5025             # Commonly used for instrument control.
@@ -19,12 +21,40 @@ def _recurse_decompress(msg):
     """
     Recursively decompresses the result of json serialization.
     """
-    if isinstance(msg[k], dict):
-        if "__zlib__" in msg[k] and len(msg[k]) == 1:
-            msg[k] = np.frombuffer(zlib.decompress(msg[k]["__zlib__"]))
-        else:
-            for k in msg:
-                _recurse_decompress(msg[k])
+    if isinstance(msg, dict):
+        for k in msg:
+            if isinstance(msg[k], dict):
+                if "__zlib__" in msg[k] and len(msg[k]) == 1:
+                    msg[k] = np.frombuffer(zlib.decompress(msg[k]["__zlib__"]))
+                elif "__dtype__" in msg[k] and len(msg[k]) == 1:
+                    msg[k] = np.dtype(msg[k]["__dtype__"])
+                else:
+                    _recurse_decompress(msg[k])
+
+# https://codetinkering.com/numpy-encoder-json/
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, np.floating): #, np.complexfloating
+            return float(obj)
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.ndarray):
+            # If the array is above a certain arbitrary size, compress it. Otherwise return it as a list.
+            if obj.size > 100:
+                return {"__zlib__" : zlib.compress(obj.tobytes())}
+            else:
+                return obj.tolist()
+        if isinstance(obj, np.string_):
+            return str(obj)
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        if isinstance(obj, timedelta):
+            return str(obj)
+        if isinstance(obj, np.dtype):
+            return {"__dtype__" : obj.descr}
+        return super(NpEncoder, self).default(obj)
 
 def _recv(sock, timeout):
     recv_buffer = 4096
@@ -39,38 +69,14 @@ def _recv(sock, timeout):
         if data[-1] == delim:
             msg = json.loads(urllib.unquote_plus(buffer[0:-len(delim)]))
 
+            print(msg)
+
             _recurse_decompress(msg)
 
             return msg
 
     # Failed timeout returns empty.
     return {}
-
-# https://codetinkering.com/numpy-encoder-json/
-class NpEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, np.bool_):
-            return bool(obj)
-        if isinstance(obj, np.floating): #, np.complexfloating
-            return float(obj)
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.ndarray):
-            # If the array is above a certain size, compress it. Otherwise return it as a list.
-            if obj.size < 500:
-                return obj.tolist()
-            else:
-                return {"__zlib__" : zlib.compress(obj.tobytes())}
-        if isinstance(obj, np.string_):
-            return str(obj)
-        if isinstance(obj, (datetime, date)):
-            return obj.isoformat()
-        if isinstance(obj, timedelta):
-            return str(obj)
-        if isinstance(obj, np.dtype):
-            return {"__dtype__" : str(obj)}
-        return super(NpEncoder, self).default(obj)
-
 
 class Server:
     """
@@ -79,17 +85,35 @@ class Server:
 
     def __init__(
             self,
-            hardware: dict,
+            hardware: List[object],
             port: int = DEFAULT_PORT,
             timeout: float = SERVER_WAIT_TIMEOUT,
-            allowlist: list = None,
+            allowlist: List[str] = None,
         ):
-        self.hardware = hardware
+        """
+        TODO
+        """
+        # Identity.
+        self.hardware = {
+            hw.name : hw for hw in hardware
+        }
         self.port = port
         self.timeout = timeout
+
+        # Only allow clients in the allowlist to connect.
         self.allowlist = allowlist
 
-    def listen(self, verbose=True):
+        # Only allowed commands for SLMs and Cameras, alongside "ping".
+        self.allowcommands = [
+            "pickle",
+            "_set_phase_hw",
+            "_set_exposure_hw",
+            "_get_exposure_hw",
+            "_get_image_hw",
+            "_get_images_hw",
+        ]
+
+    def listen(self, verbose: bool = True):
         """
         Listen for client commands, then process them once they are given.
         """
@@ -112,16 +136,14 @@ class Server:
                     print("                              ", end="\r")
 
                 # Check if the client is allowed to connect.
-                if self.allowlist is not None:
-                    if client_addr[0] not in self.allowlist:
-                        connection.close()
-                        continue
+                if (self.allowlist is not None) and (client_addr[0] not in self.allowlist):
+                    result = False, f"Client {client_addr} not in allowlist."
+                else:
+                    # Receive, handle, and reply to message.
+                    message = _recv(connection, self.timeout)
+                    result = self.handle(message, client_addr, verbose)
 
-                # Receive, handle, and reply to message.
-                message = _recv(connection, self.timeout)
-                result = self.handle(message, client_addr, verbose)
                 connection.sendall((urllib.quote_plus(json.dumps(result, cls=NpEncoder)) + delim).encode())
-
                 connection.close()
             except IOError as e:
                 pass
@@ -144,15 +166,20 @@ class Server:
                 sock.close()
                 raise e
 
-    def handle(self, message, client_addr=None, verbose=False) -> tuple[bool, Any]:
+    def handle(
+        self,
+        message : str,
+        client_addr: str = None,
+        verbose: bool = False
+    ) -> Tuple[bool, Any]:
         """
         Handle a message from a client.
         """
         try:
-            command = message.pop("command")
-            name = message.pop("name")
-            args = message.pop("args")
-            kwargs = message.pop("kwargs")
+            name = message.pop("name", None)
+            command = message.pop("command", None)
+            args = message.pop("args", [])
+            kwargs = message.pop("kwargs", dict())
 
             instrument = f"hw['{name}'].{command}"
 
@@ -168,12 +195,10 @@ class Server:
             if not name in self.hardware:
                 return False, f"Did not recognize hardware '{name}'."
 
-            if hasattr(self.hardware[name], command):
-                if callable(getattr(self.hardware[name], command)):
-                    return True, getattr(self.hardware[name], command)(*args, **kwargs)
-                # elif "set" in message:
-                #     setattr(self.hardware[name], command, message["set"])
-                #     return True, True
+            if command in self.allowcommands and hasattr(self.hardware[name], command):
+                attribute = getattr(self.hardware[name], command)
+                if callable(attribute):
+                    return True, attribute(*args, **kwargs)
                 else:
                     return False, f"{instrument} is not callable."
             else:
@@ -194,26 +219,39 @@ class _Client(_Picklable):
             port: int = DEFAULT_PORT,
             timeout: float = DEFAULT_TIMEOUT,
         ):
+        """
+
+        """
         self.name = name
         self.host = host
         self.port = port
         self.timeout = timeout
 
         try:
-            pickled = self.com(command="ping")
-        except:
-            raise RuntimeError(
-                f"A slmsuite server is not active at {self.host}:{self.port}."
+            self.com(command="ping")
+        except TimeoutError:
+            raise TimeoutError(
+                f"An slmsuite server is not active at {self.host}:{self.port}."
             )
+        except Exception as e:
+            raise e
 
         try:
-            pickled = self.com(command="pickle")
+            t = time.perf_counter()
+            pickled = self.com(
+                command="pickle",
+                kwargs=dict(attributes=False, metadata=True)
+            )
+            t = time.perf_counter() - t
         except:
             raise RuntimeError(
-                f"Could not connect to {self.name} at {self.host}:{self.port}."
+                f"Could not connect to '{self.name}' at {self.host}:{self.port}."
             )
 
-        super().__init__(**pickled)
+        print(pickled)
+
+        self.latency_s = t
+        self.server_attributes = pickled
 
     def com(
         self,
@@ -221,10 +259,11 @@ class _Client(_Picklable):
         args: list = [],
         kwargs: dict = {},
     ):
-        return _Client._com(self.host, self.port, self.timeout, command, args, kwargs)
+        return _Client._com(self.name, self.host, self.port, self.timeout, command, args, kwargs)
 
     @staticmethod
     def _com(
+        name: str,
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
         timeout: float = DEFAULT_TIMEOUT,
@@ -242,6 +281,7 @@ class _Client(_Picklable):
             urllib.quote_plus(
                 json.dumps(
                     {
+                        "name": name,
                         "command": command,
                         "args": args,
                         "kwargs": kwargs
@@ -301,54 +341,3 @@ class _Client(_Picklable):
                 print("\n    ".join(hardware))
 
         return hardware
-
-    def pickle(self, attributes=False, metadata=True):
-        """
-        Returns a dictionary containing selected attributes of this class.
-
-        Parameters
-        ----------
-        attributes : bool OR list of str
-            If ``False``, pickles only baseline attributes, usually single floats.
-            If ``True``, also pickles 'heavy' attributes such as large images and calibrations.
-            If ``list of str``, pickles the keys in the given list.
-            By default, the chosen attributes should be things that can be written to
-            .h5 files: scalars and lists of scalars.
-        metadata : bool
-            If ``True``, package the dictionary as the
-            ``"__meta__"`` value of a superdictionary which also contains:
-            ``"__version__"``, the current slmsuite version,
-            ``"__time__"``, the time formatted as a date string, and
-            ``"__timestamp__"``, the time formatting as a floating point timestamp.
-            This information is used as standard metadata for calibrations and saving.
-        """
-        t = time.perf_counter()
-        response = self.com(command="pickle", kwargs=dict(attributes=False, metadata=True))
-        t = time.perf_counter() - t
-
-        data = response.pop("__meta__")
-        server_metadata = response
-        server_metadata.update(
-            {
-                "__host__" : self.host,
-                "__port__" : self.port,
-                "__timeout__" : self.timeout,
-                "__latency__" : t
-            }
-        )
-
-        pickled = {
-            "__server__" : server_metadata
-        }
-        pickled.update(response["__meta__"])
-
-        if metadata:
-            t = datetime.datetime.now()
-            return {
-                "__version__" : __version__,
-                "__time__" : str(t),
-                "__timestamp__" : t.timestamp(),
-                "__meta__" : pickled
-            }
-        else:
-            return pickled

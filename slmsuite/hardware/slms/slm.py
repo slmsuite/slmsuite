@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import warnings
 from PIL import Image
+from abc import ABC, abstractmethod
 
 from slmsuite import __version__
 from slmsuite.hardware import _Picklable
@@ -19,7 +20,7 @@ from slmsuite.holography import analysis
 from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
 
 
-class SLM(_Picklable):
+class SLM(_Picklable, ABC):
     """
     Abstract class for SLMs.
 
@@ -112,6 +113,7 @@ class SLM(_Picklable):
         "display",
     ]
 
+    @abstractmethod
     def __init__(
         self,
         resolution,
@@ -196,6 +198,7 @@ class SLM(_Picklable):
         self.phase = np.zeros(self.shape)
         self.display = np.zeros(self.shape, dtype=self.dtype)
 
+    @abstractmethod
     def close(self):
         """Abstract method to close the SLM and delete related objects."""
         raise NotImplementedError()
@@ -361,6 +364,7 @@ class SLM(_Picklable):
 
         self.set_phase(phase, phase_correct, settle)
 
+    @abstractmethod
     def _set_phase_hw(self, phase):
         """
         Abstract method to communicate with the SLM. Subclasses **should** overwrite this.

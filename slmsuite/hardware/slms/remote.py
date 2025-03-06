@@ -1,14 +1,21 @@
 """
-Template for writing a subclass for SLM hardware control in :mod:`slmsuite`.
-Outlines which SLM superclass functions must be implemented.
+TODO
 """
 from slmsuite.hardware.slms.slm import SLM
-from slmsuite.hardware.remote import Client, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_TIMEOUT
+from slmsuite.hardware.remote import _Client, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_TIMEOUT
 
-class RemoteSLM(SLM, Client):
+class RemoteSLM(_Client, SLM):
     """
     TODO
     """
+
+    _pickle = SLM._pickle + [
+        "server_attributes",
+        "host",
+        "port",
+        "timeout",
+        "latency_s",
+    ]
 
     def __init__(
         self,
@@ -20,34 +27,38 @@ class RemoteSLM(SLM, Client):
         settle_time_s: float = None,
     ):
         r"""
-        Initialize SLM and attributes.
+        Connects to an SLM on a remote server.
+
+        This client only (1) reads the SLM's attributes on initialization and (2) forwards
+        :meth:`._set_phase_hw` commands. Class attributes are not concurrent (not kept up-to-date).
+        Any vendor-specific functionality beyond :meth:`.set_phase` must be handled on
+        the server, as a security precaution.
 
         Parameters
         ----------
-        bitdepth : int
-            Depth of SLM pixel well in bits. Defaults to 10.
-        wav_um : float
-            Wavelength of operation in microns. Defaults to 1 um.
-        pitch_um : (float, float)
-            Pixel pitch in microns. Defaults to 8 micron square pixels.
-        **kwargs
-            See :meth:`.SLM.__init__` for permissible options.
-
-        Note
-        ~~~~
-        These arguments, which ultimately are used to instantiate the :class:`.SLM` superclass,
-        may be more accurately filled by calling the SLM's SDK functions.
-        See the other implemented SLM subclasses for examples.
+        :param name:
+            Name of the SLM on the server to connect to.
+        :param host:
+            Hostname or IP address of the server. Defaults to ``"localhost"``.
+        :param port:
+            Port number of the server. Defaults to ``5025``.
+        :param timeout:
+            Timeout in seconds for the connection. Defaults to ``1.0``.
+        :param wav_um:
+            Wavelength of operation in microns. Defaults to whatever is set on the server.
+        :param settle_time_s:
+            Settle time in seconds. Defaults to whatever is set on the server.
         """
         # Connect to the server.
-        super(Client, self).__init__(name, host, port, timeout)
+        _Client.__init__(self, name, host, port, timeout)
 
-        # Get information about the SLM from the server.
-        pickled = self.com(command="pickle")
+        # Parse information about the SLM from the server.
+        pickled = self.server_attributes["__meta__"]
 
-        # Instantiate the superclass
-        super(SLM, self).__init__(
-            (pickled["shape"][1], pickled["shape"][0]),
+        # Instantiate the superclass using this information.
+        SLM.__init__(
+            self,
+            resolution=(pickled["shape"][1], pickled["shape"][0]),
             bitdepth=pickled["bitdepth"],
             name=self.name,
             wav_um=pickled["wav_um"] if wav_um is None else wav_um,
@@ -56,6 +67,9 @@ class RemoteSLM(SLM, Client):
             settle_time_s=pickled["settle_time_s"] if settle_time_s is None else settle_time_s,
         )
 
+    def close(self):
+        pass
+
     def _set_phase_hw(self, phase):
         """
         Low-level hardware interface to set_phase ``phase`` data onto the SLM.
@@ -63,4 +77,4 @@ class RemoteSLM(SLM, Client):
         :class:`.SLM`, ``phase`` is error checked before calling
         :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
         """
-        # TODO: Insert code here to write raw phase data to the SLM.
+        self.com(command="_set_phase_hw", kwargs=dict(phase=phase))

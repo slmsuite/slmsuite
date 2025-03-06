@@ -12,9 +12,11 @@ except ImportError:
 from scipy import special
 from math import factorial
 import matplotlib.pyplot as plt
+from typing import Tuple, Union, Callable
+
 
 from slmsuite.misc.math import REAL_TYPES
-from slmsuite.holography.toolbox import _process_grid
+from slmsuite.holography.toolbox import _process_grid, imprint, format_2vectors
 
 # Load CUDA code. This is used for cupy.RawKernels in this file and elsewhere.
 
@@ -229,6 +231,127 @@ def binary(grid, vector=(0, 0), shift=0, a=np.pi, b=0, duty_cycle=.5):
         )
 
     return result
+
+
+def _quadrants(
+    grid: Union[Tuple[np.ndarray, np.ndarray], "slmsuite.hardware.slms.slm.SLM"],
+    vectors: np.ndarray,
+    grating: Callable = blaze,
+):
+    """
+    Given four 2-vectors in top-right bottom-right top-left bottom-left order,
+    fill the quadrants with gratings in the chosen directions.
+    """
+    # Parse vectors
+    vectors = format_2vectors(vectors)
+    if vectors.shape != (2,4):
+        raise ValueError("Expected four 2-vectors (2,4). Found {}.".format(vectors.shape))
+
+    # Parse grid.
+    grid = (x_grid, y_grid) = _process_grid(grid)
+    canvas = np.zeros_like(x_grid)
+
+    # Fill the quadrants.
+    for i, vector in enumerate(vectors.T):
+        # Future: center this on the (0,0) point of the current grid?
+        imprint(
+            matrix=canvas,
+            window=[
+                (canvas.shape[1] // 2) * ((3-i) // 2),            # x
+                (canvas.shape[1] // 2),                      # w
+                (canvas.shape[0] // 2) * (i % 2),           # y
+                (canvas.shape[0] // 2),                      # h
+            ],
+            function=grating,
+            grid=grid,
+            vector=vector,      # Passed to function=grating
+        )
+
+    return canvas
+
+
+def bahtinov(
+    grid: Union[Tuple[np.ndarray, np.ndarray], "slmsuite.hardware.slms.slm.SLM"],
+    radius: float = .001,
+    angle: float = 10*np.pi/180,
+    grating: Callable = binary,
+):
+    """
+    Returns a `Bahtinov mask <https://en.wikipedia.org/wiki/Bahtinov_mask>`_,
+    commonly used for focusing telescopes.
+    When the pattern from this mask is symmetric, the system is in focus.
+
+    :param grid:
+        :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    :param radius:
+        Radius of the diffraction pattern in normalized :math:`\frac{k_x}{k}` units.
+        Defaults to a milliradian.
+    :param angle:
+        Angle of the right two quadrants from the left two quadrants in radians.
+        Defaults to 10 degrees.
+    :param grating:
+        Type of grating to use for the mask. Defaults to :meth:`.binary()`.
+    """
+    s = np.sin(angle)
+    c = np.cos(angle)
+
+    vectors = format_2vectors(
+        np.array([
+            (radius*s, radius*c),
+            (radius*s, -radius*c),
+            (0, radius),
+            (0, radius),
+        ]).T
+    )
+
+    return _quadrants(
+        grid=grid,
+        vectors=vectors,
+        grating=grating,
+    )
+
+
+def quadrants(
+    grid: Union[Tuple[np.ndarray, np.ndarray], "slmsuite.hardware.slms.slm.SLM"],
+    radius: float = .001,
+    center: Tuple[float, float] = (0, 0),
+):
+    """
+    Returns a quadrant-based alignment mask similar to :meth:`.bahtinov()`.
+    In this case, each quadrant is filled with a blazed grating pointing in the
+    direction of the quadrant. When the source is centered on the SLM, the four
+    resulting spots will have the same intensity. The position of the spots on the
+    camera can align the SLM to the optical axis of the system.
+
+    :param grid:
+        :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    :param radius:
+        Radius of the diffraction pattern in normalized :math:`\frac{k_x}{k}` units.
+        Defaults to a milliradian.
+    :param center:
+        Center of the diffraction pattern in normalized :math:`\frac{k_x}{k}` units.
+        Defaults to the origin.
+    """
+    vectors = format_2vectors(
+        (radius / np.sqrt(2)) * np.array([
+            (1, -1),
+            (1, 1),
+            (-1, -1),
+            (-1, 1),
+        ]).T
+    ) + format_2vectors(center)
+
+    return _quadrants(
+        grid=grid,
+        vectors=vectors,
+        grating=blaze,
+    )
 
 
 # Basic lenses.

@@ -65,6 +65,16 @@ The unification of these two categories is stored in:
 
    cameraslms
 
+We also support hosting cameras and SLMs on remote servers:
+
+.. currentmodule:: slmsuite.hardware
+.. autosummary::
+   :toctree: _autosummary
+   :template: custom-module-template.rst
+   :recursive:
+
+   remote
+
 API Formalism
 =============
 

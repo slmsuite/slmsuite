@@ -1,5 +1,5 @@
 """
-TODO
+Connects to a camera on a remote :class:`~slmsuite.hardware.remote.Server`.
 """
 import warnings
 from slmsuite.hardware.cameras.camera import Camera
@@ -7,7 +7,7 @@ from slmsuite.hardware.remote import _Client, DEFAULT_HOST, DEFAULT_PORT, DEFAUL
 
 class RemoteCamera(_Client, Camera):
     """
-    TODO
+    Connects to a camera on a remote :class:`~slmsuite.hardware.remote.Server`.
     """
 
     _pickle = Camera._pickle + [
@@ -27,7 +27,7 @@ class RemoteCamera(_Client, Camera):
         **kwargs
     ):
         r"""
-        Connects to a camera on a remote server.
+        Connects to a camera on a remote :class:`~slmsuite.hardware.remote.Server`.
 
         This client only (1) reads the camera's attributes on initialization and (2) forwards
         :meth:`._get_image_hw`, :meth:`._get_images_hw`,
@@ -36,21 +36,20 @@ class RemoteCamera(_Client, Camera):
         Any vendor-specific functionality beyond those allowed commands must be handled on
         the server, as a security precaution.
 
-        Parameters
-        ----------
         :param name:
             Name of the SLM on the server to connect to.
         :param host:
             Hostname or IP address of the server. Defaults to ``"localhost"``.
         :param port:
-            Port number of the server. Defaults to ``5025``.
+            Port number of the server. Defaults to ``5025`` (commonly used for instrument control).
         :param timeout:
             Timeout in seconds for the connection. Defaults to ``1.0``.
         :param **kwargs:
-            See :meth:`.Camera.__init__` for permissible options.
+            See :meth:`.Camera.__init__` for permissible options, except for
+            ``resolution``, ``bitdepth``, and ``pitch_um`` which are set by the server.
         """
         # Connect to the server.
-        _Client.__init__(self, name, host, port, timeout)
+        _Client.__init__(self, name, "camera", host, port, timeout)
 
         # Parse information about the SLM from the server.
         pickled = self.server_attributes["__meta__"]
@@ -72,20 +71,20 @@ class RemoteCamera(_Client, Camera):
 
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
-        return self.com(
+        return self._com(
             command="_get_exposure_hw",
         )
 
     def _set_exposure_hw(self, exposure_s):
         """See :meth:`.Camera._set_exposure_hw`."""
-        return self.com(
+        return self._com(
             command="_set_exposure_hw",
             kwargs=dict(exposure_s=exposure_s)
         )
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""
-        return self.com(
+        return self._com(
             command="_get_image_hw",
             kwargs=dict(timeout_s=timeout_s)
         )
@@ -95,7 +94,7 @@ class RemoteCamera(_Client, Camera):
         if out is not None:
             warnings.warn("Remote camera does not support in-place operations.")
 
-        return self.com(
+        return self._com(
             command="_get_images_hw",
             kwargs=dict(image_count=image_count, timeout_s=timeout_s)
         )

@@ -41,6 +41,7 @@ release = "0.2.1"
 # ones.
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx_autodoc_typehints",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.extlinks",
@@ -99,6 +100,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 autosummary_generate = True
 autodoc_member_order = "bysource"   # This doesn't work for autosummary unfortunately
                                     # https://github.com/sphinx-doc/sphinx/issues/5379
+# autodoc_typehints = "signature"
 add_module_names = False # Remove namespaces from class/method signatures
 
 nbsphinx_execute = "never"
@@ -217,7 +219,7 @@ def setup(app):
     # Download example notebooks.
     # NOTE: GitHub API only supports downloading files up to 100 MB.
     try:
-        os.makedirs(examples_path, exist_ok=True)
+        os.makedirs(examples_path, exist_ok=False)
         os.makedirs(images_path, exist_ok=True)
         tree_url = (
             "https://api.github.com/repos/{}/{}/git/trees/main?recursive=1"
@@ -251,6 +253,9 @@ def setup(app):
 
                     image_path = os.path.join(images_path, file_name)
                     shutil.copy(file_path, image_path)
+    except OSError as e:
+        print("WARNING: Not downloading example notebooks because they have already been downloaded. "
+              "Update the examples by deleting the `_examples` directory (or `make clean`). Error:\n{}".format(e))
     except BaseException as e:
         print("WARNING: Unable to download example notebooks. "
               "Building without examples. Error:\n{}".format(e))

@@ -13,6 +13,11 @@ python environment via ``pip``.
 
 Note
 ~~~~
+Older cameras, in particular UC480 cameras, may be supported by other camera interfaces
+such as :class:`~slmsuite.hardware.cameras.pylablib.PyLabLib`.
+
+Note
+~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
 
@@ -161,11 +166,9 @@ class ThorCam(Camera):
         self.set_binning()
 
         super().__init__(
-            self.cam.image_width_pixels,
-            self.cam.image_height_pixels,
+            (self.cam.image_width_pixels, self.cam.image_height_pixels),
             bitdepth=self.cam.bit_depth,
-            dx_um=self.cam.sensor_pixel_width_um,
-            dy_um=self.cam.sensor_pixel_height_um,
+            pitch_um=(self.cam.sensor_pixel_width_um, self.cam.sensor_pixel_height_um),
             name=serial,
             **kwargs
         )
@@ -346,21 +349,19 @@ class ThorCam(Camera):
             See :attr:`profile`.
         """
         if profile != self.profile:
+            self.cam.disarm()
             if profile is None:
-                self.cam.disarm()
+                pass
             elif profile == "free":
-                self.cam.disarm()
                 self.cam.frames_per_trigger_zero_for_unlimited = 0
                 self.cam.operation_mode = 0  # Software triggered
                 self.cam.arm(2)
                 self.cam.issue_software_trigger()
             elif profile == "single":
-                self.cam.disarm()
                 self.cam.frames_per_trigger_zero_for_unlimited = 1
                 self.cam.operation_mode = 0  # Software triggered
                 self.cam.arm(2)
             elif profile == "single_hardware":
-                self.cam.disarm()
                 self.cam.frames_per_trigger_zero_for_unlimited = 1
                 self.cam.operation_mode = 1  # Hardware triggered
                 self.cam.arm(2)

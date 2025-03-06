@@ -38,7 +38,7 @@ class Camera(_Picklable, ABC):
         Depth of a camera pixel well in bits.
     bitresolution : int
         Stores ``2**bitdepth``.
-    dtype : type
+    dtype : np.dtype
         Stores the type returned by :meth:`._get_image_hw()`.
         This value is cached upon initialization.
     pitch_um : (float, float) OR None
@@ -399,6 +399,8 @@ class Camera(_Picklable, ABC):
                 timeout_s=timeout_s+self.exposure_s
             )
 
+        return out
+
     # Capture methods one level of abstraction above _get_image_hw().
 
     def _get_image_hw_tolerant(self, *args, **kwargs):
@@ -427,14 +429,18 @@ class Camera(_Picklable, ABC):
 
     def _get_dtype(self):
         try:
-            self.dtype = np.array(self._get_image_hw_tolerant()).dtype   # Future: check if cameras change this after init.
+            self.dtype = np.dtype(
+                np.array(
+                    self._get_image_hw_tolerant(timeout_s=1)
+                ).dtype
+            )   # Future: check if cameras change dtype after init.
         except:
             if self.bitdepth > 16:
-                self.dtype = float
+                self.dtype = np.dtype(float)
             elif self.bitdepth > 8:
-                self.dtype = np.uint16
+                self.dtype = np.dtype(np.uint16)
             else:
-                self.dtype = np.uint8
+                self.dtype = np.dtype(np.uint8)
 
         try:
             if self.dtype(0).nbytes * 8 < self.bitdepth:
@@ -444,6 +450,8 @@ class Camera(_Picklable, ABC):
                 )
         except:     # The above sometimes fails for non-numpy datatypes.
             pass
+
+        return self.dtype
 
     def _parse_averaging(self, averaging=None, preserve_none=False):
         """
@@ -491,7 +499,10 @@ class Camera(_Picklable, ABC):
     def _get_averaging_dtype(self, averaging=None):
         """Returns the appropriate image datatype for ``averaging`` levels of averaging."""
         if averaging is None:
-            averaging = self.averaging
+            if self.averaging is None:
+                raise ValueError("Averaging is not enabled for this camera. Set the .averaging attribute.")
+            else:
+                averaging = self.averaging
         averaging = int(averaging)
 
         if averaging <= 0:

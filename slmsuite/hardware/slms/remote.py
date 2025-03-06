@@ -1,12 +1,12 @@
 """
-TODO
+Connects to an SLM on a remote :class:`~slmsuite.hardware.remote.Server`.
 """
 from slmsuite.hardware.slms.slm import SLM
 from slmsuite.hardware.remote import _Client, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_TIMEOUT
 
 class RemoteSLM(_Client, SLM):
     """
-    TODO
+    Connects to an SLM on a remote :class:`~slmsuite.hardware.remote.Server`.
     """
 
     _pickle = SLM._pickle + [
@@ -27,21 +27,19 @@ class RemoteSLM(_Client, SLM):
         settle_time_s: float = None,
     ):
         r"""
-        Connects to an SLM on a remote server.
+        Connects to an SLM on a remote :class:`~slmsuite.hardware.remote.Server`.
 
         This client only (1) reads the SLM's attributes on initialization and (2) forwards
         :meth:`._set_phase_hw` commands. Class attributes are not concurrent (not kept up-to-date).
-        Any vendor-specific functionality beyond :meth:`.set_phase` must be handled on
+        Any vendor-specific functionality beyond :meth:`._set_phase_hw` must be handled on
         the server, as a security precaution.
 
-        Parameters
-        ----------
         :param name:
             Name of the SLM on the server to connect to.
         :param host:
             Hostname or IP address of the server. Defaults to ``"localhost"``.
         :param port:
-            Port number of the server. Defaults to ``5025``.
+            Port number of the server. Defaults to ``5025`` (commonly used for instrument control).
         :param timeout:
             Timeout in seconds for the connection. Defaults to ``1.0``.
         :param wav_um:
@@ -50,7 +48,7 @@ class RemoteSLM(_Client, SLM):
             Settle time in seconds. Defaults to whatever is set on the server.
         """
         # Connect to the server.
-        _Client.__init__(self, name, host, port, timeout)
+        _Client.__init__(self, name, "slm", host, port, timeout)
 
         # Parse information about the SLM from the server.
         pickled = self.server_attributes["__meta__"]
@@ -77,4 +75,4 @@ class RemoteSLM(_Client, SLM):
         :class:`.SLM`, ``phase`` is error checked before calling
         :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
         """
-        self.com(command="_set_phase_hw", kwargs=dict(phase=phase))
+        self._com(command="_set_phase_hw", kwargs=dict(phase=phase))

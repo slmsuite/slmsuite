@@ -1,9 +1,80 @@
+"""
+Provides a TCPIP client-server interface to control remote hardware.
+Interface with a :class:`~slmsuite.hardware.remote.Server` using
+:class:`~slmsuite.hardware.slms.remote.RemoteSLM` and
+:class:`~slmsuite.hardware.cameras.remote.RemoteCamera`.
+
+Danger
+~~~~~~
+This interface will operate best in a secure and trusted local network.
+Hosting a server on a public IP raises some risk of tampering
+(even with an ``allowlist``, as IP addresses can be spoofed).
+Communication is locked down to only the few commands that are required
+by an abstract camera or SLM to reduce risk.
+However, there are no protections against DDOS attack or similar and
+communication is **not encrypted or authenticated**.
+
+In the future, if there is interest, SSH authentication could be added, and the scope of
+commands offered could be expanded beyond the required abstract commands
+to also include whatever hardware-specific functionality is
+implemented. Moreover, CameraSLMs could be hosted on a server such that system
+calibrations could live in the cloud.
+
+Example
+~~~~~~~
+The following is a simple example of a setup communicating between two
+threads---for example, two Jupyter notebooks---on the same computer (via ``localhost:5025``).
+
+The server hosts a simulated SLM and camera:
+
+.. highlight:: python
+.. code-block:: python
+
+    # Server notebook
+    from slmsuite.hardware.slms.simulated import SimulatedSLM
+    from slmsuite.hardware.cameras.simulated import SimulatedCamera
+    from slmsuite.hardware.remote import Server
+
+    slm = SimulatedSLM((1600, 1200), pitch_um=(8,8), name="remote_slm")
+    cam = SimulatedCamera(slm, (1440, 1100), pitch_um=(4,4), gain=50, name="remote_camera")
+
+    server = Server(
+        hardware=[slm, cam],
+        port=5025,
+    )
+
+The client connects to this hardware:
+
+.. highlight:: python
+.. code-block:: python
+
+    # Client notebook
+    from slmsuite.hardware.slms.remote import RemoteSLM
+    from slmsuite.hardware.cameras.remote import RemoteCamera
+
+    slm = RemoteSLM(
+        name="remote_slm"
+        host="localhost",
+        port=5025,
+    )
+    cam = RemoteCamera(
+        name="remote_camera"
+        host="localhost",
+        port=5025,
+    )
+
+    slm.set_phase(None)
+
+    cam.get_image()
+    cam.plot()
+"""
 import numpy as np
 import socket, sys, json, time
+import warnings
 import urllib.parse as urllib
 from datetime import date, datetime, timedelta
 import traceback
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Dict
 import zlib
 import base64
 
@@ -15,24 +86,34 @@ DEFAULT_PORT = 5025             # Commonly used for instrument control.
 DEFAULT_TIMEOUT = 5
 SERVER_WAIT_TIMEOUT = 0.5
 
-delim = "\n"
+_delim = "\n"
 
+# Common functions for encoding and decoding data.
 def _recurse_decompress(msg):
     """
     Recursively decompresses the result of json serialization.
     """
     if isinstance(msg, dict):
-        for k in msg:
-            if isinstance(msg[k], dict):
-                if "__zlib__" in msg[k] and len(msg[k]) == 1:
-                    msg[k] = np.frombuffer(zlib.decompress(msg[k]["__zlib__"]))
-                elif "__dtype__" in msg[k] and len(msg[k]) == 1:
-                    msg[k] = np.dtype(msg[k]["__dtype__"])
-                else:
-                    _recurse_decompress(msg[k])
+        if "__zlib__" in msg and len(msg) == 3:
+            return np.frombuffer(
+                zlib.decompress(
+                    base64.b64decode(msg["__zlib__"])
+                ),
+                dtype=np.dtype(msg["__dtype__"])
+            ).reshape(msg["__shape__"])
+        elif "__dtype__" in msg and len(msg) == 1:
+            return np.dtype(msg["__dtype__"])
+        else:
+            for k in msg:
+                msg[k] = _recurse_decompress(msg[k])
+    elif isinstance(msg, list):
+        for i, m in enumerate(msg):
+            msg[i] = _recurse_decompress(m)
+
+    return msg
 
 # https://codetinkering.com/numpy-encoder-json/
-class NpEncoder(json.JSONEncoder):
+class _NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.bool_):
             return bool(obj)
@@ -43,7 +124,13 @@ class NpEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             # If the array is above a certain arbitrary size, compress it. Otherwise return it as a list.
             if obj.size > 100:
-                return {"__zlib__" : zlib.compress(obj.tobytes())}
+                return {
+                    "__zlib__" : base64.b64encode(
+                        zlib.compress(obj.tobytes())
+                    ).decode(),
+                    "__shape__" : obj.shape,
+                    "__dtype__" : str(obj.dtype)
+                }
             else:
                 return obj.tolist()
         if isinstance(obj, np.string_):
@@ -53,9 +140,10 @@ class NpEncoder(json.JSONEncoder):
         if isinstance(obj, timedelta):
             return str(obj)
         if isinstance(obj, np.dtype):
-            return {"__dtype__" : obj.descr}
-        return super(NpEncoder, self).default(obj)
+            return {"__dtype__" : str(obj)}
+        return super(_NpEncoder, self).default(obj)
 
+# Common function to receive data from a socket.
 def _recv(sock, timeout):
     recv_buffer = 4096
     buffer = ""
@@ -66,18 +154,17 @@ def _recv(sock, timeout):
         data = sock.recv(recv_buffer).decode()
 
         buffer += data
-        if data[-1] == delim:
-            msg = json.loads(urllib.unquote_plus(buffer[0:-len(delim)]))
+        if data[-1] == _delim:
+            msg = json.loads(urllib.unquote_plus(buffer[0:-len(_delim)]))
 
-            print(msg)
-
-            _recurse_decompress(msg)
+            msg = _recurse_decompress(msg)
 
             return msg
 
     # Failed timeout returns empty.
-    return {}
+    return False, {}
 
+# Server which hosts slmsuite hardware.
 class Server:
     """
     Server for handling client commands and interfacing with hardware.
@@ -91,12 +178,46 @@ class Server:
             allowlist: List[str] = None,
         ):
         """
-        TODO
+        Initializes a server to host slmsuite hardware: cameras and SLMs.
+        Interface with this server using
+        :class:`~slmsuite.hardware.slms.remote.RemoteSLM` and
+        :class:`~slmsuite.hardware.cameras.remote.RemoteCamera`.
+
+        :param hardware:
+            List of hardware objects to serve.
+        :param port:
+            Port number to serve on. Defaults to ``5025``
+            (commonly used for instrument control).
+        :param timeout:
+            Timeout in seconds for the server to wait for a client.
+        :param allowlist:
+            List of IP addresses to allow to connect. Defaults to ``None`` (allow all).
+            Keep in mind that IP addresses can be spoofed, so this ``allowlist``
+            provides only modest security.
         """
-        # Identity.
+        # Parse hardware.
+        for hw in hardware:
+            if not hasattr(hw, "name"):
+                raise ValueError(f"Hardware {hw} must have a 'name' attribute.")
+            if not (hasattr(hw, "_get_image_hw") or hasattr(hw, "_set_phase_hw")):
+                raise ValueError(f"Hardware {hw.name} ({hw}) must be either a camera or an SLM.")
+
+        names = [hw.name for hw in hardware]
+        if len(set(names)) != len(names):
+            raise ValueError(f"Hardware names must be unique. Found {names}.")
+
         self.hardware = {
-            hw.name : hw for hw in hardware
+            hw.name : hw
+            for hw in hardware
         }
+        self.kind = {
+            hw.name : ("camera" if hasattr(hw, "_get_image_hw") else "slm")
+            for hw in hardware
+        }
+
+        # Server information.
+        if not (1024 <= port <= 65535):
+            raise ValueError(f"Invalid port number: {port}. Use a port between 1024 and 65535.")
         self.port = port
         self.timeout = timeout
 
@@ -115,7 +236,12 @@ class Server:
 
     def listen(self, verbose: bool = True):
         """
-        Listen for client commands, then process them once they are given.
+        Blocking command to listen for client commands and process them once they are
+        given.
+
+        :param verbose:
+            Whether to print feedback that the server is online alongside a log of
+            client actions.
         """
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -131,23 +257,32 @@ class Server:
                 # Wait for connection with fancy print.
                 if verbose:
                     print("Waiting for connection" + ("." * (1 + (i % 3))) + "     ", end="\r")
+
+                # This blocks for self.timeout unless a client connects.
                 connection, client_addr = sock.accept()
+
+                # Cleanup the print.
                 if verbose:
                     print("                              ", end="\r")
 
                 # Check if the client is allowed to connect.
                 if (self.allowlist is not None) and (client_addr[0] not in self.allowlist):
+                    if verbose:
+                        stamp = str(datetime.now())
+                        print(f"{stamp} Rejected connection from {client_addr}, not in allowlist {self.allowlist}.")
                     result = False, f"Client {client_addr} not in allowlist."
                 else:
                     # Receive, handle, and reply to message.
                     message = _recv(connection, self.timeout)
-                    result = self.handle(message, client_addr, verbose)
+                    result = self._handle(message, client_addr, verbose)
 
-                connection.sendall((urllib.quote_plus(json.dumps(result, cls=NpEncoder)) + delim).encode())
+                connection.sendall((urllib.quote_plus(json.dumps(result, cls=_NpEncoder)) + _delim).encode())
                 connection.close()
             except IOError as e:
+                # This is a timeout error. Just continue.
                 pass
             except KeyboardInterrupt:
+                # Standard way to kill the thread.
                 if verbose:
                     print("Closing server! Goodbye!")
                 try:
@@ -157,6 +292,8 @@ class Server:
                 sock.close()
                 break
             except Exception as e:
+                # There was an error in the server communication protocol. This kills the thread.
+                # Note that hardware errors are handled in _handle and the loop continues.
                 if verbose:
                     print(traceback.format_exc())
                 try:
@@ -166,7 +303,7 @@ class Server:
                 sock.close()
                 raise e
 
-    def handle(
+    def _handle(
         self,
         message : str,
         client_addr: str = None,
@@ -181,19 +318,21 @@ class Server:
             args = message.pop("args", [])
             kwargs = message.pop("kwargs", dict())
 
-            instrument = f"hw['{name}'].{command}"
+            instrument = f"{name}.{command}"
 
-            if verbose: print(f"Received call to {instrument} from client {client_addr}")
+            if verbose:
+                stamp = str(datetime.now())
+                print(f"{stamp} {client_addr} {instrument}")
 
             # Initial parse of command.
             if command is None:
                 return False, "No command provided."
             elif command == "ping":
-                return True, list(self.hardware.keys())
+                return True, self.kind
 
             # Make sure that the hardware exists.
             if not name in self.hardware:
-                return False, f"Did not recognize hardware '{name}'."
+                return False, f"Did not recognize hardware '{name}'. Options: {list(self.hardware.keys())}."
 
             if command in self.allowcommands and hasattr(self.hardware[name], command):
                 attribute = getattr(self.hardware[name], command)
@@ -206,7 +345,7 @@ class Server:
         except:
             return False, traceback.format_exc()
 
-
+# Abstract client which connects to a server.
 class _Client(_Picklable):
     """
     Client for interfacing with a slmsuite server.
@@ -215,12 +354,13 @@ class _Client(_Picklable):
     def __init__(
             self,
             name: str,
+            kind: str,
             host: str = DEFAULT_HOST,
             port: int = DEFAULT_PORT,
             timeout: float = DEFAULT_TIMEOUT,
         ):
         """
-
+        Superclass constructor. See RemoteSLM and RemoteCamera for more information.
         """
         self.name = name
         self.host = host
@@ -228,41 +368,54 @@ class _Client(_Picklable):
         self.timeout = timeout
 
         try:
-            self.com(command="ping")
-        except TimeoutError:
-            raise TimeoutError(
+            hardware = self._com(command="ping")
+        except (TimeoutError, ConnectionRefusedError):
+            raise ValueError(
                 f"An slmsuite server is not active at {self.host}:{self.port}."
             )
         except Exception as e:
             raise e
 
+        if not self.name in hardware:
+            raise ValueError(
+                f"Hardware '{self.name}' is not present at {self.host}:{self.port}. Options: {hardware}."
+            )
+        if hardware[self.name] != kind:
+            raise ValueError(
+                f"Hardware '{self.name}' is not a {kind} at {self.host}:{self.port}."
+            )
+
         try:
             t = time.perf_counter()
-            pickled = self.com(
+            pickled = self._com(
                 command="pickle",
                 kwargs=dict(attributes=False, metadata=True)
             )
             t = time.perf_counter() - t
         except:
             raise RuntimeError(
-                f"Could not connect to '{self.name}' at {self.host}:{self.port}."
+                f"Could not connect to '{self.name}' at {self.host}:{self.port}. Options: {hardware}."
             )
-
-        print(pickled)
 
         self.latency_s = t
         self.server_attributes = pickled
 
-    def com(
+        if pickled["__version__"] != __version__:
+            warnings.warn(
+                f"Client version {__version__} does not match server version {pickled['__version__']}."
+            )
+
+    def _com(
         self,
         command: str = "ping",
         args: list = [],
         kwargs: dict = {},
     ):
-        return _Client._com(self.name, self.host, self.port, self.timeout, command, args, kwargs)
+        """Helper function to _com without having to put all the name/host information in."""
+        return _Client.__com(self.name, self.host, self.port, self.timeout, command, args, kwargs)
 
     @staticmethod
-    def _com(
+    def __com(
         name: str,
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
@@ -271,6 +424,7 @@ class _Client(_Picklable):
         args: list = [],
         kwargs: dict = {},
     ):
+        """Generalized function to communicate with a server."""
         # Create a TCP/IP socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
@@ -286,9 +440,9 @@ class _Client(_Picklable):
                         "args": args,
                         "kwargs": kwargs
                     },
-                    cls=NpEncoder
+                    cls=_NpEncoder
                 )
-            ) + delim
+            ) + _delim
         ).encode())
 
         # Wait for a reply.
@@ -312,32 +466,37 @@ class _Client(_Picklable):
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
         timeout: float = DEFAULT_TIMEOUT,
-    ):
+    ) -> Dict[str, str]:
         """
         Looks to see if a slmsuite server is active at the given host and port.
 
-        Parameters
-        ----------
-        verbose : bool
+        :param verbose:
             Whether to print the discovered information.
-
-        Returns
-        --------
-        list of str
-            List of hardware at the server. Returns empty list if no server is found.
+        :param host:
+            Which host to connect to. Defaults to ``"localhost"``.
+        :param port:
+            Which port to connect to. Defaults to ``5025`` (commonly used for instrument
+            control).
+        :param timeout:
+            Timeout in seconds for the connection. Defaults to ``1.0``.
+        :return:
+            List of hardware at the server in ``name:kind`` pairs, where ``kind`` is
+            either ``"camera"`` or ``"slm"``. Returns empty dict if no server is found.
         """
         try:
-            hardware = _Client._com(host, port, timeout, command="ping")
+            hardware = _Client.__com(None, host, port, timeout, command="ping")
         except TimeoutError:
-            raise TimeoutError("Did not find a server at {host}:{port}.")
+            raise TimeoutError(f"Did not find a server at {host}:{port}.")
         except Exception as e:
             raise e
 
         if verbose:
             if len(hardware) == 0:
-                print("Server found at {host}:{port} with no hardware.")
+                print(f"Server found at {host}:{port} with no hardware.")
             else:
-                print("Server found at {host}:{port} with hardware:")
-                print("\n    ".join(hardware))
+                print(
+                    f"Server found at {host}:{port} with hardware:\n    " +
+                    "\n    ".join(list(hardware.keys()))
+                )
 
         return hardware

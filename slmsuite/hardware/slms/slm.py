@@ -190,9 +190,9 @@ class SLM(_Picklable, ABC):
 
         # Decide dtype
         if self.bitdepth <= 8:
-            self.dtype = np.uint8
+            self.dtype = np.dtype(np.uint8)
         else:
-            self.dtype = np.uint16
+            self.dtype = np.dtype(np.uint16)
 
         # Display caches for user reference.
         self.phase = np.zeros(self.shape)

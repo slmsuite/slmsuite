@@ -341,7 +341,7 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
     if cmap == "grayscale":
         cmap = False
 
-    if not isinstance(cmap, str):
+    if not isinstance(cmap, str) and not hasattr(cmap, "N"):
         if cmap is True:
             cmap = mpl.rcParams['image.cmap']
         else:
@@ -373,8 +373,12 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
         images = np.clip(images, 0, int(lut))
 
     # Convert images to RGB.
-    if isinstance(cmap, str):
-        cm = plt.get_cmap(cmap, int(lut)+1)
+    if isinstance(cmap, str) or hasattr(cmap, "N"):
+        if isinstance(cmap, str):
+            cm = plt.get_cmap(cmap, int(lut)+1)
+        else:
+            cm = cmap
+
         if hasattr(cm, "colors"):
             c = cm.colors
         else:

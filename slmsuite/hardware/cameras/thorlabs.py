@@ -166,7 +166,7 @@ class ThorCam(Camera):
         self.set_binning()
 
         super().__init__(
-            (self.cam.image_width_pixels, self.cam.image_height_pixels),
+            resolution=(self.cam.image_width_pixels, self.cam.image_height_pixels),
             bitdepth=self.cam.bit_depth,
             pitch_um=(self.cam.sensor_pixel_width_um, self.cam.sensor_pixel_height_um),
             name=serial,

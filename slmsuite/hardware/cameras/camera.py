@@ -465,7 +465,7 @@ class Camera(_Picklable):
 
         # Switch based on image type
         if self.dtype.kind == "i" or self.dtype.kind == "u":
-            dtype_bitdepth = self.dtype.nbytes
+            dtype_bitdepth = 8*self.dtype.type(0).nbytes
 
             # Remove depth for signed integer.
             if self.dtype.kind == "i":

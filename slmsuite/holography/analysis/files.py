@@ -366,19 +366,24 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
 
     # Convert images to integers scaled to the lut size.
     if normalize:
-        images = np.rint(images * ((float(lut)+1) / np.max(images))).astype(int)
+        images = np.rint(images * ((float(lut)-1) / np.max(images))).astype(int)
         images = np.clip(images, 0, int(lut))
     elif isfloat:
-        images = np.rint(images * (float(lut)+1)).astype(int)
+        images = np.rint(images * (float(lut)-1)).astype(int)
         images = np.clip(images, 0, int(lut))
 
     # Convert images to RGB.
-    if isinstance(cmap, str):
-        cm = plt.get_cmap(cmap, int(lut)+1)
+    if isinstance(cmap, str) or hasattr(cmap, "N"):
+        if isinstance(cmap, str):
+            cm = plt.get_cmap(cmap, int(lut)+1)
+        else:
+            cm = cmap
+
         if hasattr(cm, "colors"):
             c = cm.colors
         else:
             c = cm(np.arange(0, cm.N))
+            
         images = 255 * c[images]
         if hasnan:
             images[nanmask, 3] = 0

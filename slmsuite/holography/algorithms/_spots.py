@@ -19,7 +19,7 @@ class _AbstractSpotHologram(FeedbackHologram):
 
 
 # For the cupy kernel based approach, the size of the kernel to cache.
-N_BATCH_MAX = 400   # Corresponds to ~2 GB for a megapixel SLM.
+N_BATCH_MAX = 100   # Corresponds to ~1 GB for a megapixel SLM.
 
 class CompressedSpotHologram(_AbstractSpotHologram):
     """
@@ -595,7 +595,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             nearfield = cp.conj(nearfield, out=nearfield)
             farfield = self.farfield
             def collapse_kernel(kernel, out):
-                # (N, H*W), (H*W, 1) x  = (N,1)
+                # (N, H*W) x (H*W, 1) = (N,1)
                 cp.matmul(
                     kernel,
                     nearfield.ravel()[:, np.newaxis],
@@ -612,8 +612,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 batch_slice = slice(batch * N_BATCH_MAX, np.clip((batch+1) * N_BATCH_MAX, 0, N))
                 kernel_slice = slice(0, batch_slice.stop - batch_slice.start)
 
-                self._update_cupy_kernel(batch_slice, kernel_slice)
-                collapse_kernel(self._cupy_kernel[:, kernel_slice], out=farfield[batch_slice])
+                self._update_cupy_kernel(kernel_slice, batch_slice)
+                collapse_kernel(self._cupy_kernel[kernel_slice, :], out=farfield[batch_slice])
 
         # Restore the in-place memory.
         if not istorch:
@@ -729,7 +729,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 batch_slice = slice(batch * N_BATCH_MAX, np.clip((batch+1) * N_BATCH_MAX, 0, N))
                 kernel_slice = slice(0, batch_slice.stop - batch_slice.start)
 
-                self._update_cupy_kernel(batch_slice, kernel_slice)
+                self._update_cupy_kernel(kernel_slice, batch_slice)
 
                 if batch == 0:
                     expand_kernel(self._cupy_kernel[kernel_slice, :], self.farfield[batch_slice], out=self.nearfield.ravel())

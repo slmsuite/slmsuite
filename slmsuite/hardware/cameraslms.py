@@ -1661,13 +1661,14 @@ class FourierSLM(CameraSLM):
             )
 
             max_window_size = smallest_distance(calibration_points_ij)
-            window_size = int(np.min((.25*max_window_size, 15)))
+            window_size = 2 * np.ceil(np.min((.5*max_window_size, 51)) / 2) + 1
 
             def default_callback():
                 self.cam.flush()
                 img = self.cam.get_image()
 
                 images = analysis.take(img, calibration_points_ij, window_size, clip=True).astype(float)
+                images = analysis.image_remove_field(images, out=images)
                 images[np.isnan(images)] = 0
                 images /= np.sum(images)        # Remove laser noise
 
@@ -2983,7 +2984,7 @@ class FourierSLM(CameraSLM):
 
         # Generate the initial grid.
         plane = format_2vectors(self.cam.shape[::-1])
-        grid = np.floor(plane / pitch)
+        grid = np.ceil(plane / pitch - .5)
         spacing = np.floor(plane / (grid + (.5 if avoid_mirrors else 0))).astype(int)
         if avoid_mirrors:
             base_point = spacing * (np.remainder(zeroth_order / spacing - .5, 1) + .25)
@@ -3206,11 +3207,17 @@ class FourierSLM(CameraSLM):
         nyref = data["nyref"]
 
         def average_neighbors(matrix):
-            matrix[nyref, nxref] = (
-                np.sum([matrix[nyref + i, nxref + 1] for i in [-1, 0, 1]])
-                + np.sum([matrix[nyref + i, nxref] for i in [-1, 1]])
-                + np.sum([matrix[nyref + i, nxref - 1] for i in [-1, 0, 1]])
-            ) / 8
+            n = 0
+            result = 0
+            for xy in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]:
+                x =  nxref + xy[0]
+                y =  nyref + xy[1]
+
+                if x >= 0 and x < NX and y >= 0 and y < NY:
+                    result += matrix[y, x]
+                    n += 1
+
+            matrix[nyref, nxref] = result / n
 
         size_blur_k = 1
 
@@ -3307,6 +3314,7 @@ class FourierSLM(CameraSLM):
                     kx2 = []
                     ky2 = []
                     offset2 = []
+                    source = []
 
                     # Loop through the adjacent superpixels (including diagonals).
                     for ax, ay in [
@@ -3339,6 +3347,7 @@ class FourierSLM(CameraSLM):
                             kx2.append(kx3)
                             ky2.append(ky3)
                             offset2.append(offset[ty, tx] + dx * kx3 + dy * ky3)
+                            source.append((ax, ay))
 
                     # Do a majority vote (within std) for the phase.
                     if len(kx2) > 0:

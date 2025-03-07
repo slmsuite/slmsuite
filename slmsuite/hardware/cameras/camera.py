@@ -11,6 +11,7 @@ from scipy.optimize import curve_fit
 from scipy.ndimage import zoom
 import PIL
 import io
+from abc import ABC, abstractmethod
 
 from slmsuite.hardware import _Picklable
 from slmsuite.holography import analysis
@@ -20,7 +21,7 @@ from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography.analysis.files import _gray2rgb
 
 
-class Camera(_Picklable):
+class Camera(_Picklable, ABC):
     """
     Abstract class for cameras.
     Comes with transformations, averaging and HDR,
@@ -37,7 +38,7 @@ class Camera(_Picklable):
         Depth of a camera pixel well in bits.
     bitresolution : int
         Stores ``2**bitdepth``.
-    dtype : type
+    dtype : np.dtype
         Stores the type returned by :meth:`._get_image_hw()`.
         This value is cached upon initialization.
     pitch_um : (float, float) OR None
@@ -95,6 +96,7 @@ class Camera(_Picklable):
         "last_image",
     ]
 
+    @abstractmethod
     def __init__(
         self,
         resolution,
@@ -215,11 +217,18 @@ class Camera(_Picklable):
 
     # Core methods - to be implemented by subclass.
 
+    @abstractmethod
     def close(self):
         """
         Abstract method to close the camera and delete related objects.
         """
         raise NotImplementedError()
+
+    def __del__(self):
+        try:
+            self.close()
+        except:
+            pass
 
     @staticmethod
     def info(verbose=True):
@@ -271,6 +280,7 @@ class Camera(_Picklable):
         self._set_exposure_hw(exposure_s)
         return self.get_exposure()
 
+    @abstractmethod
     def _get_exposure_hw(self):
         """
         Abstract method to interface with hardware and get the frame integration time in seconds.
@@ -278,6 +288,7 @@ class Camera(_Picklable):
         """
         raise NotImplementedError(f"Camera {self.name} has not implemented _get_exposure_hw")
 
+    @abstractmethod
     def _set_exposure_hw(self, exposure_s):
         """
         Abstract method to interface with hardware and set the exposure time in seconds.
@@ -326,6 +337,7 @@ class Camera(_Picklable):
         for _ in range(2):
             self._get_image_hw_tolerant(timeout_s=timeout_s+self.exposure_s)
 
+    @abstractmethod
     def _get_image_hw(self, timeout_s):
         """
         Abstract method to capture camera images.
@@ -344,6 +356,20 @@ class Camera(_Picklable):
         """
         raise NotImplementedError(f"Camera {self.name} has not implemented _get_image_hw")
 
+    def _get_out(self, image_count, out=None):
+        # Preallocate memory if necessary
+        out_shape = (int(image_count), self.default_shape[0], self.default_shape[1])
+        if out is None:
+            out = np.empty(out_shape, dtype=self.dtype)
+        else:
+            if out.shape != out_shape:
+                raise ValueError(f"Expected out to be of shape {out_shape}. Found {out.shape}.")
+            if out.dtype != self.dtype:
+                raise ValueError(f"Expected out to be of type {self.dtype}. Found {out.dtype}.")
+            out = np.array(out, copy=False, dtype=self.dtype)
+
+        return out
+
     def _get_images_hw(self, image_count, timeout_s, out=None):
         """
         Abstract method to capture a series of image_count images using camera-specific
@@ -357,13 +383,23 @@ class Camera(_Picklable):
             The time in seconds to wait for **each** frame to be fetched.
             The frame exposure time  is **NOT added** to this timeout
             such that there is always enough time to expose.
+        out : None OR numpy.ndarray
+            Preallocated memory for in-place operations, if applicable.
 
         Returns
         -------
         numpy.ndarray
-            Array of shape (n_frames, :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`).
+            Array of shape (image_count, :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`).
         """
-        raise NotImplementedError(f"Camera {self.name} has not implemented _get_images_hw")
+        # Preallocate memory if necessary
+        out = self._get_out(image_count, out)
+
+        for i in range(image_count):
+            out[i, :, :] = self._get_image_hw_tolerant(
+                timeout_s=timeout_s+self.exposure_s
+            )
+
+        return out
 
     # Capture methods one level of abstraction above _get_image_hw().
 
@@ -393,14 +429,18 @@ class Camera(_Picklable):
 
     def _get_dtype(self):
         try:
-            self.dtype = np.array(self._get_image_hw_tolerant()).dtype   # Future: check if cameras change this after init.
+            self.dtype = np.dtype(
+                np.array(
+                    self._get_image_hw_tolerant(timeout_s=1)
+                ).dtype
+            )   # Future: check if cameras change dtype after init.
         except:
             if self.bitdepth > 16:
-                self.dtype = float
+                self.dtype = np.dtype(float)
             elif self.bitdepth > 8:
-                self.dtype = np.uint16
+                self.dtype = np.dtype(np.uint16)
             else:
-                self.dtype = np.uint8
+                self.dtype = np.dtype(np.uint8)
 
         try:
             if self.dtype(0).nbytes * 8 < self.bitdepth:
@@ -410,6 +450,8 @@ class Camera(_Picklable):
                 )
         except:     # The above sometimes fails for non-numpy datatypes.
             pass
+
+        return self.dtype
 
     def _parse_averaging(self, averaging=None, preserve_none=False):
         """
@@ -457,7 +499,10 @@ class Camera(_Picklable):
     def _get_averaging_dtype(self, averaging=None):
         """Returns the appropriate image datatype for ``averaging`` levels of averaging."""
         if averaging is None:
-            averaging = self.averaging
+            if self.averaging is None:
+                raise ValueError("Averaging is not enabled for this camera. Set the .averaging attribute.")
+            else:
+                averaging = self.averaging
         averaging = int(averaging)
 
         if averaging <= 0:
@@ -632,37 +677,18 @@ class Camera(_Picklable):
         numpy.ndarray
             Array of shape ``(image_count, height, width)``.
         """
-        # Preallocate memory if necessary
-        out_shape = (int(image_count), self.default_shape[0], self.default_shape[1])
-        if out is None:
-            imgs = np.empty(out_shape, dtype=self.dtype)
-        else:
-            if out.shape != out_shape:
-                raise ValueError(f"Expected out to be of shape {out_shape}. Found {out.shape}.")
-            if out.dtype != self.dtype:
-                raise ValueError(f"Expected out to be of type {self.dtype}. Found {out.dtype}.")
-            imgs = np.array(out, copy=False, dtype=self.dtype)
-
         # Flush if desired.
         if flush:
             self.flush()
 
         # Grab images (no transformation)
-        try:
-            # Using the camera-specific method if available
-            imgs = self._get_images_hw(
-                image_count,
-                timeout_s=timeout_s+self.exposure_s,
-                out=imgs
-            )
-        except NotImplementedError:
-            # Brute-force collection as a backup
-            for i in range(image_count):
-                imgs[i, :, :] = self._get_image_hw_tolerant(
-                    timeout_s=timeout_s+self.exposure_s
-                )
+        imgs = self._get_images_hw(
+            image_count,
+            timeout_s=timeout_s+self.exposure_s,
+            out=out
+        )
 
-        # Transform if desired.
+        # Transform if desired. Future: make more efficient.
         if transform:
             imgs_ = np.empty(
                 (int(image_count), self.shape[0], self.shape[1]),

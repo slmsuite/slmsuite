@@ -75,6 +75,7 @@ class Webcam(Camera):
         )
 
         self.backend = self.cam.getBackendName()
+        self.set_auto_exposure(False)
         if verbose: print("success")
 
     def close(self):

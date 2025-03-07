@@ -15,3 +15,4 @@ requests
 pandoc
 pydata-sphinx-theme
 sphinx_design
+sphinx-autodoc-typehints

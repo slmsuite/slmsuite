@@ -341,7 +341,7 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
     if cmap == "grayscale":
         cmap = False
 
-    if not isinstance(cmap, str):
+    if not isinstance(cmap, str) and not hasattr(cmap, "N"):
         if cmap is True:
             cmap = mpl.rcParams['image.cmap']
         else:

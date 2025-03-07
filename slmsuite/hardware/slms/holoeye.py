@@ -20,8 +20,6 @@ class Holoeye(SLM):
     ----------
     slm_lib : TODO
         Object handle for the Holoeye SLM.
-    sdk_path : str
-        Path of the Blink SDK folder.
     """
 
     def __init__(

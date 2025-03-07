@@ -67,6 +67,10 @@ class Template(SLM):
         # Zero the display using the superclass `set_phase()` function.
         self.set_phase(None)
 
+    def close(self):
+        """Close the SLM and delete related objects."""
+        raise NotImplementedError()
+
     @staticmethod
     def info(verbose=True):
         """

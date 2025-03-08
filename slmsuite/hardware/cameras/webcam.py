@@ -16,6 +16,8 @@ class Webcam(Camera):
     -------
     This class does not properly handle color images
     and does not properly populate datatype information.
+    Webcams usually support different codecs, and only the default is enabled here.
+    Exposure may not be handled correctly for some cameras.
 
     See Also
     --------
@@ -47,6 +49,7 @@ class Webcam(Camera):
             The OS's default camera (index of ``0``) is used as the default.
         capture_api : int
             The ``cv2.VideoCaptureAPI`` to use for capturing.
+            Essentially, this is the driver that should be used.
             Defaults to ``cv2.CAP_ANY`` (choose OS default).
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form

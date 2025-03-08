@@ -251,57 +251,63 @@ class Server:
 
         i = 0
 
-        while True:
-            i += 1
-            try:
-                # Wait for connection with fancy print.
-                if verbose:
-                    print("Waiting for connection" + ("." * (1 + (i % 3))) + "     ", end="\r")
+        if verbose:
+            print(f"Hosting on port {self.port} with hardware {list(self.hardware.keys())}")
 
-                # This blocks for self.timeout unless a client connects.
-                connection, client_addr = sock.accept()
-
-                # Cleanup the print.
-                if verbose:
-                    print("                              ", end="\r")
-
-                # Check if the client is allowed to connect.
-                if (self.allowlist is not None) and (client_addr[0] not in self.allowlist):
+        try:
+            while True:
+                i += 1
+                try:
+                    # Wait for connection with fancy print.
                     if verbose:
-                        stamp = str(datetime.now())
-                        print(f"{stamp} Rejected connection from {client_addr}, not in allowlist {self.allowlist}.")
-                    result = False, f"Client {client_addr} not in allowlist."
-                else:
-                    # Receive, handle, and reply to message.
-                    message = _recv(connection, self.timeout)
-                    result = self._handle(message, client_addr, verbose)
+                        print("Waiting for connection" + ("." * (1 + (i % 3))) + "     ", end="\r")
 
-                connection.sendall((urllib.quote_plus(json.dumps(result, cls=_NpEncoder)) + _delim).encode())
+                    # This blocks for self.timeout unless a client connects.
+                    connection, client_addr = sock.accept()
+
+                    # Cleanup the print.
+                    if verbose:
+                        print("                              ", end="\r")
+
+                    # Check if the client is allowed to connect.
+                    if (self.allowlist is not None) and (client_addr[0] not in self.allowlist):
+                        if verbose:
+                            stamp = str(datetime.now())
+                            print(f"{stamp} Rejected connection from {client_addr}, not in allowlist {self.allowlist}.")
+                        result = False, f"Client {client_addr} not in allowlist."
+                    else:
+                        # Receive, handle, and reply to message.
+                        message = _recv(connection, self.timeout)
+                        result = self._handle(message, client_addr, verbose)
+
+                    connection.sendall((urllib.quote_plus(json.dumps(result, cls=_NpEncoder)) + _delim).encode())
+                    connection.close()
+                except IOError as e:
+                    # This is a timeout error. Just continue.
+                    pass
+                except Exception as e:
+                    # Pass to the outer try for all other errors.
+                    raise e
+        except KeyboardInterrupt:
+            # Standard way to kill the thread.
+            if verbose:
+                print("Closing server! Goodbye!")
+            try:
                 connection.close()
-            except IOError as e:
-                # This is a timeout error. Just continue.
+            except:
                 pass
-            except KeyboardInterrupt:
-                # Standard way to kill the thread.
-                if verbose:
-                    print("Closing server! Goodbye!")
-                try:
-                    connection.close()
-                except:
-                    pass
-                sock.close()
-                break
-            except Exception as e:
-                # There was an error in the server communication protocol. This kills the thread.
-                # Note that hardware errors are handled in _handle and the loop continues.
-                if verbose:
-                    print(traceback.format_exc())
-                try:
-                    connection.close()
-                except:
-                    pass
-                sock.close()
-                raise e
+            sock.close()
+        except Exception as e:
+            # There was an error in the server communication protocol. This kills the thread.
+            # Note that hardware errors are handled in _handle and the loop continues.
+            if verbose:
+                print(traceback.format_exc())
+            try:
+                connection.close()
+            except:
+                pass
+            sock.close()
+            raise e
 
     def _handle(
         self,
@@ -462,10 +468,10 @@ class _Client(_Picklable):
 
     @staticmethod
     def info(
-        verbose: bool = True,
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
         timeout: float = DEFAULT_TIMEOUT,
+        verbose: bool = True,
     ) -> Dict[str, str]:
         """
         Looks to see if a slmsuite server is active at the given host and port.
@@ -485,7 +491,7 @@ class _Client(_Picklable):
         """
         try:
             hardware = _Client.__com(None, host, port, timeout, command="ping")
-        except TimeoutError:
+        except (TimeoutError, ConnectionRefusedError):
             raise TimeoutError(f"Did not find a server at {host}:{port}.")
         except Exception as e:
             raise e

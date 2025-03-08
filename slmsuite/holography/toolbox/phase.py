@@ -34,28 +34,27 @@ except:
 
 # Basic gratings.
 
-def blaze(grid, vector=(0, 0)):
+def blaze(
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    vector: Tuple[float, float] = (0, 0),
+):
     r"""
     Returns a simple `blazed grating <https://en.wikipedia.org/wiki/Blazed_grating>`_,
     a linear phase ramp, toward a given vector in :math:`k`-space.
 
     .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k} \cdot \vec{x}
 
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+
+    :param grid:
         :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    vector : (float, float)
+    :param vector:
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
         See :meth:`~slmsuite.holography.toolbox.convert_vector()`.
         If a 3-dimensional vector is passed, a normalized focusing term is added.
-
-    Returns
-    -------
-    numpy.ndarray
+    :return:
         The phase for this function.
     """
     (x_grid, y_grid) = _process_grid(grid)
@@ -76,7 +75,13 @@ def blaze(grid, vector=(0, 0)):
     return result
 
 
-def sinusoid(grid, vector=(0, 0), shift=0, a=np.pi, b=0):
+def sinusoid(
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    vector: Union[Tuple[float, float], Tuple[int, int]] = (0, 0),
+    shift: float = 0,
+    a: float = np.pi,
+    b: float = 0,
+):
     r"""
     Returns a simple `holographic grating
     <https://en.wikipedia.org/wiki/Diffraction_grating#SR_(Surface_Relief)_gratings>`_,
@@ -87,31 +92,27 @@ def sinusoid(grid, vector=(0, 0), shift=0, a=np.pi, b=0):
     Important
     ---------
     Unlike a blazed grating :meth:`.blaze()`, power will efficiently be deflected toward
-    the mirror -1st order at :math:`-\vec{k}`, by symmetry.
+    the mirror -1st order at :math:`-\vec{k}` in addition to the 1st order, by symmetry.
 
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+
+    :param grid:
         :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    vector : (float, float)
+    :param vector:
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
-        See :meth:`~slmsuite.holography.toolbox.convert_vector()`
-    shift : float
+        See :meth:`~slmsuite.holography.toolbox.convert_vector()`.
+    :param shift:
         Radians to laterally shift the period of the grating by.
-    a : float
+    :param a:
         Value at one extreme of the sinusoid.
         Ignoring crosstalk,
         the 0th order will be minimized when ``|a-b|`` is equal to :math:`\pi`.
-    b : float
+    :param b:
         Value at the other extreme of the sinusoid.
         Defaults to zero, in which case ``a`` is the amplitude.
-
-    Returns
-    -------
-    numpy.ndarray
+    :return:
         The phase for this function.
     """
     if vector[0] == 0 and vector[1] == 0:
@@ -128,7 +129,7 @@ def sinusoid(grid, vector=(0, 0), shift=0, a=np.pi, b=0):
 
 
 def binary(
-    grid: Union[Tuple[np.ndarray, np.ndarray], "slmsuite.hardware.slms.slm.SLM"],
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
     vector: Union[Tuple[float, float], Tuple[int, int]] = (0, 0),
     shift: float = 0,
     a: float = np.pi,
@@ -175,11 +176,12 @@ def binary(
         )
 
     Note
-    ----
+    ~~~~
     When parameters are chosen to produce integer period,
     this function uses speed optimizations **(implementation incomplete)**.
     Otherwise, this function uses ``np.mod`` on top of
     :meth:`~slmsuite.holography.toolbox.phase.blaze()` to compute gratings.
+
 
     :param grid:
         :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
@@ -202,7 +204,6 @@ def binary(
         Defaults to zero, in which case ``a`` is the amplitude.
     :param duty_cycle:
         Ratio of the period which is 'on'.
-
     :return:
         The phase for this function.
     """
@@ -249,7 +250,7 @@ def binary(
 
 
 def _quadrants(
-    grid: Union[Tuple[np.ndarray, np.ndarray], "slmsuite.hardware.slms.slm.SLM"],
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
     vectors: np.ndarray,
     grating: Callable = blaze,
 ) -> np.ndarray:
@@ -286,15 +287,16 @@ def _quadrants(
 
 
 def bahtinov(
-    grid: Union[Tuple[np.ndarray, np.ndarray], "slmsuite.hardware.slms.slm.SLM"],
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
     radius: float = .001,
     angle: float = 10*np.pi/180,
     grating: Callable = binary,
 ) -> np.ndarray:
-    """
+    r"""
     Returns a `Bahtinov mask <https://en.wikipedia.org/wiki/Bahtinov_mask>`_,
     commonly used for focusing telescopes.
-    When the pattern from this mask is symmetric, the system is in focus.
+    When the farfield pattern resulting from this mask is symmetric, the system is in focus.
+
 
     :param grid:
         :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
@@ -309,8 +311,8 @@ def bahtinov(
         Angle of the right two quadrants from the left two quadrants in radians.
         Defaults to 10 degrees.
     :param grating:
-        Type of grating to use for the mask. Defaults to :meth:`.binary()`.
-
+        Type of grating to use for the mask. Must have a ``vector=`` argument.
+        Defaults to :meth:`~slmsuite.holography.toolbox.phase.binary()`.
     :return:
         The phase for this function.
     """
@@ -318,11 +320,11 @@ def bahtinov(
     c = np.cos(angle)
 
     vectors = format_2vectors(
-        np.array([
-            (radius*s, radius*c),
-            (radius*s, -radius*c),
-            (0, radius),
-            (0, radius),
+        radius * np.array([
+            (s, c),
+            (s, -c),
+            (0, 1),
+            (0, 1),
         ]).T
     )
 
@@ -334,16 +336,18 @@ def bahtinov(
 
 
 def quadrants(
-    grid: Union[Tuple[np.ndarray, np.ndarray], "slmsuite.hardware.slms.slm.SLM"],
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
     radius: float = .001,
     center: Tuple[float, float] = (0, 0),
 ) -> np.ndarray:
-    """
-    Returns a quadrant-based alignment mask similar to :meth:`.bahtinov()`.
+    r"""
+    Returns a quadrant-based alignment mask similar to
+    :meth:`~slmsuite.holography.toolbox.phase.bahtinov()`.
     In this case, each quadrant is filled with a blazed grating pointing in the
     direction of the quadrant. When the source is centered on the SLM, the four
-    resulting spots will have the same intensity. The position of the spots on the
-    camera can align the SLM to the optical axis of the system.
+    resulting spots will have the same intensity (to first order).
+    The position of the spots on the camera can align
+    the SLM to the optical axis of the system.
 
     :param grid:
         :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
@@ -357,7 +361,6 @@ def quadrants(
     :param center:
         Center of the diffraction pattern in normalized :math:`\frac{k_x}{k}` units.
         Defaults to the origin.
-
     :return:
         The phase for this function.
     """
@@ -750,7 +753,9 @@ def zernike_aperture(grid, aperture=None):
 
 def zernike(grid, index, weight=1, **kwargs):
     r"""
-    Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
+    Returns a single real
+    `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
+    as a subset of :meth:`.zernike_sum()`.
     These polynomials are commonly used as an orthonormal basis for optical aberration
     and are used in a number of places inside :mod:`slmsuite` for aberration
     compensation.

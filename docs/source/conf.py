@@ -41,9 +41,9 @@ release = "0.2.1"
 # ones.
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx_autodoc_typehints",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
+    "sphinx_autodoc_typehints",
     "sphinx.ext.extlinks",
     "sphinx.ext.linkcode",
     "sphinx_design",
@@ -101,6 +101,7 @@ autosummary_generate = True
 autodoc_member_order = "bysource"   # This doesn't work for autosummary unfortunately
                                     # https://github.com/sphinx-doc/sphinx/issues/5379
 # autodoc_typehints = "signature"
+napoleon_use_param = True
 add_module_names = False # Remove namespaces from class/method signatures
 
 nbsphinx_execute = "never"

@@ -1362,7 +1362,7 @@ class Hologram(_HologramStats):
             if not (feedback in FEEDBACK_OPTIONS):
                 raise ValueError(
                     "Feedback '{}' not recognized as a feedback option.\n"
-                    "Valid options: {}".format(group, FEEDBACK_OPTIONS)
+                    "Valid options: {}".format(feedback, FEEDBACK_OPTIONS)
                 )
             self.flags["feedback"] = feedback
 

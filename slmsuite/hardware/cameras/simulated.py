@@ -121,6 +121,9 @@ class SimulatedCamera(Camera):
         if M is not None and b is not None:
             self.set_affine(M, b)
 
+    def close():
+        pass
+
     def set_affine(self, M=None, b=None, **kwargs):
         """
         Set the camera's placement in the SLM's k-space. ``M`` and/or ``b``, if provided,

@@ -96,7 +96,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         The small angle approximation is assumed.
 
     -  ``"norm"``, ``"kxy"``
-        Blaze :math:`k_x` normalized to wavenumber :math:`k`, i.e. :math:`\frac{k_x}{k}`.
+        Blaze :math:`k_x` normalized to wavenumber :math:`k = 2\pi/\lambda`, i.e. :math:`\frac{k_x}{k}`.
         Equivalent to radians ``"rad"`` in the small angle approximation.
         **This is the default** :mod:`slmsuite` **unit.**
 
@@ -110,6 +110,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     -  ``"freq"``
         Pixel frequency of a grating producing the blaze.
         e.g. 1/16 is a grating with a period of 16 pixels.
+        Under these units, the edge of :math:`k`-space is at :math:`\pm 0.5`,
+        which makes it useful to program in fractions of the SLM's space.
 
     -  ``"lpmm"``
         Line pairs per mm or lines per mm of a grating producing the blaze.

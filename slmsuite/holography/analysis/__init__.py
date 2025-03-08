@@ -1828,7 +1828,7 @@ def blob_array_detect(
         area = size[0] * size[1]
         perimeter = 2 * (size[0] + size[1]) + 4
 
-        mask[y_larger, x_larger] = -area
+        mask[y_larger, x_larger] = -2*area
         mask[y_array, x_array] = perimeter
 
         mask = _make_8bit(mask)

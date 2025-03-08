@@ -61,7 +61,6 @@ class MindVision(Camera):
         camera_list = _mvsdk.CameraEnumerateDevice()
         if not camera_list: raise RuntimeError("No cameras found by mvsdk.")
         serial_list = [cam.GetSn() for cam in camera_list]
-        if verbose: print("success")
 
         # Find the camera by serial number or use the first available camera.
         if serial:
@@ -83,6 +82,7 @@ class MindVision(Camera):
             self.handle = _mvsdk.CameraInit(self.cam, -1, -1)
         except _mvsdk.CameraException as e:
             print("CameraInit Failed ({}):\n{}".format(e.error_code, e.message))
+            raise e
 
         # Fill in parameters from the capability class.
         self.capability = _mvsdk.CameraGetCapability(self.handle)
@@ -95,6 +95,7 @@ class MindVision(Camera):
         _mvsdk.CameraSetTriggerMode(self.handle, 1)
         _mvsdk.CameraSetAeState(self.handle, 0)
         _mvsdk.CameraSetExposureTime(self.handle, 30 * 1000)
+        _mvsdk.CameraPlay(self.handle)
 
         # Calculate the size required for the RGB buffer, which is allocated directly according to the maximum resolution of the camera.
         buffer_size = (
@@ -216,10 +217,11 @@ class MindVision(Camera):
         # TODO: are the following two commands necessary for every call?
 
         # Switch camera mode to continuous acquisition.
-        _mvsdk.CameraSetTriggerMode(self.handle, 0)
+        # _mvsdk.CameraSetTriggerMode(self.handle, 0)
+        _mvsdk.CameraSoftTrigger(self.handle)
 
         # Let the SDK internal image taking thread start working.
-        _mvsdk.CameraPlay(self.handle)
+        # _mvsdk.CameraPlay(self.handle)
 
         # Get a frame from the camera
         try:

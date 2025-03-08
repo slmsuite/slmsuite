@@ -3,6 +3,7 @@ Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class, which supports many webcams an
 """
 import numpy as np
 import cv2
+import time
 
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -15,6 +16,8 @@ class Webcam(Camera):
     -------
     This class does not properly handle color images
     and does not properly populate datatype information.
+    Webcams usually support different codecs, and only the default is enabled here.
+    Exposure may not be handled correctly for some cameras.
 
     See Also
     --------
@@ -46,6 +49,7 @@ class Webcam(Camera):
             The OS's default camera (index of ``0``) is used as the default.
         capture_api : int
             The ``cv2.VideoCaptureAPI`` to use for capturing.
+            Essentially, this is the driver that should be used.
             Defaults to ``cv2.CAP_ANY`` (choose OS default).
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
@@ -74,8 +78,10 @@ class Webcam(Camera):
             **kwargs
         )
 
+        time.sleep(1)
         self.backend = self.cam.getBackendName()
         self.set_auto_exposure(False)
+        time.sleep(1)
         if verbose: print("success")
 
     def close(self):
@@ -89,6 +95,20 @@ class Webcam(Camera):
         raise NotImplementedError()
 
     ### Property Configuration ###
+
+    def set_woi(self, woi=None):
+        if woi is not None:
+            self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, woi[1])
+            self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, woi[3])
+
+            self.shape = self.default_shape = (
+                int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH))
+            )
+
+            time.sleep(1)
+
+        return (0, self.shape[1], 0, self.shape[0])
 
     def get_auto_exposure(self):
         return self.cam.get(cv2.CAP_PROP_AUTO_EXPOSURE)

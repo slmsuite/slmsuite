@@ -1,5 +1,10 @@
+import numpy as np
+
+import slmsuite.hardware.cameraslms
 from slmsuite.holography.algorithms._header import *
 from slmsuite.holography.algorithms._stats import _HologramStats
+from slmsuite.misc.typehints import NDArrayLike, ArrayLike
+from typing import Literal
 
 
 if torch is not None:
@@ -195,12 +200,12 @@ class Hologram(_HologramStats):
 
     def __init__(
         self,
-        target,
-        amp=None,
-        phase=None,
-        slm_shape=None,
-        dtype=np.float32,
-        propagation_kernel=None,
+        target: NDArrayLike | None,
+        amp: ArrayLike | None = None,
+        phase: ArrayLike | None = None,
+        slm_shape: tuple[int, int] | None = None,
+        dtype: np.dtype = np.float32,
+        propagation_kernel: ArrayLike | None = None,
         **kwargs
     ):
         r"""
@@ -437,7 +442,7 @@ class Hologram(_HologramStats):
                 pass
 
     # Initialization helper functions.
-    def reset(self, reset_phase=True, reset_flags=False):
+    def reset(self, reset_phase: bool = True, reset_flags: bool = False) -> None:
         r"""
         Resets the hologram to an initial state. Does not restore the preconditioned ``phase``
         that may have been passed to the constructor (as this information is lost upon
@@ -475,7 +480,7 @@ class Hologram(_HologramStats):
         if not self.target is None:
             self.farfield = cp.zeros(self.target.shape, dtype=self.dtype_complex)
 
-    def _get_target_moments_knm_norm(self):
+    def _get_target_moments_knm_norm(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Get the first and second order moments of the target in normalized knm space
         (knm integers divided by shape)
@@ -497,7 +502,7 @@ class Hologram(_HologramStats):
 
         return np.squeeze(center_knm) / shape, np.squeeze(std_knm) / shape
 
-    def _get_quadratic_initial_phase(self, scaling=1):
+    def _get_quadratic_initial_phase(self, scaling: float = 1) -> NDArrayLike:
         """
         Analytically guesses a phase pattern (lens, blaze) that will overlap with the target.
         """
@@ -524,14 +529,15 @@ class Hologram(_HologramStats):
             copy=(False if np.__version__[0] == '1' else None)
         )
 
-    def _get_random_phase(self):
+    def _get_random_phase(self) -> NDArrayLike:
         if cp == np:        # numpy does not support `dtype=`
             rng = np.random.default_rng()
             return rng.uniform(-np.pi, np.pi, self.slm_shape).astype(self.dtype)
         else:
             return cp.random.uniform(-np.pi, np.pi, self.slm_shape, dtype=self.dtype)
 
-    def reset_phase(self, custom_phase=None, random_phase=None, quadratic_phase=None):
+    def reset_phase(self, custom_phase: ArrayLike | None = None,
+                    random_phase: ArrayLike | None = None, quadratic_phase: ArrayLike | None = None) -> None:
         r"""
         Resets the hologram
         to a provided phase,
@@ -598,7 +604,7 @@ class Hologram(_HologramStats):
             if random_phase:      # Random
                 self.phase += random_phase * self._get_random_phase()
 
-    def reset_weights(self):
+    def reset_weights(self) -> None:
         """
         Resets the hologram weights to the :attr:`target` defaults.
         """
@@ -613,12 +619,12 @@ class Hologram(_HologramStats):
 
     @staticmethod
     def get_padded_shape(
-        slm_shape,
-        padding_order=1,
-        square_padding=True,
-        precision=np.inf,
-        precision_basis="kxy",
-    ):
+        slm_shape: tuple[int, int] | slmsuite.hardware.cameraslms.FourierSLM | slmsuite.hardware.slms.SLM,
+        padding_order: int = 1,
+        square_padding: bool = True,
+        precision: float = np.inf,
+        precision_basis: Literal["ij", "kxy"] = "kxy",
+    ) -> tuple[int, int]:
         """
         Helper function to calculate the shape of the computational space.
         For a given base ``slm_shape``, pads to the user's requirements.
@@ -722,7 +728,7 @@ class Hologram(_HologramStats):
 
         return shape
 
-    def _calculate_memory_constrained_shape(self, device=0, dtype=None):
+    def _calculate_memory_constrained_shape(self, device: int = 0, dtype: np.dtype | None = None) -> float:
         if dtype is None:
             dtype = self.dtype
 
@@ -736,7 +742,7 @@ class Hologram(_HologramStats):
         return np.sqrt(num_values_per_array)
 
     # User interactions: Changing the target and recovering the nearfield phase and complex farfield.
-    def _set_target(self, new_target, reset_weights=False):
+    def _set_target(self, new_target: ArrayLike | None, reset_weights: bool = False) -> None:
         """
         Change the target to something new. This method handles cleaning and normalization.
 
@@ -766,7 +772,7 @@ class Hologram(_HologramStats):
         if reset_weights:
             self.reset_weights()
 
-    def set_target(self, new_target, reset_weights=False):
+    def set_target(self, new_target: ArrayLike | None, reset_weights: bool = False) -> None:
         """
         Change the target to something new. This method handles cleaning and normalization.
 
@@ -781,7 +787,7 @@ class Hologram(_HologramStats):
         """
         self._set_target(new_target=new_target, reset_weights=reset_weights)
 
-    def get_phase(self, include_propagation=False):
+    def get_phase(self, include_propagation: bool = False) -> np.ndarray:
         r"""
         Collects the current nearfield phase from the GPU with :meth:`cupy.ndarray.get()`.
         Also shifts the :math:`[-\pi, \pi]` range of :meth:`numpy.arctan2()` to :math:`[0, 2\pi]`
@@ -808,7 +814,9 @@ class Hologram(_HologramStats):
             else:
                 return self.phase + np.pi
 
-    def get_farfield(self, shape=None, propagation_kernel=None, affine=None, get=True):
+    def get_farfield(self, shape: tuple[int, int] | None = None,
+                     propagation_kernel: ArrayLike | None = None,
+                     affine: dict | None = None, get: bool = True) -> np.ndarray:
         r"""
         Collects the current complex DFT farfield, potentially with transformations.
         This includes collecting the data from the GPU with :meth:`cupy.ndarray.get()`.
@@ -889,7 +897,7 @@ class Hologram(_HologramStats):
             return farfield
 
     # Propagation: nearfield-farfield helper functions.
-    def _populate_results(self):
+    def _populate_results(self) -> None:
         """
         Helper function to populate:
             - farfield
@@ -906,7 +914,7 @@ class Hologram(_HologramStats):
         self.amp_ff = cp.abs(self.farfield, out=self.amp_ff)
         self.phase_ff = cp.arctan2(self.farfield.imag, self.farfield.real, out=self.phase_ff)
 
-    def _midloop_cleaning(self):
+    def _midloop_cleaning(self) -> None:
         # 2.1) Cache amp_ff for weighting (if None, will init; otherwise in-place).
         self.amp_ff = cp.abs(self.farfield, out=self.amp_ff)
 
@@ -916,7 +924,7 @@ class Hologram(_HologramStats):
         if hasattr(self, "img_knm"):
             self.img_knm = None
 
-    def remove_vortices(self, plot=False):
+    def remove_vortices(self, plot: bool = False) -> None:
         """
         Removes the computed phase vortices in the farfield where the target amplitude is positive.
         Useful for smoothing out the pattern and reducing speckle.
@@ -955,7 +963,7 @@ class Hologram(_HologramStats):
                 analysis.image_vortices_remove(self.phase_ff, self.target > 0)
                 self.plot_farfield(self.phase_ff, title="phase removal after", limits=limits)
 
-    def _build_nearfield(self, phase_torch=None):
+    def _build_nearfield(self, phase_torch: NDArrayLike | None = None) -> NDArrayLike:
         """Populate nearfield with data from amp and phase."""
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
         self.nearfield.fill(0)
@@ -981,7 +989,7 @@ class Hologram(_HologramStats):
 
             return nearfield_torch
 
-    def _nearfield_extract(self):
+    def _nearfield_extract(self) -> None:
         """Populate phase with data from nearfield."""
         (i0, i1, i2, i3) = toolbox.unpad(self.shape, self.slm_shape)
 
@@ -993,7 +1001,7 @@ class Hologram(_HologramStats):
         if self.propagation_kernel is not None:
             self.phase -= self.propagation_kernel
 
-    def _nearfield2farfield(self, phase_torch=None):
+    def _nearfield2farfield(self, phase_torch: NDArrayLike | None = None) -> NDArrayLike:
         """
         Maps the nearfield to the farfield by a discrete Fourier transform.
         This should populate :attr:`farfield`.
@@ -1013,7 +1021,7 @@ class Hologram(_HologramStats):
 
         self._midloop_cleaning()
 
-    def _farfield2nearfield(self, extract=True):
+    def _farfield2nearfield(self, extract: bool = True) -> NDArrayLike:
         """
         Maps the farfield to the nearfield by a discrete Fourier transform.
         This should populate populate :attr:`nearfield`.
@@ -1038,7 +1046,7 @@ class Hologram(_HologramStats):
         verbose=True,
         callback=None,
         feedback=None,
-        stat_groups=[],
+        stat_groups: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -1306,6 +1314,9 @@ class Hologram(_HologramStats):
             Various weight keywords and values to pass depending on the weight method.
             These are passed into :attr:`flags`. See options documented in the constructor.
         """
+
+        stat_groups = stat_groups or []
+
         # 1) Update flags based upon the arguments.
         self._update_flags(method, verbose, feedback, stat_groups, **kwargs)
 

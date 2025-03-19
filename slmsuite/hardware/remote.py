@@ -3,6 +3,9 @@ Provides a TCPIP client-server interface to control remote hardware.
 Interface with a :class:`~slmsuite.hardware.remote.Server` using
 :class:`~slmsuite.hardware.slms.remote.RemoteSLM` and
 :class:`~slmsuite.hardware.cameras.remote.RemoteCamera`.
+Under the hood, this uses :mod:`json` formatting with
+:mod:`zlib` compression used for any :mod:`numpy` data, including especially
+megapixel phase masks and megapixel camera images.
 
 Danger
 ~~~~~~
@@ -122,17 +125,13 @@ class _NpEncoder(json.JSONEncoder):
         if isinstance(obj, np.integer):
             return int(obj)
         if isinstance(obj, np.ndarray):
-            # If the array is above a certain arbitrary size, compress it. Otherwise return it as a list.
-            if obj.size > 100:
-                return {
-                    "__zlib__" : base64.b64encode(
-                        zlib.compress(obj.tobytes())
-                    ).decode(),
-                    "__shape__" : obj.shape,
-                    "__dtype__" : str(obj.dtype)
-                }
-            else:
-                return obj.tolist()
+            return {
+                "__zlib__" : base64.b64encode(
+                    zlib.compress(obj.tobytes())
+                ).decode(),
+                "__shape__" : obj.shape,
+                "__dtype__" : str(obj.dtype)
+            }
         if isinstance(obj, np.string_):
             return str(obj)
         if isinstance(obj, (datetime, date)):

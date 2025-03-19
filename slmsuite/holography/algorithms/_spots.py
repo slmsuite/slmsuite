@@ -5,7 +5,7 @@ from slmsuite.holography.algorithms._feedback import FeedbackHologram
 
 class _AbstractSpotHologram(FeedbackHologram):
     """
-    Abstract class to eventually handle :meth:`SpotHologram.refine_offset()`
+    Abstract class to handle :meth:`SpotHologram.refine_offset()`
     and other shared methods for :class:`SpotHologram` and :class:`CompressedSpotHologram`.
     There are many parts of :class:`SpotHologram` with repetition and bloat that
     can be simplified with more modern features from other parts of :mod:`slmsuite`.
@@ -14,12 +14,129 @@ class _AbstractSpotHologram(FeedbackHologram):
     def remove_vortices(self):
         """Spot holograms do not need to consider vortices."""
         pass
-    # def update_spots(self, source_basis="kxy"):
-    #     pass
+    
+    def refine_offset(self, img=None, basis="kxy", force_affine=True, plot=False):
+        """
+        Hones the positions of the produced spots toward the desired targets to compensate for
+        Fourier calibration imperfections. Works either by moving camera integration
+        regions to the positions where the spots ended up (``basis="ij"``) or by moving
+        the :math:`k`-space targets to target the desired camera pixels
+        (``basis="knm"``/``basis="kxy"``). This should be run at the user's request
+        inbetween :meth:`optimize` iterations.
+
+        Parameters
+        ----------
+        img : numpy.ndarray OR None
+            Image measured by the camera. If ``None``, defaults to :attr:`img_ij` via :meth:`measure()`.
+        basis : str
+            The correction can be in any of the following bases:
+
+            - ``"ij"`` changes the pixel that the spot is expected at,
+            - ``"kxy"``, ``"knm"`` changes the k-vector which the SLM targets.
+
+            Defaults to ``"kxy"``. If basis is set to ``None``, no correction is applied
+            to the data in the :class:`SpotHologram`.
+        force_affine : bool
+            Whether to force the offset refinement to behave as an affine transformation
+            between the original and refined coordinate system. This helps to tame
+            outliers. Defaults to ``True``.
+        plot : bool
+            Enables debug plots.
+
+        Returns
+        -------
+        numpy.ndarray
+            Spot shift in the ``"ij"`` basis for each spot.
+        """
+        # Check to make sure we have an integration width.
+        if self.spot_integration_width_ij is None:
+            raise ValueError("hologram.spot_integration_width_ij must be set to use refine_offset().")
+
+        # If no image was provided, get one from cache.
+        if img is None:
+            self.measure(basis="ij")
+            img = self.img_ij
+
+        # Take regions around each point from the given image.
+        regions = analysis.take(
+            img, self.spot_ij, self.spot_integration_width_ij, centered=True, integrate=False
+        )
+
+        # Fast version; have to iterate for accuracy.
+        regions = analysis.image_remove_field(regions, out=regions)
+        shift_vectors = analysis.image_positions(regions)
+        # shift_vectors = np.clip(
+        #     shift_vectors,
+        #     -self.spot_integration_width_ij / 4, 
+        #     self.spot_integration_width_ij / 4
+        # )
+
+        # Store the shift vector before we force_affine.
+        sv1 = self.spot_ij[[0,1]] + shift_vectors
+
+        if force_affine:
+            affine = analysis.fit_affine(self.spot_ij[[0,1]], self.spot_ij[[0,1]] + shift_vectors, plot=plot)
+            shift_vectors = (np.matmul(affine["M"], self.spot_ij[[0,1]]) + affine["b"]) - self.spot_ij[[0,1]]
+
+        # Record the shift vector after we force_affine.
+        sv2 = self.spot_ij[[0,1]] + shift_vectors
+
+        # Plot the above if desired.
+        if plot:
+            masked = analysis.take(
+                img,
+                self.spot_ij,
+                self.spot_integration_width_ij,
+                centered=True,
+                integrate=False,
+                return_mask=2,
+            )
+            
+            plt.figure(figsize=(12, 12))
+            plt.imshow(masked)
+            plt.scatter(sv1[0, :], sv1[1, :], s=200, fc="none", ec="r")
+            plt.scatter(sv2[0, :], sv2[1, :], s=300, fc="none", ec="b")
+            plt.show()
+
+        # Handle the feedback applied from this refinement.
+        if basis is not None:
+            if basis == "kxy" or basis == "knm":
+                # Modify k-space targets. Don't modify any camera spots.
+                self.spot_kxy[[0, 1]] = self.spot_kxy[[0, 1]] - (
+                    self.cameraslm.ijcam_to_kxyslm(shift_vectors)
+                    - self.cameraslm.ijcam_to_kxyslm((0, 0))
+                )
+
+                if hasattr(self, "spot_knm"):
+                    self.spot_knm = toolbox.convert_vector(
+                        self.spot_kxy,
+                        from_units="kxy",
+                        to_units="knm",
+                        hardware=self.cameraslm.slm,
+                        shape=self.shape
+                    )
+                    self.set_target(reset_weights=True)
+
+                if hasattr(self, "spot_zernike"):
+                    spot_zernike_xy = toolbox.convert_vector(
+                        self.spot_kxy,
+                        from_units="kxy",
+                        to_units="zernike",
+                        hardware=self.cameraslm.slm,
+                        shape=self.shape
+                    )
+                    self.spot_zernike[self.zernike_basis_cartesian, :] = spot_zernike_xy
+            elif basis == "ij":
+                # Modify camera targets. Don't modify any k-vectors.
+                self.spot_ij = self.spot_ij + shift_vectors
+            else:
+                raise Exception("Unrecognized basis '{}'.".format(basis))
+
+        return shift_vectors
 
 
 # For the cupy kernel based approach, the size of the kernel to cache.
-N_BATCH_MAX = 100   # Corresponds to ~1 GB for a megapixel SLM.
+N_BATCH_MAX = 210   # Corresponds to ~1 GB for a megapixel SLM.
 
 class CompressedSpotHologram(_AbstractSpotHologram):
     """
@@ -99,7 +216,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             More general or complicated functionality requires full use of the GPU
             and thus the following option requires :mod:`cupy` and underlying CUDA.
 
-        #.  **(This feature is currently disabled until 0.1.3 due
+        #.  **(This feature is currently disabled until 0.4.0 due
             to discovered instability on different systems.)**
             A custom CUDA kernel loaded into :mod:`cupy`.
             Above a certain number of spots (:math:`O(10^3)`),
@@ -387,9 +504,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         does not use a DFT grid and does not need padding.
         """
         raise NameError("CompressedSpotHologram does not use a DFT grid and does not need padding.")
-
-    def refine_offset(self, *args, **kwargs):
-        raise NotImplementedError("Currently not implemented for CompressedSpotHologram")
 
     def _get_target_moments_knm_norm(self):
         """
@@ -779,10 +893,12 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         feedback = self.flags["feedback"]
 
         if feedback == "computational":
+            warnings.warn("CompressedSpotHologram feedback 'computational' is interpreted as 'computational_spot'")
             feedback = self.flags["feedback"] = "computational_spot"
 
         if feedback == "experimental":
-            feedback = self.flags["feedback"] = "computational_spot"    # experimental_spot will have trouble for 3D.
+            warnings.warn("CompressedSpotHologram feedback 'experimental' is interpreted as 'experimental_spot'")
+            feedback = self.flags["feedback"] = "experimental_spot"    # experimental_spot will have trouble for 3D.
 
         # Weighting strategy depends on the chosen feedback method.
         if feedback == "computational_spot":
@@ -1429,6 +1545,10 @@ class SpotHologram(_AbstractSpotHologram):
         """
         feedback = self.flags["feedback"]
 
+        if feedback == "experimental":
+            warnings.warn("SpotHologram feedback 'experimental' is interpreted as 'experimental_spot'")
+            feedback = self.flags["feedback"] = "experimental_spot" 
+
         # Weighting strategy depends on the chosen feedback method.
         if feedback == "computational":
             # Pixel-by-pixel weighting
@@ -1577,103 +1697,3 @@ class SpotHologram(_AbstractSpotHologram):
         self._calculate_stats_experimental_spot(stats, stat_groups)
 
         self._update_stats_dictionary(stats)
-
-    def refine_offset(self, img=None, basis="kxy", force_affine=True, plot=False):
-        """
-        Hones the positions of the produced spots toward the desired targets to compensate for
-        Fourier calibration imperfections. Works either by moving camera integration
-        regions to the positions where the spots ended up (``basis="ij"``) or by moving
-        the :math:`k`-space targets to target the desired camera pixels
-        (``basis="knm"``/``basis="kxy"``). This should be run at the user's request
-        inbetween :meth:`optimize` iterations.
-
-        Parameters
-        ----------
-        img : numpy.ndarray OR None
-            Image measured by the camera. If ``None``, defaults to :attr:`img_ij` via :meth:`measure()`.
-        basis : str
-            The correction can be in any of the following bases:
-
-            - ``"ij"`` changes the pixel that the spot is expected at,
-            - ``"kxy"``, ``"knm"`` changes the k-vector which the SLM targets.
-
-            Defaults to ``"kxy"``. If basis is set to ``None``, no correction is applied
-            to the data in the :class:`SpotHologram`.
-        force_affine : bool
-            Whether to force the offset refinement to behave as an affine transformation
-            between the original and refined coordinate system. This helps to tame
-            outliers. Defaults to ``True``.
-        plot : bool
-            Enables debug plots.
-
-        Returns
-        -------
-        numpy.ndarray
-            Spot shift in the ``"ij"`` basis for each spot.
-        """
-        # If no image was provided, get one from cache.
-        if img is None:
-            self.measure(basis="ij")
-            img = self.img_ij
-
-        # Take regions around each point from the given image.
-        regions = analysis.take(
-            img, self.spot_ij, self.spot_integration_width_ij, centered=True, integrate=False
-        )
-
-        # Fast version; have to iterate for accuracy.
-        shift_vectors = analysis.image_positions(regions)
-        shift_vectors = np.clip(
-            shift_vectors, -self.spot_integration_width_ij / 4, self.spot_integration_width_ij / 4
-        )
-
-        # Store the shift vector before we force_affine.
-        sv1 = self.spot_ij + shift_vectors
-
-        if force_affine:
-            affine = analysis.fit_affine(self.spot_ij, self.spot_ij + shift_vectors, plot=plot)
-            shift_vectors = (np.matmul(affine["M"], self.spot_ij) + affine["b"]) - self.spot_ij
-
-        # Record the shift vector after we force_affine.
-        sv2 = self.spot_ij + shift_vectors
-
-        # Plot the above if desired.
-        if plot:
-            mask = analysis.take(
-                img,
-                self.spot_ij,
-                self.spot_integration_width_ij,
-                centered=True,
-                integrate=False,
-                return_mask=True,
-            )
-
-            plt.figure(figsize=(12, 12))
-            plt.imshow(img * mask)
-            plt.scatter(sv1[0, :], sv1[1, :], s=200, fc="none", ec="r")
-            plt.scatter(sv2[0, :], sv2[1, :], s=300, fc="none", ec="b")
-            plt.show()
-
-        # Handle the feedback applied from this refinement.
-        if basis is not None:
-            if basis == "kxy" or basis == "knm":
-                # Modify k-space targets. Don't modify any camera spots.
-                self.spot_kxy = self.spot_kxy - (
-                    self.cameraslm.ijcam_to_kxyslm(shift_vectors)
-                    - self.cameraslm.ijcam_to_kxyslm((0, 0))
-                )
-                self.spot_knm = toolbox.convert_vector(
-                    self.spot_kxy,
-                    to_units="kxy",
-                    from_units="knm",
-                    hardware=self.cameraslm.slm,
-                    shape=self.shape
-                )
-                self.set_target(reset_weights=True)
-            elif basis == "ij":
-                # Modify camera targets. Don't modify any k-vectors.
-                self.spot_ij = self.spot_ij + shift_vectors
-            else:
-                raise Exception("Unrecognized basis '{}'.".format(basis))
-
-        return shift_vectors

@@ -121,7 +121,7 @@ def take(
         If ``xp`` is :mod:`cupy`, then a ``cupy.ndarray`` is returned.
     """
     # Clean variables.
-    if isinstance(size, REAL_TYPES):
+    if np.isscalar(size):
         size = int(size)
         size = (size, size)
     else:
@@ -166,8 +166,12 @@ def take(
         pass  # Don't prevent out-of-range errors.
 
     if return_mask:
-        canvas = np.zeros(shape[:2], dtype=bool)
-        canvas[integration_y, integration_x] = True
+        if return_mask == 2:
+            canvas = np.full(images.shape, np.nan, dtype=float)
+            canvas[integration_y, integration_x] = images[integration_y, integration_x]
+        else:
+            canvas = np.zeros(shape[:2], dtype=bool)
+            canvas[integration_y, integration_x] = True
 
         if plot:
             plt.imshow(canvas)
@@ -236,6 +240,28 @@ def take_plot(images):
     plt.show()
 
 
+def take_tile(images, shape=None):
+    """
+    TODO
+
+    Parameters
+    ----------
+    images : numpy.ndarray
+        Stack of 2D images, usually a :meth:`take()` output.
+    """
+    (img_count, sy, sx) = np.shape(images)
+
+    # Parse shape.
+    if shape is None:
+        M = N = int(np.ceil(np.sqrt(img_count)))
+    else:
+        (M, N) = shape
+
+    result = np.empty((M*N, sy, sx), images.dtype)
+    result[:img_count, :, :] = images[:, :, :]
+
+    return result.reshape(M, N, sy, sx).transpose(0, 2, 1, 3).reshape(M*sy, N*sx)
+
 def image_remove_field(images, deviations=1, out=None):
     r"""
     Zeros the field of a stack of images such that moment calculations will succeed.
@@ -279,8 +305,8 @@ def image_remove_field(images, deviations=1, out=None):
     # Parse out.
     if out is None:
         out = np.copy(images)
-    elif out is not images:
-        out = np.copyto(out, images)
+    elif not (out is images):
+        np.copyto(out, images)
 
     # Make sure that we're testing 3D images.
     single_image = len(images.shape) == 2
@@ -296,16 +322,24 @@ def image_remove_field(images, deviations=1, out=None):
     else:   # Mean + deviations * std case
         threshold = (
             np.nanmean(images_, axis=(1, 2))
-            + deviations*np.nanstd(images_, axis=(1, 2))
+            + deviations * np.nanstd(images_, axis=(1, 2))
         )
     if not single_image:
         threshold = np.reshape(threshold, (img_count, 1, 1))
 
+    out_max = np.amax(out, axis=(1,2), keepdims=True)
+
     # Remove the field. This needs the float from before. Unsigned integer could underflow.
-    out -= threshold
+    out -= threshold.astype(out.dtype)
     out[out < 0] = 0
+    out[out > out_max - threshold] = 0
 
     return out
+
+
+def image_relative_strehl(images):
+    """TODO"""
+    return np.amax(images, axis=(1,2)) / np.sum(images, axis=(1,2))
 
 
 def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=True, nansum=False):
@@ -1638,6 +1672,7 @@ def blob_array_detect(
             # Calc centers of k most populated clusters.
             tag, count = np.unique(tags, return_counts=True)
             best_groups = np.argsort(-count)[:k]
+            count = count[best_groups]
 
             def mean_group(points):
                 len0 = np.sum(np.square(points[0, :]))
@@ -1651,6 +1686,23 @@ def blob_array_detect(
 
                 return final
 
+            centers = np.array([
+                mean_group(points[tags == tag[group]])
+                for group in best_groups
+            ])
+
+            # Weight by orthogonality to the first vector.
+            centers_norm = np.sum(np.square(centers), 0, keepdims=True)
+            centers /= centers_norm
+            cross_product = (
+                centers_norm[:, 0] * centers_norm[0, 1] - 
+                centers_norm[:, 1] * centers_norm[0, 0]
+            )
+            cross_product[0] = 2
+            count = count * (np.abs(cross_product) + 1)
+            
+            # Remake centers.
+            best_groups = np.argsort(-count)[:k]
             centers = np.array([
                 mean_group(points[tags == tag[group]])
                 for group in best_groups
@@ -1828,8 +1880,8 @@ def blob_array_detect(
         area = size[0] * size[1]
         perimeter = 2 * (size[0] + size[1]) + 4
 
-        mask[y_larger, x_larger] = -2*area
-        mask[y_array, x_array] = perimeter
+        mask[y_larger, x_larger] = -area/perimeter
+        mask[y_array, x_array] = 1
 
         mask = _make_8bit(mask)
 
@@ -1854,7 +1906,8 @@ def blob_array_detect(
                 )
                 match = img_8bit[cam_array_ind]
 
-                wmask = 0.1
+                # TODO: replace with take
+                wmask = 0.2
                 w = np.max([1, int(wmask * max_pitch)])
                 edge = np.arange(-w, w + 1)
 
@@ -1894,8 +1947,9 @@ def blob_array_detect(
                 rotation = np.array([[c, -s], [s, c]])
 
                 # Look for the second missing spot.
-                flip_parity = int(spotbooleans_rotated[-1, -2]) - int(
-                    spotbooleans_rotated[-2, -1]
+                flip_parity = (
+                    int(spotbooleans_rotated[-1, -2]) - 
+                    int(spotbooleans_rotated[-2, -1])
                 )
 
                 assert abs(flip_parity) == 1

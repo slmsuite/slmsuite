@@ -808,6 +808,22 @@ class Hologram(_HologramStats):
             else:
                 return self.phase + np.pi
 
+    def set_weights(self, new_weights):
+        self.weights = cp.array(
+            new_weights, 
+            dtype=self.dtype, 
+            copy=(False if np.__version__[0] == '1' else None)
+        )
+
+    def get_weights(self):
+        r"""
+        TODO
+        """
+        if cp != np:
+            return self.weights.get()
+        else:
+            return self.weights
+
     def get_farfield(self, shape=None, propagation_kernel=None, affine=None, get=True):
         r"""
         Collects the current complex DFT farfield, potentially with transformations.
@@ -1307,6 +1323,7 @@ class Hologram(_HologramStats):
             These are passed into :attr:`flags`. See options documented in the constructor.
         """
         # 1) Update flags based upon the arguments.
+        name = kwargs.pop("name", None)
         self._update_flags(method, verbose, feedback, stat_groups, **kwargs)
 
         # 2) Prepare the iterations iterable.
@@ -1314,7 +1331,7 @@ class Hologram(_HologramStats):
 
         # 2.1) Decide whether to use a tqdm progress bar. Don't use a bar for maxiter == 1.
         if verbose and maxiter > 1:
-            iterations = tqdm(iterations)
+            iterations = tqdm(iterations, desc=name)
 
         # 3) Switch between optimization methods (currently only GS- or WGS-type is supported).
         if "GS" in method:

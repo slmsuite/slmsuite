@@ -1,7 +1,7 @@
 """
 Connects to a camera on a remote :class:`~slmsuite.hardware.remote.Server`.
 """
-import warnings
+import warnings, time
 from slmsuite.hardware.cameras.camera import Camera
 from slmsuite.hardware.remote import _Client, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_TIMEOUT
 
@@ -31,7 +31,7 @@ class RemoteCamera(_Client, Camera):
 
         This client only (1) reads the camera's attributes on initialization and (2) forwards
         :meth:`._get_image_hw`, :meth:`._get_images_hw`,
-        :meth:`._set_exposure_hw`, :meth:`._get_exposure_hw` commands.
+        :meth:`._set_exposure_hw`, :meth:`._get_exposure_hw`, and :meth:`.flush` commands.
         Class attributes are not concurrent (not kept up-to-date).
         Any vendor-specific functionality beyond those allowed commands must be handled on
         the server, as a security precaution.
@@ -69,6 +69,12 @@ class RemoteCamera(_Client, Camera):
 
     ### Property Configuration ###
 
+    def flush(self):
+        """See :meth:`.Camera.flush`."""
+        return self._com(
+            command="flush",
+        )
+
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
         return self._com(
@@ -84,10 +90,13 @@ class RemoteCamera(_Client, Camera):
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""
-        return self._com(
+        t = time.perf_counter()
+        img = self._com(
             command="_get_image_hw",
             kwargs=dict(timeout_s=timeout_s)
         )
+        print(time.perf_counter()-t)
+        return img
 
     def _get_images_hw(self, image_count, timeout_s, out=None):
         """See :meth:`.Camera._get_images_hw`."""

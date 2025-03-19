@@ -3,6 +3,7 @@ Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class, which supports many webcams an
 """
 import numpy as np
 import cv2
+import time
 
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -62,9 +63,12 @@ class Webcam(Camera):
         id = f'{identifier}' if isinstance(identifier, str) else identifier
         if verbose: print(f"Webcam {id} initializing... ", end="")
         self.cam = cv2.VideoCapture(identifier, capture_api)
+        time.sleep(.5)
         if not self.cam.isOpened():
             raise RuntimeError(f"Failed to initialize webcam {id}")
 
+        time.sleep(.5)
+        
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
             (
@@ -77,8 +81,12 @@ class Webcam(Camera):
             **kwargs
         )
 
+        time.sleep(.5)
         self.backend = self.cam.getBackendName()
         self.set_auto_exposure(False)
+        time.sleep(.5)
+        self.set_exposure(self.get_exposure())
+        time.sleep(.5)
         if verbose: print("success")
 
     def close(self):
@@ -90,6 +98,20 @@ class Webcam(Camera):
     def info(verbose=True):
         """Not supported by :class:`Webcam`."""
         raise NotImplementedError()
+
+    def set_woi(self, woi=None):
+        if woi is not None:
+            self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, woi[1])
+            self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, woi[3])
+
+            self.shape = self.default_shape = (
+                int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH))
+            )
+
+            time.sleep(1)
+
+        return (0, self.shape[1], 0, self.shape[0])
 
     ### Property Configuration ###
 

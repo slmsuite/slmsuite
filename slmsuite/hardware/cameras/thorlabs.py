@@ -414,7 +414,7 @@ class ThorCam(Camera):
 
         return ret
 
-    def flush(self, timeout_s, verbose=False):
+    def flush(self, timeout_s=1, verbose=False):
         """
         See :meth:`.Camera.flush`.
 

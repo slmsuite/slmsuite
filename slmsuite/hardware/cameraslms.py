@@ -3583,7 +3583,7 @@ class FourierSLM(CameraSLM):
 
         # Plot the result
         if plot:
-            self.slm.plot_source()
+            self.slm.plot_source(source=wavefront_calibration)
 
         return wavefront_calibration
 

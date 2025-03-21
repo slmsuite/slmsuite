@@ -999,7 +999,7 @@ class SLM(_Picklable, ABC):
         else:
             return np.zeros(self.shape)
 
-    def plot_source(self, sim=False, power=False):
+    def plot_source(self, source=None, sim=False, power=False):
         """
         Plots measured or simulated amplitude and phase distribution
         of the SLM illumination. Also plots the rsquared goodness of fit value if available.
@@ -1017,23 +1017,24 @@ class SLM(_Picklable, ABC):
         matplotlib.pyplot.axis
             Axis handles for the generated plot.
         """
+        if source is None:
+            source = self.source
 
         # Check if proper source keywords are present
-        if sim and not np.all([k in self.source for k in ("amplitude_sim", "phase_sim")]):
+        if sim and not np.all([k in source for k in ("amplitude_sim", "phase_sim")]):
             raise RuntimeError("Simulated amplitude and/or phase keywords missing from slm.source!")
-        elif not sim and not np.all([k in self.source for k in ("amplitude", "phase")]):
+        elif not sim and not np.all([k in source for k in ("amplitude", "phase")]):
             raise RuntimeError(
                 "'amplitude' or 'phase' keywords missing from slm.source! Run "
                 ".wavefront_calibrate() or .set_source_analytic() to measure source profile."
             )
 
-        plot_r2 = not sim and "r2" in self.source
+        plot_r2 = not sim and "r2" in source
 
         _, axs = plt.subplots(1, 3 if plot_r2 else 2, figsize=(10, 6))
 
         im = axs[0].imshow(
-            # self._phase2gray(self.source["phase_sim" if sim else "phase"]),
-            np.mod(self.source["phase_sim" if sim else "phase"], 2*np.pi),
+            np.mod(source["phase_sim" if sim else "phase"], 2*np.pi),
             cmap=plt.get_cmap("twilight"),
             interpolation="none",
         )
@@ -1047,12 +1048,12 @@ class SLM(_Picklable, ABC):
 
         if power:
             im = axs[1].imshow(
-                np.square(self.source["amplitude_sim" if sim else "amplitude"]),
+                np.square(source["amplitude_sim" if sim else "amplitude"]),
                 clim=(0, 1)
             )
             axs[1].set_title("Simulated Source Power" if sim else "Source Power")
         else:
-            im = axs[1].imshow(self.source["amplitude_sim" if sim else "amplitude"], clim=(0, 1))
+            im = axs[1].imshow(source["amplitude_sim" if sim else "amplitude"], clim=(0, 1))
             axs[1].set_title("Simulated Source Amplitude" if sim else "Source Amplitude")
         axs[1].set_xlabel("SLM $x$ [pix]")
         axs[1].set_ylabel("SLM $y$ [pix]")
@@ -1062,7 +1063,7 @@ class SLM(_Picklable, ABC):
         plt.colorbar(im, cax=cax)
 
         if plot_r2:
-            im = axs[2].imshow(self.source["r2"], clim=(0, 1))
+            im = axs[2].imshow(source["r2"], clim=(0, 1))
             axs[2].set_title("Cal Fitting $R^2$")
             axs[2].set_xlabel("SLM $x$ [superpix]")
             axs[2].set_ylabel("SLM $y$ [superpix]")

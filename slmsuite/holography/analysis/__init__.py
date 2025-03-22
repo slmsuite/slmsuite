@@ -584,6 +584,11 @@ def image_positions(images, grid=None, normalize=True, nansum=False):
     )
 
 
+def image_centroids(images, grid=None, normalize=True, nansum=False):
+    """Alias for :meth:`image_positions()`"""
+    return image_centroids(images, grid, normalize, nansum)
+
+
 def image_variances(images, centers=None, grid=None, normalize=True, nansum=False, exclude_shear=False):
     r"""
     Computes the three second order central moments, equivalent to variance, for a stack
@@ -663,6 +668,11 @@ def image_variances(images, centers=None, grid=None, normalize=True, nansum=Fals
         m11 = image_moment(images, (1, 1), centers=centers, grid=grid, normalize=False, nansum=nansum)
 
         return np.vstack((m20, m02, m11))
+
+
+def image_std(images, centers=None, grid=None, normalize=True, nansum=False):
+    """Near-alias of :meth:`image_variances()`"""
+    return np.sqrt(image_variances(images, centers, grid, normalize, nansum, exclude_shear=True))
 
 
 def image_ellipticity(variances):

@@ -1,27 +1,29 @@
 """
 Hardware control for Meadowlark SLMs.
 
-Tested with:
-- Meadowlark P1920-400-800-HDMI-T.
-- Meadowlark HSPDM512-1064-PCIe8-ODP
-- Meadowlark HSP1920-1064-HSP8
+Meadowlark distributes several different interfaces for their products.
+The following versions are supported in slmsuite at Meadowlark's suggestion
+(contact Meadowlark to upgrade to one of these versions):
+
+.. csv-table:: Meadowlark Compatibility
+   :file: meadowlark.csv
+   :widths: 25,25,25,25
+   :header-rows: 1
 
 Note
 ~~~~
-Check that the Blink SDK, including DLL files etc, are in the default folder
-or otherwise pass the correct directory in the constructor.
+When multiple SDKs are installed, the most recent SDK is chosen by default.
+To choose otherwise, pass the path to the desired SDK.
 """
-
 import os
 import ctypes
 import warnings
 from enum import IntEnum
 from pathlib import Path
 import numpy as np
-from typing import Callable
-from slmsuite.hardware.slms.slm import SLM
-from functools import partial
 from platform import system
+
+from slmsuite.hardware.slms.slm import SLM
 
 #: str: Default location in which Meadowlark Optics software is installed
 _DEFAULT_MEADOWLARK_PATH = "C:\\Program Files\\Meadowlark Optics\\"
@@ -31,23 +33,23 @@ class _SDK_MODE(IntEnum):
     NULL = 0
     #: HDMI connection
     HDMI = 1
-    #: High-Speed PCIe connection (512x512 Models Only TODO)
-    PCIE_LEGACY = 2
     #: High-Speed PCIe connection
-    PCIE_MODERN = 3
+    PCIE_MODERN = 2
+    #: High-Speed PCIe connection
+    PCIE_LEGACY = 3
 
 _SDK_MODE_NAMES = [
     "NULL",
     "HDMI",
+    "PCIe",
     "PCIe (legacy)",
-    "PCIe"
 ]
 
 _SLM_LIB_TRACES = {
     _SDK_MODE.NULL : [],
     _SDK_MODE.HDMI : [(0, 2), (1, 2)],
-    _SDK_MODE.PCIE_LEGACY : [(8, 8)],
     _SDK_MODE.PCIE_MODERN : [(2, 3), (2, 6)],
+    _SDK_MODE.PCIE_LEGACY : [(8, 8)],
 }
 
 class Meadowlark(SLM):
@@ -81,11 +83,6 @@ class Meadowlark(SLM):
         r"""
         Initializes an instance of a Meadowlark SLM.
 
-        Caution
-        ~~~~~~~
-        :class:`.Meadowlark` defaults to 8 micron SLM pixel size.
-        This is valid for most Meadowlark models, but not true for all!
-
         Arguments
         ---------
         verbose : bool
@@ -113,7 +110,9 @@ class Meadowlark(SLM):
         wav_um : float
             Wavelength of operation in microns. Defaults to 1 um.
         pitch_um : (float, float) OR None
-            Pixel pitch in microns. Defaults to 8 micron square pixels.
+            Pixel pitch in microns.
+            If ``None`` and using a PCIe SLM, this is automatically detected from the SDK.
+            Otherwise, defaults to 8 micron square pixels.
         **kwargs
             See :meth:`.SLM.__init__` for permissible options.
         """
@@ -139,7 +138,7 @@ class Meadowlark(SLM):
         if verbose:
             print("success")
             print("Constructing Blink SDK...", end="")
-        
+
         # Locate the blink wrapper file in the sdk_path. If no sdk_path is provided,
         # search for the most recently installed SDK (if it exists)
         self.sdk_mode: _SDK_MODE = self._load_lib(sdk_path)
@@ -182,7 +181,7 @@ class Meadowlark(SLM):
         # Construct other variables.
         super().__init__(
             (
-                Meadowlark._get_width(self.sdk_mode, self.slm_number), 
+                Meadowlark._get_width(self.sdk_mode, self.slm_number),
                 Meadowlark._get_height(self.sdk_mode, self.slm_number)
             ),
             bitdepth=Meadowlark._get_bitdepth(self.sdk_mode, self.slm_number),
@@ -208,7 +207,7 @@ class Meadowlark(SLM):
         # If using a legacy SLM, it needs to be powered off
         if self.sdk_mode == _SDK_MODE.PCIE_LEGACY:
             Meadowlark._slm_lib[self.sdk_mode].SLM_power(ctypes.c_bool(False))
-            
+
         # Review: This feels hacky because it is. If you try to unload a DLL
         # by setting to None and calling garbage collector it will not work
         OS = system()
@@ -239,7 +238,7 @@ class Meadowlark(SLM):
 
     # General SDK inspection methods.
     @staticmethod
-    def info(verbose: bool = True, sdk_path=None) -> list[tuple[int, str]]:
+    def info(verbose: bool = True, sdk_path: str = None) -> list[tuple[int, str]]:
         """
         Discover all connected SLMs
 
@@ -247,6 +246,8 @@ class Meadowlark(SLM):
         ----------
         verbose : bool
             Whether to print the information.discovered
+        sdk_path : str
+            Path of the Blink SDK installation folder to explore.
 
         Returns
         -------
@@ -259,10 +260,10 @@ class Meadowlark(SLM):
             If multiple SLMs are not supported for this SDK
         """
         mode = Meadowlark._load_lib(sdk_path=sdk_path)
-        
+
         info = [
             (
-                board, 
+                board,
                 f"{Meadowlark._get_serial(mode, board)} "
                 f"({Meadowlark._get_width(mode, board)}"
                 f"x{Meadowlark._get_height(mode, board)})"
@@ -282,11 +283,11 @@ class Meadowlark(SLM):
         Returns
         -------
         str
-            The serial of the SLM. Returns ``"HDMI Meadowlark"`` if HDMI SLM.
+            The serial of the SLM. Returns ``"Meadowlark HDMI"`` if HDMI SLM.
         """
         sdk = Meadowlark._slm_lib[sdk_mode]
         if sdk_mode == _SDK_MODE.HDMI:
-            return "HDMI Meadowlark"
+            return "Meadowlark HDMI"
         elif (
             sdk_mode == _SDK_MODE.PCIE_LEGACY
             or sdk_mode == _SDK_MODE.PCIE_MODERN
@@ -294,7 +295,7 @@ class Meadowlark(SLM):
             return sdk.Read_Serial_Number(ctypes.c_int(slm_number))
         else:
             raise NotImplementedError("Serial retrieval not supported for this model")
-        
+
     @staticmethod
     def _get_width(sdk_mode: _SDK_MODE, slm_number: int) -> int:
         """
@@ -586,12 +587,12 @@ class Meadowlark(SLM):
                 mode, dll_path, trace = Meadowlark._parse_header(file, warn=True)
                 if mode:
                     cases.append((mode, dll_path, trace))
-        
+
         if len(cases) == 0:
             raise FileNotFoundError(
                 f"No Blink_C_wrapper.dll file found in '{sdk_path}'."
             )
-        
+
         mode, dll_path, trace = cases[0]
 
         # Check to see if we've already loaded this SDK.
@@ -660,7 +661,7 @@ class Meadowlark(SLM):
                 if not constructed_okay.value:
                     del Meadowlark._slm_lib[mode]
                     raise RuntimeError("SDK call failed.")
-                
+
                 Meadowlark._number_of_boards[mode] = number_of_boards.value
             elif mode == _SDK_MODE.PCIE_MODERN:
                 bitdepth = ctypes.c_uint(12)  # The new boards I have access to are 12-bit and
@@ -687,7 +688,7 @@ class Meadowlark(SLM):
                 if constructed_okay != ctypes.c_bool(True):
                     del Meadowlark._slm_lib[mode]
                     raise RuntimeError("SDK call failed.")
-                
+
                 Meadowlark._number_of_boards[mode] = number_of_boards.value
         except:
             raise ImportError("Failed to construct SDK.")
@@ -721,17 +722,17 @@ class Meadowlark(SLM):
                     break
 
             trace = tuple(trace)
-                
+
             for mode in _SDK_MODE:
                 if trace in _SLM_LIB_TRACES[mode]:
                     return mode, dll_path, trace
-                
+
             if warn:
                 warnings.warn(
                     f"Your SDK's header has (create, write) argument trace {trace}, which is not "
                     "recognized. Contact Meadowlark and slmsuite support to update your SDK version."
                 )
-                
+
             return _SDK_MODE.NULL, "", None
         elif dll_present:
             if warn:
@@ -760,6 +761,11 @@ class Meadowlark(SLM):
                 correspond to the LUT customized to an SLM, as Meadowlark sends such
                 files prefixed by ``"slm"`` such as ``"slm5758_at532.lut"``.
 
+        Returns
+        -------
+        str
+            The path which was used to load the LUT.
+
         Raises
         ------
         RuntimeError
@@ -767,10 +773,6 @@ class Meadowlark(SLM):
         FileNotFoundError
             If no .lut files are found in provided path or the specified file does not
             exist.
-        Returns
-        -------
-        str
-            The path which was used to load the LUT.
         """
         # REVIEW: To facilitate selection of the correct LUT in the case where
         #  multiple different SLMs are installed, use the dimensions of the SLM

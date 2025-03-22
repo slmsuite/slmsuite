@@ -1,0 +1,9 @@
+SDK,HDMI,PCIe,Legacy PCIe
+Connect to multiple SLMs via ``slm_number``,,✔,✔
+``get_coverglass_voltage()``,✔,✔,
+``get_temperature()``,✔,✔,
+Input Triggering,,✔,✔
+Output Triggering,hardware-specific,✔,✔
+Tested SLM models,P1920-400-800-HDMI-T,HSPDM1K-950-1300-PC8,"HSPDM512-1064-PCIe8-ODP, HSP1920-1064-HSP8, UHSDP1K"
+Supported resolutions,"1920 x 1152, 1920 x 1200",1024 x 1024,"1920 x 1152 (also 512 x 512, 1024 x 1024, contact Meadowlark)"
+Blink version,1.1.4.120,1.1.4.870,<=1.1.4.867

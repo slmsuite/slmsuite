@@ -34,6 +34,7 @@
 !docs/source/static/*.svg
 !docs/source/static/*.gif
 !docs/source/static/*.mp4
+!slmsuite/hardware/slms/meadowlark.csv
 
 # editor
 *.vscode

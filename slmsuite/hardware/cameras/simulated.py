@@ -2,8 +2,9 @@
 Simulated camera to image the simulated SLM.
 """
 
-import numpy as np
 import warnings
+
+import numpy as np
 
 try:
     import cupy as cp
@@ -15,8 +16,8 @@ except:
 import matplotlib.pyplot as plt
 
 from slmsuite.hardware.cameras.camera import Camera
-from slmsuite.holography.algorithms import Hologram
 from slmsuite.holography import toolbox
+from slmsuite.holography.algorithms import Hologram
 from slmsuite.misc.math import REAL_TYPES
 
 
@@ -77,8 +78,9 @@ class SimulatedCamera(Camera):
         ----------
         slm : ~slmsuite.hardware.slms.simulated.SimulatedSLM
             Simulated SLM creating the image.
-        resolution : (int, int)
+        resolution : (int, int) OR int
             See :attr:`resolution`. If ``None``, defaults to the resolution of ``slm``.
+            If positive ``int``, the resolution is multiplied by this factor.
         M, b : array_like
             Passed to :meth:`set_affine()`. Can be set later, but the camera cannot be
             used until then.
@@ -99,8 +101,11 @@ class SimulatedCamera(Camera):
         # Don't interpolate (slower) by default unless required.
         self._interpolate = False
 
+        # If resolution is a positive scalar, assume it is a scaling factor
         if resolution is None:
-            resolution = slm.shape[::-1]
+            resolution = 1
+        if type(resolution) is int and resolution > 0:
+            resolution = tuple(dim * resolution for dim in slm.shape[::-1])
         elif any([r != s for r, s in zip(resolution, slm.shape[::-1])]):
             self._interpolate = True
 

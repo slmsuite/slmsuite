@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from slmsuite.hardware.cameras.camera import Camera
 from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import Hologram
-from slmsuite.misc.math import REAL_TYPES
+from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 
 
 class SimulatedCamera(Camera):
@@ -104,8 +104,8 @@ class SimulatedCamera(Camera):
         # If resolution is a positive scalar, assume it is a scaling factor
         if resolution is None:
             resolution = 1
-        if type(resolution) is int and resolution > 0:
-            resolution = tuple(dim * resolution for dim in slm.shape[::-1])
+        if isinstance(resolution, INTEGER_TYPES):
+            resolution = Hologram.get_padded_shape(slm.shape, padding_order=resolution)[::-1]
         elif any([r != s for r, s in zip(resolution, slm.shape[::-1])]):
             self._interpolate = True
 

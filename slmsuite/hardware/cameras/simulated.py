@@ -126,6 +126,8 @@ class SimulatedCamera(Camera):
         if M is not None and b is not None:
             self.set_affine(M, b)
 
+        self.set_woi(None)
+
     def set_affine(self, M=None, b=None, **kwargs):
         """
         Set the camera's placement in the SLM's k-space. ``M`` and/or ``b``, if provided,
@@ -411,7 +413,32 @@ class SimulatedCamera(Camera):
         # Truncate to maximum readout value
         img[img > self.bitresolution-1] = self.bitresolution-1
 
+        # Crop to maximum window of interest
+        if self.woi is not None:
+            x, width, y, height = self.woi
+            img = img[y:height, x:width]
+
         # Quantize: all power in one pixel (img=1) -> maximum readout value at base exposure=1
         # img = np.rint(img)
 
         return img.astype(self.dtype)
+
+    def set_woi(self, woi=None):
+        """
+        Sets the imaging region to a 'window of interest' to simulate
+        a limited field of view of the imaging plane.
+
+        Parameters
+        ----------
+        woi : list, None
+            See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
+            If ``None``, defaults to largest possible.
+
+        Returns
+        ----------
+        woi : list
+            :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
+        """
+        self.woi = woi
+
+        return woi

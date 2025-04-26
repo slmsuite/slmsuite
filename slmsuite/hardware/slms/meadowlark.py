@@ -579,12 +579,12 @@ class Meadowlark(SLM):
 
         # Locate the Meadowlark SDK. If there are multiple, default to the
         # most recent one.
-        files = Path(sdk_path).rglob("*Blink_C_Wrapper*dll")
-        files.sort(key=os.path.getctime)
+        files = list(Path(sdk_path).rglob("*Blink_C_Wrapper*dll"))
+        files.sort(key=os.path.getmtime, reverse=True)
         cases = []
         for file in files:
             if not ("Cal Kit" in str(file)):
-                mode, dll_path, trace = Meadowlark._parse_header(file, warn=True)
+                mode, dll_path, trace = Meadowlark._parse_header(file.parents[0], warn=True)
                 if mode:
                     cases.append((mode, dll_path, trace))
 
@@ -693,6 +693,8 @@ class Meadowlark(SLM):
         except:
             raise ImportError("Failed to construct SDK.")
 
+        return mode
+
     @staticmethod
     def _parse_header(file: str, warn: bool = False) -> tuple[_SDK_MODE, str, tuple[int, int]]:
         """Checks if a path has an appropriate header"""
@@ -702,12 +704,13 @@ class Meadowlark(SLM):
         header_present = os.path.isfile(header_path)
 
         if header_present and dll_present:
-            with open(file, "r") as f:
+            with open(header_path, "r") as f:
                 data = f.read()
 
             trace = []
 
             for name in ["Create_SDK(", "Write_image("]:
+                # noinspection PyBroadException
                 try:
                     index = data.find(name)
                     split1 = data[index:].split("(")[1]
@@ -777,8 +780,10 @@ class Meadowlark(SLM):
         # REVIEW: To facilitate selection of the correct LUT in the case where
         #  multiple different SLMs are installed, use the dimensions of the SLM
         #  to narrow down the search.
-        slm_dims = (self.shape[1], self.shape[0])
-
+        slm_dims = (self.shape[0], self.shape[1]) if hasattr(self, "shape") else(
+            Meadowlark._get_width(self.sdk_mode, self.slm_number),
+            Meadowlark._get_height(self.sdk_mode, self.slm_number),
+        )
         # None, default to the SDK path. Use parent since SDK path has
         # 'Blink_C_Wrapper.dll' appended
         if lut_path is None:

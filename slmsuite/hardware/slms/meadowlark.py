@@ -45,6 +45,9 @@ _SDK_MODE_NAMES = [
     "PCIe (legacy)",
 ]
 
+# To figure out which SDK is present, we parse the C header and determine the number of
+# arguments if the traces for creating the SDK and writing an image. The allowed
+# signatures (number of arguments) are defined here.
 _SLM_LIB_TRACES = {
     _SDK_MODE.NULL : [],
     _SDK_MODE.HDMI : [(0, 2), (1, 2)],
@@ -66,7 +69,7 @@ class Meadowlark(SLM):
 
     # Class attribute that loads each type of SDK library *once* per .dll for all class instances.
     _slm_lib = {}           # _SDK_Mode : ctypes.cdll
-    _slm_lib_trace = {}     # _SDK_Mode : (int, int)
+    _slm_lib_trace = {}     # _SDK_Mode : (int, int)    # See documentation for _SLM_LIB_TRACES
     _sdk_path = {}          # _SDK_Mode : str
     _number_of_boards = {}  # _SDK_Mode : int
 
@@ -518,6 +521,7 @@ class Meadowlark(SLM):
             output_pulse_image_refresh = ctypes.c_bool(False)
             trigger_timeout = ctypes.c_uint(5000)
 
+            # Switch between the different supported cases for number of Write_image arguments:
             if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
                 Meadowlark._slm_lib[self.sdk_mode].Write_image(
                     slm_number,

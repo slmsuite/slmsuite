@@ -197,7 +197,7 @@ def take(
             return xp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
-def take_plot(images):
+def take_plot(images, shape=None, separate_axes=False):
     """
     Plots non-integrated results of :meth:`.take()` in a square array of subplots.
 
@@ -205,35 +205,85 @@ def take_plot(images):
     ----------
     images : numpy.ndarray
         Stack of 2D images, usually a :meth:`take()` output.
+    shape : (int, int) or None
+        TODO
+    separate_axes : bool
+        TODO
     """
     # Gather helper variables and set the min and max of all the subplots.
     (img_count, sy, sx) = np.shape(images)
-    M = int(np.ceil(np.sqrt(img_count)))
 
-    sx = sx / 2.0 - 0.5
-    sy = sy / 2.0 - 0.5
-    extent = (-sx, sx, -sy, sy)
+    if separate_axes:
+        img_count, (M, N) = _take_parse_shape(images, shape)
 
-    vmin = np.nanmin(images)
-    vmax = np.nanmax(images)
+        sx = sx / 2.0 - 0.5
+        sy = sy / 2.0 - 0.5
+        extent = (-sx, sx, -sy, sy)
 
-    # Make the figure and subplots.
-    plt.figure(figsize=(12, 12))
+        vmin = np.nanmin(images)
+        vmax = np.nanmax(images)
 
-    for x in range(img_count):
-        ax = plt.subplot(M, M, x + 1)
+        # Make the figure and subplots.
+        plt.figure(figsize=(12, 12))
 
-        ax.imshow(
-            images[x, :, :],
-            vmin=vmin,
-            vmax=vmax,
-            extent=extent,
+        for x in range(img_count):
+            ax = plt.subplot(M, M, x + 1)
+
+            ax.imshow(
+                images[x, :, :],
+                vmin=vmin,
+                vmax=vmax,
+                extent=extent,
+                interpolation='none'
+            )
+            ax.axes.xaxis.set_visible(False)
+            ax.axes.yaxis.set_visible(False)
+    else:
+        plt.imshow(
+            take_tile(images, shape),
             interpolation='none'
         )
-        ax.axes.xaxis.set_visible(False)
-        ax.axes.yaxis.set_visible(False)
+        # ax.axes.xaxis.set_visible(False)
+        # ax.axes.yaxis.set_visible(False)
 
-    plt.show()
+
+def _take_parse_shape(images, shape=None):
+    """
+    Parses the shape of the images and returns the number of images and the shape.
+    """
+    (img_count, _, _) = np.shape(images)
+
+    # Parse shape.
+    if shape is None:
+        M = N = int(np.ceil(np.sqrt(img_count)))
+    else:
+        (M, N) = shape
+
+    if M*N < img_count:
+        warnings.warn("Not enough space to fit all images.")
+        img_count = M*N
+
+    return img_count, (M, N)
+
+
+def take_tile(images, shape=None):
+    """
+    TODO
+
+    Parameters
+    ----------
+    images : numpy.ndarray
+        Stack of 2D images, usually a :meth:`take()` output.
+    shape : (int, int) or None
+        TODO
+    """
+    (img_count, sy, sx) = np.shape(images)
+    img_count, (M, N) = _take_parse_shape(images, shape)
+
+    result = np.empty((M*N, sy, sx), images.dtype)
+    result[:img_count, :, :] = images[:, :, :]
+
+    return result.reshape(M, N, sy, sx).transpose(0, 2, 1, 3).reshape(M*sy, N*sx)
 
 
 def image_remove_field(images, deviations=1, out=None):
@@ -306,6 +356,11 @@ def image_remove_field(images, deviations=1, out=None):
     out[out < 0] = 0
 
     return out
+
+
+def image_relative_strehl(images):
+    """TODO"""
+    return np.amax(images, axis=(1,2)) / np.sum(images, axis=(1,2))
 
 
 def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=True, nansum=False):

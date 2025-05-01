@@ -4,12 +4,12 @@
 // #include <math.h>
 
 // Max basis size in register memory.
-//   Our pixel-wise kernels sometimes require a basis of polynomials, 
+//   Our pixel-wise kernels sometimes require a basis of polynomials,
 //   where the polynomial is computed for the coordinates of the given pixel and
 //   stored in the basis. Every CUDA thread has 255 32-bit (sizeof int, float) registers,
 //   so this limits the size of the basis that can be stored. We choose to limit the size
 //   to BASIS_SIZE, leaving the other register to be used for local loop/etc variables.
-//   As far as I understand, the time to allocate static register memory does not depend on 
+//   As far as I understand, the time to allocate static register memory does not depend on
 //   array size, so having a large default basis is costless.
 #define BASIS_SIZE 15
 
@@ -135,7 +135,7 @@ extern "C" __global__ void compressed_nearfield2farfield(
 }
 
 // Version 2 compressed kernel
-// 
+//
 extern "C" __device__ __forceinline__ void populate_basis(
     float x,
     float y,
@@ -152,7 +152,7 @@ extern "C" __device__ __forceinline__ void populate_basis(
 
     // Initialize to zero (very important!)
     for (d = 0; d < D; d++) {
-        basis[d] = 0;
+        basis[d] = 0.0f;
     }
 
     // Loop through all the monomial terms, adding them to the basis where needed.
@@ -161,12 +161,14 @@ extern "C" __device__ __forceinline__ void populate_basis(
         ny = pxy_m[i+M];
 
         if (nx < 0) {   // Special indices
-            if (nx == -1) {
-                // Vortex phase plate case
-                monomial = -atan2(x, y);
-            } else {
-                monomial = 0;
-            }
+            // if (nx == -1) {
+            //     // Vortex phase plate case
+            //     monomial = -atan2(x, y);
+            // } else {
+            //     monomial = 0.0f;
+            // }
+
+            monomial = 0.0f
 
             // Force reset next iteration.
             nx0 = ny0 = M;
@@ -191,16 +193,8 @@ extern "C" __device__ __forceinline__ void populate_basis(
         }
 
         // Now we need to add this monomial to all relevant basis states
-        j = 0;
-        stride = i*D;       // Only mulitply once and find the starting point.
-        d = i_md[stride];   // Get the first term to add.
-        while (d >= 0) {    // d == -1 indicates no further terms to add.
-            // Add the monomial to the result.
-            basis[d] += c_md[stride + d] * monomial;
-
-            // Determine if there's another basis state which needs this monomial
-            j++;
-            d = i_md[stride + j];   // Keep checking until we find a -1.
+        for (d = 0; d < D; d++) {
+            basis[d] += c_md[i * D + d] * monomial;
         }
     }
 }
@@ -224,7 +218,7 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
 ) {
     // nf is the index of the pixel in the nearfield.
     int nf = blockDim.x * blockIdx.x + threadIdx.x;
-    
+
     // Local variables.
     complex<float> result = 0;
     float exponent = 0;
@@ -240,7 +234,7 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
     populate_basis(
         dx * (float)((nf % W) - cx),
         dy * (float)((nf / W) - cy),
-        D, M, 
+        D, M,
         c_md, i_md, pxy_m,
         basis
     );
@@ -260,7 +254,7 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
 
     // Export the result to global memory.
     if (nf < W*H) {
-        // nearfield[nf] = result; // 
+        // nearfield[nf] = result; //
         nearfield[nf] = complex<float>(dx * (float)((nf % W) - cx), dy * (float)((nf / W) - cy)); // result;
     }
 }
@@ -313,7 +307,7 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
     // Iterate through farfield points. Use our basis to find the results.
     for (i = 0; i < N; i++) {
         exponent = 0;
-        
+
         // Loop over basis indices.
         k = i*N;
         for (d = 0; d < D; d++) {
@@ -343,8 +337,8 @@ extern "C" __global__ void compressed_nearfield2farfield_v2(
             warp_reduce(sdata, tid);
 
             // Save the summed results to global memory.
-            if (tid == 0) { 
-                farfield_intermediate[blockIdx.x + i * gridDim.x] = sdata[0]; 
+            if (tid == 0) {
+                farfield_intermediate[blockIdx.x + i * gridDim.x] = sdata[0];
             }
         }
     }
@@ -371,7 +365,7 @@ extern "C" __global__ void zernike_test(
         populate_basis(
             X[nf],
             Y[nf],
-            D, M, 
+            D, M,
             c_md, i_md, pxy_m,
             basis
         );

@@ -668,30 +668,16 @@ class Meadowlark(SLM):
 
                 Meadowlark._number_of_boards[mode] = number_of_boards.value
             elif mode == _SDK_MODE.PCIE_MODERN:
-                bitdepth = ctypes.c_uint(12)  # The new boards I have access to are 12-bit and
-                # my copies of the SDK Manuals have 12-bit for all but the 512x512 boards.
                 number_of_boards = ctypes.c_uint(0)
-                constructed_okay = ctypes.c_bool(False)
-                is_nematic_type = ctypes.c_bool(False)
-                ram_write_enable = ctypes.c_bool(True)
-                # Only for ODP or for Meadowlark's ImageGen software to make images
-                use_gpu = ctypes.c_bool(False)
-                max_transients = ctypes.c_uint(10)  # Only for ODP; leaving at default '10'
-                regional_lut = ctypes.c_int(0)  # Only for ODP; leaving at default 'NULL'
+                constructed_okay = ctypes.c_int(-1)
 
                 Meadowlark._slm_lib[mode].Create_SDK(
-                    bitdepth,
                     ctypes.byref(number_of_boards),
                     ctypes.byref(constructed_okay),
-                    is_nematic_type,
-                    ram_write_enable,
-                    use_gpu,
-                    max_transients,
-                    regional_lut,
                 )
-                if constructed_okay != ctypes.c_bool(True):
-                    del Meadowlark._slm_lib[mode]
-                    raise RuntimeError("SDK call failed.")
+                if not constructed_okay.value:
+                     del Meadowlark._slm_lib[mode]
+                     raise RuntimeError("SDK call failed.")
 
                 Meadowlark._number_of_boards[mode] = number_of_boards.value
         except:
@@ -817,8 +803,8 @@ class Meadowlark(SLM):
                 success = Meadowlark._slm_lib[self.sdk_mode].Load_LUT_file(
                     ctypes.c_int(self.slm_number), lut_path.encode("utf-8")
                 )
-                if success != 0:
-                    raise RuntimeError("Call to load LUT failed.")
+                if success != 1:
+                    warnings.warn(f"Failed to load LUT file: '{lut_path}'")
             else:
                 raise RuntimeError("Failed to load LUT file due to unknown SDK mode")
         except RuntimeError as exc:

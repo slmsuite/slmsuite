@@ -12,6 +12,7 @@ For example, the following code loads a UC480 camera:
     icam = UC480Camera()
 
     # Wrap the camera with the slmsuite-compatible class.
+    from slmsuite.hardware.cameras.instrumental import Instrumental
     cam = Instrumental(icam)
 
 Note
@@ -67,6 +68,7 @@ class Instrumental(Camera):
                 icam = UC480Camera()
 
                 # Wrap the camera with the slmsuite-compatible class.
+                from slmsuite.hardware.cameras.instrumental import Instrumental
                 cam = Instrumental(icam)
 
         pitch_um : (float, float) OR None

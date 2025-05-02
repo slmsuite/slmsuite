@@ -14,6 +14,7 @@ For example, the following code loads a UC480 camera:
     pll_cam = uc480.UC480Camera()
 
     # Wrap the camera with the slmsuite-compatible class.
+    from slmsuite.hardware.cameras.pylablib import PyLabLib
     cam = PyLabLib(pll_cam)
 
 Note
@@ -60,6 +61,7 @@ class PyLabLib(Camera):
                 pll_cam = uc480.UC480Camera()
 
                 # Wrap the camera with the slmsuite-compatible class.
+                from slmsuite.hardware.cameras.pylablib import PyLabLib
                 cam = PyLabLib(pll_cam)
 
         pitch_um : (float, float) OR None

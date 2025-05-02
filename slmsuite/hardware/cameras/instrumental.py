@@ -3,6 +3,16 @@ Light wrapper for the :mod:`instrumental-lib` package.
 The :mod:`instrumental` module must be
 `installed <https://instrumental-lib.readthedocs.io/en/stable/install.html>`_.
 ``pip install instrumental-lib``.
+For example, the following code loads a UC480 camera:
+
+.. highlight:: python
+.. code-block:: python
+    # Load a legacy Thorlabs camera using the UC480 driver.
+    from instrumental.drivers.cameras.uc480 import UC480Camera
+    icam = UC480Camera()
+
+    # Wrap the camera with the slmsuite-compatible class.
+    cam = Instrumental(icam)
 
 Note
 ~~~~
@@ -48,6 +58,17 @@ class Instrumental(Camera):
             If a ``ParamSet`` is provided, the camera is constructed.
             If ``None``, the first instrument in ``instrumental.list_instruments()`` is used,
             with errors or warnings if there are many or no instruments available.
+            For example, the following code loads constructed camera:
+
+            .. highlight:: python
+            .. code-block:: python
+                # Load a legacy Thorlabs camera using the UC480 driver.
+                from instrumental.drivers.cameras.uc480 import UC480Camera
+                icam = UC480Camera()
+
+                # Wrap the camera with the slmsuite-compatible class.
+                cam = Instrumental(icam)
+
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
             to use additional calibrations.

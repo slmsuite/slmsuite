@@ -9,11 +9,11 @@ For example, the following code loads a UC480 camera:
 .. code-block:: python
     # Load a legacy Thorlabs camera using the UC480 driver.
     from instrumental.drivers.cameras.uc480 import UC480Camera
-    icam = UC480Camera()
+    i_cam = UC480Camera()
 
     # Wrap the camera with the slmsuite-compatible class.
     from slmsuite.hardware.cameras.instrumental import Instrumental
-    cam = Instrumental(icam)
+    cam = Instrumental(i_cam)
 
 Note
 ~~~~
@@ -65,11 +65,11 @@ class Instrumental(Camera):
             .. code-block:: python
                 # Load a legacy Thorlabs camera using the UC480 driver.
                 from instrumental.drivers.cameras.uc480 import UC480Camera
-                icam = UC480Camera()
+                i_cam = UC480Camera()
 
                 # Wrap the camera with the slmsuite-compatible class.
                 from slmsuite.hardware.cameras.instrumental import Instrumental
-                cam = Instrumental(icam)
+                cam = Instrumental(i_cam)
 
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form

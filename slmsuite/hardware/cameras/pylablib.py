@@ -10,8 +10,8 @@ For example, the following code loads a UC480 camera:
     # Load a legacy Thorlabs camera using the UC480 driver.
     import pylablib as pll
     pll.par["devices/dlls/uc480"] = "path/to/uc480/dlls"
-    from pylablib.devices import uc480
-    pll_cam = uc480.UC480Camera()
+    from pylablib.devices.uc480 import UC480Camera
+    pll_cam = UC480Camera()
 
     # Wrap the camera with the slmsuite-compatible class.
     from slmsuite.hardware.cameras.pylablib import PyLabLib
@@ -57,8 +57,8 @@ class PyLabLib(Camera):
                 # Load a legacy Thorlabs camera using the UC480 driver.
                 import pylablib as pll
                 pll.par["devices/dlls/uc480"] = "path/to/uc480/dlls"
-                from pylablib.devices import uc480
-                pll_cam = uc480.UC480Camera()
+                from pylablib.devices.uc480 import UC480Camera
+                pll_cam = UC480Camera()
 
                 # Wrap the camera with the slmsuite-compatible class.
                 from slmsuite.hardware.cameras.pylablib import PyLabLib

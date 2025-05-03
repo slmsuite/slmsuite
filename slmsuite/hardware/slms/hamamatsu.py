@@ -1,12 +1,12 @@
 """
-Hardware control for Hamamatsu SLMs in USB/Trigger mode.
+**(Untested)** Hardware control for Hamamatsu SLMs in USB/Trigger mode.
 For DVI mode, preset the SLM to DVI mode externally and use
 :class:`slmsuite.hardware.slms.screenmirrored.ScreenMirrored`
 to project information onto the appropriate screen.
 Tested with Hamamatsu LCOS-SLM X15213-02.
 
-Note
-~~~~
+Important
+~~~~~~~~~
 :class:`.Hamamatsu` requires dynamically linked libraries from Hamamatsu to be present in the
 runtime directory:
 
@@ -22,24 +22,14 @@ Consider loading these files via :meth:`.SLM.load_vendor_phase_correction()`
 
 Note
 ~~~~
-In some methods there is the argument 'slot_number'. This is always set to zero
-and is referred to the number of the frame memory slot of the memory device.
+We does not currently support reading/writing data to the microSD card.
 """
-import sys, os
+import os
 import warnings
 from ctypes import *
-import copy
-import time
 
 import numpy as np
-from PIL import Image
-import matplotlib.pyplot as plt
-
-from slmsuite.holography import toolbox
-from slmsuite.holography import analysis
-from slmsuite.misc.math import INTEGER_TYPES
 from slmsuite.hardware.slms.slm import SLM
-
 
 try:
     _libname = "hpkSLMdaLV.dll"
@@ -60,7 +50,6 @@ except Exception as e:
         "Original error: {}".format(e)
     )
     Lcoslib = None
-
 
 class Hamamatsu(SLM):
     r"""
@@ -96,13 +85,13 @@ class Hamamatsu(SLM):
         pitch_um : (float, float)
             Pixel pitch in microns. Defaults to 12.5 micron square pixels.
 
-        Important
-        ~~~~~~~~~
+        Caution
+        ~~~~~~~
         This interface currently supports connecting to only one device.
 
-        Note
-        ~~~~
-        The default values of the parameters (``resolution``, ``pitch_um``)
+        Caution
+        ~~~~~~~
+        The default values of ``resolution`` and ``pitch_um``
         are relative to the model LCOS-SLM X15213-02.
         """
         # Search for one device.
@@ -143,7 +132,7 @@ class Hamamatsu(SLM):
                 self._Mode_Select(board_id=self.board_id, mode=1)
 
                 if verbose: print("rebooting...", end="")
-                self._reboot(board_id=self.board_id)
+                self._Reboot(board_id=self.board_id)
             elif mode == 1:
                 if verbose: print("found USB mode...", end="")
             else:
@@ -192,6 +181,18 @@ class Hamamatsu(SLM):
             raise RuntimeError("Failed to write to Hamamatsu SLM.")
 
         # TODO: is this necessary to call every frame?
+        self._Change_DispSlot(slot_number)
+
+    def set_slot_number(self, slot_number=0):
+        r"""
+        Switches the displayed pattern to the one in the specified slot number, from the
+        frame memory. This function may be deprecated in the future.
+
+        Parameters
+        ----------
+        slot_number : int
+            The number of the frame memory slot. The default value is 0.
+        """
         self._Change_DispSlot(slot_number)
 
     def get_display(self):
@@ -268,7 +269,7 @@ class Hamamatsu(SLM):
         return int(mode)
 
     @staticmethod
-    def _reboot(board_id):
+    def _Reboot(board_id):
         r"""
         Allows to restart the controller board.
         """

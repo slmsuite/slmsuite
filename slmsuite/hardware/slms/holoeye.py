@@ -89,18 +89,18 @@ class Holoeye(SLM):
         # Connect and open the SLM
         if verbose: print("Opening SLM ...", end="")
         self.preselect = preselect
-        self.slm = HEDS.SLM.Init(preselect=self.preselect)
-        self._handle_error(self.slm.errorCode())
+        self.slm_lib = HEDS.SLM.Init(preselect=self.preselect)
+        self._handle_error(self.slm_lib.errorCode())
         if verbose: print("success")
 
         # Set the SLM's operating wavelength (wav_um) in nm.
-        error = self.slm.setWavelength(wav_um * 1000)
+        error = self.slm_lib.setWavelength(wav_um * 1000)
         self._handle_error(error)
 
         # Check the SLM's parameters.
-        pitch_um = (self.slm.pixelsize_um(), self.slm.pixelsize_um())
-        width = self.slm.width_px()
-        height = self.slm.height_px()
+        pitch_um = (self.slm_lib.pixelsize_um(), self.slm_lib.pixelsize_um())
+        width = self.slm_lib.width_px()
+        height = self.slm_lib.height_px()
 
         # Instantiate the superclass
         super().__init__(
@@ -130,7 +130,7 @@ class Holoeye(SLM):
             If the error code is not HEDSERR_NoError.
         """
         if error != heds_types.HEDSERR_NoError:
-            raise RuntimeError(HEDS.SDK.ErrorString(self.slm.errorCode()))
+            raise RuntimeError(HEDS.SDK.ErrorString(self.slm_lib.errorCode()))
 
     @staticmethod
     def info(verbose=True):
@@ -153,7 +153,7 @@ class Holoeye(SLM):
         """
         See :meth:`.SLM.close`.
         """
-        error = self.slm.window().close()
+        error = self.slm_lib.window().close()
         self._handle_error(error)
 
     def _set_phase_hw(self, phase):
@@ -164,7 +164,7 @@ class Holoeye(SLM):
         :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
         """
         #2*pi is the standard phase assumed by Holoeye. The package slmsuite passes 8-bit greyscale to set_phase_hw
-        error = self.slm.showPhaseData(phase, phase_unit=256)
+        error = self.slm_lib.showPhaseData(phase, phase_unit=256)
         self._handle_error(error)
 
     def load_vendor_phase_correction(self, file_path):
@@ -180,12 +180,12 @@ class Holoeye(SLM):
             File path for the vendor-provided phase correction.
         """
         # Enable wavefront compensation visualization in SLM preview window and stay with SLM preview scale "Fit"
-        error = self.slm.preview().setSettings(
+        error = self.slm_lib.preview().setSettings(
             flags=heds_types.HEDSSLMPF_ShowWavefrontCompensation,
             zoom=0.0
         )
         self._handle_error(error)
 
         # Load the wavefront compensation file
-        error = self.slm.window().loadWavefrontCompensationFile(str(file_path))
+        error = self.slm_lib.window().loadWavefrontCompensationFile(str(file_path))
         self._handle_error(error)

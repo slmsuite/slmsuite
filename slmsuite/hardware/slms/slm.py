@@ -351,6 +351,7 @@ class SLM(_Picklable):
         phase,
         phase_correct=True,
         settle=False,
+        **kwargs,
     ):
         "Backwards-compatibility alias for :meth:`set_phase()`."
         warnings.warn(
@@ -358,7 +359,7 @@ class SLM(_Picklable):
             "in favor of SLM.set_phase in a future release."
         )
 
-        self.set_phase(phase, phase_correct, settle)
+        self.set_phase(phase, phase_correct, settle, **kwargs)
 
     def _set_phase_hw(self, phase):
         """
@@ -377,6 +378,7 @@ class SLM(_Picklable):
         phase,
         phase_correct=True,
         settle=False,
+        **kwargs
     ):
         r"""
         Checks, cleans, and adds to data, then sends the data to the SLM and
@@ -466,6 +468,8 @@ class SLM(_Picklable):
             Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]`` to ``phase``.
         settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
+        **kwargs
+            Passed to the SLM in case the subclass needs to do something special.
 
         Returns
         -------
@@ -544,7 +548,7 @@ class SLM(_Picklable):
                 self.display = self._phase2gray(self.phase, out=self.display)
 
         # Write!
-        self._set_phase_hw(self.display)
+        self._set_phase_hw(self.display, **kwargs)
 
         # Optional delay.
         if settle:

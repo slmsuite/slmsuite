@@ -208,7 +208,7 @@ class SLM(_Picklable):
     @staticmethod
     def info(verbose=True):
         """
-        Abstract method to load display information.
+        Abstract method to load display information. Unsupported by this SLM.
 
         Parameters
         ----------

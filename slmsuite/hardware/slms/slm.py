@@ -735,7 +735,7 @@ class SLM(_Picklable):
         """
         In the absence of a proper wavefront calibration, sets
         :attr:`~slmsuite.hardware.slms.slm.SLM.source` amplitude and phase using a
-        `fit_function` from :mod:`~slmsuite.misc.fitfunctions`.
+        ``fit_function`` from :mod:`~slmsuite.holography.analysis.fitfunctions`.
 
         Note
         ~~~~

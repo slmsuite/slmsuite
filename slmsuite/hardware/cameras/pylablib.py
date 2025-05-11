@@ -3,6 +3,19 @@ Light wrapper for the :mod:`pylablib` package.
 See the supported `cameras
 <https://pylablib.readthedocs.io/en/stable/devices/cameras_root.html>`_.
 :mod:`pylablib` must be installed ``pip install pylablib``.
+For example, the following code loads a UC480 camera:
+
+.. highlight:: python
+.. code-block:: python
+    # Load a legacy Thorlabs camera using the UC480 driver.
+    import pylablib as pll
+    pll.par["devices/dlls/uc480"] = "path/to/uc480/dlls"
+    from pylablib.devices.uc480 import UC480Camera
+    pll_cam = UC480Camera()
+
+    # Wrap the camera with the slmsuite-compatible class.
+    from slmsuite.hardware.cameras.pylablib import PyLabLib
+    cam = PyLabLib(pll_cam)
 
 Note
 ~~~~
@@ -25,10 +38,6 @@ class PyLabLib(Camera):
     ----------
     cam : pylablib.devices.interface.camera.ICamera
         Object to talk with the desired camera.
-    exposure_s : float
-        Instrumental doesn't save exposure. It sets the exposure at each
-        :meth:`get_image`. This variable stores the desired exposure.
-        Defaults to .001 (1 ms).
     """
 
     ### Initialization and termination ###
@@ -41,7 +50,20 @@ class PyLabLib(Camera):
         ----------
         cam : pylablib.devices.interface.camera.Camera
             This class is just a wrapper for :mod:`pylablib`, so the user must pass a
-            constructed :mod:`pylablib` camera.
+            constructed :mod:`pylablib` camera. For example:
+
+            .. highlight:: python
+            .. code-block:: python
+                # Load a legacy Thorlabs camera using the UC480 driver.
+                import pylablib as pll
+                pll.par["devices/dlls/uc480"] = "path/to/uc480/dlls"
+                from pylablib.devices.uc480 import UC480Camera
+                pll_cam = UC480Camera()
+
+                # Wrap the camera with the slmsuite-compatible class.
+                from slmsuite.hardware.cameras.pylablib import PyLabLib
+                cam = PyLabLib(pll_cam)
+
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
             to use additional calibrations.
@@ -62,15 +84,13 @@ class PyLabLib(Camera):
             raise ValueError(
                 "A subclass of pylablib.devices.interface.camera.Camera must be passed as cam."
             )
-        # info = cam.get_full_info()
-        # if verbose: print(info)
 
         # Create a name for the camera, defaulting to kwargs.
         name = ""
         di = cam.get_device_info()
         info_counter = 1
         for info in di:
-            if isinstance(info, str):
+            if isinstance(info, str):   # This will usually catch the mode name and serial number.
                 name += info + "_"
                 info_counter += 1
 
@@ -79,7 +99,7 @@ class PyLabLib(Camera):
         name = name.strip("_")
         if len(name) == 0:
             name = "pylablibcamera"
-        name = kwargs.pop("name", name) # info["device_info"].model + "_" + info["device_info"].serial_number)
+        name = kwargs.pop("name", name)
 
         if verbose: print(f"Cam {name} parsing... ", end="")
         height, width = cam.get_data_dimensions()

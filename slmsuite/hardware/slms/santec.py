@@ -71,7 +71,7 @@ class Santec(SLM):
         Initializes an instance of a Santec SLM.
 
         Arguments
-        ------
+        ---------
         slm_number
             See :attr:`slm_number`.
         display_number

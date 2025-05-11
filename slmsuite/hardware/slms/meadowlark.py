@@ -101,7 +101,10 @@ class Meadowlark(SLM):
             If the installation is not in the default folder,
             then this path needs to be specified. If there are multiple installations,
             then the most recent installation is chosen. The user must further specify
-            the path otherwise.
+            the path otherwise. Keep in mind that different versions of the SDK may not
+            be compatible with given hardware (HDMI, PCIe, etc.).
+            See the compatibility table at
+            :module:`slmsuite.hardware.slms.meadowlark` for more information.
         lut_path : str OR None
             Passed to :meth:`load_lut`. Looks for the voltage 'look-up table' data
             which is necessary to run the SLM.
@@ -204,6 +207,13 @@ class Meadowlark(SLM):
         self.set_phase(None)
 
     def close(self) -> None:
+        """
+        Use :meth:`.SLM.close_sdk` to close the SDK, though this might break
+        other SLMs on the same SDK. See :meth:`.SLM.close`.
+        """
+        pass
+
+    def close_sdk(self) -> None:
         """
         See :meth:`.SLM.close`.
         """
@@ -451,7 +461,7 @@ class Meadowlark(SLM):
         Returns
         -------
         float
-            Temperature in degrees celcius.
+            Temperature in degrees celsius.
 
         Raises
         ------
@@ -541,7 +551,7 @@ class Meadowlark(SLM):
                 Meadowlark._slm_lib[self.sdk_mode].Write_image(
                     slm_number,
                     display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
-                    ctypes.c_uint(self.shape[0] * self.shape[1] * self.bitdepth),
+                    ctypes.c_uint(self.shape[0] * self.shape[1]),
                     wait_for_trigger,
                     flip_immediate,
                     output_pulse_image_flip,
@@ -617,6 +627,7 @@ class Meadowlark(SLM):
                 f"Defaulting to the most recent one"
                 f" '{dll_path}'. "
                 f"This is a {_SDK_MODE_NAMES[mode]} SDK."
+                f"Other options:\n{',\n'.join([f'{_SDK_MODE_NAMES[case[0]]} ({case[1]})' for case in cases])}"
             )
 
         # First load the .dll

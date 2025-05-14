@@ -478,7 +478,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         # Custom GPU kernels for speed.
         if np != cp and cuda:
-            # try:
+            try:
                 CUDA_KERNELS = _load_cuda()
                 self._near2far_cuda = cp.RawKernel(
                     CUDA_KERNELS,
@@ -510,10 +510,10 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self.cuda = True
 
                 # Test the kernel.
-                # self._nearfield2farfield()
-                # self._farfield2nearfield()
-            # except Exception as e:
-            #     warnings.warn("Raw CUDA kernels failed to load. Falling back to cupy.\n" + str(e))
+                self._nearfield2farfield()
+                self._farfield2nearfield()
+            except Exception as e:
+                warnings.warn("Raw CUDA kernels failed to load. Falling back to cupy.\n" + str(e))
 
     def __len__(self):
         """
@@ -683,7 +683,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # self._near2far_cuda = cp.RawKernel(
         #     CUDA_KERNELS,
         #     'compressed_nearfield2farfield',
-        #     # 'compressed_nearfield2farfield_v2_test',
         #     jitify=True,
         # )
         # self._near2far_cuda.compile()

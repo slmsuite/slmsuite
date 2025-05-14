@@ -713,11 +713,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         self._nearfield2farfield_cuda_intermediate.fill(0)
 
-        # center_pix = np.array(self.cameraslm.slm.get_source_center(), dtype=np.float32)
-        # pitch_zernike = (
-        #     np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
-        # ).astype(np.float32)
-
         # Call the RawKernel.
         self._near2far_cuda(
             (blocks_x,),
@@ -729,8 +724,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._c_md.ravel(),
                 self._i_md.ravel(),
                 self._pxy_m.ravel(),
-                # center_pix[0], center_pix[1],
-                # pitch_zernike[0], pitch_zernike[1],
                 self._x_grid, self._y_grid,
                 self._nearfield2farfield_cuda_intermediate.ravel()
             )
@@ -846,11 +839,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             )
         blocks_x = int(np.ceil(float(W*H) / threads_per_block))
 
-        # center_pix = np.array(self.cameraslm.slm.get_source_center(), dtype=np.float32)
-        # pitch_zernike = (
-        #     np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
-        # ).astype(np.float32)
-
         # Call the RawKernel.
         self._far2near_cuda(
             (blocks_x,),
@@ -862,8 +850,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._c_md.ravel(),
                 self._i_md.ravel(),
                 self._pxy_m.ravel(),
-                # center_pix[0], center_pix[1],
-                # pitch_zernike[0], pitch_zernike[1],
                 self._x_grid, self._y_grid,
                 self.nearfield.ravel()
             )

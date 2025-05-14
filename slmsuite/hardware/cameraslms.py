@@ -815,7 +815,6 @@ class FourierSLM(CameraSLM):
         # rolled /= rolled[:,:,:,:,[first_order]]
 
         # for i in range(1, len(levels)):
-        #     # print(rolled[:,:,[i],:,:].shape)
         #     rolled[:,:,[i],:,:] = np.roll(rolled[:,:,[i],:,:], -i, axis=3)
 
         for i, direction in enumerate(["x"]): #, "y"]):
@@ -3592,19 +3591,8 @@ class FourierSLM(CameraSLM):
                             offset2.append(offset[ty, tx] - dx * kx3 - dy * ky3)
                             source.append((ax, ay))
 
-                            # print(dx, dy)
-                            # print(kx3, ky3)
-                            # print(dx * kx3, dy * ky3)
-
-
                     # Do a majority vote (within std) for the phase.
                     if len(kx2) > 0:
-
-                        # print(kx2)
-                        # print(ky2)
-                        # print(offset2)
-                        # print(source)
-
                         kx[ny, nx] = np.mean(kx2)
                         ky[ny, nx] = np.mean(ky2)
 
@@ -3616,11 +3604,8 @@ class FourierSLM(CameraSLM):
                             if minstd > np.std(offset3):
                                 minstd = np.std(offset3)
                                 offset[ny, nx] = np.mod(np.mean(offset3) - shift, 2 * np.pi)
-                                # print(offset[ny, nx])
 
                         pathing[ny, nx] = ny
-
-                        # print()
 
         # Step 3.75: Make the SLM-sized correction using the compressed data from each superpixel.
         phase = np.zeros(self.slm.shape)

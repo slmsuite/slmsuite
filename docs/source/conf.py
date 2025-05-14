@@ -206,9 +206,6 @@ examples_repo_name = "slmsuite-examples"
 examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_examples")
 images_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../_build/html/_images")
 
-# print(html_static_path)
-# html_static_path = [examples_path, images_path]
-
 def setup(app):
     app.connect("autodoc-skip-member", skip)
     app.add_css_file('css/custom.css')

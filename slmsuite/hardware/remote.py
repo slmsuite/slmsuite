@@ -144,7 +144,7 @@ class _NpEncoder(json.JSONEncoder):
 
 # Common function to receive data from a socket.
 def _recv(sock, timeout):
-    recv_buffer = 4096
+    recv_buffer = 4096 * 64
     buffer = ""
     t = time.time()
 
@@ -161,7 +161,7 @@ def _recv(sock, timeout):
             return msg
 
     # Failed timeout returns empty.
-    return False, {}
+    return False, f"Timeout: {len(buffer)} bytes received."
 
 # Server which hosts slmsuite hardware.
 class Server:
@@ -226,6 +226,7 @@ class Server:
         # Only allowed commands for SLMs and Cameras, alongside "ping".
         self.allowcommands = [
             "pickle",
+            "flush",
             "_set_phase_hw",
             "_set_exposure_hw",
             "_get_exposure_hw",
@@ -279,7 +280,10 @@ class Server:
                         message = _recv(connection, self.timeout)
                         result = self._handle(message, client_addr, verbose)
 
-                    connection.sendall((urllib.quote_plus(json.dumps(result, cls=_NpEncoder)) + _delim).encode())
+                    reply = (urllib.quote_plus(json.dumps(result, cls=_NpEncoder)) + _delim).encode()
+                    print(f"replied with {len(reply)} bytes.")
+
+                    connection.sendall(reply)
                     connection.close()
                 except IOError as e:
                     # This is a timeout error. Just continue.
@@ -372,14 +376,7 @@ class _Client(_Picklable):
         self.port = port
         self.timeout = timeout
 
-        try:
-            hardware = self._com(command="ping")
-        except (TimeoutError, ConnectionRefusedError):
-            raise ValueError(
-                f"An slmsuite server is not active at {self.host}:{self.port}."
-            )
-        except Exception as e:
-            raise e
+        hardware = self._com(command="ping")
 
         if not self.name in hardware:
             raise ValueError(
@@ -433,7 +430,15 @@ class _Client(_Picklable):
         # Create a TCP/IP socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
-        sock.connect((host, port))
+        try:
+            sock.connect((host, port))
+        except (TimeoutError, ConnectionRefusedError):
+            raise ValueError(
+                f"An slmsuite server is not active at {host}:{port}."
+            )
+        except Exception as e:
+            raise e
+
 
         # Send the message.
         sock.sendall((
@@ -450,11 +455,14 @@ class _Client(_Picklable):
             ) + _delim
         ).encode())
 
+
         # Wait for a reply.
         try:
             success, reply = _recv(sock, timeout)
             if success == False:
-                raise RuntimeError(reply)
+                raise RuntimeError(
+                    f"Server {host}:{port} communication failed. Message:\n{reply}"
+                )
         except Exception as e:
             sock.close()
 

@@ -328,7 +328,7 @@ class _HologramStats(object):
                 limit = np.array([np.amin(collapsed), np.amax(collapsed)])
 
                 # Add padding.
-                padding = int(np.diff(limit) * limit_padding) + 1
+                padding = int(np.diff(limit)[0] * limit_padding) + 1
                 limit += np.array([-padding, padding + 1])
 
                 # Check limits and store.
@@ -347,7 +347,7 @@ class _HologramStats(object):
         ):
         """
         Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
-        The amplitude is assumed (whether uniform, or experimentally computed) while the
+        The amplitude is assumed (whether uniform, assumed, or measured) while the
         phase is the result of optimization.
 
         Parameters
@@ -524,7 +524,7 @@ class _HologramStats(object):
         # Check the limits in case the user provided them.
         for a in [0, 1]:
             limits[a] = np.clip(np.array(limits[a], dtype=int), 0, npsource.shape[1-a]-1)
-            if np.diff(limits[a]) == 0:
+            if np.diff(limits[a])[0] == 0:
                 raise ValueError("Clipped limit has zero length.")
 
         # Start making the plot
@@ -544,7 +544,7 @@ class _HologramStats(object):
         axs[0].set_title(title + "Full")
 
         # Zoom in on our spots in a second plot
-        b = 2 * int(np.diff(limits[0]) / 200) + 1  # FUTURE: fix arbitrary
+        b = 2 * int(np.diff(limits[0])[0] / 200) + 1  # FUTURE: fix arbitrary
         zoom_data = npsource[
             np.ix_(np.arange(limits[1][0], limits[1][1]), np.arange(limits[0][0], limits[0][1]))
         ]
@@ -601,7 +601,11 @@ class _HologramStats(object):
             if i == 0:
                 ax.set_ylabel(toolbox.BLAZE_LABELS[units][1])
 
-        aspect = float(npsource.shape[1]) / float(npsource.shape[0])
+        # Scale aspect; knm might be displaying a non-square array.
+        if units == "knm":  
+            aspect = float(npsource.shape[1]) / float(npsource.shape[0])
+        else:
+            aspect = 1
 
         for ax in axs:
             ax.set_facecolor("#FFEEEE")
@@ -690,9 +694,9 @@ class _HologramStats(object):
             )
 
         # Bonus: Plot a red rectangle to show the extents of the zoom region
-        if np.diff(limits[0]) > 0 and np.diff(limits[1]) > 0:
+        if np.diff(limits[0])[0] > 0 and np.diff(limits[1])[0] > 0:
             extent = zoom.get_extent()
-            pix_width = (np.diff(extent[0:2])[0]) / np.diff(limits[0])
+            pix_width = (np.diff(extent[0:2])[0]) / np.diff(limits[0])[0]
             rect = plt.Rectangle(
                 tuple((np.array(extent[::2]) - pix_width / 2).astype(float)),
                 float(np.diff(extent[0:2])[0]),

@@ -200,6 +200,7 @@ class Camera(_Picklable, ABC):
         # Frame averaging variables.
         self.averaging = self._parse_averaging(averaging, preserve_none=True)
         self.hdr = self._parse_hdr(hdr, preserve_none=True)
+        self._flush_iterations = 2  # Hidden variable
 
         # Spatial dimensions.
         if pitch_um is not None:
@@ -334,7 +335,7 @@ class Camera(_Picklable, ABC):
             The frame exposure time  is **added** to this timeout
             such that there is always enough time to expose.
         """
-        for _ in range(2):
+        for _ in range(self._flush_iterations):
             self._get_image_hw_tolerant(timeout_s=timeout_s+self.exposure_s)
 
     @abstractmethod
@@ -758,25 +759,36 @@ class Camera(_Picklable, ABC):
             The scale of the returned image is the same as the original exposure.
         """
         (exposures, exposure_power) = self._parse_hdr(exposures)
+        overexposure_threshold = self.bitresolution/2,
+        if self.averaging is not None:
+            overexposure_threshold *= self.averaging
 
         # Make empty data and grab the original exposure time.
         original_exposure = self.get_exposure()
-        imgs = np.empty((exposures, self.shape[0], self.shape[1]))
+        imgs = np.zeros((exposures, self.shape[0], self.shape[1]), self.dtype)
+        exposure_times = np.zeros((exposures,), dtype=float)
 
         for i in range(exposures):
             # FUTURE: record the set exposures and use these to do better analysis.
-            self.set_exposure(int(exposure_power ** i) * original_exposure)
+            exposure_times[i] = self.set_exposure(int(exposure_power ** i) * original_exposure)
             self.flush()    # Sometimes, cameras return bad frames after exposure change.
             imgs[i, :, :] = self.get_image(hdr=False, **kwargs)
 
+            # Terminate the loop if our image is entirely overexposed.
+            if np.all(imgs[i, :, :] > overexposure_threshold):
+                continue
+
         # Reset exposure.
         self.set_exposure(original_exposure)
-        self.flush()
 
         if return_raw:
-            return imgs
+            return imgs, exposure_times
         else:
-            img = self.get_image_hdr_analysis(imgs, exposure_power=exposure_power, overexposure_threshold=self.bitresolution/2)
+            img = self.get_image_hdr_analysis(
+                imgs,
+                overexposure_threshold=overexposure_threshold,
+                exposure_power=exposure_times,
+            )
             if np.max(img) >= self.bitresolution:
                 warnings.warn("HDR image is overexposed.")
             # Store the result locally.
@@ -797,7 +809,7 @@ class Camera(_Picklable, ABC):
         overexposure_threshold : float OR None
             For each image (except the first), data is thrown out if values are above
             this threshold. If ``None``, the threshold defaults to half the maximum.
-        exposure_power : int
+        exposure_power : int or list of float
             Each exposure increases in time multiplicatively from the base value
             (original :meth:`get_exposure()`) by this factor :math:`p`. The :math:`i\text{th}` image has
             exposure time :math:`\tau \times p^i`, zero-indexed.
@@ -814,7 +826,15 @@ class Camera(_Picklable, ABC):
             The scale of the returned image is the same as the original exposure.
         """
         # Parse arguments
-        exposure_power = int(exposure_power)
+        if np.isscalar(exposure_power):
+            exposure_power = int(exposure_power)
+            exposure_times = np.power(exposure_power, imgs.shape[0])
+        else:
+            exposure_times = exposure_power
+            if np.all(exposure_times <= 0):
+                raise ValueError("exposure_times cannot all be non-positive.")
+            exposure_times = exposure_times / np.min(exposure_times[exposure_times > 0])
+
         if overexposure_threshold is None:
             # Default to half exposure.
             overexposure_threshold = np.max(imgs) / 2
@@ -826,10 +846,10 @@ class Camera(_Picklable, ABC):
 
             if i == 0:
                 img = img_current
-            else:
+            elif exposure_times[i] > 0:
                 # Overwrite data when greater precision is available.
                 mask = img_current < overexposure_threshold
-                img[mask] = img_current[mask] / float(exposure_power ** i)
+                img[mask] = img_current[mask] / exposure_times[i]
 
         return img
 
@@ -841,8 +861,10 @@ class Camera(_Picklable, ABC):
 
         Parameters
         ----------
-        image : ndarray OR None
-            Image to be plotted. If ``None``, grabs an image from the camera.
+        image : ndarray OR None OR bool
+            Image to be plotted. 
+            If ``None``, grabs an image from the camera.
+            If ``False``, uses the :attr:`.last_image` attribute.
         limits : None OR float OR [[float, float], [float, float]]
             Scales the limits by a given factor or uses the passed limits directly.
         title : str
@@ -860,6 +882,8 @@ class Camera(_Picklable, ABC):
         if image is None:
             self.flush()
             image = self.get_image()
+        if image is False:
+            image = self.last_image
         image = np.array(image, copy=(False if np.__version__[0] == '1' else None))
 
         if len(plt.get_fignums()) > 0:
@@ -1194,7 +1218,8 @@ class _CameraViewer:
             cmap_options=[
                 "default", "gray", "Blues", "turbo",
                 'viridis', 'plasma', 'inferno', 'magma', 'cividis'
-            ]
+            ],
+            crosshair=False,
         ):
         self.cam = cam
         self.backend = backend
@@ -1222,6 +1247,7 @@ class _CameraViewer:
             "scale" : scale,
             "border" : border,
             "cmap_options" : cmap_options,
+            "crosshair" : crosshair,
         }
 
         self.task = None
@@ -1268,6 +1294,11 @@ class _CameraViewer:
         if self.state["scale"] > 1:
             rgb = zoom(rgb, (1, self.state["scale"], self.state["scale"], 1), order=0)
 
+        # Finally, add crosshair in the center
+        if self.state["crosshair"]:
+            rgb[:, :, int(rgb.shape[2]/2), :3] = 255 - rgb[:, :, int(rgb.shape[2]/2), :3]
+            rgb[:, int(rgb.shape[1]/2), :, :3] = 255 - rgb[:, int(rgb.shape[1]/2), :, :3]
+
         buff = io.BytesIO()
         rgb = PIL.Image.fromarray(rgb[0])
         rgb.save(buff, format="png")
@@ -1275,12 +1306,16 @@ class _CameraViewer:
         return buff.getvalue()
 
     def render(self, img=None):
-        self.image.value = self.parse(img)
+        try:
+            self.image.value = self.parse(img)
+        except Exception as e:
+            with self.widgets["output"]:
+                print(str(e))
 
     def update(self, event):
         with self.widgets["output"]:
             self.widgets["output"].clear_output(wait=True)
-        for key in ["range", "log", "cmap", "scale", "live"]:
+        for key in ["range", "log", "cmap", "scale", "live", "crosshair"]:
             self.state[key] = self.widgets[key].value
 
         self.render()
@@ -1366,6 +1401,12 @@ class _CameraViewer:
                 tooltip="Toggle logarithmic scaling of the current plot.",
                 layout=item_layout,
             ),
+            "crosshair" : Checkbox(
+                value=self.state["crosshair"],
+                description="Crosshair",
+                tooltip="Toggle a crosshair centered on the image.",
+                layout=item_layout,
+            ),
             "cmap" : Dropdown(
                 options=self.state["cmap_options"],
                 value=self.state["cmap"],
@@ -1433,6 +1474,7 @@ class _CameraViewer:
                     HBox([
                         self.widgets["cmap"],
                         self.widgets["log"],
+                        self.widgets["crosshair"],
                     ]),
                     HBox([
                         self.widgets["range"],

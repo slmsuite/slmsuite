@@ -76,7 +76,7 @@ class MindVision(Camera):
         serial = self.cam.GetSn()
 
         # Turn the camera on.
-        if verbose: print(f"Initializing sn '{serial}'...", end="")
+        if verbose: print(f"Initializing sn '{serial}'... ", end="")
         self.handle = 0
         try:
             self.handle = _mvsdk.CameraInit(self.cam, -1, -1)
@@ -226,7 +226,7 @@ class MindVision(Camera):
         # Get a frame from the camera
         try:
             #
-            raw_data, frame_head = _mvsdk.CameraGetImageBuffer(self.handle, int(timeout_s))
+            raw_data, frame_head = _mvsdk.CameraGetImageBuffer(self.handle, int(timeout_s*1000))
 
             # FUTURE: Go directly from the raw_data to numpy instead of through self.buffer?
             _mvsdk.CameraImageProcess(self.handle, raw_data, self.buffer, frame_head)
@@ -236,10 +236,10 @@ class MindVision(Camera):
             frame_data = (_mvsdk.c_ubyte * frame_head.uBytes).from_address(self.buffer)
 
             if self.mono:
+                return np.copy(np.frombuffer(frame_data, dtype=np.uint8).reshape(self.shape))
+            else:
                 rgb_shape = (self.shape[0], self.shape[1], 3)
                 return np.copy(np.frombuffer(frame_data, dtype=np.uint8).reshape(rgb_shape))
-            else:
-                return np.copy(np.frombuffer(frame_data, dtype=np.uint8).reshape(self.shape))
 
         except _mvsdk.CameraException as e:
             print("CameraGetImageBuffer failed ({}):\n{}".format(e.error_code, e.message))

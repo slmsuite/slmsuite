@@ -36,7 +36,10 @@ BLAZE_LABELS = {
     "knm":  (r"$k_n$ [pix]", r"$k_m$ [pix]"),
     "freq": (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
     "lpmm": (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
-    "zernike":  (r"$Z_1^1$ [Zernike rad]", r"$Z_1^{-1}$ [Zernike rad]"),
+    "zernike": (
+        r"$x = Z_2 = Z_1^1$ [Zernike rad]",
+        r"$y = Z_1 = Z_1^{-1}$ [Zernike rad]"
+    ),
     "ij":   (r"Camera $i$ [pix]", r"Camera $j$ [pix]"),
 }
 for prefix, name in zip(["", "mag_"], ["Camera", "Experiment"]):
@@ -1117,7 +1120,7 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
 
 
 def smallest_distance(vectors, metric="chebyshev"):
-    """
+    r"""
     Returns the smallest distance between pairs of points under a given ``metric``.
 
     Tip
@@ -1222,14 +1225,16 @@ def smallest_distance(vectors, metric="chebyshev"):
 def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
     r"""
     Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
-    on a set of seed ``vectors`` to promote even vector spacing
-    with rectangular clipping to enforce bounded cells.
+    on a set of seed ``vectors`` to promote even vector spacing.
+    Vectors are bound within the grid.
 
     Parameters
     ----------
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
+        Extract the rectangular bounds from a grid, or from a shape.
         See :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
     vectors : array_like
+        Initial seed points for Lloyd's Algorithm.
         See :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
     iterations : int
         Number of iterations to apply Lloyd's Algorithm.
@@ -1243,12 +1248,12 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
     """
     result = np.copy(format_2vectors(vectors)).astype(float)
 
+    # Parse grid
     if isinstance(grid, (tuple, list)) and all(isinstance(x, int) for x in grid):
         shape = grid
     else:
         x_grid, y_grid = _process_grid(grid)
         shape = x_grid.shape
-
     H, W = shape
 
     def polygon_centroid(polygon):
@@ -1322,6 +1327,8 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
                 np.array([[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]),
             )
         )
+
+        # Recomputing this each time isn't too inefficient.
         vor = Voronoi(vectors_ext)
 
         if plot:
@@ -1342,6 +1349,7 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
             plt.show()
 
         for i in range(result.shape[1]):
+            # Don't move points that don't make sense.
             region_index = vor.point_region[i]
             region = vor.regions[region_index]
 
@@ -1353,6 +1361,7 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
             if len(polygon) < 3:
                 continue
 
+            # Otherwise, update the point to the centroid of its cell.
             centroid = polygon_centroid(polygon)
 
             result[0, i] = centroid[0]
@@ -1415,7 +1424,7 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
 
 
 def assign_vectors(vectors, assignment_options):
-    """
+    r"""
     Assigns each vector in ``vectors`` to the closest counterpart ``assignment_options``.
     Uses Euclidean distance.
 

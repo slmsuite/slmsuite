@@ -5,7 +5,7 @@ setup.py - this module makes the package installable
 from setuptools import setup
 
 NAME = "slmsuite"
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 DEPENDENCIES = [
     "numpy",
     "scipy",

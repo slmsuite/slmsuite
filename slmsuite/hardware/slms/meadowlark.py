@@ -22,6 +22,7 @@ from enum import IntEnum
 from pathlib import Path
 import numpy as np
 from platform import system
+from typing import Union, Optional, Tuple, List
 
 from slmsuite.hardware.slms.slm import SLM
 
@@ -76,10 +77,10 @@ class Meadowlark(SLM):
     def __init__(  # noqa: R0913, R0917
         self,
         slm_number: int = 1,
-        sdk_path: str | None = None,
-        lut_path: str | None = None,
+        sdk_path: Optional[str] = None,
+        lut_path: Optional[str] = None,
         wav_um: float = 1,
-        pitch_um: tuple[float, float] | None = None,
+        pitch_um: Optional[Tuple[float, float]] = None,
         verbose: bool = True,
         **kwargs,
     ):
@@ -251,7 +252,7 @@ class Meadowlark(SLM):
 
     # General SDK inspection methods.
     @staticmethod
-    def info(verbose: bool = True, sdk_path: str = None) -> list[tuple[int, str]]:
+    def info(verbose: bool = True, sdk_path: str = None) -> List[Tuple[int, str]]:
         """
         Discover all connected SLMs
 
@@ -390,7 +391,7 @@ class Meadowlark(SLM):
             )
 
     @staticmethod
-    def _get_pitch(sdk_mode: _SDK_MODE, slm_number: int) -> tuple[float, float]:
+    def _get_pitch(sdk_mode: _SDK_MODE, slm_number: int) -> Tuple[float, float]:
         """
         Get the pitch of the SLM.
 
@@ -505,7 +506,7 @@ class Meadowlark(SLM):
             )
 
     # Main write function
-    def _set_phase_hw(self, display: np.ndarray, slm_number: int | None = None) -> None:
+    def _set_phase_hw(self, display: np.ndarray, slm_number: Optional[int] = None) -> None:
         """
         See :meth:`.SLM._set_phase_hw`.
         """
@@ -622,12 +623,13 @@ class Meadowlark(SLM):
 
         # If we got to here, we need to actually load the SDK.
         if len(cases) >= 1:
+            options = ',\n'.join([f'{_SDK_MODE_NAMES[case[0]]} ({case[1]})' for case in cases])
             warnings.warn(
                 f"Multiple Meadowlark SDKs located. "
                 f"Defaulting to the most recent one"
                 f" '{dll_path}'. "
                 f"This is a {_SDK_MODE_NAMES[mode]} SDK."
-                f"Other options:\n{',\n'.join([f'{_SDK_MODE_NAMES[case[0]]} ({case[1]})' for case in cases])}"
+                f"Other options:\n{options}"
             )
 
         # First load the .dll
@@ -697,7 +699,7 @@ class Meadowlark(SLM):
         return mode
 
     @staticmethod
-    def _parse_header(file: str, warn: bool = False) -> tuple[_SDK_MODE, str, tuple[int, int]]:
+    def _parse_header(file: str, warn: bool = False) -> Tuple[_SDK_MODE, str, Tuple[int, int]]:
         """Checks if a path has an appropriate header"""
         dll_path = os.path.join(file, "Blink_C_wrapper.dll")
         dll_present = os.path.isfile(dll_path)
@@ -747,7 +749,7 @@ class Meadowlark(SLM):
         return _SDK_MODE.NULL, "", None
 
     # LUT stuff
-    def load_lut(self, lut_path: str | None = None) -> str:
+    def load_lut(self, lut_path: Optional[str] = None) -> str:
         """
         Loads a voltage 'look-up table' (LUT) to the SLM.
         This converts requested phase values to physical voltage perturbing
@@ -825,7 +827,7 @@ class Meadowlark(SLM):
 
     @staticmethod
     def _locate_lut_file(
-        search_path: str | Path, slm_shape: tuple[int, int] | None = None
+        search_path: Union[str, Path], slm_shape: Optional[Tuple[int, int]] = None
     ) -> str:
         """
         Locates the LUT file in the given path. If there are multiple, returns the

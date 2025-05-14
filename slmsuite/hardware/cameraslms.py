@@ -2836,7 +2836,13 @@ class FourierSLM(CameraSLM):
                 if plot_zoom and return_movie:
                     fig.tight_layout()
                     fig.canvas.draw()
-                    image_from_plot = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                    fig.canvas.draw()
+
+                    try:
+                        image_from_plot = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                    except:
+                        image_from_plot = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+
                     image_from_plot = image_from_plot.reshape(
                         fig.canvas.get_width_height()[::-1] + (3,)
                     )

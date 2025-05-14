@@ -7,6 +7,7 @@ For example, the following code loads a UC480 camera:
 
 .. highlight:: python
 .. code-block:: python
+
     # Load a legacy Thorlabs camera using the UC480 driver.
     from instrumental.drivers.cameras.uc480 import UC480Camera
     i_cam = UC480Camera()
@@ -63,6 +64,7 @@ class Instrumental(Camera):
 
             .. highlight:: python
             .. code-block:: python
+
                 # Load a legacy Thorlabs camera using the UC480 driver.
                 from instrumental.drivers.cameras.uc480 import UC480Camera
                 i_cam = UC480Camera()

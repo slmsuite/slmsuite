@@ -1919,14 +1919,6 @@ class FourierSLM(CameraSLM):
         variances = analysis.image_variances(images)
         return analysis.image_areas(variances)
 
-    @staticmethod
-    def _wavefront_calibrate_zernike_relative_strehl(images):
-        """
-        TODO
-        """
-        # return -np.amax(np.amax(images, axis=2), axis=1) / np.sum(images, axis=(1,2))
-        return -np.amax(images, axis=(1,2)) / np.sum(images, axis=(1,2))
-
     def wavefront_calibrate_zernike_smooth(self, ratio=.25, smooth_xy=0.25):
         # Build triangulation.
         indices = self.calibrations["wavefront_zernike"]["zernike_indices"]

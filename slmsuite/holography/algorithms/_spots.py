@@ -16,7 +16,7 @@ class _AbstractSpotHologram(FeedbackHologram):
     def remove_vortices(self):
         """Spot holograms do not need to consider vortices."""
         pass
-    
+
     def refine_offset(self, img=None, basis="kxy", force_affine=True, plot=False):
         """
         Hones the positions of the produced spots toward the desired targets to compensate for
@@ -69,7 +69,7 @@ class _AbstractSpotHologram(FeedbackHologram):
         shift_vectors = analysis.image_positions(regions)
         # shift_vectors = np.clip(
         #     shift_vectors,
-        #     -self.spot_integration_width_ij / 4, 
+        #     -self.spot_integration_width_ij / 4,
         #     self.spot_integration_width_ij / 4
         # )
 
@@ -93,13 +93,13 @@ class _AbstractSpotHologram(FeedbackHologram):
                 integrate=False,
                 return_mask=2,
             )
-            
+
             plt.figure(figsize=(12, 12))
             plt.imshow(masked)
             plt.scatter(sv1[0, :], sv1[1, :], s=200, fc="none", ec="r")
             plt.scatter(sv2[0, :], sv2[1, :], s=300, fc="none", ec="b")
             plt.show()
-            
+
             tiled = analysis.take_tile(
                 analysis.take(
                     img,
@@ -482,12 +482,12 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 CUDA_KERNELS = _load_cuda()
                 self._near2far_cuda = cp.RawKernel(
                     CUDA_KERNELS,
-                    'compressed_nearfield2farfield_v3',
+                    'compressed_nearfield2farfield',
                     # jitify=True,
                 )
                 self._far2near_cuda = cp.RawKernel(
                     CUDA_KERNELS,
-                    'compressed_farfield2nearfield_v2',
+                    'compressed_farfield2nearfield',
                     # jitify=True,
                 )
 
@@ -498,7 +498,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._c_md = cp.array(c_md)
                 self._i_md = cp.array(i_md)
                 self._pxy_m = cp.array(pxy_m)
-                
+
                 (x_grid, y_grid) = _process_grid(self.cameraslm.slm)
                 self._x_grid = cp.array(x_grid.ravel(), copy=True, dtype=np.float32)
                 self._y_grid = cp.array(y_grid.ravel(), copy=True, dtype=np.float32)
@@ -682,7 +682,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # CUDA_KERNELS = _load_cuda()
         # self._near2far_cuda = cp.RawKernel(
         #     CUDA_KERNELS,
-        #     'compressed_nearfield2farfield_v3',
+        #     'compressed_nearfield2farfield',
         #     # 'compressed_nearfield2farfield_v2_test',
         #     jitify=True,
         # )
@@ -707,7 +707,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         blocks_y = N
 
         if (
-            self._nearfield2farfield_cuda_intermediate is None or 
+            self._nearfield2farfield_cuda_intermediate is None or
             self._nearfield2farfield_cuda_intermediate.shape != (blocks_y, blocks_x)
         ):
             self._nearfield2farfield_cuda_intermediate = cp.zeros((blocks_y, blocks_x), dtype=self.dtype_complex)
@@ -825,7 +825,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # CUDA_KERNELS = _load_cuda()
         # self._far2near_cuda = cp.RawKernel(
         #     CUDA_KERNELS,
-        #     'compressed_farfield2nearfield_v2',
+        #     'compressed_farfield2nearfield',
         #     jitify=True,
         # )
         # self._far2near_cuda.compile()
@@ -833,7 +833,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Check if we need to update the kernel.
         if self._check_spot_zernike_change():
             self._spot_zernike_cupy = cp.array(self.spot_zernike.astype(np.float32))
-        
+
         H, W = np.int32(self.shape)
         D, N = np.int32(self.spot_zernike.shape)
         M = np.int32(self._i_md.shape[0])
@@ -1600,7 +1600,7 @@ class SpotHologram(_AbstractSpotHologram):
 
         if feedback == "experimental":
             warnings.warn("SpotHologram feedback 'experimental' is interpreted as 'experimental_spot'")
-            feedback = self.flags["feedback"] = "experimental_spot" 
+            feedback = self.flags["feedback"] = "experimental_spot"
 
         # Weighting strategy depends on the chosen feedback method.
         if feedback == "computational":

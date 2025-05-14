@@ -12,149 +12,6 @@
 //   array size, so having a large default basis is costless.
 #define BASIS_SIZE 150
 
-// extern "C"  __device__ __forceinline__ void warp_reduce(
-//     complex<float>* sdata, // volatile
-//     int tid
-// ) {
-//     complex<float> val;
-//     val = sdata[tid + 32]; sdata[tid] += val; __syncwarp();
-//     val = sdata[tid + 16]; sdata[tid] += val; __syncwarp();
-//     val = sdata[tid + 8]; sdata[tid] += val; __syncwarp();
-//     val = sdata[tid + 4]; sdata[tid] += val; __syncwarp();
-//     val = sdata[tid + 2]; sdata[tid] += val; __syncwarp();
-//     val = sdata[tid + 1]; sdata[tid] += val;
-
-//     /*
-//     sdata[tid] += sdata[tid + 32]; __syncwarp();
-//     sdata[tid] += sdata[tid + 16]; __syncwarp();
-//     sdata[tid] += sdata[tid + 8];  __syncwarp();
-//     sdata[tid] += sdata[tid + 4];  __syncwarp();
-//     sdata[tid] += sdata[tid + 2];  __syncwarp();
-//     sdata[tid] += sdata[tid + 1];  // __syncthreads();
-//     */
-// }
-
-extern "C"  __device__ void warp_reduce(
-    complex<float>* sdata, // volatile
-    int tid
-) {
-    sdata[tid] += sdata[tid + 32]; __syncwarp();
-    sdata[tid] += sdata[tid + 16]; __syncwarp();
-    sdata[tid] += sdata[tid + 8];  __syncwarp();
-    sdata[tid] += sdata[tid + 4];  __syncwarp();
-    sdata[tid] += sdata[tid + 2];  __syncwarp();
-    sdata[tid] += sdata[tid + 1];  __syncwarp();
-}
-
-// Version 1 compressed kernel
-
-extern "C" __global__ void compressed_farfield2nearfield(
-    const complex<float>* farfield, // Input (N)
-    const int W,                    // Width of nearfield
-    const int H,                    // Height of nearfield
-    const int N,                    // Size of farfield
-    const int D,                    // Dimension of spots (2 or 3)
-    const float* kxyz,              // Spot parameters (D*N)
-    const float cx,                 // Grid offset x
-    const float cy,                 // Grid offset y
-    const float dx,                 // X grid pitch
-    const float dy,                 // Y grid pitch
-    complex<float>* nearfield       // Output (W*H)
-) {
-    // nf is each pixel in the nearfield.
-    int nf = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (nf < W * H) {
-        // Make a local result variable to avoid talking with global memory.
-        float exponent = 0;
-        complex<float> result = 0;
-        complex<float> tau = complex<float>(0, 6.28318530717958647692f);
-
-        // Figure out which pixel we are at.
-        float x = dx * (nf % W) - cx;
-        float y = dy * (nf / W) - cy;
-
-        if (D == 3) {
-            // Additional compute for 3D spots.
-            float r = .5 * (x * x + y * y);
-
-            // Loop over all the spots.
-            for (int i = 0; i < N; i++) {
-                exponent = x * kxyz[i] + y * kxyz[i + N] + r * kxyz[i + N + N];
-                result += farfield[i] * exp(tau * exponent);
-            }
-        } else {
-            // Loop over all the spots.
-            for (int i = 0; i < N; i++) {
-                exponent = x * kxyz[i] + y * kxyz[i + N];
-                result += farfield[i] * exp(tau * exponent);
-            }
-        }
-
-        // Export the result to global memory.
-        nearfield[nf] = result;
-    }
-}
-
-extern "C" __global__ void compressed_nearfield2farfield(
-    const complex<float>* nearfield,        // Input (W*H)
-    const int W,                            // Width of nearfield
-    const int H,                            // Height of nearfield
-    const int N,                            // Size of farfield
-    const int D,                            // Dimension of spots (2 or 3)
-    const float* kxyz,                      // Spot parameters (D*N)
-    const float cx,                         // Grid offset x
-    const float cy,                         // Grid offset y
-    const float dx,                         // X grid pitch
-    const float dy,                         // Y grid pitch
-    complex<float>* farfield_intermediate   // Output (blockIdx.x*N)
-) {
-    // Allocate shared data which will store intermediate results.
-    // (Hardcoded to 1024 block size).
-    __shared__ complex<float> sdata[1024];
-
-    // Make some IDs.
-    int ff = blockIdx.y;                    // Farfield index  [0, N)
-    int tid = threadIdx.x;                  // Thread ID
-    int rid = blockIdx.x + ff * gridDim.x;  // Farfield result ID
-    int nf = blockDim.x * blockIdx.x + tid; // Nearfield index [0, WH)
-
-    float x = dx * (nf % W) - cx;
-    float y = dy * (nf / W) - cy;
-
-    float exponent = 0;
-    complex<float> tau = complex<float>(0, 6.28318530717958647692f);
-
-    if (nf < W * H) {
-        exponent = x * kxyz[ff] + y * kxyz[ff + N];
-
-        if (D == 3) {
-            exponent += .5 * (x * x + y * y) * kxyz[ff + N + N];
-        }
-
-        // Do the overlap integrand for one nearfield-farfield mapping.
-        sdata[tid] = conj(nearfield[nf]) * exp(tau * exponent);
-    } else {
-        sdata[tid] = 0;
-    }
-
-    // Now we want to integrate by summing these results.
-    // Note that we assume 1024 block size and 32 warp size (change this?).
-    __syncthreads();
-
-    if (tid < 512) { sdata[tid] += sdata[tid + 512]; } __syncthreads();
-    if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads();
-    if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads();
-    if (tid < 64) {  sdata[tid] += sdata[tid + 64];  } __syncthreads();
-    if (tid < 32) {
-        // The last 32 threads don't require __syncthreads() as they can be warped.
-        warp_reduce(sdata, tid);
-
-        // Save the summed results to global memory.
-        if (tid == 0) { farfield_intermediate[rid] = sdata[0]; }
-    }
-}
-
 // Version 2 compressed kernel
 //
 extern "C" __device__ __forceinline__ void populate_basis(
@@ -235,7 +92,7 @@ extern "C" __device__ __forceinline__ void populate_basis(
     }
 }
 
-extern "C" __global__ void compressed_farfield2nearfield_v2(
+extern "C" __global__ void compressed_farfield2nearfield(
     const complex<float>* farfield, // Input (size N)
     const int W,                     // Width of nearfield
     const int H,                    // Height of nearfield
@@ -304,181 +161,7 @@ extern "C" __global__ void compressed_farfield2nearfield_v2(
     }
 }
 
-extern "C" __global__ void compressed_nearfield2farfield_v2_test(
-    const complex<float>* nearfield,        // Input (size H*W)
-    const int W,                            // Width of nearfield
-    const int H,                            // Height of nearfield
-    const int N,                            // Size of farfield
-    const int D,                            // Dimension of Zernike basis (2 [xy] for normal spot arrays)
-    const int M,                            // Dimension of polynomial basis (2 [xy] for normal spot arrays)
-    const float* a_dn,                      // Spot Zernike coefficients (size N*D) [shared]
-    const float* c_md,                      // Polynomial coefficients for Zernike (size M*D) [shared]
-    const int* i_md,                        // A key for where c_dm is nonzero (size M*D) [shared]
-    const int* pxy_m,                       // Monomial coefficients (size 2*M) [shared]
-    const float cx,                         // Grid offset x
-    const float cy,                         // Grid offset y
-    const float dx,                         // X grid pitch
-    const float dy,                         // Y grid pitch
-    complex<float>* farfield_intermediate
-) {
-    // Allocate shared data which will store intermediate results.
-    // (Hardcoded to 1024 block size).
-    __shared__ complex<float> sdata[1024];  // 8 kB
-
-    // Make some IDs.
-    int tid = threadIdx.x;                  // Thread ID
-    int nf = blockDim.x * blockIdx.x + tid; // Nearfield index [0, W*H)
-    bool inrange = nf < W*H;
-
-    // Local variables.
-    complex<float> result = 0;
-    float exponent = 0;
-    float coef = 0;
-    int i = 0;
-    int k = 0;
-    int d = 0;
-
-    // Prepare local basis.
-    // This is the phase for a given coefficient d at the current pixel.
-    // It incurs an O(D) cost, but is amortized over O(N) points.
-    float basis[BASIS_SIZE];
-
-    populate_basis(
-        dx * ((nf % W) - cx),
-        dy * ((nf / W) - cy),
-        D, M, c_md, i_md, pxy_m,
-        basis
-    );
-
-    for (int i = 0; i < N; i++) {
-        sdata[tid] = complex<float>(i, i);
-        if (tid == 0) {
-            farfield_intermediate[blockIdx.x + i * gridDim.x] = complex<float>(.1, .2);
-        }
-        __syncthreads();
-        //warp_reduce(sdata, tid);
-    }
-}
-
-extern "C" __global__ void compressed_nearfield2farfield_v2(
-    const complex<float>* nearfield,        // Input (size H*W)
-    const int W,                            // Width of nearfield
-    const int H,                            // Height of nearfield
-    const int N,                            // Size of farfield
-    const int D,                            // Dimension of Zernike basis (2 [xy] for normal spot arrays)
-    const int M,                            // Dimension of polynomial basis (2 [xy] for normal spot arrays)
-    const float* a_dn,                      // Spot Zernike coefficients (size N*D) [shared]
-    const float* c_md,                      // Polynomial coefficients for Zernike (size M*D) [shared]
-    const int* i_md,                        // A key for where c_dm is nonzero (size M*D) [shared]
-    const int* pxy_m,                       // Monomial coefficients (size 2*M) [shared]
-    // const float cx,                         // Grid offset x
-    // const float cy,                         // Grid offset y
-    // const float dx,                         // X grid pitch
-    // const float dy,                         // Y grid pitch
-    const float* X,                 // X grid (WH)
-    const float* Y,                 // Y grid (WH)
-    complex<float>* farfield_intermediate   // Output (blockIdx.x*N)
-) {
-    // Allocate shared data which will store intermediate results.
-    // (Hardcoded to 1024 block size).
-    __shared__ complex<float> sdata[1024 + 32];
-    // __shared__ float a_d[BASIS_SIZE];       // Local copy of a_dn
-
-    // Make some IDs.
-    int tid = threadIdx.x;                  // Thread ID
-    int nf = blockDim.x * blockIdx.x + tid; // Nearfield index [0, W*H)
-    bool inrange = nf < W*H;
-
-    // Local variables.
-    complex<float> result = 0;
-    float exponent = 0;
-    int i = 0;
-    int k = 0;
-    int d = 0;
-
-    // Prepare local basis.
-    // This is the phase for a given coefficient d at the current pixel.
-    // It incurs an O(D) cost, but is amortized over O(N) points.
-    float basis[BASIS_SIZE];
-
-    if (inrange) {
-        populate_basis(
-            X[nf],
-            Y[nf],
-            D, M,
-            c_md, i_md, pxy_m,
-            basis
-        );
-    } else {
-        for (d = 0; d < D; d++) {
-            basis[d] = 0;
-        }
-    }
-
-    // Iterate through farfield points. Use our basis to find the results.
-    for (i = 0; i < N; i++) {
-        exponent = 0;
-
-        /*
-        // Copy 1 row of global a_dn memory to shared memory for speed.
-        if (tid < D) {
-            a_d[tid] = a_dn[tid * N + i];
-        }
-
-        */
-        __syncthreads();
-
-        // Loop over basis indices.
-        k = i;
-        for (d = 0; d < D; d++) {
-            // exponent += basis[d] * a_d[d];
-            exponent += basis[d] * a_dn[k];
-            k += N;
-        }
-
-        // Do the overlap integrand for one nearfield-farfield mapping.
-        // sdata[tid] = exp(complex<float>(0, exponent)); //conj(nearfield[nf]); // * exp(imag * exponent);
-        if (inrange) {
-            sdata[tid] = conj(nearfield[nf]) * complex<float>(cosf(exponent), sinf(exponent));
-            // conj(nearfield[nf]) * exp(imag * exponent);
-        } else {
-            sdata[tid] = 0;
-        }
-
-        // Now we want to integrate by summing these results.
-        // Note that we assume 1024 block size and 32 warp size (change this?). complex doesn't fit into warp?
-        __syncthreads();
-
-        /*
-        */
-        if (tid < 512) { sdata[tid] += sdata[tid + 512]; } __syncthreads();
-        if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads();
-        if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads();
-        if (tid < 64) {  sdata[tid] += sdata[tid + 64];  } __syncthreads();
-        /*
-        if (tid < 32) {  sdata[tid] += sdata[tid + 32];  } __syncthreads();
-        if (tid < 16) {  sdata[tid] += sdata[tid + 16];  } __syncthreads();
-        if (tid < 8) {   sdata[tid] += sdata[tid + 8];   } __syncthreads();
-        if (tid < 4) {   sdata[tid] += sdata[tid + 4];   } __syncthreads();
-        if (tid < 2) {   sdata[tid] += sdata[tid + 2];   } __syncthreads();
-        if (tid < 1) {   sdata[tid] += sdata[tid + 1];   } __syncthreads();   // TODO
-
-        */
-
-        if (tid < 32) {
-            // The last 32 threads don't require __syncthreads() as they can be warped.
-            warp_reduce(sdata, tid);
-        }
-
-        if (tid == 0 && inrange) {
-            // Save the summed results to global memory.
-            farfield_intermediate[blockIdx.x + i * gridDim.x] = sdata[0];
-            // farfield_intermediate[blockIdx.x + i * gridDim.x] = basis[0];
-        }
-    }
-}
-
-extern "C" __global__ void compressed_nearfield2farfield_v3(
+extern "C" __global__ void compressed_nearfield2farfield(
     const complex<float>* nearfield,        // Input (size H*W)
     const int W,                            // Width of nearfield
     const int H,                            // Height of nearfield
@@ -505,8 +188,6 @@ extern "C" __global__ void compressed_nearfield2farfield_v3(
 
     // Local variables.
     complex<float> result = 0;
-    float result_real = 0;
-    float result_imag = 0;
     float exponent = 0;
     float coef = 0;
     int i = 0;
@@ -553,11 +234,8 @@ extern "C" __global__ void compressed_nearfield2farfield_v3(
             result = complex<float>(0.0f, 0.0f);
         }
 
-        result_real = result.real();
-        result_imag = result.imag();
-
-        sdata_real[tid] = result_real;
-        sdata_imag[tid] = result_imag;
+        sdata_real[tid] = result.real();
+        sdata_imag[tid] = result.imag();
 
         __syncthreads();
         if (tid < 512) {

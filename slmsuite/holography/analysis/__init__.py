@@ -388,7 +388,29 @@ def image_remove_field(images, deviations=1, out=None):
 
 
 def image_relative_strehl(images):
-    """TODO"""
+    r"""
+    Computes a metric proportional to the Strehl ratio of a stack of images.
+
+    .. math:: S = \frac{\max_{x,y} I}{\sum_{x,y} I}
+
+    Parameters
+    ----------
+    images : numpy.ndarray
+        A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
+        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
+        images. A single image is interpreted correctly as ``(1, h, w)`` even if
+        ``(h, w)`` is passed.
+
+    Returns
+    -------
+    numpy.ndarray
+        The relative Strehl ratio evaluated for every image. This is of size ``(image_count,)``
+        for provided ``images`` data of shape ``(image_count, h, w)``.
+    """
+    images = np.array(images, copy=(False if np.__version__[0] == '1' else None))
+    if len(images.shape) == 2:
+        images = np.reshape(images, (1, images.shape[0], images.shape[1]))
+
     return np.amax(images, axis=(1,2)) / np.sum(images, axis=(1,2))
 
 
@@ -1755,12 +1777,12 @@ def blob_array_detect(
             centers_norm = np.sum(np.square(centers), 0, keepdims=True)
             centers /= centers_norm
             cross_product = (
-                centers_norm[:, 0] * centers_norm[0, 1] - 
+                centers_norm[:, 0] * centers_norm[0, 1] -
                 centers_norm[:, 1] * centers_norm[0, 0]
             )
             cross_product[0] = 2
             count = count * (np.abs(cross_product) + 1)
-            
+
             # Remake centers.
             best_groups = np.argsort(-count)[:k]
             centers = np.array([
@@ -2008,7 +2030,7 @@ def blob_array_detect(
 
                 # Look for the second missing spot.
                 flip_parity = (
-                    int(spotbooleans_rotated[-1, -2]) - 
+                    int(spotbooleans_rotated[-1, -2]) -
                     int(spotbooleans_rotated[-2, -1])
                 )
 

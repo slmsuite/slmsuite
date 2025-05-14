@@ -809,15 +809,23 @@ class Hologram(_HologramStats):
                 return self.phase + np.pi
 
     def set_weights(self, new_weights):
+        r"""
+        Sets the weights to a new value. Handles moving data onto the GPU if applicable.
+        """
+        if new_weights.shape != self.target.shape:
+            raise ValueError(
+                f"New weights {new_weights.shape} do not match target shape {self.target.shape}"
+            )
+
         self.weights = cp.array(
-            new_weights, 
-            dtype=self.dtype, 
+            new_weights,
+            dtype=self.dtype,
             copy=(False if np.__version__[0] == '1' else None)
         )
 
     def get_weights(self):
         r"""
-        TODO
+        Returns the current weights. Collects the current weights from the GPU if applicable.
         """
         if cp != np:
             return self.weights.get()

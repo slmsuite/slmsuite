@@ -1,5 +1,5 @@
 """
-Hardware control for Thorlabs cameras via :mod:`TLCameraSDK`.
+Hardware control for modern Thorlabs cameras via :mod:`TLCameraSDK`.
 The :mod:`thorlabs_tsi_sdk` module must
 be installed
 (See `ThorCam <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ -> Programming Interfaces).
@@ -10,6 +10,15 @@ After installing the SDK, extract the files in:
 ``~\\Program Files\\Thorlabs\\Scientific Imaging\\Scientific Camera Support\\Scientific_Camera_Interfaces.zip``.
 Follow the instructions in the extracted file Python_README.txt to install into your
 python environment via ``pip``.
+
+Important
+~~~~~~~~~
+Legacy Thorlabs cameras (e.g. UC480) are not supported by the modern Thorlabs SDK.
+For these cameras, consider using the
+:class:`slmsuite.hardware.cameras.instrumental.Instrumental`
+or
+:class:`slmsuite.hardware.cameras.pylablib.PyLabLib`
+interfaces which support UC480 drivers.
 
 Note
 ~~~~
@@ -93,6 +102,7 @@ class ThorCam(Camera):
         - ``'single_hardware'`` means only gets frame on hardware trigger or command.
 
         ``None`` means camera is disarmed.
+        This formalism will likely be deprecated in the future.
     """
 
     sdk = None
@@ -417,7 +427,7 @@ class ThorCam(Camera):
 
         return ret
 
-    def flush(self, timeout_s, verbose=False):
+    def flush(self, timeout_s=1, verbose=False):
         """
         See :meth:`.Camera.flush`.
 

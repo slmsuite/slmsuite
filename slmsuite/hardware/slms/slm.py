@@ -212,7 +212,7 @@ class SLM(_Picklable, ABC):
     @staticmethod
     def info(verbose=True):
         """
-        Abstract method to load display information.
+        Abstract method to load display information. Unsupported by this SLM.
 
         Parameters
         ----------
@@ -355,6 +355,7 @@ class SLM(_Picklable, ABC):
         phase,
         phase_correct=True,
         settle=False,
+        **kwargs,
     ):
         "Backwards-compatibility alias for :meth:`set_phase()`."
         warnings.warn(
@@ -362,7 +363,7 @@ class SLM(_Picklable, ABC):
             "in favor of SLM.set_phase in a future release."
         )
 
-        self.set_phase(phase, phase_correct, settle)
+        self.set_phase(phase, phase_correct, settle, **kwargs)
 
     @abstractmethod
     def _set_phase_hw(self, phase):
@@ -382,6 +383,7 @@ class SLM(_Picklable, ABC):
         phase,
         phase_correct=True,
         settle=False,
+        **kwargs
     ):
         r"""
         Checks, cleans, and adds to data, then sends the data to the SLM and
@@ -471,6 +473,8 @@ class SLM(_Picklable, ABC):
             Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]`` to ``phase``.
         settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
+        **kwargs
+            Passed to the SLM in case the subclass needs to do something special.
 
         Returns
         -------
@@ -549,7 +553,7 @@ class SLM(_Picklable, ABC):
                 self.display = self._phase2gray(self.phase, out=self.display)
 
         # Write!
-        self._set_phase_hw(self.display)
+        self._set_phase_hw(self.display, **kwargs)
 
         # Optional delay.
         if settle:
@@ -736,7 +740,7 @@ class SLM(_Picklable, ABC):
         """
         In the absence of a proper wavefront calibration, sets
         :attr:`~slmsuite.hardware.slms.slm.SLM.source` amplitude and phase using a
-        `fit_function` from :mod:`~slmsuite.misc.fitfunctions`.
+        ``fit_function`` from :mod:`~slmsuite.holography.analysis.fitfunctions`.
 
         Note
         ~~~~

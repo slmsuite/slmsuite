@@ -210,9 +210,11 @@ def take_plot(images, shape=None, separate_axes=False):
     images : numpy.ndarray
         Stack of 2D images, usually a :meth:`take()` output.
     shape : (int, int) or None
-        TODO
+        Shape of the subplots.
+        If ``None``, the shape is determined by the number of images (smallest square).
     separate_axes : bool
-        TODO
+        If ``True``, each image is plotted in a separate subplot.
+        If ``False``, uses :meth:`take_tile()` to plot all images on a single axes.
     """
     # Gather helper variables and set the min and max of all the subplots.
     (img_count, sy, sx) = np.shape(images)
@@ -247,8 +249,8 @@ def take_plot(images, shape=None, separate_axes=False):
             take_tile(images, shape),
             interpolation='none'
         )
-        # ax.axes.xaxis.set_visible(False)
-        # ax.axes.yaxis.set_visible(False)
+        ax.axes.xaxis.set_visible(False)
+        ax.axes.yaxis.set_visible(False)
 
 
 def _take_parse_shape(images, shape=None):
@@ -264,7 +266,7 @@ def _take_parse_shape(images, shape=None):
         (M, N) = shape
 
     if M*N < img_count:
-        warnings.warn("Not enough space to fit all images.")
+        warnings.warn("Not enough space to fit all images. Truncating the image count.")
         img_count = M*N
 
     return img_count, (M, N)
@@ -272,14 +274,16 @@ def _take_parse_shape(images, shape=None):
 
 def take_tile(images, shape=None):
     """
-    TODO
+    Tiles a stack of images into a single image.
+    The stack is arranged into a grid of shape ``shape``.
 
     Parameters
     ----------
     images : numpy.ndarray
         Stack of 2D images, usually a :meth:`take()` output.
     shape : (int, int) or None
-        TODO
+        Shape of the tiled grid.
+        If ``None``, the shape is determined by the number of images (smallest square).
     """
     (img_count, sy, sx) = np.shape(images)
     img_count, (M, N) = _take_parse_shape(images, shape)
@@ -289,28 +293,6 @@ def take_tile(images, shape=None):
 
     return result.reshape(M, N, sy, sx).transpose(0, 2, 1, 3).reshape(M*sy, N*sx)
 
-
-def take_tile(images, shape=None):
-    """
-    TODO
-
-    Parameters
-    ----------
-    images : numpy.ndarray
-        Stack of 2D images, usually a :meth:`take()` output.
-    """
-    (img_count, sy, sx) = np.shape(images)
-
-    # Parse shape.
-    if shape is None:
-        M = N = int(np.ceil(np.sqrt(img_count)))
-    else:
-        (M, N) = shape
-
-    result = np.full((M*N, sy, sx), np.nan, images.dtype)
-    result[:img_count, :, :] = images[:, :, :]
-
-    return result.reshape(M, N, sy, sx).transpose(0, 2, 1, 3).reshape(M*sy, N*sx)
 
 def image_remove_field(images, deviations=1, out=None):
     r"""
@@ -692,7 +674,7 @@ def image_positions(images, grid=None, normalize=True, nansum=False):
 
 def image_centroids(images, grid=None, normalize=True, nansum=False):
     """Alias for :meth:`image_positions()`"""
-    return image_centroids(images, grid, normalize, nansum)
+    return image_positions(images, grid, normalize, nansum)
 
 
 def image_variances(images, centers=None, grid=None, normalize=True, nansum=False, exclude_shear=False):
@@ -777,7 +759,7 @@ def image_variances(images, centers=None, grid=None, normalize=True, nansum=Fals
 
 
 def image_std(images, centers=None, grid=None, normalize=True, nansum=False):
-    """Near-alias of :meth:`image_variances()`"""
+    """Near-alias of :meth:`image_variances()`. Excludes the shear variance."""
     return np.sqrt(image_variances(images, centers, grid, normalize, nansum, exclude_shear=True))
 
 
@@ -901,10 +883,6 @@ def image_ellipticity_angle(variances):
     # We're trying to solve for angle, which is just atan(x/y). We can solve for x/y:
     #   m11 * x = (eig_plus - m02) * y        ==>         x/y = (eig_plus - m02) / m11
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
-
-
-# def batch_fit(y, x, function, guess, plot=False):
-#     pass
 
 
 def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
@@ -1247,6 +1225,7 @@ def image_vortices_coordinates(phase_image, mask=None):
     weights = winding_number[coordinates[0], coordinates[1]]
 
     return coordinates, weights
+
 
 def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False):
     """

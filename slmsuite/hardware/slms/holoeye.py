@@ -41,6 +41,8 @@ class Holoeye(SLM):
 
     Attributes
     ----------
+    slm_lib : HEDS.SLM
+        Handle to the SLM.
     preselect : str
         Preselect string for the SLM. Used to identify the SLM.
     """

@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+preferred-citation:
+  type: article
+  authors:
+  - family-names: "Christen"
+    given-names: "Ian"
+  - family-names: "Panuski"
+    given-names: "Christopher"
+  - family-names: "Propson"
+    given-names: "Thomas"
+  - family-names: "Englund"
+    given-names: "Dirk"
+  doi: "10.48550/arXiv.2505.08777"
+  journal: "arXiv"
+  month: 5
+  title: "Full-volume aberration-space holography"
+  url: "https://arxiv.org/abs/2505.08777"
+  year: 2025

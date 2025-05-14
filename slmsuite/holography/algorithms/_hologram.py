@@ -427,7 +427,7 @@ class Hologram(_HologramStats):
 
         # Custom GPU kernels for speedy weighting.
         self._update_weights_generic_cuda_kernel = None
-        if np != cp and False:   # Disabled until 0.1.3
+        if np != cp and False:   # Disabled until 0.4.0
             try:
                 self._update_weights_generic_cuda_kernel = cp.RawKernel(
                     CUDA_KERNELS,
@@ -807,6 +807,30 @@ class Hologram(_HologramStats):
                 return self.phase.get() + np.pi
             else:
                 return self.phase + np.pi
+
+    def set_weights(self, new_weights):
+        r"""
+        Sets the weights to a new value. Handles moving data onto the GPU if applicable.
+        """
+        if new_weights.shape != self.target.shape:
+            raise ValueError(
+                f"New weights {new_weights.shape} do not match target shape {self.target.shape}"
+            )
+
+        self.weights = cp.array(
+            new_weights,
+            dtype=self.dtype,
+            copy=(False if np.__version__[0] == '1' else None)
+        )
+
+    def get_weights(self):
+        r"""
+        Returns the current weights. Collects the current weights from the GPU if applicable.
+        """
+        if cp != np:
+            return self.weights.get()
+        else:
+            return self.weights
 
     def get_farfield(self, shape=None, propagation_kernel=None, affine=None, get=True):
         r"""
@@ -1307,6 +1331,7 @@ class Hologram(_HologramStats):
             These are passed into :attr:`flags`. See options documented in the constructor.
         """
         # 1) Update flags based upon the arguments.
+        name = kwargs.pop("name", None)
         self._update_flags(method, verbose, feedback, stat_groups, **kwargs)
 
         # 2) Prepare the iterations iterable.
@@ -1314,7 +1339,7 @@ class Hologram(_HologramStats):
 
         # 2.1) Decide whether to use a tqdm progress bar. Don't use a bar for maxiter == 1.
         if verbose and maxiter > 1:
-            iterations = tqdm(iterations)
+            iterations = tqdm(iterations, desc=name)
 
         # 3) Switch between optimization methods (currently only GS- or WGS-type is supported).
         if "GS" in method:
@@ -1362,7 +1387,7 @@ class Hologram(_HologramStats):
             if not (feedback in FEEDBACK_OPTIONS):
                 raise ValueError(
                     "Feedback '{}' not recognized as a feedback option.\n"
-                    "Valid options: {}".format(group, FEEDBACK_OPTIONS)
+                    "Valid options: {}".format(feedback, FEEDBACK_OPTIONS)
                 )
             self.flags["feedback"] = feedback
 

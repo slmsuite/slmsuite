@@ -42,17 +42,17 @@ in optical neural networks. We're excited to see what you come up with next!
 .. |trim| image:: static/ex-trimming.png
     :width: 225
     :alt: Cavity Array Trimming
-    :target: https://arxiv.org/abs/2204.10302
+    :target: https://doi.org/10.1038/s41566-022-01086-9
 
 .. |atoms| image:: static/ex-atoms.png
     :width: 225
     :alt: Dynamic Artificial Atom Addressing
-    :target: https://arxiv.org/abs/2208.06732
+    :target: https://doi.org/10.1038/s41467-024-55423-3
 
 .. |onn| image:: static/ex-onn.png
     :width: 225
     :alt: Optical Neural Networks
-    :target: https://arxiv.org/abs/2205.09103
+    :target: https://doi.org/10.1126/sciadv.adg7904
 
 .. table::
    :widths: auto

@@ -22,6 +22,11 @@ interfaces which support UC480 drivers.
 
 Note
 ~~~~
+Older cameras, in particular UC480 cameras, may be supported by other camera interfaces
+such as :class:`~slmsuite.hardware.cameras.pylablib.PyLabLib`.
+
+Note
+~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
 
@@ -354,21 +359,19 @@ class ThorCam(Camera):
             See :attr:`profile`.
         """
         if profile != self.profile:
+            self.cam.disarm()
             if profile is None:
-                self.cam.disarm()
+                pass
             elif profile == "free":
-                self.cam.disarm()
                 self.cam.frames_per_trigger_zero_for_unlimited = 0
                 self.cam.operation_mode = 0  # Software triggered
                 self.cam.arm(2)
                 self.cam.issue_software_trigger()
             elif profile == "single":
-                self.cam.disarm()
                 self.cam.frames_per_trigger_zero_for_unlimited = 1
                 self.cam.operation_mode = 0  # Software triggered
                 self.cam.arm(2)
             elif profile == "single_hardware":
-                self.cam.disarm()
                 self.cam.frames_per_trigger_zero_for_unlimited = 1
                 self.cam.operation_mode = 1  # Hardware triggered
                 self.cam.arm(2)

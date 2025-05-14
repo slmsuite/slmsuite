@@ -7,6 +7,7 @@ For example, the following code loads a UC480 camera:
 
 .. highlight:: python
 .. code-block:: python
+
     # Load a legacy Thorlabs camera using the UC480 driver.
     import pylablib as pll
     pll.par["devices/dlls/uc480"] = "path/to/uc480/dlls"
@@ -54,6 +55,7 @@ class PyLabLib(Camera):
 
             .. highlight:: python
             .. code-block:: python
+
                 # Load a legacy Thorlabs camera using the UC480 driver.
                 import pylablib as pll
                 pll.par["devices/dlls/uc480"] = "path/to/uc480/dlls"

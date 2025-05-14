@@ -9,10 +9,11 @@
 
 <p align="center">
 <a href="https://slmsuite.readthedocs.io/en/latest"><img alt="Documentation Status" src="https://readthedocs.org/projects/slmsuite/badge/?version=latest"></a>
-<a href="https://pypi.org/project/slmsuite/"><img alt="PyPi Package" src="https://img.shields.io/badge/pypi-v0.2.1-3776AB.svg"></a>
+<a href="https://pypi.org/project/slmsuite/"><img alt="PyPi Package" src="https://img.shields.io/badge/pypi-v0.3.0-3776AB.svg"></a>
 <a href="https://github.com/slmsuite/slmsuite/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/slmsuite/slmsuite?color=purple"></a>
 <!--<a href="https://pepy.tech/project/slmsuite"><img alt="Downloads" src="https://pepy.tech/badge/slmsuite"></a>-->
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
+<a href="https://arxiv.org/abs/2505.08777"><img alt="Citation" src="https://img.shields.io/badge/cite-arXiv%3A2505.08777-B31B1B.svg"></a>
 </p>
 
 `slmsuite` combines GPU-accelerated beamforming algorithms with optimized hardware control, automated calibration, and user-friendly scripting to enable high-performance programmable optics with modern spatial light modulators.
@@ -55,6 +56,23 @@ live through
 [nbviewer](https://nbviewer.org/github/slmsuite/slmsuite-examples/tree/main/examples/),
 or directly in
 [source](https://github.com/slmsuite/slmsuite-examples).
+
+## Citation
+
+`slmsuite` is built upon the work of many others. If you used any technique in particular,
+be sure to check our [documentation](https://slmsuite.readthedocs.io/en/latest/) for links to relevant papers.
+For acknowledgement of the package or unique features such as
+aberration-space holography, please use the following citation:
+
+```
+@misc{
+    christen2025slmsuite,
+    Author = {Ian Christen and Christopher Panuski and Thomas Propson and Dirk Englund},
+    Title = {Full-volume aberration-space holography},
+    Year = {2025},
+    Eprint = {arXiv:2505.08777},
+}
+```
 
 <p align="center">
 <picture>

@@ -322,7 +322,7 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
     -------
     numpy.ndarray
         The converted images. This is of size ``(image_count, h, w, 4)``,
-        where the last axis is RGBA color.
+        where the last axis is RGBA color, 8 bits per channel.
     """
     # Parse images.
     images = np.array(images, copy=(False if np.__version__[0] == '1' else None))
@@ -341,7 +341,7 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
     if cmap == "grayscale":
         cmap = False
 
-    if not isinstance(cmap, str):
+    if not isinstance(cmap, str) and not hasattr(cmap, "N"):
         if cmap is True:
             cmap = mpl.rcParams['image.cmap']
         else:
@@ -366,19 +366,24 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
 
     # Convert images to integers scaled to the lut size.
     if normalize:
-        images = np.rint(images * ((float(lut)+1) / np.max(images))).astype(int)
+        images = np.rint(images * ((float(lut)-1) / np.max(images))).astype(int)
         images = np.clip(images, 0, int(lut))
     elif isfloat:
-        images = np.rint(images * (float(lut)+1)).astype(int)
+        images = np.rint(images * (float(lut)-1)).astype(int)
         images = np.clip(images, 0, int(lut))
 
     # Convert images to RGB.
-    if isinstance(cmap, str):
-        cm = plt.get_cmap(cmap, int(lut)+1)
+    if isinstance(cmap, str) or hasattr(cmap, "N"):
+        if isinstance(cmap, str):
+            cm = plt.get_cmap(cmap, int(lut)+1)
+        else:
+            cm = cmap
+
         if hasattr(cm, "colors"):
             c = cm.colors
         else:
             c = cm(np.arange(0, cm.N))
+            
         images = 255 * c[images]
         if hasnan:
             images[nanmask, 3] = 0

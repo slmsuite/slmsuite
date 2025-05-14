@@ -32,7 +32,7 @@ for module_path in module_paths:
 project = "slmsuite"
 copyright = "2025, slmsuite Developers"
 author = "slmsuite Developers"
-release = "0.2.1"
+release = "0.3.0"
 
 # -- General configuration ---------------------------------------------------
 
@@ -43,6 +43,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
+    "sphinx_autodoc_typehints",
     "sphinx.ext.extlinks",
     "sphinx.ext.linkcode",
     "sphinx_design",
@@ -99,6 +100,8 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 autosummary_generate = True
 autodoc_member_order = "bysource"   # This doesn't work for autosummary unfortunately
                                     # https://github.com/sphinx-doc/sphinx/issues/5379
+# autodoc_typehints = "signature"
+napoleon_use_param = True
 add_module_names = False # Remove namespaces from class/method signatures
 
 nbsphinx_execute = "never"
@@ -203,9 +206,6 @@ examples_repo_name = "slmsuite-examples"
 examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_examples")
 images_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../_build/html/_images")
 
-# print(html_static_path)
-# html_static_path = [examples_path, images_path]
-
 def setup(app):
     app.connect("autodoc-skip-member", skip)
     app.add_css_file('css/custom.css')
@@ -217,7 +217,7 @@ def setup(app):
     # Download example notebooks.
     # NOTE: GitHub API only supports downloading files up to 100 MB.
     try:
-        os.makedirs(examples_path, exist_ok=True)
+        os.makedirs(examples_path, exist_ok=False)
         os.makedirs(images_path, exist_ok=True)
         tree_url = (
             "https://api.github.com/repos/{}/{}/git/trees/main?recursive=1"
@@ -251,6 +251,9 @@ def setup(app):
 
                     image_path = os.path.join(images_path, file_name)
                     shutil.copy(file_path, image_path)
+    except OSError as e:
+        print("WARNING: Not downloading example notebooks because they have already been downloaded. "
+              "Update the examples by deleting the `_examples` directory (or `make clean`). Error:\n{}".format(e))
     except BaseException as e:
         print("WARNING: Unable to download example notebooks. "
               "Building without examples. Error:\n{}".format(e))

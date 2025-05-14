@@ -61,7 +61,6 @@ class MindVision(Camera):
         camera_list = _mvsdk.CameraEnumerateDevice()
         if not camera_list: raise RuntimeError("No cameras found by mvsdk.")
         serial_list = [cam.GetSn() for cam in camera_list]
-        if verbose: print("success")
 
         # Find the camera by serial number or use the first available camera.
         if serial:
@@ -77,12 +76,13 @@ class MindVision(Camera):
         serial = self.cam.GetSn()
 
         # Turn the camera on.
-        if verbose: print(f"Initializing sn '{serial}'...", end="")
+        if verbose: print(f"Initializing sn '{serial}'... ", end="")
         self.handle = 0
         try:
             self.handle = _mvsdk.CameraInit(self.cam, -1, -1)
         except _mvsdk.CameraException as e:
             print("CameraInit Failed ({}):\n{}".format(e.error_code, e.message))
+            raise e
 
         # Fill in parameters from the capability class.
         self.capability = _mvsdk.CameraGetCapability(self.handle)
@@ -95,6 +95,7 @@ class MindVision(Camera):
         _mvsdk.CameraSetTriggerMode(self.handle, 1)
         _mvsdk.CameraSetAeState(self.handle, 0)
         _mvsdk.CameraSetExposureTime(self.handle, 30 * 1000)
+        _mvsdk.CameraPlay(self.handle)
 
         # Calculate the size required for the RGB buffer, which is allocated directly according to the maximum resolution of the camera.
         buffer_size = (
@@ -216,15 +217,16 @@ class MindVision(Camera):
         # TODO: are the following two commands necessary for every call?
 
         # Switch camera mode to continuous acquisition.
-        _mvsdk.CameraSetTriggerMode(self.handle, 0)
+        # _mvsdk.CameraSetTriggerMode(self.handle, 0)
+        _mvsdk.CameraSoftTrigger(self.handle)
 
         # Let the SDK internal image taking thread start working.
-        _mvsdk.CameraPlay(self.handle)
+        # _mvsdk.CameraPlay(self.handle)
 
         # Get a frame from the camera
         try:
             #
-            raw_data, frame_head = _mvsdk.CameraGetImageBuffer(self.handle, int(timeout_s))
+            raw_data, frame_head = _mvsdk.CameraGetImageBuffer(self.handle, int(timeout_s*1000))
 
             # FUTURE: Go directly from the raw_data to numpy instead of through self.buffer?
             _mvsdk.CameraImageProcess(self.handle, raw_data, self.buffer, frame_head)
@@ -234,10 +236,10 @@ class MindVision(Camera):
             frame_data = (_mvsdk.c_ubyte * frame_head.uBytes).from_address(self.buffer)
 
             if self.mono:
+                return np.copy(np.frombuffer(frame_data, dtype=np.uint8).reshape(self.shape))
+            else:
                 rgb_shape = (self.shape[0], self.shape[1], 3)
                 return np.copy(np.frombuffer(frame_data, dtype=np.uint8).reshape(rgb_shape))
-            else:
-                return np.copy(np.frombuffer(frame_data, dtype=np.uint8).reshape(self.shape))
 
         except _mvsdk.CameraException as e:
             print("CameraGetImageBuffer failed ({}):\n{}".format(e.error_code, e.message))

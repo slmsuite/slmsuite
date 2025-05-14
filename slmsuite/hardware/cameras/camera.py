@@ -11,6 +11,7 @@ from scipy.optimize import curve_fit
 from scipy.ndimage import zoom
 import PIL
 import io
+from abc import ABC, abstractmethod
 
 from slmsuite.hardware import _Picklable
 from slmsuite.holography import analysis
@@ -20,7 +21,7 @@ from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography.analysis.files import _gray2rgb
 
 
-class Camera(_Picklable):
+class Camera(_Picklable, ABC):
     """
     Abstract class for cameras.
     Comes with transformations, averaging and HDR,
@@ -37,7 +38,7 @@ class Camera(_Picklable):
         Depth of a camera pixel well in bits.
     bitresolution : int
         Stores ``2**bitdepth``.
-    dtype : type
+    dtype : np.dtype
         Stores the type returned by :meth:`._get_image_hw()`.
         This value is cached upon initialization.
     pitch_um : (float, float) OR None
@@ -95,6 +96,7 @@ class Camera(_Picklable):
         "last_image",
     ]
 
+    @abstractmethod
     def __init__(
         self,
         resolution,
@@ -198,6 +200,7 @@ class Camera(_Picklable):
         # Frame averaging variables.
         self.averaging = self._parse_averaging(averaging, preserve_none=True)
         self.hdr = self._parse_hdr(hdr, preserve_none=True)
+        self._flush_iterations = 2  # Hidden variable
 
         # Spatial dimensions.
         if pitch_um is not None:
@@ -215,11 +218,18 @@ class Camera(_Picklable):
 
     # Core methods - to be implemented by subclass.
 
+    @abstractmethod
     def close(self):
         """
         Abstract method to close the camera and delete related objects.
         """
         raise NotImplementedError()
+
+    def __del__(self):
+        try:
+            self.close()
+        except:
+            pass
 
     @staticmethod
     def info(verbose=True):
@@ -271,6 +281,7 @@ class Camera(_Picklable):
         self._set_exposure_hw(exposure_s)
         return self.get_exposure()
 
+    @abstractmethod
     def _get_exposure_hw(self):
         """
         Abstract method to interface with hardware and get the frame integration time in seconds.
@@ -278,6 +289,7 @@ class Camera(_Picklable):
         """
         raise NotImplementedError(f"Camera {self.name} has not implemented _get_exposure_hw")
 
+    @abstractmethod
     def _set_exposure_hw(self, exposure_s):
         """
         Abstract method to interface with hardware and set the exposure time in seconds.
@@ -323,9 +335,10 @@ class Camera(_Picklable):
             The frame exposure time  is **added** to this timeout
             such that there is always enough time to expose.
         """
-        for _ in range(2):
+        for _ in range(self._flush_iterations):
             self._get_image_hw_tolerant(timeout_s=timeout_s+self.exposure_s)
 
+    @abstractmethod
     def _get_image_hw(self, timeout_s):
         """
         Abstract method to capture camera images.
@@ -344,6 +357,20 @@ class Camera(_Picklable):
         """
         raise NotImplementedError(f"Camera {self.name} has not implemented _get_image_hw")
 
+    def _get_out(self, image_count, out=None):
+        # Preallocate memory if necessary
+        out_shape = (int(image_count), self.default_shape[0], self.default_shape[1])
+        if out is None:
+            out = np.empty(out_shape, dtype=self.dtype)
+        else:
+            if out.shape != out_shape:
+                raise ValueError(f"Expected out to be of shape {out_shape}. Found {out.shape}.")
+            if out.dtype != self.dtype:
+                raise ValueError(f"Expected out to be of type {self.dtype}. Found {out.dtype}.")
+            out = np.array(out, copy=False, dtype=self.dtype)
+
+        return out
+
     def _get_images_hw(self, image_count, timeout_s, out=None):
         """
         Abstract method to capture a series of image_count images using camera-specific
@@ -357,13 +384,23 @@ class Camera(_Picklable):
             The time in seconds to wait for **each** frame to be fetched.
             The frame exposure time  is **NOT added** to this timeout
             such that there is always enough time to expose.
+        out : None OR numpy.ndarray
+            Preallocated memory for in-place operations, if applicable.
 
         Returns
         -------
         numpy.ndarray
-            Array of shape (n_frames, :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`).
+            Array of shape (image_count, :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`).
         """
-        raise NotImplementedError(f"Camera {self.name} has not implemented _get_images_hw")
+        # Preallocate memory if necessary
+        out = self._get_out(image_count, out)
+
+        for i in range(image_count):
+            out[i, :, :] = self._get_image_hw_tolerant(
+                timeout_s=timeout_s+self.exposure_s
+            )
+
+        return out
 
     # Capture methods one level of abstraction above _get_image_hw().
 
@@ -393,14 +430,18 @@ class Camera(_Picklable):
 
     def _get_dtype(self):
         try:
-            self.dtype = np.array(self._get_image_hw_tolerant()).dtype   # Future: check if cameras change this after init.
+            self.dtype = np.dtype(
+                np.array(
+                    self._get_image_hw_tolerant(timeout_s=1)
+                ).dtype
+            )   # Future: check if cameras change dtype after init.
         except:
             if self.bitdepth > 16:
-                self.dtype = float
+                self.dtype = np.dtype(float)
             elif self.bitdepth > 8:
-                self.dtype = np.uint16
+                self.dtype = np.dtype(np.uint16)
             else:
-                self.dtype = np.uint8
+                self.dtype = np.dtype(np.uint8)
 
         try:
             if self.dtype(0).nbytes * 8 < self.bitdepth:
@@ -410,6 +451,8 @@ class Camera(_Picklable):
                 )
         except:     # The above sometimes fails for non-numpy datatypes.
             pass
+
+        return self.dtype
 
     def _parse_averaging(self, averaging=None, preserve_none=False):
         """
@@ -457,7 +500,10 @@ class Camera(_Picklable):
     def _get_averaging_dtype(self, averaging=None):
         """Returns the appropriate image datatype for ``averaging`` levels of averaging."""
         if averaging is None:
-            averaging = self.averaging
+            if self.averaging is None:
+                raise ValueError("Averaging is not enabled for this camera. Set the .averaging attribute.")
+            else:
+                averaging = self.averaging
         averaging = int(averaging)
 
         if averaging <= 0:
@@ -465,7 +511,7 @@ class Camera(_Picklable):
 
         # Switch based on image type
         if self.dtype.kind == "i" or self.dtype.kind == "u":
-            dtype_bitdepth = self.dtype.nbytes
+            dtype_bitdepth = 8*self.dtype.type(0).nbytes
 
             # Remove depth for signed integer.
             if self.dtype.kind == "i":
@@ -632,37 +678,18 @@ class Camera(_Picklable):
         numpy.ndarray
             Array of shape ``(image_count, height, width)``.
         """
-        # Preallocate memory if necessary
-        out_shape = (int(image_count), self.default_shape[0], self.default_shape[1])
-        if out is None:
-            imgs = np.empty(out_shape, dtype=self.dtype)
-        else:
-            if out.shape != out_shape:
-                raise ValueError(f"Expected out to be of shape {out_shape}. Found {out.shape}.")
-            if out.dtype != self.dtype:
-                raise ValueError(f"Expected out to be of type {self.dtype}. Found {out.dtype}.")
-            imgs = np.array(out, copy=False, dtype=self.dtype)
-
         # Flush if desired.
         if flush:
             self.flush()
 
         # Grab images (no transformation)
-        try:
-            # Using the camera-specific method if available
-            imgs = self._get_images_hw(
-                image_count,
-                timeout_s=timeout_s+self.exposure_s,
-                out=imgs
-            )
-        except NotImplementedError:
-            # Brute-force collection as a backup
-            for i in range(image_count):
-                imgs[i, :, :] = self._get_image_hw_tolerant(
-                    timeout_s=timeout_s+self.exposure_s
-                )
+        imgs = self._get_images_hw(
+            image_count,
+            timeout_s=timeout_s+self.exposure_s,
+            out=out
+        )
 
-        # Transform if desired.
+        # Transform if desired. Future: make more efficient.
         if transform:
             imgs_ = np.empty(
                 (int(image_count), self.shape[0], self.shape[1]),
@@ -732,25 +759,36 @@ class Camera(_Picklable):
             The scale of the returned image is the same as the original exposure.
         """
         (exposures, exposure_power) = self._parse_hdr(exposures)
+        overexposure_threshold = self.bitresolution/2,
+        if self.averaging is not None:
+            overexposure_threshold *= self.averaging
 
         # Make empty data and grab the original exposure time.
         original_exposure = self.get_exposure()
-        imgs = np.empty((exposures, self.shape[0], self.shape[1]))
+        imgs = np.zeros((exposures, self.shape[0], self.shape[1]), self.dtype)
+        exposure_times = np.zeros((exposures,), dtype=float)
 
         for i in range(exposures):
             # FUTURE: record the set exposures and use these to do better analysis.
-            self.set_exposure(int(exposure_power ** i) * original_exposure)
+            exposure_times[i] = self.set_exposure(int(exposure_power ** i) * original_exposure)
             self.flush()    # Sometimes, cameras return bad frames after exposure change.
             imgs[i, :, :] = self.get_image(hdr=False, **kwargs)
 
+            # Terminate the loop if our image is entirely overexposed.
+            if np.all(imgs[i, :, :] > overexposure_threshold):
+                continue
+
         # Reset exposure.
         self.set_exposure(original_exposure)
-        self.flush()
 
         if return_raw:
-            return imgs
+            return imgs, exposure_times
         else:
-            img = self.get_image_hdr_analysis(imgs, exposure_power=exposure_power, overexposure_threshold=self.bitresolution/2)
+            img = self.get_image_hdr_analysis(
+                imgs,
+                overexposure_threshold=overexposure_threshold,
+                exposure_power=exposure_times,
+            )
             if np.max(img) >= self.bitresolution:
                 warnings.warn("HDR image is overexposed.")
             # Store the result locally.
@@ -771,7 +809,7 @@ class Camera(_Picklable):
         overexposure_threshold : float OR None
             For each image (except the first), data is thrown out if values are above
             this threshold. If ``None``, the threshold defaults to half the maximum.
-        exposure_power : int
+        exposure_power : int or list of float
             Each exposure increases in time multiplicatively from the base value
             (original :meth:`get_exposure()`) by this factor :math:`p`. The :math:`i\text{th}` image has
             exposure time :math:`\tau \times p^i`, zero-indexed.
@@ -788,7 +826,15 @@ class Camera(_Picklable):
             The scale of the returned image is the same as the original exposure.
         """
         # Parse arguments
-        exposure_power = int(exposure_power)
+        if np.isscalar(exposure_power):
+            exposure_power = int(exposure_power)
+            exposure_times = np.power(exposure_power, imgs.shape[0])
+        else:
+            exposure_times = exposure_power
+            if np.all(exposure_times <= 0):
+                raise ValueError("exposure_times cannot all be non-positive.")
+            exposure_times = exposure_times / np.min(exposure_times[exposure_times > 0])
+
         if overexposure_threshold is None:
             # Default to half exposure.
             overexposure_threshold = np.max(imgs) / 2
@@ -800,10 +846,10 @@ class Camera(_Picklable):
 
             if i == 0:
                 img = img_current
-            else:
+            elif exposure_times[i] > 0:
                 # Overwrite data when greater precision is available.
                 mask = img_current < overexposure_threshold
-                img[mask] = img_current[mask] / float(exposure_power ** i)
+                img[mask] = img_current[mask] / exposure_times[i]
 
         return img
 
@@ -815,8 +861,10 @@ class Camera(_Picklable):
 
         Parameters
         ----------
-        image : ndarray OR None
-            Image to be plotted. If ``None``, grabs an image from the camera.
+        image : ndarray OR None OR bool
+            Image to be plotted. 
+            If ``None``, grabs an image from the camera.
+            If ``False``, uses the :attr:`.last_image` attribute.
         limits : None OR float OR [[float, float], [float, float]]
             Scales the limits by a given factor or uses the passed limits directly.
         title : str
@@ -834,6 +882,8 @@ class Camera(_Picklable):
         if image is None:
             self.flush()
             image = self.get_image()
+        if image is False:
+            image = self.last_image
         image = np.array(image, copy=(False if np.__version__[0] == '1' else None))
 
         if len(plt.get_fignums()) > 0:
@@ -1168,7 +1218,8 @@ class _CameraViewer:
             cmap_options=[
                 "default", "gray", "Blues", "turbo",
                 'viridis', 'plasma', 'inferno', 'magma', 'cividis'
-            ]
+            ],
+            crosshair=False,
         ):
         self.cam = cam
         self.backend = backend
@@ -1196,6 +1247,7 @@ class _CameraViewer:
             "scale" : scale,
             "border" : border,
             "cmap_options" : cmap_options,
+            "crosshair" : crosshair,
         }
 
         self.task = None
@@ -1242,6 +1294,11 @@ class _CameraViewer:
         if self.state["scale"] > 1:
             rgb = zoom(rgb, (1, self.state["scale"], self.state["scale"], 1), order=0)
 
+        # Finally, add crosshair in the center
+        if self.state["crosshair"]:
+            rgb[:, :, int(rgb.shape[2]/2), :3] = 255 - rgb[:, :, int(rgb.shape[2]/2), :3]
+            rgb[:, int(rgb.shape[1]/2), :, :3] = 255 - rgb[:, int(rgb.shape[1]/2), :, :3]
+
         buff = io.BytesIO()
         rgb = PIL.Image.fromarray(rgb[0])
         rgb.save(buff, format="png")
@@ -1249,12 +1306,16 @@ class _CameraViewer:
         return buff.getvalue()
 
     def render(self, img=None):
-        self.image.value = self.parse(img)
+        try:
+            self.image.value = self.parse(img)
+        except Exception as e:
+            with self.widgets["output"]:
+                print(str(e))
 
     def update(self, event):
         with self.widgets["output"]:
             self.widgets["output"].clear_output(wait=True)
-        for key in ["range", "log", "cmap", "scale", "live"]:
+        for key in ["range", "log", "cmap", "scale", "live", "crosshair"]:
             self.state[key] = self.widgets[key].value
 
         self.render()
@@ -1340,6 +1401,12 @@ class _CameraViewer:
                 tooltip="Toggle logarithmic scaling of the current plot.",
                 layout=item_layout,
             ),
+            "crosshair" : Checkbox(
+                value=self.state["crosshair"],
+                description="Crosshair",
+                tooltip="Toggle a crosshair centered on the image.",
+                layout=item_layout,
+            ),
             "cmap" : Dropdown(
                 options=self.state["cmap_options"],
                 value=self.state["cmap"],
@@ -1407,6 +1474,7 @@ class _CameraViewer:
                     HBox([
                         self.widgets["cmap"],
                         self.widgets["log"],
+                        self.widgets["crosshair"],
                     ]),
                     HBox([
                         self.widgets["range"],

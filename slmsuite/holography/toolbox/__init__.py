@@ -36,7 +36,10 @@ BLAZE_LABELS = {
     "knm":  (r"$k_n$ [pix]", r"$k_m$ [pix]"),
     "freq": (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
     "lpmm": (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
-    "zernike":  (r"$Z_1^1$ [Zernike rad]", r"$Z_1^{-1}$ [Zernike rad]"),
+    "zernike": (
+        r"$x = Z_2 = Z_1^1$ [Zernike rad]",
+        r"$y = Z_1 = Z_1^{-1}$ [Zernike rad]"
+    ),
     "ij":   (r"Camera $i$ [pix]", r"Camera $j$ [pix]"),
 }
 for prefix, name in zip(["", "mag_"], ["Camera", "Experiment"]):
@@ -96,7 +99,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         The small angle approximation is assumed.
 
     -  ``"norm"``, ``"kxy"``
-        Blaze :math:`k_x` normalized to wavenumber :math:`k`, i.e. :math:`\frac{k_x}{k}`.
+        Blaze :math:`k_x` normalized to wavenumber :math:`k = 2\pi/\lambda`, i.e. :math:`\frac{k_x}{k}`.
         Equivalent to radians ``"rad"`` in the small angle approximation.
         **This is the default** :mod:`slmsuite` **unit.**
 
@@ -110,6 +113,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     -  ``"freq"``
         Pixel frequency of a grating producing the blaze.
         e.g. 1/16 is a grating with a period of 16 pixels.
+        Under these units, the edge of :math:`k`-space is at :math:`\pm 0.5`,
+        which makes it useful to program in fractions of the SLM's space.
 
     -  ``"lpmm"``
         Line pairs per mm or lines per mm of a grating producing the blaze.
@@ -1115,7 +1120,7 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
 
 
 def smallest_distance(vectors, metric="chebyshev"):
-    """
+    r"""
     Returns the smallest distance between pairs of points under a given ``metric``.
 
     Tip
@@ -1220,18 +1225,16 @@ def smallest_distance(vectors, metric="chebyshev"):
 def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
     r"""
     Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
-    on a set of seed ``vectors`` to promote even vector spacing using the helper function
-    :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
-    This iteratively forces a set of ``vectors`` away from each other until
-    they become more evenly distributed over a space.
-    This function could be made much more computationally efficient by using analytic
-    methods to compute Voronoi cell area, rather than the current numerical approach.
+    on a set of seed ``vectors`` to promote even vector spacing.
+    Vectors are bound within the grid.
 
     Parameters
     ----------
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR (int, int)
+        Extract the rectangular bounds from a grid, or from a shape.
         See :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
     vectors : array_like
+        Initial seed points for Lloyd's Algorithm.
         See :meth:`~slmsuite.holography.toolbox.voronoi_windows()`.
     iterations : int
         Number of iterations to apply Lloyd's Algorithm.
@@ -1243,37 +1246,126 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
     numpy.ndarray
         The result of Lloyd's Algorithm.
     """
-    result = np.copy(format_2vectors(vectors))
-    (x_grid, y_grid) = _process_grid(grid)
+    result = np.copy(format_2vectors(vectors)).astype(float)
+
+    # Parse grid
+    if isinstance(grid, (tuple, list)) and all(isinstance(x, int) for x in grid):
+        shape = grid
+    else:
+        x_grid, y_grid = _process_grid(grid)
+        shape = x_grid.shape
+    H, W = shape
+
+    def polygon_centroid(polygon):
+        x = polygon[:, 0]
+        y = polygon[:, 1]
+        x_shift = np.roll(x, -1)
+        y_shift = np.roll(y, -1)
+
+        cross = x * y_shift - x_shift * y
+        area = 0.5 * np.sum(cross)
+
+        if np.isclose(area, 0):
+            return 0, np.mean(polygon, axis=0)
+
+        cx = np.sum((x + x_shift) * cross) / (6 * area)
+        cy = np.sum((y + y_shift) * cross) / (6 * area)
+
+        return np.array([cx, cy])
+
+    def clip_polygon(polygon, edge_fn, intersect_fn):
+        clipped = []
+        prev = polygon[-1]
+
+        for curr in polygon:
+            if edge_fn(curr):
+                if not edge_fn(prev):
+                    clipped.append(intersect_fn(prev, curr))
+                clipped.append(curr)
+            elif edge_fn(prev):
+                clipped.append(intersect_fn(prev, curr))
+            prev = curr
+
+        return clipped
+
+    def clip_to_box(polygon):
+        def intersect(p1, p2, edge):
+            x1, y1 = p1
+            x2, y2 = p2
+            if edge == "left":
+                x = 0
+                y = y1 + (y2 - y1) * (0 - x1) / (x2 - x1)
+            elif edge == "right":
+                x = W
+                y = y1 + (y2 - y1) * (W - x1) / (x2 - x1)
+            elif edge == "bottom":
+                y = 0
+                x = x1 + (x2 - x1) * (0 - y1) / (y2 - y1)
+            elif edge == "top":
+                y = H
+                x = x1 + (x2 - x1) * (H - y1) / (y2 - y1)
+            return [x, y]
+
+        for edge, edge_fn, intersect_fn in [
+            ("left", lambda p: p[0] >= 0, lambda p1, p2: intersect(p1, p2, "left")),
+            ("right", lambda p: p[0] <= W, lambda p1, p2: intersect(p1, p2, "right")),
+            ("bottom", lambda p: p[1] >= 0, lambda p1, p2: intersect(p1, p2, "bottom")),
+            ("top", lambda p: p[1] <= H, lambda p1, p2: intersect(p1, p2, "top")),
+        ]:
+            polygon = clip_polygon(polygon, edge_fn, intersect_fn)
+            if not polygon:
+                break
+        return np.array(polygon)
 
     for _ in range(iterations):
-        windows = voronoi_windows(grid, result, plot=plot)
+        # Add points outside the shape to ensure bounded Voronoi cells
+        hsx = W / 2
+        hsy = H / 2
+        vectors_ext = np.concatenate(
+            (
+                result.T,
+                np.array([[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]),
+            )
+        )
 
-        no_change = True
+        # Recomputing this each time isn't too inefficient.
+        vor = Voronoi(vectors_ext)
 
-        # For each point, move towards the centroid of the window.
-        for index, window in enumerate(windows):
-            if np.any(window):
-                centroid_x = np.mean(x_grid[window])
-                centroid_y = np.mean(y_grid[window])
-            else:  # If the window is empty (point overlap, etc), then reset this point.
-                centroid_x = np.random.choice(x_grid.ravel())
-                centroid_y = np.random.choice(x_grid.ravel())
+        if plot:
+            sx = shape[1]
+            sy = shape[0]
 
-            # Iterate
-            if (
-                np.abs(centroid_x - result[0, index]) < 1
-                and np.abs(centroid_y - result[1, index]) < 1
-            ):
-                pass
-            else:
-                no_change = False
-                result[0, index] = centroid_x
-                result[1, index] = centroid_y
+            # Use the built-in scipy function to plot a visualization of the windows.
+            fig = voronoi_plot_2d(vor)
 
-        # If this iteration did nothing, then finish.
-        if no_change:
-            break
+            # Plot a bounding box corresponding to the grid.
+            plt.plot(np.array([0, sx, sx, 0, 0]), np.array([0, 0, sy, sy, 0]), "r")
+
+            # Format and show the plot.
+            plt.xlim(-0.05 * sx, 1.05 * sx)
+            plt.ylim(1.05 * sy, -0.05 * sy)
+            plt.gca().set_aspect("equal")
+            plt.title("Voronoi Cells")
+            plt.show()
+
+        for i in range(result.shape[1]):
+            # Don't move points that don't make sense.
+            region_index = vor.point_region[i]
+            region = vor.regions[region_index]
+
+            if -1 in region or len(region) == 0:
+                continue
+
+            polygon = vor.vertices[region]
+            polygon = clip_to_box(polygon)
+            if len(polygon) < 3:
+                continue
+
+            # Otherwise, update the point to the centroid of its cell.
+            centroid = polygon_centroid(polygon)
+
+            result[0, i] = centroid[0]
+            result[1, i] = centroid[1]
 
     return result
 
@@ -1327,11 +1419,12 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
     if isinstance(grid, (list, tuple)):
         return result
     else:
-        return np.vstack((x_grid[result], y_grid[result]))
+        result = np.rint(result).astype(int)
+        return np.vstack((x_grid[result[0], result[1]], y_grid[result[0], result[1]]))
 
 
 def assign_vectors(vectors, assignment_options):
-    """
+    r"""
     Assigns each vector in ``vectors`` to the closest counterpart ``assignment_options``.
     Uses Euclidean distance.
 

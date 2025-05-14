@@ -12,9 +12,11 @@ except ImportError:
 from scipy import special
 from math import factorial
 import matplotlib.pyplot as plt
+from typing import Tuple, Union, Callable
+
 
 from slmsuite.misc.math import REAL_TYPES
-from slmsuite.holography.toolbox import _process_grid
+from slmsuite.holography.toolbox import _process_grid, imprint, format_2vectors
 
 # Load CUDA code. This is used for cupy.RawKernels in this file and elsewhere.
 
@@ -32,28 +34,27 @@ except:
 
 # Basic gratings.
 
-def blaze(grid, vector=(0, 0)):
+def blaze(
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    vector: Tuple[float, float] = (0, 0),
+):
     r"""
     Returns a simple `blazed grating <https://en.wikipedia.org/wiki/Blazed_grating>`_,
     a linear phase ramp, toward a given vector in :math:`k`-space.
 
     .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k} \cdot \vec{x}
 
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+
+    :param grid:
         :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    vector : (float, float)
+    :param vector:
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
         See :meth:`~slmsuite.holography.toolbox.convert_vector()`.
         If a 3-dimensional vector is passed, a normalized focusing term is added.
-
-    Returns
-    -------
-    numpy.ndarray
+    :return:
         The phase for this function.
     """
     (x_grid, y_grid) = _process_grid(grid)
@@ -74,7 +75,13 @@ def blaze(grid, vector=(0, 0)):
     return result
 
 
-def sinusoid(grid, vector=(0, 0), shift=0, a=np.pi, b=0):
+def sinusoid(
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    vector: Union[Tuple[float, float], Tuple[int, int]] = (0, 0),
+    shift: float = 0,
+    a: float = np.pi,
+    b: float = 0,
+):
     r"""
     Returns a simple `holographic grating
     <https://en.wikipedia.org/wiki/Diffraction_grating#SR_(Surface_Relief)_gratings>`_,
@@ -85,31 +92,27 @@ def sinusoid(grid, vector=(0, 0), shift=0, a=np.pi, b=0):
     Important
     ---------
     Unlike a blazed grating :meth:`.blaze()`, power will efficiently be deflected toward
-    the mirror -1st order at :math:`-\vec{k}`, by symmetry.
+    the mirror -1st order at :math:`-\vec{k}` in addition to the 1st order, by symmetry.
 
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+
+    :param grid:
         :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    vector : (float, float)
+    :param vector:
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
-        See :meth:`~slmsuite.holography.toolbox.convert_vector()`
-    shift : float
+        See :meth:`~slmsuite.holography.toolbox.convert_vector()`.
+    :param shift:
         Radians to laterally shift the period of the grating by.
-    a : float
+    :param a:
         Value at one extreme of the sinusoid.
         Ignoring crosstalk,
         the 0th order will be minimized when ``|a-b|`` is equal to :math:`\pi`.
-    b : float
+    :param b:
         Value at the other extreme of the sinusoid.
         Defaults to zero, in which case ``a`` is the amplitude.
-
-    Returns
-    -------
-    numpy.ndarray
+    :return:
         The phase for this function.
     """
     if vector[0] == 0 and vector[1] == 0:
@@ -125,7 +128,14 @@ def sinusoid(grid, vector=(0, 0), shift=0, a=np.pi, b=0):
     return result
 
 
-def binary(grid, vector=(0, 0), shift=0, a=np.pi, b=0, duty_cycle=.5):
+def binary(
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    vector: Union[Tuple[float, float], Tuple[int, int]] = (0, 0),
+    shift: float = 0,
+    a: float = np.pi,
+    b: float = 0,
+    duty_cycle: float = .5
+) -> np.ndarray:
     r"""
     Returns a simple binary grating toward a given vector in :math:`k`-space.
 
@@ -139,51 +149,90 @@ def binary(grid, vector=(0, 0), shift=0, a=np.pi, b=0, duty_cycle=.5):
             \end{array}
         \right.
 
+    To realize a binary grating with a given pixel period, either use
+    :meth:`~slmsuite.holography.toolbox.convert_vector` with ``"freq"`` units
+    or pass a vector with a coordinate larger than 1:
+
+    .. highlight:: python
+    .. code-block:: python
+
+        n_x = 4     # Period in pixels
+
+        # Option 1: convert
+        binary_integer_period = toolbox.phase.binary(
+            grid=slm,
+            vector=toolbox.convert_vector(
+                (1./n_x, 0),
+                from_units="freq",
+                to_units="kxy",
+                hardware=slm
+            )
+        )
+
+        # Option 2: pass directly
+        binary_integer_period = toolbox.phase.binary(
+            grid=slm,
+            vector=(n_x, 0)
+        )
+
     Note
-    ----
+    ~~~~
     When parameters are chosen to produce integer period,
     this function uses speed optimizations **(implementation incomplete)**.
     Otherwise, this function uses ``np.mod`` on top of
     :meth:`~slmsuite.holography.toolbox.phase.blaze()` to compute gratings.
 
-    Parameters
-    ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+
+    :param grid:
         :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
-    vector : (float, float)
+    :param vector:
         :math:`\vec{k}`. Blaze vector in normalized :math:`\frac{k_x}{k}` units.
-        See :meth:`~slmsuite.holography.toolbox.convert_vector()`
-    shift : float
+        See :meth:`~slmsuite.holography.toolbox.convert_vector()`.
+
+        If the user passes data greater than 1, this is interpreted
+        as requesting a binary grating with the given period. This feature
+        ignores whatever transformations might have been applied to ``grid``.
+    :param shift:
         Radians to laterally shift the period of the grating by.
-    a : float
+    :param a:
         Value at one extreme of the binary grating.
-    b : float
+    :param b:
         Value at the other extreme of the binary grating.
         Defaults to zero, in which case ``a`` is the amplitude.
-    duty_cycle : float
+    :param duty_cycle:
         Ratio of the period which is 'on'.
-
-    Returns
-    -------
-    numpy.ndarray
+    :return:
         The phase for this function.
     """
-    result = None
+    grid = (x_grid, y_grid) = _process_grid(grid)
+    dtype = x_grid.dtype
 
+    # Check if we're in pixel period mode.
+    if np.any(np.abs(vector) > 1):
+        # This is not computationally efficient.
+        grid = (x_grid, y_grid) = np.meshgrid(
+            np.arange(x_grid.shape[1]).astype(float),
+            np.arange(x_grid.shape[0]).astype(float)
+        )
+        vector = (
+            0 if vector[0] == 0 else 1. / vector[0],
+            0 if vector[1] == 0 else 1. / vector[1]
+        )
+
+    # Check if we're in an orthogonal case.
     if vector[0] == 0 and vector[1] == 0:
-        (x_grid, _) = _process_grid(grid)
         phase = b
         if shift != 0:
             if np.mod(shift, 2*np.pi) < (2 * np.pi * duty_cycle):
                 phase = a
-        result = np.full(x_grid.shape, phase)
+        return np.full(x_grid.shape, phase, dtype=dtype)
     elif vector[0] != 0 and vector[1] != 0:
         pass    # xor the next case.
     elif vector[0] == 0 or vector[1] == 0:
-        period = 1/np.sum(vector)
+        period = 1/np.sum(vector)   # Relative to the grid
         duty = period*duty_cycle
 
         period_int = np.rint(period)
@@ -192,15 +241,143 @@ def binary(grid, vector=(0, 0), shift=0, a=np.pi, b=0, duty_cycle=.5):
         if np.all(np.isclose(period, period_int)) and np.all(np.isclose(duty, duty_int)):
             pass    # Future: speed optimization.
 
-    # If we have not set result, then we have to use the slow np.mod option.
-    if result is None:
-        result = np.where(
-            np.mod(blaze(grid, vector) + shift, 2*np.pi) < (2 * np.pi * duty_cycle),
-            b,
-            a,
+    # If we have not returned, then we have to use the slow np.mod option.
+    return np.where(
+        np.mod(blaze(grid, vector) + shift, 2*np.pi) < (2 * np.pi * duty_cycle),
+        b,
+        a,
+    )
+
+
+def _quadrants(
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    vectors: np.ndarray,
+    grating: Callable = blaze,
+) -> np.ndarray:
+    """
+    Given four 2-vectors in top-right bottom-right top-left bottom-left order,
+    fill the quadrants with gratings in the chosen directions.
+    """
+    # Parse vectors
+    vectors = format_2vectors(vectors)
+    if vectors.shape != (2,4):
+        raise ValueError("Expected four 2-vectors (2,4). Found {}.".format(vectors.shape))
+
+    # Parse grid.
+    grid = (x_grid, y_grid) = _process_grid(grid)
+    canvas = np.zeros_like(x_grid)
+
+    # Fill the quadrants.
+    for i, vector in enumerate(vectors.T):
+        # Future: center this on the (0,0) point of the current grid?
+        imprint(
+            matrix=canvas,
+            window=[
+                (canvas.shape[1] // 2) * ((3-i) // 2),      # x
+                (canvas.shape[1] // 2),                     # w
+                (canvas.shape[0] // 2) * (i % 2),           # y
+                (canvas.shape[0] // 2),                     # h
+            ],
+            function=grating,
+            grid=grid,
+            vector=vector,      # Passed to function=grating
         )
 
-    return result
+    return canvas
+
+
+def bahtinov(
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    radius: float = .001,
+    angle: float = 10*np.pi/180,
+    grating: Callable = binary,
+) -> np.ndarray:
+    r"""
+    Returns a `Bahtinov mask <https://en.wikipedia.org/wiki/Bahtinov_mask>`_,
+    commonly used for focusing telescopes.
+    When the farfield pattern resulting from this mask is symmetric, the system is in focus.
+
+
+    :param grid:
+        :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    :param radius:
+        Radius of the diffraction pattern in normalized :math:`\frac{k_x}{k}` units.
+        See :meth:`~slmsuite.holography.toolbox.convert_radius()`.
+        Defaults to a milliradian.
+    :param angle:
+        Angle of the right two quadrants from the left two quadrants in radians.
+        Defaults to 10 degrees.
+    :param grating:
+        Type of grating to use for the mask. Must have a ``vector=`` argument.
+        Defaults to :meth:`~slmsuite.holography.toolbox.phase.binary()`.
+    :return:
+        The phase for this function.
+    """
+    s = np.sin(angle)
+    c = np.cos(angle)
+
+    vectors = format_2vectors(
+        radius * np.array([
+            (s, c),
+            (s, -c),
+            (0, 1),
+            (0, 1),
+        ]).T
+    )
+
+    return _quadrants(
+        grid=grid,
+        vectors=vectors,
+        grating=grating,
+    )
+
+
+def quadrants(
+    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    radius: float = .001,
+    center: Tuple[float, float] = (0, 0),
+) -> np.ndarray:
+    r"""
+    Returns a quadrant-based alignment mask similar to
+    :meth:`~slmsuite.holography.toolbox.phase.bahtinov()`.
+    In this case, each quadrant is filled with a blazed grating pointing in the
+    direction of the quadrant. When the source is centered on the SLM, the four
+    resulting spots will have the same intensity (to first order).
+    The position of the spots on the camera can align
+    the SLM to the optical axis of the system.
+
+    :param grid:
+        :math:`\vec{x}`. Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
+        corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
+        These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
+        such a class can be passed instead of the grids directly.
+    :param radius:
+        Radius of the diffraction pattern in normalized :math:`\frac{k_x}{k}` units.
+        See :meth:`~slmsuite.holography.toolbox.convert_radius()`.
+        Defaults to a milliradian.
+    :param center:
+        Center of the diffraction pattern in normalized :math:`\frac{k_x}{k}` units.
+        Defaults to the origin.
+    :return:
+        The phase for this function.
+    """
+    vectors = format_2vectors(
+        (radius / np.sqrt(2)) * np.array([
+            (1, -1),
+            (1, 1),
+            (-1, -1),
+            (-1, 1),
+        ]).T
+    ) + format_2vectors(center)
+
+    return _quadrants(
+        grid=grid,
+        vectors=vectors,
+        grating=blaze,
+    )
 
 
 # Basic lenses.
@@ -505,7 +682,7 @@ def zernike_aperture(grid, aperture=None):
     ----------
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR float OR None
         How to scale the polynomials relative to the grid shape. This is relative
-        to the :math:`R = 1` edge of a standard Zernike pupil.
+        to the :math:`r = 1` edge of a standard Zernike pupil.
 
         - ``None``
           If a :class:`~slmsuite.hardware.slms.slm.SLM` is passed for ``grid``, then
@@ -576,9 +753,15 @@ def zernike_aperture(grid, aperture=None):
 
 def zernike(grid, index, weight=1, **kwargs):
     r"""
-    Returns a single real `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_.
+    Returns a single real
+    `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
+    as a subset of :meth:`.zernike_sum()`.
     These polynomials are commonly used as an orthonormal basis for optical aberration
-    and are used in a number of places inside :mod:`slmsuite` for aberration compensation.
+    and are used in a number of places inside :mod:`slmsuite` for aberration
+    compensation.
+
+    Under the hood, this calls :meth:`.zernike_sum()` with a single term. See
+    :meth:`.zernike_sum()` for more information about normalization and scaling.
 
     Parameters
     ----------
@@ -760,10 +943,22 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
 
     .. math:: \phi(\vec{x}) = \sum_k w_k Z_{J_k}(\vec{x}).
 
-    where :math:`J_k` are the ANSI ``indices`` of the polynomials and
+    where :math:`J_k` are the 1-dimensional `ANSI
+    <https://en.wikipedia.org/wiki/Zernike_polynomials#OSA/ANSI_standard_indices>`_
+    ``indices`` of the polynomials and
     :math:`w_k` are the floating point ``weights`` of each polynomial.
-    To improve performance, especially for higher order polynomials,
-    we store a cache of Zernike coefficients to avoid regeneration.
+
+    Important
+    ~~~~~~~~~
+    These polynomials :math:`Z_j` are normalized within the edge of a standard
+    Zernike pupil to a peak-to-valley amplitude of 2, corresponding to :math:`\pm 1` for all
+    polynomials except for the piston, which is identically 1.
+    When ``use_mask=False``, the polynomial is not cropped outside the standard Zernike pupil.
+    This should be used carefully, as polynomials outside the unit circle quickly explode with
+    :math:`r^O` for terms of order :math:`O`.
+
+    Tip
+    ~~~
     See the below example to generate
     :math:`Z_1 - Z_2 + Z_4 = Z_1^{-1} - Z_1^1 + Z_2^0`,
     where the standard radial Zernike indexing :math:`Z_n^l`
@@ -780,6 +975,16 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
             weights=(1, -1,  1),    # Request Z_1 - Z_2 + Z_4
             aperture="circular"
         )
+
+    To improve performance, especially for higher order polynomials,
+    we store a cache of Zernike coefficients to avoid regeneration.
+
+    Tip
+    ~~~
+    slmsuite uses `ANSI
+    <https://en.wikipedia.org/wiki/Zernike_polynomials#OSA/ANSI_standard_indices>`_
+    by default, but the user can convert between other common indexing conventions with
+    :meth:`~slmsuite.holography.toolbox.phase.zernike_convert_index()`
 
     Parameters
     ----------
@@ -825,8 +1030,8 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     use_mask : bool OR "return" OR np.nan
         If ``True``, sets the area where standard Zernike polynomials are undefined to zero.
         If ``False``, the polynomial is not cropped. This should be used carefully, as
-        the wavefront correction outside the unit circle quickly explodes with
-        :math:`r^O` for terms of high order :math:`O`.
+        polynomials outside the unit circle quickly explode with
+        :math:`r^O` for terms of order :math:`O`.
         If ``"return"``, returns the 2D mask ``x_grid**2 + y_grid**2 <= 1``.
         If ``np.nan``, the clipped area is set to ``np.nan`` instead of zero;
         this is used for plotting transparency in this undefined region.
@@ -1092,6 +1297,7 @@ def _zernike_overlap(
 
     return result
 
+
 def _zernike_cache_plot():
     plt.figure(figsize=(10,10))
     plt.imshow(np.log2(_zernike_cache_vectorized))
@@ -1207,7 +1413,6 @@ def _zernike_coefficients(index):
     return _zernike_cache[index]
 
 
-
 def _zernike_populate_basis_map(indices):
     """
     This generates helper maps ``c_md``, ``i_md``, ``pxy_m`` for use in GPU kernels
@@ -1263,6 +1468,7 @@ except:
 
 def _zernike_test(grid, indices):
     _zernike_test_kernel = cp.RawKernel(_load_cuda(), 'zernike_test')
+    _zernike_test_kernel.compile()
 
     c_md, i_md, pxy_m = _zernike_populate_basis_map(indices)
 
@@ -1271,27 +1477,32 @@ def _zernike_test(grid, indices):
     scale = 1
     if hasattr(grid, "get_source_zernike_scaling"):
         scale = grid.get_source_zernike_scaling()
-    x_grid = cp.array(x_grid * scale, copy=(False if np.__version__[0] == '1' else None), dtype=np.float32)
-    y_grid = cp.array(y_grid * scale, copy=(False if np.__version__[0] == '1' else None), dtype=np.float32)
+        print(scale)
+    x_grid = cp.array(x_grid, copy=True, dtype=np.float32)
+    y_grid = cp.array(y_grid, copy=True, dtype=np.float32)
+
+    x_grid *= scale
+    y_grid *= scale
 
     (H, W) = x_grid.shape
     WH = int(W*H)
     (M, D) = c_md.shape
 
-    out = cp.empty((D,H,W), dtype=np.float32)
+    out = cp.full((D,H,W), np.nan, dtype=np.float32)
+    out.fill(-42)
 
     threads_per_block = int(_zernike_test_kernel.max_threads_per_block)
-    blocks = WH // threads_per_block
+    blocks = (WH // threads_per_block) + 1
 
     # Call the RawKernel.
     _zernike_test_kernel(
         (blocks,),
         (threads_per_block,),
         (
-            WH, D, M,
-            cp.array(c_md.ravel(), copy=(False if np.__version__[0] == '1' else None)),
-            cp.array(i_md.ravel(), copy=(False if np.__version__[0] == '1' else None)),
-            cp.array(pxy_m.ravel(), copy=(False if np.__version__[0] == '1' else None)),
+            np.int32(WH), np.int32(D), np.int32(M),
+            cp.array(c_md.ravel()),
+            cp.array(i_md.ravel()),
+            cp.array(pxy_m.ravel()),
             x_grid.ravel(),
             y_grid.ravel(),
             out.ravel()

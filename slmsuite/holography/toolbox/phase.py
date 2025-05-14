@@ -1297,6 +1297,7 @@ def _zernike_overlap(
 
     return result
 
+
 def _zernike_cache_plot():
     plt.figure(figsize=(10,10))
     plt.imshow(np.log2(_zernike_cache_vectorized))
@@ -1412,7 +1413,6 @@ def _zernike_coefficients(index):
     return _zernike_cache[index]
 
 
-
 def _zernike_populate_basis_map(indices):
     """
     This generates helper maps ``c_md``, ``i_md``, ``pxy_m`` for use in GPU kernels
@@ -1468,6 +1468,7 @@ except:
 
 def _zernike_test(grid, indices):
     _zernike_test_kernel = cp.RawKernel(_load_cuda(), 'zernike_test')
+    _zernike_test_kernel.compile()
 
     c_md, i_md, pxy_m = _zernike_populate_basis_map(indices)
 
@@ -1476,27 +1477,32 @@ def _zernike_test(grid, indices):
     scale = 1
     if hasattr(grid, "get_source_zernike_scaling"):
         scale = grid.get_source_zernike_scaling()
-    x_grid = cp.array(x_grid * scale, copy=(False if np.__version__[0] == '1' else None), dtype=np.float32)
-    y_grid = cp.array(y_grid * scale, copy=(False if np.__version__[0] == '1' else None), dtype=np.float32)
+        print(scale)
+    x_grid = cp.array(x_grid, copy=True, dtype=np.float32)
+    y_grid = cp.array(y_grid, copy=True, dtype=np.float32)
+
+    x_grid *= scale
+    y_grid *= scale
 
     (H, W) = x_grid.shape
     WH = int(W*H)
     (M, D) = c_md.shape
 
-    out = cp.empty((D,H,W), dtype=np.float32)
+    out = cp.full((D,H,W), np.nan, dtype=np.float32)
+    out.fill(-42)
 
     threads_per_block = int(_zernike_test_kernel.max_threads_per_block)
-    blocks = WH // threads_per_block
+    blocks = (WH // threads_per_block) + 1
 
     # Call the RawKernel.
     _zernike_test_kernel(
         (blocks,),
         (threads_per_block,),
         (
-            WH, D, M,
-            cp.array(c_md.ravel(), copy=(False if np.__version__[0] == '1' else None)),
-            cp.array(i_md.ravel(), copy=(False if np.__version__[0] == '1' else None)),
-            cp.array(pxy_m.ravel(), copy=(False if np.__version__[0] == '1' else None)),
+            np.int32(WH), np.int32(D), np.int32(M),
+            cp.array(c_md.ravel()),
+            cp.array(i_md.ravel()),
+            cp.array(pxy_m.ravel()),
             x_grid.ravel(),
             y_grid.ravel(),
             out.ravel()

@@ -1,3 +1,5 @@
+from slmsuite.holography.toolbox.phase import _load_cuda
+from slmsuite.holography.toolbox import _process_grid
 from slmsuite.holography.algorithms._header import *
 from slmsuite.holography.algorithms._hologram import Hologram
 from slmsuite.holography.algorithms._feedback import FeedbackHologram
@@ -63,7 +65,7 @@ class _AbstractSpotHologram(FeedbackHologram):
         )
 
         # Fast version; have to iterate for accuracy.
-        regions = analysis.image_remove_field(regions, out=regions)
+        regions = analysis.image_remove_field(regions, deviations=None, out=regions)
         shift_vectors = analysis.image_positions(regions)
         # shift_vectors = np.clip(
         #     shift_vectors,
@@ -96,6 +98,20 @@ class _AbstractSpotHologram(FeedbackHologram):
             plt.imshow(masked)
             plt.scatter(sv1[0, :], sv1[1, :], s=200, fc="none", ec="r")
             plt.scatter(sv2[0, :], sv2[1, :], s=300, fc="none", ec="b")
+            plt.show()
+            
+            tiled = analysis.take_tile(
+                analysis.take(
+                    img,
+                    self.spot_ij,
+                    self.spot_integration_width_ij,
+                    centered=True,
+                    integrate=False,
+                )
+            )
+
+            plt.figure(figsize=(12, 12))
+            plt.imshow(tiled)
             plt.show()
 
         # Handle the feedback applied from this refinement.
@@ -136,7 +152,8 @@ class _AbstractSpotHologram(FeedbackHologram):
 
 
 # For the cupy kernel based approach, the size of the kernel to cache.
-N_BATCH_MAX = 210   # Corresponds to ~1 GB for a megapixel SLM.
+N_BATCH_MAX = 256   # Corresponds to ~1 GB for a megapixel SLM.
+# Future: change this based on the mempool size.
 
 class CompressedSpotHologram(_AbstractSpotHologram):
     """
@@ -180,6 +197,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         basis="kxy",
         spot_amp=None,
         cameraslm=None,
+        cuda=False,
         **kwargs
     ):
         r"""
@@ -216,8 +234,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             More general or complicated functionality requires full use of the GPU
             and thus the following option requires :mod:`cupy` and underlying CUDA.
 
-        #.  **(This feature is currently disabled until 0.4.0 due
-            to discovered instability on different systems.)**
+        #.  **(This feature may be unstable on certain systems, perhaps depending on CUDA version.)**
             A custom CUDA kernel loaded into :mod:`cupy`.
             Above a certain number of spots (:math:`O(10^3)`),
             saving and transporting a set of Zernike polynomial kernels would
@@ -290,9 +307,16 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         cameraslm : ~slmsuite.hardware.cameraslms.FourierSLM
             Must be passed. The default of ``None`` with throw an error and is only
             optional such that we can retain the same argument ordering as :class:`SpotHologram`.
+        cuda : bool
+            If a GPU is available, whether to use the compressed GPU kernel.
+            Otherwise, fallback to the memory-inefficient arrayed approach.
         **kwargs
             Passed to :meth:`.FeedbackHologram.__init__()`.
         """
+        # Parse cameraslm.
+        if cameraslm is None:
+            raise ValueError("cameraslm must be passed.")
+
         # Parse vectors.
         spot_vectors = toolbox.format_vectors(spot_vectors, handle_dimension="pass")
         (D, N) = spot_vectors.shape
@@ -378,12 +402,12 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             )
 
         # Check to make sure spots are within bounds
-        kmax = 1. / np.min(cameraslm.slm.pitch) / 2.
-        if np.any(np.abs(self.spot_kxy[:2, :]) > kmax):
-            raise ValueError("Spots laterally outside the bounds of the farfield")
+        if cameraslm is not None and hasattr(cameraslm, "slm"):
+            kmax = 1. / np.min(cameraslm.slm.pitch) / 2.
+            if np.any(np.abs(self.spot_kxy[:2, :]) > 1.1 * kmax):
+                raise ValueError("Spots laterally outside the bounds of the farfield")
 
-        # Generate ij point spread function (psf)
-        if cameraslm is not None:
+            # Generate ij point spread function (psf)
             psf_kxy = np.mean(cameraslm.slm.get_spot_radius_kxy())
             self.spot_ij = cameraslm.kxyslm_to_ijcam(self.spot_kxy)
             psf_ij = toolbox.convert_radius(psf_kxy, "kxy", "ij", cameraslm)
@@ -452,21 +476,19 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # Storage variable to use cp.sum on the intermediate sum.
         self._nearfield2farfield_cuda_intermediate = None
 
-        if np != cp and False:
-            # Move the Zernike spots to the GPU.
-            # self.spot_zernike = cp.array(self.spot_zernike, dtype=self.dtype)
-
-            # Custom GPU kernels for speed.
-            try:
+        # Custom GPU kernels for speed.
+        if np != cp and cuda:
+            # try:
+                CUDA_KERNELS = _load_cuda()
                 self._near2far_cuda = cp.RawKernel(
                     CUDA_KERNELS,
-                    'compressed_nearfield2farfield_v2',
-                    jitify=True,
+                    'compressed_nearfield2farfield_v3',
+                    # jitify=True,
                 )
                 self._far2near_cuda = cp.RawKernel(
                     CUDA_KERNELS,
                     'compressed_farfield2nearfield_v2',
-                    jitify=True,
+                    # jitify=True,
                 )
 
                 self._near2far_cuda.compile()
@@ -476,28 +498,35 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._c_md = cp.array(c_md)
                 self._i_md = cp.array(i_md)
                 self._pxy_m = cp.array(pxy_m)
+                
+                (x_grid, y_grid) = _process_grid(self.cameraslm.slm)
+                self._x_grid = cp.array(x_grid.ravel(), copy=True, dtype=np.float32)
+                self._y_grid = cp.array(y_grid.ravel(), copy=True, dtype=np.float32)
+
+                scale = np.float32(self.cameraslm.slm.get_source_zernike_scaling())
+                self._x_grid *= scale
+                self._y_grid *= scale
 
                 self.cuda = True
 
                 # Test the kernel.
-                self._nearfield2farfield()
-                self._farfield2nearfield()
-            except Exception as e:
-                raise e
-                warnings.warn("Raw CUDA kernels failed to load. Falling back to cupy.\n" + str(e))
+                # self._nearfield2farfield()
+                # self._farfield2nearfield()
+            # except Exception as e:
+            #     warnings.warn("Raw CUDA kernels failed to load. Falling back to cupy.\n" + str(e))
 
     def __len__(self):
         """
-        Overloads ``len()`` to return the number of spots in this :class:`FreeSpotHologram`.
+        Overloads ``len()`` to return the number of spots in this :class:`CompressedSpotHologram`.
 
         Returns
         -------
         int
-            The length of :attr:`spot_amp`.
+            The size of :attr:`spot_amp`.
         """
         return self.spot_amp.size
 
-    def get_padded_shape(self):
+    def get_padded_shape(self, *args, **kwargs):
         """
         Vestigial from :class:`~slmsuite.holography.algorithms.Hologram`, but unneeded here.
         :class:`~slmsuite.holography.algorithms.CompressedSpotHologram`
@@ -551,7 +580,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         if vectors is None:
             vectors = self.spot_zernike
 
-        # Make the grids if they aren't there.
+        # Make the grids if they aren't there. Complex to reduce overhead, ironically.
         if not hasattr(self, "_grid_complex"):
             (x_scale, y_scale) = tphase.zernike_aperture(self.cameraslm.slm, aperture=None)
             self._grid_complex = (
@@ -577,16 +606,23 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         return out
 
-    def _update_cupy_kernel(self, kernel_slice=None, batch_slice=None):
+    def _check_spot_zernike_change(self):
+        """Returns whether a change happened."""
         # Check if we need to update the kernel.
-        needs_update = (
+        changed = (
             not hasattr(self, "_spot_zernike_cached") or
             np.any(self._spot_zernike_cached != self.spot_zernike)
         )
 
         # Take a cached copy so we can check if we need to update next time.
-        if needs_update:
+        if changed:
             self._spot_zernike_cached = self.spot_zernike.copy()
+
+        return changed
+
+    def _update_cupy_kernel(self, kernel_slice=None, batch_slice=None):
+        # Check if we need to update the kernel.
+        needs_update = self._check_spot_zernike_change() or (self._cupy_kernel is None)
 
         # Update the kernel always if we're slicing (updating a fractional kernel).
         if kernel_slice is not None and batch_slice is not None:
@@ -621,8 +657,10 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             if phase_torch is None:
                 try:
                     self.farfield = self._nearfield2farfield_cuda(nearfield)
+                    self._midloop_cleaning()
                 except Exception as err:    # Fallback to cupy upon error.
                     warnings.warn("Falling back to cupy:\n" + str(err))
+                    raise err
                     self.cuda = False
             else:
                 warnings.warn(
@@ -641,6 +679,19 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 return farfield_torch
 
     def _nearfield2farfield_cuda(self, nearfield):
+        # CUDA_KERNELS = _load_cuda()
+        # self._near2far_cuda = cp.RawKernel(
+        #     CUDA_KERNELS,
+        #     'compressed_nearfield2farfield_v3',
+        #     # 'compressed_nearfield2farfield_v2_test',
+        #     jitify=True,
+        # )
+        # self._near2far_cuda.compile()
+
+        # Check if we need to update the kernel.
+        if self._check_spot_zernike_change():
+            self._spot_zernike_cupy = cp.array(self.spot_zernike.astype(np.float32))
+
         H, W = np.int32(self.shape)
         D, N = np.int32(self.spot_zernike.shape)
         M = np.int32(self._i_md.shape[0])
@@ -652,31 +703,37 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 "Threads per block can be larger than the hardcoded limit of 1024. "
                 "Remove this limit for enhanced speed."
             )
-        blocks_x = int(np.ceil(float(W*H) / threads_per_block))
+        blocks_x = int(np.ceil(float(W*H) / threads_per_block))     # To sum over later.
         blocks_y = N
 
-        if self._nearfield2farfield_cuda_intermediate is None:
+        if (
+            self._nearfield2farfield_cuda_intermediate is None or 
+            self._nearfield2farfield_cuda_intermediate.shape != (blocks_y, blocks_x)
+        ):
             self._nearfield2farfield_cuda_intermediate = cp.zeros((blocks_y, blocks_x), dtype=self.dtype_complex)
 
-        center_pix = np.array(self.cameraslm.slm.get_source_center(), dtype=np.float32)
-        pitch_zernike = (
-            np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
-        ).astype(np.float32)
+        self._nearfield2farfield_cuda_intermediate.fill(0)
+
+        # center_pix = np.array(self.cameraslm.slm.get_source_center(), dtype=np.float32)
+        # pitch_zernike = (
+        #     np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
+        # ).astype(np.float32)
 
         # Call the RawKernel.
         self._near2far_cuda(
             (blocks_x,),
             (threads_per_block, 1),
             (
-                nearfield,
+                nearfield.ravel(),
                 W, H, N, D, M,
-                self.spot_zernike,    # a_dn
-                self._c_md,
-                self._i_md,
-                self._pxy_m,
-                center_pix[0], center_pix[1],
-                pitch_zernike[0], pitch_zernike[1],
-                self._nearfield2farfield_cuda_intermediate
+                self._spot_zernike_cupy.ravel(),    # a_dn
+                self._c_md.ravel(),
+                self._i_md.ravel(),
+                self._pxy_m.ravel(),
+                # center_pix[0], center_pix[1],
+                # pitch_zernike[0], pitch_zernike[1],
+                self._x_grid, self._y_grid,
+                self._nearfield2farfield_cuda_intermediate.ravel()
             )
         )
 
@@ -721,6 +778,10 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             self._update_cupy_kernel()
             collapse_kernel(self._cupy_kernel, out=farfield)
         else:
+            warnings.warn(
+                f"Operating on {N} spots, larger than the threshold {N_BATCH_MAX} for a static kernel cache. "
+                f"Operating slmsuite's compressed kernel on a CUDA-capable GPU avoids a cycling cache."
+            )
             batches = 1 + N // N_BATCH_MAX
             for batch in range(batches):
                 batch_slice = slice(batch * N_BATCH_MAX, np.clip((batch+1) * N_BATCH_MAX, 0, N))
@@ -751,6 +812,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._farfield2nearfield_cuda()
             except Exception as err:    # Fallback to cupy upon error.
                 warnings.warn("Falling back to cupy:\n" + str(err))
+                raise err
                 self.cuda = False
 
         if not self.cuda:
@@ -760,65 +822,51 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             self._nearfield_extract()
 
     def _farfield2nearfield_cuda(self):
+        # CUDA_KERNELS = _load_cuda()
         # self._far2near_cuda = cp.RawKernel(
         #     CUDA_KERNELS,
         #     'compressed_farfield2nearfield_v2',
         #     jitify=True,
         # )
+        # self._far2near_cuda.compile()
 
+        # Check if we need to update the kernel.
+        if self._check_spot_zernike_change():
+            self._spot_zernike_cupy = cp.array(self.spot_zernike.astype(np.float32))
+        
         H, W = np.int32(self.shape)
         D, N = np.int32(self.spot_zernike.shape)
         M = np.int32(self._i_md.shape[0])
 
         threads_per_block = int(1024)
-        assert self._near2far_cuda.max_threads_per_block >= threads_per_block
-        if self._near2far_cuda.max_threads_per_block > threads_per_block:
+        assert self._far2near_cuda.max_threads_per_block >= threads_per_block
+        if self._far2near_cuda.max_threads_per_block > threads_per_block:
             warnings.warn(
                 "Threads per block can be larger than the hardcoded limit of 1024. "
                 "Remove this limit for enhanced speed."
             )
         blocks_x = int(np.ceil(float(W*H) / threads_per_block))
 
-        center_pix = np.array(self.cameraslm.slm.get_source_center(), dtype=np.float32)
-        pitch_zernike = (
-            np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
-        ).astype(np.float32)
-
-        # args = [
-        #     farfield,
-        #     W, H, N, D, M,
-        #     self.spot_zernike,    # a_dn
-        #     self._c_md,
-        #     self._i_md,
-        #     self._pxy_m,
-        #     center_pix[0], center_pix[1],
-        #     pitch_zernike[0], pitch_zernike[1],
-        #     nearfield_out
-        # ]
-
-        # for arg in args:
-        #     print(
-        #         type(arg),
-        #         (arg.shape if hasattr(arg, "shape") else ""),
-        #         (arg.dtype if hasattr(arg, "dtype") else "")
-        #     )
-        # for arg in args:
-        #     print(arg)
+        # center_pix = np.array(self.cameraslm.slm.get_source_center(), dtype=np.float32)
+        # pitch_zernike = (
+        #     np.array(self.cameraslm.slm.pitch) * self.cameraslm.slm.get_source_zernike_scaling()
+        # ).astype(np.float32)
 
         # Call the RawKernel.
         self._far2near_cuda(
             (blocks_x,),
             (threads_per_block, 1),
             (
-                self.farfield,
+                self.farfield.ravel(),
                 W, H, N, D, M,
-                self.spot_zernike,      # a_dn
-                self._c_md,
-                self._i_md,
-                self._pxy_m,
-                center_pix[0], center_pix[1],
-                pitch_zernike[0], pitch_zernike[1],
-                self.nearfield
+                self._spot_zernike_cupy.ravel(),      # a_dn
+                self._c_md.ravel(),
+                self._i_md.ravel(),
+                self._pxy_m.ravel(),
+                # center_pix[0], center_pix[1],
+                # pitch_zernike[0], pitch_zernike[1],
+                self._x_grid, self._y_grid,
+                self.nearfield.ravel()
             )
         )
 
@@ -893,7 +941,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         feedback = self.flags["feedback"]
 
         if feedback == "computational":
-            warnings.warn("CompressedSpotHologram feedback 'computational' is interpreted as 'computational_spot'")
+            # warnings.warn("CompressedSpotHologram feedback 'computational' is interpreted as 'computational_spot'")
             feedback = self.flags["feedback"] = "computational_spot"
 
         if feedback == "experimental":
@@ -934,6 +982,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             stats["computational_spot"] = self._calculate_stats(
                 self.amp_ff,
                 self.target,
+                xp=cp,
                 efficiency_compensation=False,
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]
             )
@@ -986,8 +1035,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         """
         stats = {}
 
-        self._calculate_stats_computational(stats, stat_groups)
-        # self._calculate_stats_experimental_spot(stats, stat_groups)
+        # self._calculate_stats_computational_spot(stats, stat_groups)
+        self._calculate_stats_experimental_spot(stats, stat_groups)
 
         self._update_stats_dictionary(stats)
 
@@ -1279,10 +1328,14 @@ class SpotHologram(_AbstractSpotHologram):
 
         # Check to make sure spots are within relevant camera and SLM shapes.
         if (
-            np.any(self.spot_knm[0] < self.spot_integration_width_knm / 2)
-            or np.any(self.spot_knm[1] < self.spot_integration_width_knm / 2)
-            or np.any(self.spot_knm[0] >= shape[1] - self.spot_integration_width_knm / 2)
-            or np.any(self.spot_knm[1] >= shape[0] - self.spot_integration_width_knm / 2)
+            # np.any(self.spot_knm[0] < self.spot_integration_width_knm / 2)
+            # or np.any(self.spot_knm[1] < self.spot_integration_width_knm / 2)
+            # or np.any(self.spot_knm[0] >= shape[1] - self.spot_integration_width_knm / 2)
+            # or np.any(self.spot_knm[1] >= shape[0] - self.spot_integration_width_knm / 2)
+            np.any(self.spot_knm[0] < 0)
+            or np.any(self.spot_knm[1] < 0)
+            or np.any(self.spot_knm[0] >= shape[1])
+            or np.any(self.spot_knm[1] >= shape[0])
         ):
             raise ValueError(
                 "Spots outside SLM computational space bounds!\nSpots:\n{}\nBounds: {}".format(

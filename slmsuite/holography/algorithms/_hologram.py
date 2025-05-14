@@ -427,7 +427,7 @@ class Hologram(_HologramStats):
 
         # Custom GPU kernels for speedy weighting.
         self._update_weights_generic_cuda_kernel = None
-        if np != cp and False:   # Disabled until 0.1.3
+        if np != cp and False:   # Disabled until 0.4.0
             try:
                 self._update_weights_generic_cuda_kernel = cp.RawKernel(
                     CUDA_KERNELS,

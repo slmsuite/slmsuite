@@ -257,7 +257,7 @@ def take_tile(images, shape=None):
     else:
         (M, N) = shape
 
-    result = np.empty((M*N, sy, sx), images.dtype)
+    result = np.full((M*N, sy, sx), np.nan, images.dtype)
     result[:img_count, :, :] = images[:, :, :]
 
     return result.reshape(M, N, sy, sx).transpose(0, 2, 1, 3).reshape(M*sy, N*sx)

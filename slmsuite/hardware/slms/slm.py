@@ -1006,6 +1006,8 @@ class SLM(_Picklable, ABC):
 
         Parameters
         ----------
+        source : dict OR None
+            The data to plot. If ``None``, uses :attr:`source`.
         sim : bool
             Plots the simulated source distribution if ``True`` or the measured
             source distribution if ``False``.

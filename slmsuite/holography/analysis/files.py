@@ -322,7 +322,7 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
     -------
     numpy.ndarray
         The converted images. This is of size ``(image_count, h, w, 4)``,
-        where the last axis is RGBA color.
+        where the last axis is RGBA color, 8 bits per channel.
     """
     # Parse images.
     images = np.array(images, copy=(False if np.__version__[0] == '1' else None))

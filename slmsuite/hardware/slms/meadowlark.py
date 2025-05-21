@@ -622,7 +622,7 @@ class Meadowlark(SLM):
                 )
 
         # If we got to here, we need to actually load the SDK.
-        if len(cases) >= 1:
+        if len(cases) > 1:
             options = ',\n'.join([f'{_SDK_MODE_NAMES[case[0]]} ({case[1]})' for case in cases])
             warnings.warn(
                 f"Multiple Meadowlark SDKs located. "

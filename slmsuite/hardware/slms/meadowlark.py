@@ -808,7 +808,7 @@ class Meadowlark(SLM):
         # Finally, actually load the LUT file
         try:
             if self.sdk_mode == _SDK_MODE.HDMI:
-                Meadowlark._slm_lib[self.sdk_mode].Load_LUT(lut_path)
+                Meadowlark._slm_lib[self.sdk_mode].Load_lut(lut_path)
             elif (
                 self.sdk_mode == _SDK_MODE.PCIE_LEGACY
                 or self.sdk_mode == _SDK_MODE.PCIE_MODERN

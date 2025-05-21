@@ -327,7 +327,7 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[sdk_mode]
         if sdk_mode == _SDK_MODE.HDMI:
-            return sdk.slm_lib.Get_Width()
+            return sdk.Get_Width()
         elif (
             sdk_mode == _SDK_MODE.PCIE_LEGACY
             or sdk_mode == _SDK_MODE.PCIE_MODERN
@@ -379,7 +379,7 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[sdk_mode]
         if sdk_mode == _SDK_MODE.HDMI:
-            return sdk.slm_lib.Get_Depth()
+            return sdk.Get_Depth()
         elif (
             sdk_mode == _SDK_MODE.PCIE_LEGACY
             or sdk_mode == _SDK_MODE.PCIE_MODERN

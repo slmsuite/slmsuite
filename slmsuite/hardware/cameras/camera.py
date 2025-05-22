@@ -1523,7 +1523,7 @@ class _CameraViewer:
         p = np.sum(image)
         hh = np.arange(h)
         vv = np.arange(v)
-        xc = np.sum(np.dot(image, hh)) / p
-        yc = np.sum(np.dot(image.T, vv)) / p
+        yc = np.sum(np.dot(image.T, hh)) / p
+        xc = np.sum(np.dot(image, vv)) / p
 
         return np.round((xc, yc)).astype(int)

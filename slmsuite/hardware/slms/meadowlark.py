@@ -283,9 +283,9 @@ class Meadowlark(SLM):
             (
                 board,
                 f"{Meadowlark._get_serial(mode, board)} "
-                f"({Meadowlark._get_width(mode, board)}"
-                f"x{Meadowlark._get_height(mode, board)},"
-                f", {Meadowlark._get_bitdepth(mode, board)}-bit)"
+                f"({Meadowlark._get_width(mode, board)}x"
+                f"{Meadowlark._get_height(mode, board)}, "
+                f"{Meadowlark._get_bitdepth(mode, board)}-bit)"
             )
             for board in range(1, Meadowlark._number_of_boards[mode] + 1)
         ]

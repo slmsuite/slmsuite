@@ -18,6 +18,7 @@ from slmsuite.holography import analysis
 from slmsuite.holography.toolbox import BLAZE_LABELS
 from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
 from slmsuite.misc.math import REAL_TYPES
+from slmsuite.holography.analysis import image_centroids, image_remove_field
 from slmsuite.holography.analysis.files import _gray2rgb
 
 
@@ -1273,6 +1274,10 @@ class _CameraViewer:
         else:
             img = np.copy(self.prev_img)
 
+        if self.state["centroid"]:
+            img_median_subtract = image_remove_field([img], deviations=None)
+            cx, cy = np.rint(image_centroids(img_median_subtract) * self.state["scale"]).astype(int)
+
         # Scale intensity of image
         r = np.array(self.state["range"]).astype(img.dtype)
         img = np.clip(img, r[0], r[1])
@@ -1296,13 +1301,12 @@ class _CameraViewer:
         if self.state["scale"] > 1:
             rgb = zoom(rgb, (1, self.state["scale"], self.state["scale"], 1), order=0)
 
-        # Add crosshair at centroid (center of mass) position
+        # Add crosshair at the median-subtracted centroid (center of mass) position.
         if self.state["centroid"]:
-            x, y = self.centroid(img)
-            rgb[:, :, x, :3] = 255 - rgb[:, :, x, :3]
-            rgb[:, y, :, :3] = 255 - rgb[:, y, :, :3]
+            rgb[:, :, cx, :3] = 255 - rgb[:, :, cx, :3]
+            rgb[:, cy, :, :3] = 255 - rgb[:, cy, :, :3]
 
-        # Finally, add crosshair in the center
+        # Finally, add crosshair in the center.
         if self.state["crosshair"]:
             rgb[:, :, int(rgb.shape[2]/2), :3] = 255 - rgb[:, :, int(rgb.shape[2]/2), :3]
             rgb[:, int(rgb.shape[1]/2), :, :3] = 255 - rgb[:, int(rgb.shape[1]/2), :, :3]
@@ -1418,7 +1422,7 @@ class _CameraViewer:
             "centroid" : Checkbox(
                 value=self.state["centroid"],
                 description="Centroid",
-                tooltip="Toggle a crosshair at the centroid (center of mass) on the image.",
+                tooltip="Toggle a crosshair at the median-subtracted centroid (center of mass) of the image.",
                 layout=item_layout,
             ),
             "cmap" : Dropdown(
@@ -1516,14 +1520,3 @@ class _CameraViewer:
         self.image.close()
 
         del self
-
-    def centroid(self, image):
-        h, v = image.shape
-
-        p = np.sum(image)
-        hh = np.arange(h)
-        vv = np.arange(v)
-        yc = np.sum(np.dot(image.T, hh)) / p
-        xc = np.sum(np.dot(image, vv)) / p
-
-        return np.round((xc, yc)).astype(int)

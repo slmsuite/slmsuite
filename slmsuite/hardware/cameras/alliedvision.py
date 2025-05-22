@@ -293,7 +293,15 @@ class AlliedVision(Camera):
 
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
-        return
+        if woi is None:
+            return
+
+        x, w, y, h = woi
+
+        self.cam.Height.set(h)
+        self.cam.Width.set(w)
+        self.cam.OffsetX.set(x)
+        self.cam.OffsetY.set(y)
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""

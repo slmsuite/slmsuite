@@ -119,7 +119,7 @@ class Meadowlark(SLM):
         pitch_um : (float, float) OR None
             Pixel pitch in microns.
             If ``None`` and using a PCIe SLM, this is automatically detected from the SDK.
-            Otherwise, defaults to 8 micron square pixels.
+            Otherwise, defaults to 8 micron square pixels (true for HDMI SLMs thus far).
         **kwargs
             See :meth:`.SLM.__init__` for permissible options.
         """
@@ -254,7 +254,8 @@ class Meadowlark(SLM):
     @staticmethod
     def info(verbose: bool = True, sdk_path: str = None) -> List[Tuple[int, str]]:
         """
-        Discover all connected SLMs
+        Discover the SLMs connected to the selected SDK.
+        Note that for HDMI, the SLM's display window will open at this stage.
 
         Parameters
         ----------
@@ -275,18 +276,26 @@ class Meadowlark(SLM):
         """
         mode = Meadowlark._load_lib(sdk_path=sdk_path)
 
+        if not mode in Meadowlark._sdk_path:
+            raise RuntimeError("SDK failed to load.")
+
         info = [
             (
                 board,
                 f"{Meadowlark._get_serial(mode, board)} "
-                f"({Meadowlark._get_width(mode, board)}"
-                f"x{Meadowlark._get_height(mode, board)})"
+                f"({Meadowlark._get_width(mode, board)}x"
+                f"{Meadowlark._get_height(mode, board)}, "
+                f"{Meadowlark._get_bitdepth(mode, board)}-bit)"
             )
             for board in range(1, Meadowlark._number_of_boards[mode] + 1)
         ]
         if verbose:
-            for board, dims in info:
-                print(f"SLM {board}: {dims}")
+            print(f"Using {_SDK_MODE_NAMES[mode]} SDK at '{Meadowlark._sdk_path[mode]}'")
+            if len(info):
+                for board, dims in info:
+                    print(f"SLM {board}: {dims}")
+            else:
+                print("No boards found.")
         return info
 
     @staticmethod
@@ -306,7 +315,8 @@ class Meadowlark(SLM):
             sdk_mode == _SDK_MODE.PCIE_LEGACY
             or sdk_mode == _SDK_MODE.PCIE_MODERN
         ):
-            return sdk.Read_Serial_Number(ctypes.c_int(slm_number))
+            serial = sdk.Read_Serial_Number(ctypes.c_int(slm_number))
+            return "Failed to load board" if serial == -1 else serial
         else:
             raise NotImplementedError("Serial retrieval not supported for this model")
 
@@ -327,7 +337,7 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[sdk_mode]
         if sdk_mode == _SDK_MODE.HDMI:
-            return sdk.slm_lib.Get_Width()
+            return sdk.Get_Width()
         elif (
             sdk_mode == _SDK_MODE.PCIE_LEGACY
             or sdk_mode == _SDK_MODE.PCIE_MODERN
@@ -379,7 +389,7 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[sdk_mode]
         if sdk_mode == _SDK_MODE.HDMI:
-            return sdk.slm_lib.Get_Depth()
+            return sdk.Get_Depth()
         elif (
             sdk_mode == _SDK_MODE.PCIE_LEGACY
             or sdk_mode == _SDK_MODE.PCIE_MODERN
@@ -591,6 +601,8 @@ class Meadowlark(SLM):
         # Parse sdk_path.
         if sdk_path is None:
             sdk_path = _DEFAULT_MEADOWLARK_PATH
+        else:
+            sdk_path = os.path.dirname(sdk_path)
 
         # Locate the Meadowlark SDK. If there are multiple, default to the
         # most recent one.
@@ -622,13 +634,13 @@ class Meadowlark(SLM):
                 )
 
         # If we got to here, we need to actually load the SDK.
-        if len(cases) >= 1:
-            options = ',\n'.join([f'{_SDK_MODE_NAMES[case[0]]} ({case[1]})' for case in cases])
+        if len(cases) > 1:
+            options = ',\n'.join([f"'{case[1]}' ({_SDK_MODE_NAMES[case[0]]})" for case in cases])
             warnings.warn(
                 f"Multiple Meadowlark SDKs located. "
                 f"Defaulting to the most recent one"
                 f" '{dll_path}'. "
-                f"This is a {_SDK_MODE_NAMES[mode]} SDK."
+                f"This is a {_SDK_MODE_NAMES[mode]} SDK.\n"
                 f"Other options:\n{options}"
             )
 
@@ -675,26 +687,35 @@ class Meadowlark(SLM):
                     max_transients,
                     regional_lut,
                 )
+
                 if not constructed_okay.value:
                     del Meadowlark._slm_lib[mode]
+                    del Meadowlark._slm_lib_trace[mode]
+                    del Meadowlark._sdk_path[mode]
+                    del Meadowlark._number_of_boards[mode]
                     raise RuntimeError("SDK call failed.")
 
                 Meadowlark._number_of_boards[mode] = number_of_boards.value
             elif mode == _SDK_MODE.PCIE_MODERN:
-                number_of_boards = ctypes.c_uint(0)
+                number_of_boards = ctypes.c_uint(-1)
                 constructed_okay = ctypes.c_int(-1)
 
                 Meadowlark._slm_lib[mode].Create_SDK(
                     ctypes.byref(number_of_boards),
                     ctypes.byref(constructed_okay),
                 )
-                if not constructed_okay.value:
-                     del Meadowlark._slm_lib[mode]
-                     raise RuntimeError("SDK call failed.")
+
+                if not (constructed_okay.value in [0,1]):   # 0 is success but no boards found
+                    del Meadowlark._slm_lib[mode]
+                    del Meadowlark._slm_lib_trace[mode]
+                    del Meadowlark._sdk_path[mode]
+                    del Meadowlark._number_of_boards[mode]
+                    raise RuntimeError("SDK call failed.")
 
                 Meadowlark._number_of_boards[mode] = number_of_boards.value
-        except:
-            raise ImportError("Failed to construct SDK.")
+        except Exception as exc:
+            print("Failed to construct SDK.")
+            raise
 
         return mode
 
@@ -808,7 +829,7 @@ class Meadowlark(SLM):
         # Finally, actually load the LUT file
         try:
             if self.sdk_mode == _SDK_MODE.HDMI:
-                Meadowlark._slm_lib[self.sdk_mode].Load_LUT(lut_path)
+                Meadowlark._slm_lib[self.sdk_mode].Load_lut(lut_path)
             elif (
                 self.sdk_mode == _SDK_MODE.PCIE_LEGACY
                 or self.sdk_mode == _SDK_MODE.PCIE_MODERN

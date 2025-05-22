@@ -862,7 +862,7 @@ class Camera(_Picklable, ABC):
         Parameters
         ----------
         image : ndarray OR None OR bool
-            Image to be plotted. 
+            Image to be plotted.
             If ``None``, grabs an image from the camera.
             If ``False``, uses the :attr:`.last_image` attribute.
         limits : None OR float OR [[float, float], [float, float]]
@@ -1220,6 +1220,7 @@ class _CameraViewer:
                 'viridis', 'plasma', 'inferno', 'magma', 'cividis'
             ],
             crosshair=False,
+            centroid=False,
         ):
         self.cam = cam
         self.backend = backend
@@ -1248,6 +1249,7 @@ class _CameraViewer:
             "border" : border,
             "cmap_options" : cmap_options,
             "crosshair" : crosshair,
+            "centroid" : centroid,
         }
 
         self.task = None
@@ -1294,6 +1296,12 @@ class _CameraViewer:
         if self.state["scale"] > 1:
             rgb = zoom(rgb, (1, self.state["scale"], self.state["scale"], 1), order=0)
 
+        # Add crosshair at centroid (center of mass) position
+        if self.state["centroid"]:
+            x, y = self.centroid(img)
+            rgb[:, :, x, :3] = 255 - rgb[:, :, x, :3]
+            rgb[:, y, :, :3] = 255 - rgb[:, y, :, :3]
+
         # Finally, add crosshair in the center
         if self.state["crosshair"]:
             rgb[:, :, int(rgb.shape[2]/2), :3] = 255 - rgb[:, :, int(rgb.shape[2]/2), :3]
@@ -1315,7 +1323,7 @@ class _CameraViewer:
     def update(self, event):
         with self.widgets["output"]:
             self.widgets["output"].clear_output(wait=True)
-        for key in ["range", "log", "cmap", "scale", "live", "crosshair"]:
+        for key in ["range", "log", "cmap", "scale", "live", "crosshair", "centroid"]:
             self.state[key] = self.widgets[key].value
 
         self.render()
@@ -1407,6 +1415,12 @@ class _CameraViewer:
                 tooltip="Toggle a crosshair centered on the image.",
                 layout=item_layout,
             ),
+            "centroid" : Checkbox(
+                value=self.state["centroid"],
+                description="Centroid",
+                tooltip="Toggle a crosshair at the centroid (center of mass) on the image.",
+                layout=item_layout,
+            ),
             "cmap" : Dropdown(
                 options=self.state["cmap_options"],
                 value=self.state["cmap"],
@@ -1475,6 +1489,7 @@ class _CameraViewer:
                         self.widgets["cmap"],
                         self.widgets["log"],
                         self.widgets["crosshair"],
+                        self.widgets["centroid"],
                     ]),
                     HBox([
                         self.widgets["range"],
@@ -1501,3 +1516,14 @@ class _CameraViewer:
         self.image.close()
 
         del self
+
+    def centroid(self, image):
+        h, v = image.shape
+
+        p = np.sum(image)
+        hh = np.arange(h)
+        vv = np.arange(v)
+        xc = np.sum(np.dot(image, hh)) / p
+        yc = np.sum(np.dot(image.T, vv)) / p
+
+        return np.round((xc, yc)).astype(int)

@@ -18,6 +18,7 @@ from slmsuite.holography import analysis
 from slmsuite.holography.toolbox import BLAZE_LABELS
 from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
 from slmsuite.misc.math import REAL_TYPES
+from slmsuite.holography.analysis import image_centroids, image_remove_field
 from slmsuite.holography.analysis.files import _gray2rgb
 
 
@@ -862,7 +863,7 @@ class Camera(_Picklable, ABC):
         Parameters
         ----------
         image : ndarray OR None OR bool
-            Image to be plotted. 
+            Image to be plotted.
             If ``None``, grabs an image from the camera.
             If ``False``, uses the :attr:`.last_image` attribute.
         limits : None OR float OR [[float, float], [float, float]]
@@ -1220,6 +1221,7 @@ class _CameraViewer:
                 'viridis', 'plasma', 'inferno', 'magma', 'cividis'
             ],
             crosshair=False,
+            centroid=False,
         ):
         self.cam = cam
         self.backend = backend
@@ -1247,7 +1249,8 @@ class _CameraViewer:
             "scale" : scale,
             "border" : border,
             "cmap_options" : cmap_options,
-            "crosshair" : crosshair,
+            "center_crosshair" : crosshair,
+            "centroid_crosshair" : centroid,
         }
 
         self.task = None
@@ -1270,6 +1273,10 @@ class _CameraViewer:
             )
         else:
             img = np.copy(self.prev_img)
+
+        if self.state["centroid_crosshair"]:
+            img_median_subtract = image_remove_field([img], deviations=None)
+            cx, cy = np.rint(image_centroids(img_median_subtract) * self.state["scale"]).astype(int)
 
         # Scale intensity of image
         r = np.array(self.state["range"]).astype(img.dtype)
@@ -1294,8 +1301,13 @@ class _CameraViewer:
         if self.state["scale"] > 1:
             rgb = zoom(rgb, (1, self.state["scale"], self.state["scale"], 1), order=0)
 
-        # Finally, add crosshair in the center
-        if self.state["crosshair"]:
+        # Add crosshair at the median-subtracted centroid (center of mass) position.
+        if self.state["centroid_crosshair"]:
+            rgb[:, :, cx, :3] = 255 - rgb[:, :, cx, :3]
+            rgb[:, cy, :, :3] = 255 - rgb[:, cy, :, :3]
+
+        # Finally, add crosshair in the center.
+        if self.state["center_crosshair"]:
             rgb[:, :, int(rgb.shape[2]/2), :3] = 255 - rgb[:, :, int(rgb.shape[2]/2), :3]
             rgb[:, int(rgb.shape[1]/2), :, :3] = 255 - rgb[:, int(rgb.shape[1]/2), :, :3]
 
@@ -1315,7 +1327,7 @@ class _CameraViewer:
     def update(self, event):
         with self.widgets["output"]:
             self.widgets["output"].clear_output(wait=True)
-        for key in ["range", "log", "cmap", "scale", "live", "crosshair"]:
+        for key in ["range", "log", "cmap", "scale", "live", "center_crosshair", "centroid_crosshair"]:
             self.state[key] = self.widgets[key].value
 
         self.render()
@@ -1401,10 +1413,16 @@ class _CameraViewer:
                 tooltip="Toggle logarithmic scaling of the current plot.",
                 layout=item_layout,
             ),
-            "crosshair" : Checkbox(
-                value=self.state["crosshair"],
-                description="Crosshair",
+            "center_crosshair" : Checkbox(
+                value=self.state["center_crosshair"],
+                description="Center Crosshair",
                 tooltip="Toggle a crosshair centered on the image.",
+                layout=item_layout,
+            ),
+            "centroid_crosshair" : Checkbox(
+                value=self.state["centroid_crosshair"],
+                description="Centroid Crosshair",
+                tooltip="Toggle a crosshair at the median-subtracted centroid (center of mass) of the image.",
                 layout=item_layout,
             ),
             "cmap" : Dropdown(
@@ -1474,7 +1492,8 @@ class _CameraViewer:
                     HBox([
                         self.widgets["cmap"],
                         self.widgets["log"],
-                        self.widgets["crosshair"],
+                        self.widgets["center_crosshair"],
+                        self.widgets["centroid_crosshair"],
                     ]),
                     HBox([
                         self.widgets["range"],

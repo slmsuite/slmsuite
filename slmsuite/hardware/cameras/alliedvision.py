@@ -170,7 +170,7 @@ class AlliedVision(Camera):
     @staticmethod
     def info(verbose=True):
         """
-        Discovers all Thorlabs scientific cameras.
+        Discovers all AlliedVision cameras.
 
         Parameters
         ----------

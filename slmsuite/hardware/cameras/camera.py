@@ -1312,8 +1312,8 @@ class _CameraViewer:
 
         # Finally, add crosshair in the center.
         if self.state["center_crosshair"]:
-            rgb[:, :, int(rgb.shape[2]/2), :3] = 255 - rgb[:, :, int(rgb.shape[2]/2), :3]
-            rgb[:, int(rgb.shape[1]/2), :, :3] = 255 - rgb[:, int(rgb.shape[1]/2), :, :3]
+            rgb[:, :, int(rgb.shape[2]/2), :3] = 127 - rgb[:, :, int(rgb.shape[2]/2), :3]
+            rgb[:, int(rgb.shape[1]/2), :, :3] = 127 - rgb[:, int(rgb.shape[1]/2), :, :3]
 
         buff = io.BytesIO()
         rgb = PIL.Image.fromarray(rgb[0])
@@ -1519,6 +1519,12 @@ class _CameraViewer:
         display(self.widgets["layout"])
 
     def close(self):
+        try:
+            self.task.cancel()
+            self.task = None
+        except:
+            pass
+
         for w in self.widgets.values():
             w.close()
         self.image.close()

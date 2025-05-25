@@ -1276,7 +1276,11 @@ class _CameraViewer:
 
         if self.state["centroid_crosshair"]:
             img_median_subtract = image_remove_field([img], deviations=None)
-            cx, cy = np.rint(image_centroids(img_median_subtract) * self.state["scale"]).astype(int)
+            cx, cy = np.rint(
+                (
+                    np.squeeze(image_centroids(img_median_subtract)) + np.flip(img.shape) / 2
+                ) * (self.state["scale"] if self.state["scale"] > 1 else 1)
+            ).astype(int)
 
         # Scale intensity of image
         r = np.array(self.state["range"]).astype(img.dtype)

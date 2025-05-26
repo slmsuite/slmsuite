@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 
 from slmsuite.hardware.slms.slm import SLM
-from slmsuite.hardware._pyglet import _Window
+from slmsuite.hardware._pyglet import _Window, get_pyglet_display
 
 try:
     import pyglet
@@ -146,7 +146,7 @@ class ScreenMirrored(SLM):
 
         if verbose:
             print("Initializing pyglet... ", end="")
-        display = pyglet.canvas.get_display()
+        display = get_pyglet_display()
         screens = display.get_screens()
         if verbose:
             print("success")

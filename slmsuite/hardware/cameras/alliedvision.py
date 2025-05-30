@@ -293,14 +293,24 @@ class AlliedVision(Camera):
 
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
-        x, w, y, h = woi if woi is not None else (0, self.cam.WidthMax.get(), 0, self.cam.HeightMax.get())
+        maxwoi = (0, self.cam.WidthMax.get(), 0, self.cam.HeightMax.get())
+        x, w, y, h = woi if woi is not None else maxwoi
 
-        self.cam.OffsetX.set(x)
-        self.cam.OffsetY.set(y)
-        self.cam.Height.set(h)
-        self.cam.Width.set(w)
+        try:
+            self.cam.Height.set(h)
+            self.cam.Width.set(w)
+            self.cam.OffsetX.set(x)
+            self.cam.OffsetY.set(y)
+        except Exception as e:
+            x, w, y, h = self.woi if self.woi is not None else maxwoi
+            self.cam.Height.set(h)
+            self.cam.Width.set(w)
+            self.cam.OffsetX.set(x)
+            self.cam.OffsetY.set(y)
 
-        self.woi = woi
+            raise(e)
+        finally:
+            self.woi = woi
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""

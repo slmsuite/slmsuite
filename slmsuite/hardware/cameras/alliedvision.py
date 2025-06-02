@@ -291,26 +291,37 @@ class AlliedVision(Camera):
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.ExposureTime.set(float(exposure_s * 1e6))
 
+    def _set_woi(self, woi):
+        """
+        Sets the window of interest (woi).
+
+        Parameters
+        ----------
+        woi : list, None
+            See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
+        """
+        x, w, y, h = woi
+        self.cam.Height.set(8)
+        self.cam.Width.set(8)
+        self.cam.OffsetX.set(x)
+        self.cam.OffsetY.set(y)
+        self.cam.Height.set(h)
+        self.cam.Width.set(w)
+
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
         maxwoi = (0, self.cam.WidthMax.get(), 0, self.cam.HeightMax.get())
-        x, w, y, h = woi if woi is not None else maxwoi
 
+        if woi is None:
+            woi = maxwoi
         try:
-            self.cam.Height.set(h)
-            self.cam.Width.set(w)
-            self.cam.OffsetX.set(x)
-            self.cam.OffsetY.set(y)
-        except Exception as e:
-            x, w, y, h = self.woi if self.woi is not None else maxwoi
-            self.cam.Height.set(h)
-            self.cam.Width.set(w)
-            self.cam.OffsetX.set(x)
-            self.cam.OffsetY.set(y)
-
-            raise(e)
-        finally:
+            self._set_woi(woi)
             self.woi = woi
+        except Exception as e:
+            woi = self.woi if self.woi is not None else maxwoi
+            self._set_woi(woi)
+            raise e
+            
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""

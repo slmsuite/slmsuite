@@ -293,16 +293,20 @@ class AlliedVision(Camera):
 
     def _set_woi(self, woi):
         """
-        Sets the window of interest (woi).
+        Sets the window of interest (WOI).
 
         Parameters
         ----------
         woi : list, None
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        x, w, y, h = woi
+        # Set the width and height to very small values 
+        # such that setting the offsets will not error.
         self.cam.Height.set(8)
         self.cam.Width.set(8)
+
+        # Now set the WOI.
+        x, w, y, h = woi
         self.cam.OffsetX.set(x)
         self.cam.OffsetY.set(y)
         self.cam.Height.set(h)
@@ -312,12 +316,16 @@ class AlliedVision(Camera):
         """See :meth:`.Camera.set_woi`."""
         maxwoi = (0, self.cam.WidthMax.get(), 0, self.cam.HeightMax.get())
 
+        # Default WOI to max.
         if woi is None:
             woi = maxwoi
+
         try:
+            # Try to set the WOI.
             self._set_woi(woi)
             self.woi = woi
         except Exception as e:
+            # Reset to previous WOI (max if undefined) upon failure.
             woi = self.woi if self.woi is not None else maxwoi
             self._set_woi(woi)
             raise e

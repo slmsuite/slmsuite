@@ -4,19 +4,29 @@ Hidden abstract class for pyglet windowing in slmsuite.
 import os
 import ctypes
 import numpy as np
+import pyglet
+from packaging.version import Version
 
 try:
-    import pyglet
     import pyglet.gl as gl
     from pyglet.window import Window as __Window
 except:
     __Window = object
 
+# Helper to get display/canvas depending on pyglet version
+PYGLET_VERSION = Version(getattr(pyglet, '__version__', '0'))
+
+def get_pyglet_display():
+    if PYGLET_VERSION >= Version('2.1.0'):
+        return pyglet.display.get_display()
+    else:
+        return pyglet.canvas.get_display()
+
 class _Window(__Window):
     def __init__(self, shape, screen=None, caption=""):
         # Make the window and do basic setup.
         if screen is None:
-            display = pyglet.canvas.get_display()
+            display = get_pyglet_display()
             screen = display.get_default_screen()
 
         if shape is None:   # Fullscreen
@@ -251,7 +261,7 @@ class _Window(__Window):
         """
         # Note: in pyglet, the display is the full arrangement of screens,
         # unlike the terminology in other SLM subclasses
-        display = pyglet.canvas.get_display()
+        display = get_pyglet_display()
 
         screens = display.get_screens()
         default = display.get_default_screen()

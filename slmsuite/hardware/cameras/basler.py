@@ -69,7 +69,7 @@ class Basler(Camera):
                 raise RuntimeError("No cameras found by pylon.")
             if len(device_list) > 1 and verbose:
                 print("No serial given... Choosing first of ", serial_list)
-            serial = serial[0]
+            serial = serial_list[0]
             device = device_list[0]
         else:
             if serial in serial_list:

@@ -1,3 +1,4 @@
+
 """
 **(Untested)** Hardware control for Basler cameras via the :mod:`pypylon` interface.
 Consider also installing Basler software for testing cameras outside of python
@@ -69,11 +70,11 @@ class Basler(Camera):
                 raise RuntimeError("No cameras found by pylon.")
             if len(device_list) > 1 and verbose:
                 print("No serial given... Choosing first of ", serial_list)
-            serial = serial_list[0]
-            device = device_list[0]
+            serial = serial[0]
+            device = Basler.sdk.CreateDevice(device_list[0])
         else:
             if serial in serial_list:
-                device = device_list[serial_list.index(serial)]
+                device = Basler.sdk.CreateDevice(device_list[serial_list.index(serial)])
             else:
                 raise RuntimeError(
                     "Serial " + serial + " not found by pylon. Available: ", serial_list
@@ -103,8 +104,8 @@ class Basler(Camera):
         self.cam.TriggerActivation.SetValue('RisingEdge')
         self.cam.TriggerSource.SetValue('Software')
 
-        # TODO: ichr moved this from .get_image() to here. Does this work?
-        self.cam.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+        # # TODO: ichr moved this from .get_image() to here. Does this work?
+        # self.cam.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
 
         # Initialize the superclass attributes.
         super().__init__(
@@ -268,9 +269,12 @@ class Basler(Camera):
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera.get_image`."""
-        # TODO: ichr added WaitForFrameTriggerReady and ExecuteSoftwareTrigger
-        # timeout_s is now used. _get_image_hw is the new subclass hardware method.
-        self.cam.WaitForFrameTriggerReady(200, pylon.TimeoutHandling_ThrowException)
+        self.cam.RegisterConfiguration(pylon.SoftwareTriggerConfiguration(),
+                                       pylon.RegistrationMode_ReplaceAll,
+                                       pylon.Cleanup_Delete)
+        
+        self.cam.StartGrabbing(pylon.GrabStrategy_OneByOne, 
+                               pylon.GrabLoop_ProvidedByUser)
         self.cam.ExecuteSoftwareTrigger()
         grab = self.cam.RetrieveResult(int(timeout_s*1000), pylon.TimeoutHandling_Return)
 
@@ -279,6 +283,5 @@ class Basler(Camera):
             raise RuntimeError("Basler error: ", grab.ErrorCode, grab.ErrorDescription)
 
         im = grab.GetArray()    # This returns an np.array
-        # TODO: ichr added Release(); does this work?
-        grab.Release()
+        self.cam.StopGrabbing()
         return im

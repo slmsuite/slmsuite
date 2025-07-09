@@ -1,4 +1,3 @@
-
 """
 **(Untested)** Hardware control for Basler cameras via the :mod:`pypylon` interface.
 Consider also installing Basler software for testing cameras outside of python
@@ -68,10 +67,10 @@ class Basler(Camera):
         if serial == "":
             if len(device_list)==0:
                 raise RuntimeError("No cameras found by pylon.")
-            if len(device_list) > 1 and verbose:
+            if len(device_list) > 0 and verbose:
                 print("No serial given... Choosing first of ", serial_list)
-            serial = serial[0]
-            device = Basler.sdk.CreateDevice(device_list[0])
+                serial = serial_list[0]
+                device = Basler.sdk.CreateDevice(device_list[0])
         else:
             if serial in serial_list:
                 device = Basler.sdk.CreateDevice(device_list[serial_list.index(serial)])

@@ -2836,16 +2836,28 @@ class FourierSLM(CameraSLM):
                 if plot_zoom and return_movie:
                     fig.tight_layout()
                     fig.canvas.draw()
-                    fig.canvas.draw()
 
                     try:
-                        image_from_plot = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                        try:
+                            image_from_plot = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                            image_from_plot = image_from_plot.reshape(
+                                fig.canvas.get_width_height()[::-1] + (3,)
+                            )
+                        except:
+                            image_from_plot = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+                            image_from_plot = image_from_plot.reshape(
+                                fig.canvas.get_width_height()[::-1] + (4,)
+                            )[:,:,:3]
                     except:
-                        image_from_plot = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+                        warnings.warn(
+                            "Failed to convert figure to image for wavefront_calibrate movie. "
+                            "Returning a blank image instead."
+                        )
+                        image_from_plot = np.zeros(
+                            fig.canvas.get_width_height()[::-1] + (3,),
+                            dtype=np.uint8
+                        )
 
-                    image_from_plot = image_from_plot.reshape(
-                        fig.canvas.get_width_height()[::-1] + (3,)
-                    )
                     plt.close()
 
                     return image_from_plot

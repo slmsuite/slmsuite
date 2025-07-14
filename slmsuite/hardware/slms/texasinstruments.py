@@ -57,7 +57,8 @@ class PLM(ScreenMirrored):
         self,
         name,
         display_number,
-        bitdepth=4,
+        # bitdepth=4, # Let this default to 8 even though actual bit depth is 4 (bit depth
+                      # is used for quantization prior to TI data conversion).
         verbose=True,
         **kwargs
     ):
@@ -69,16 +70,22 @@ class PLM(ScreenMirrored):
         self.ti_plm = TIPLM.from_db(name)
         # Parse pitch_um from the device's pitch (in meters) and convert to microns
         pitch_um = tuple(np.array(self.ti_plm.pitch) * 1e6)
-        super().__init__(display_number, bitdepth=bitdepth, verbose=verbose, pitch_um=pitch_um, **kwargs)
+        super().__init__(display_number,
+                         bitdepth=bitdepth,
+                         verbose=verbose,
+                         resolution=self.ti_plm.shape[::-1],  # Match (width, height) order
+                         pitch_um=pitch_um,
+                         **kwargs)
 
-    def process_phase_map(self, phase_map, replicate_bits=True, enforce_shape=True):
+    def _format_phase_hw(self, phase, replicate_bits=True, enforce_shape=True):
         """
         Processes an array of phase data into a bitmap for display on this PLM device.
-        Uses :meth:`ti_plm.PLM.process_phase_map`.
+        Currently wraps :meth:`ti_plm.PLM.process_phase_map`, with future improvements
+        planned.
 
         Parameters
         ----------
-        phase_map : numpy.ndarray
+        phase : numpy.ndarray
             Array containing phase data.
         replicate_bits : bool, optional
             Whether to multiply the final bitplane by 255. Defaults to True.
@@ -90,8 +97,12 @@ class PLM(ScreenMirrored):
         numpy.ndarray
             Quantized and electrode-mapped data for the PLM device.
         """
+
+        # TODO: clean up; kludge to fix TI quantization only accepting phase [0,2pi].
+        phase = self._phase2gray(phase) * (2 * np.pi / self.bitresolution)
+
         return self.ti_plm.process_phase_map(
-            phase_map, replicate_bits=replicate_bits, enforce_shape=enforce_shape
+            phase, replicate_bits=replicate_bits, enforce_shape=enforce_shape
         )
 
     @staticmethod

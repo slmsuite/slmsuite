@@ -257,7 +257,8 @@ class _Window(__Window):
         Returns
         -------
         list of (int, (int, int, int, int), bool, bool) tuples
-            The number, geometry of each display.
+            The number (int), geometry of each display ((int, int, int, int)), and whether
+            it is the main or mirrored display (bool, bool).
         """
         # Note: in pyglet, the display is the full arrangement of screens,
         # unlike the terminology in other SLM subclasses
@@ -296,7 +297,9 @@ class _Window(__Window):
         for x, screen in enumerate(screens):
             screen_str = parse_screen(screen)
 
+            # main_bool is True if this screen is the default (main) display.
             main_bool = False
+            # window_bool is True if this screen has a window mirrored on it.
             window_bool = False
 
             if screen_str == default_str:

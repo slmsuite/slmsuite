@@ -21,7 +21,7 @@ from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
 
 
 class SLM(_Picklable, ABC):
-    """
+    r"""
     Abstract class for SLMs.
 
     Attributes
@@ -85,7 +85,7 @@ class SLM(_Picklable, ABC):
             :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
             Also see :meth:`set_source_analytic()` to set without wavefront calibration.
 
-        For a :class:`.SimulatedSLM()`, ``"amplitude_sim"`` and ``"phase_sim"`` keywords
+        For a :class:`.SimulatedSLM`, ``"amplitude_sim"`` and ``"phase_sim"`` keywords
         store the true source properties (defined by the user) used to simulate the SLM's
         far-field.
 
@@ -373,8 +373,26 @@ class SLM(_Picklable, ABC):
 
         Parameters
         ----------
-        phase
+        phase : numpy.ndarray
             See :meth:`set_phase`.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _format_phase_hw(self, phase):
+        """
+        Formats the phase data for hardware-specific requirements (e.g. converting phase to an
+        electrode bitmap for :class:`.PLM`) prior to calling :meth:`_set_phase_hw`.
+
+        Parameters
+        ----------
+        phase : numpy.ndarray
+             See :meth:`set_phase`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Formatted phase data for :meth:`_set_phase_hw`.
         """
         raise NotImplementedError()
 
@@ -388,12 +406,14 @@ class SLM(_Picklable, ABC):
         r"""
         Checks, cleans, and adds to data, then sends the data to the SLM and
         potentially waits for settle. This method calls the SLM-specific private method
+        :meth:`_format_phase_hw()` (if implemented) to format the phase data before calling
         :meth:`_set_phase_hw()` which transfers the data to the SLM.
 
         Warning
         ~~~~~~~
         Subclasses implementing vendor-specific software *should not* overwrite this
-        method. Subclasses *should* overwrite :meth:`_set_phase_hw()` instead.
+        method. Subclasses *should* overwrite :meth:`_set_phase_hw()` (and
+        :meth:`_format_phase_hw()` if required) instead.
 
         Caution
         ~~~~~~~
@@ -526,6 +546,7 @@ class SLM(_Picklable, ABC):
             else:
                 np.copyto(self.display, phase)
 
+            # TODO: generalize from _phase2gray() to include _format_phase_hw()
             # Update the phase variable with the integer data that we displayed.
             self.phase = 2 * np.pi - self.display * (
                 2 * np.pi / self.phase_scaling / self.bitresolution
@@ -549,8 +570,15 @@ class SLM(_Picklable, ABC):
                 # If None was passed and phase_correct is False, then use a faster method.
                 self.display.fill(0)
             else:
-                # Turn the floats in phase space to integer data for the SLM.
-                self.display = self._phase2gray(self.phase, out=self.display)
+                # Format the data for writing to the SLM.
+                if type(self)._format_phase_hw is not SLM._format_phase_hw:
+                    # If a hardware formatting function is implemented (e.g., for PLM to convert
+                    # phase to electrode bit settings), use that
+                    self.display = self._format_phase_hw(self.phase)
+                else:
+                    # Otherwise, assume grayscale conversion (i.e., turn the floats in phase space
+                    # into integer data for the SLM).
+                    self.display = self._phase2gray(self.phase, out=self.display)
 
         # Write!
         self._set_phase_hw(self.display, **kwargs)
@@ -609,6 +637,10 @@ class SLM(_Picklable, ABC):
             if self.bitresolution != 8 and self.bitresolution != 16:
                 active_bits_mask = int(self.bitresolution - 1)
                 np.bitwise_and(out, active_bits_mask, out=out)
+            else:
+                # TODO: @ichr; is this a bug?
+                # Slow backup using np.mod().
+                np.mod(out, self.bitresolution, out=out)
         else:
             # phase_scaling is not included in the scaling.
             factor = -(self.bitresolution * self.phase_scaling / 2 / np.pi)

@@ -83,6 +83,8 @@ class ScreenMirrored(SLM):
     ----------
     window : pyglet.window.Window
         Fullscreen window used to send information to the SLM.
+    display_resolution : (int, int)
+        Resolution of the mirrored display in pixels, as (width, height).
     tex_shape_ratio : (int, int)
         Ratio between the SLM shape and the (power-2-padded) texture stored in ``OpenGL``.
     buffer : numpy.ndarray
@@ -102,6 +104,7 @@ class ScreenMirrored(SLM):
             wav_um=1,
             pitch_um=(8,8),
             verbose=True,
+            resolution=None,
             **kwargs
         ):
         """
@@ -138,6 +141,8 @@ class ScreenMirrored(SLM):
             Pixel pitch in microns. Defaults to 8 micron square pixels.
         verbose : bool
             Whether or not to print extra information.
+        resolution : tuple of int
+            Desired resolution as (height, width). If not provided, the display's native resolution will be used.
         **kwargs
             See :meth:`.SLM.__init__` for permissible options.
         """
@@ -172,9 +177,16 @@ class ScreenMirrored(SLM):
             print("Creating window... ", end="")
 
         screen = screens[display_number]
+        self.display_resolution = (screen.height, screen.width)
+
+        # Use custom resolution if provided, else use display resolution
+        if resolution is not None:
+            slm_shape = resolution
+        else:
+            slm_shape = self.display_resolution
 
         super().__init__(
-            (screen.width, screen.height),
+            slm_shape,
             bitdepth=bitdepth,
             wav_um=wav_um,
             pitch_um=pitch_um,
@@ -201,14 +213,13 @@ class ScreenMirrored(SLM):
             )
 
     def _set_phase_hw(self, data):
-        """Writes to screen. See :class:`.SLM`."""
+        """Writes to screen. See :class:`.SLM`."""            
         # Write to buffer (.buffer points to the same data as .cbuffer).
         # Unfortunately, OpenGL2.0 needs the data copied three times (I think).
         # FUTURE: For OpenGL3.0 and pyglet 2.0+, use the shader to minimize data transfer.
         np.copyto(self.window.buffer[:,:,0], data)
         np.copyto(self.window.buffer[:,:,1], data)
         np.copyto(self.window.buffer[:,:,2], data)
-
         self.window.render()
 
     def close(self):

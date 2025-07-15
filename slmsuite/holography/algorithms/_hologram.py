@@ -159,15 +159,15 @@ class Hologram(_HologramStats):
          - ``"method"`` : ``str``
             Stores the method used for optimization.
             See :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
-         - ``"fixed_phase"`` : ``bool``
-            Fixes the farfield phase as mandated by certain weighted algorithms
-            (see :meth:`~slmsuite.holography.algorithms.Hologram.optimize_gs()`).
          - ``"feedback"`` : ``str``
             Stores the values passed to
             :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
          - ``"stat_groups"`` : ``list of str``
             Stores the values passed to
             :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
+         - ``"fixed_phase"`` : ``bool``
+            Fixes the farfield phase as mandated by certain weighted algorithms
+            (see :meth:`~slmsuite.holography.algorithms.Hologram.optimize_gs()`).
          - ``"raw_stats"`` : ``bool``
             Whether to store raw stats: the raw image and feedback data for each
             iteration. Note that this can be a good amount of data.

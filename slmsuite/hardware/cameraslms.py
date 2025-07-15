@@ -1087,6 +1087,17 @@ class FourierSLM(CameraSLM):
         if "maxiter" not in kwargs:
             kwargs["maxiter"] = 10
 
+        # Warn the user in case they mistyped a default argument or something.
+        for key in kwargs.keys():
+            if key not in [
+                "method", "maxiter", "verbose", "callback", "feedback",
+                "stat_groups", "name", "fixed_phase", "raw_stats", "blur_ij",
+            ]:
+                warnings.warn(
+                    f"Unexpected argument '{key}' passed to fourier_grid_project(). "
+                    "This may be ignored."
+                )
+
         # Optimize and project the hologram
         hologram.optimize(**kwargs)
 

@@ -91,9 +91,12 @@ class SLM(_Picklable, ABC):
 
         When :meth:`.fit_source_amplitude()` is called,
     phase : numpy.ndarray
-        Displayed data in units of phase (radians).
+        Last displayed data in units of phase (radians). If wavefront calibration
+        (`phase_correct=True`) is used, this includes the calibration data.
     display : numpy.ndarray
-        Displayed data in SLM units (integers).
+        Last displayed data in discrete SLM units (integers). This is the data
+        that is actually displayed by the bit-limited hardware. If wavefront calibration
+        (`phase_correct=True`) is used, this includes the calibration data.
     """
     _pickle = [
         "name",
@@ -174,8 +177,8 @@ class SLM(_Picklable, ABC):
         if isinstance(pitch_um, REAL_TYPES):
             pitch_um = [pitch_um, pitch_um]
         self.pitch_um = np.squeeze(pitch_um)
-        if (len(self.pitch_um) != 2):
-            raise ValueError("Expected (float, float) for pitch_um")
+        if len(self.pitch_um) != 2 or np.any(self.pitch_um <= 0):
+            raise ValueError("Expected positive (float, float) for pitch_um")
         self.pitch_um = np.array([float(self.pitch_um[0]), float(self.pitch_um[1])])
 
         self.pitch = self.pitch_um / self.wav_um
@@ -1026,24 +1029,39 @@ class SLM(_Picklable, ABC):
         if source is None:
             source = self.source
 
-        # Check if proper source keywords are present
+        # Check if proper source keywords are present.
         if sim and not np.all([k in source for k in ("amplitude_sim", "phase_sim")]):
             raise RuntimeError("Simulated amplitude and/or phase keywords missing from slm.source!")
         elif not sim and not np.all([k in source for k in ("amplitude", "phase")]):
             raise RuntimeError(
                 "'amplitude' or 'phase' keywords missing from slm.source! Run "
-                ".wavefront_calibrate() or .set_source_analytic() to measure source profile."
+                ".wavefront_calibrate() or .set_source_analytic() to set a source profile."
             )
 
+        # Handle whether we're going to plot the R^2.
         plot_r2 = not sim and "r2" in source
+        r2_full_shape = plot_r2 and source["r2"].shape == self.shape
+        plot_r2_contour = plot_r2 and r2_full_shape and "r2_threshold" in source
 
+        def r2_contour(ax):
+            if plot_r2_contour:
+                ax.contour(
+                    source["r2"],
+                    levels=[source["r2_threshold"]],
+                    colors="red",
+                    linewidths=1,
+                )
+
+        # Make the subplots.
         _, axs = plt.subplots(1, 3 if plot_r2 else 2, figsize=(10, 6))
 
+        # Panel 1: Phase
         im = axs[0].imshow(
             np.mod(source["phase_sim" if sim else "phase"], 2*np.pi),
             cmap=plt.get_cmap("twilight"),
             interpolation="none",
         )
+        r2_contour(axs[0])
         axs[0].set_title("Simulated Source Phase" if sim else "Source Phase")
         axs[0].set_xlabel("SLM $x$ [pix]")
         axs[0].set_ylabel("SLM $y$ [pix]")
@@ -1052,6 +1070,7 @@ class SLM(_Picklable, ABC):
         im.set_clim([0, 2*np.pi])
         plt.colorbar(im, cax=cax)
 
+        # Panel 2: Amplitude or Power
         if power:
             im = axs[1].imshow(
                 np.square(source["amplitude_sim" if sim else "amplitude"]),
@@ -1061,22 +1080,29 @@ class SLM(_Picklable, ABC):
         else:
             im = axs[1].imshow(source["amplitude_sim" if sim else "amplitude"], clim=(0, 1))
             axs[1].set_title("Simulated Source Amplitude" if sim else "Source Amplitude")
+        r2_contour(axs[1])
         axs[1].set_xlabel("SLM $x$ [pix]")
         axs[1].set_ylabel("SLM $y$ [pix]")
-        # axs[1].set_yticks([])
         divider = make_axes_locatable(axs[1])
         cax = divider.append_axes("right", size="5%", pad=0.05)
         plt.colorbar(im, cax=cax)
 
+        # Panel 3: R^2
         if plot_r2:
             im = axs[2].imshow(source["r2"], clim=(0, 1))
+            r2_contour(axs[2])
             axs[2].set_title("Cal Fitting $R^2$")
-            axs[2].set_xlabel("SLM $x$ [superpix]")
-            axs[2].set_ylabel("SLM $y$ [superpix]")
+            if r2_full_shape:
+                axs[2].set_xlabel("SLM $x$ [pix]")
+                axs[2].set_ylabel("SLM $y$ [pix]")
+            else:
+                axs[2].set_xlabel("SLM $x$ [superpix]")
+                axs[2].set_ylabel("SLM $y$ [superpix]")
             divider = make_axes_locatable(axs[2])
             cax = divider.append_axes("right", size="5%", pad=0.05)
             plt.colorbar(im, cax=cax)
 
+        # Finalize the plot and return the axes.
         plt.tight_layout()
         plt.show()
 

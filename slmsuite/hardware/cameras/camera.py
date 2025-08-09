@@ -204,12 +204,12 @@ class Camera(_Picklable, ABC):
         self._flush_iterations = 2  # Hidden variable
 
         # Spatial dimensions.
-        if pitch_um is not None:
+        if pitch_um is not None and not (np.isscalar(pitch_um) and pitch_um <= 0):
             if isinstance(pitch_um, REAL_TYPES):
                 pitch_um = [pitch_um, pitch_um]
             self.pitch_um = np.squeeze(pitch_um)
-            if (len(self.pitch_um) != 2):
-                raise ValueError("Expected (float, float) for pitch_um")
+            if len(self.pitch_um) != 2 or np.any(self.pitch_um <= 0):
+                raise ValueError("Expected positive (float, float) for pitch_um")
             self.pitch_um = np.array([float(self.pitch_um[0]), float(self.pitch_um[1])])
         else:
             self.pitch_um = None

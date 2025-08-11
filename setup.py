@@ -28,4 +28,5 @@ setup(
     install_requires=DEPENDENCIES,
     name=NAME,
     version=VERSION,
+    packages=[NAME],
 )

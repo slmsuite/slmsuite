@@ -332,19 +332,19 @@ class Hologram(_HologramStats):
         else:
             self.slm_shape = np.rint(np.nanmean(stack, axis=0)).astype(int)
 
-            if amp is not None:
+            if not (amp_shape[0] is np.nan):
                 if not np.all(self.slm_shape == np.array(amp_shape)):
                     raise ValueError(
                         "The shape of amplitude (via `amp` or SLM) is not equal to the "
                         "shapes of the provided initial phase (`phase`) or SLM (via `target` or `slm_shape`)"
                     )
-            if phase is not None:
+            if not (phase_shape[0] is np.nan):
                 if not np.all(self.slm_shape == np.array(phase_shape)):
                     raise ValueError(
                         "The shape of the initial phase (`phase`) is not equal to the "
                         "shapes of the provided amplitude (via `amp` or SLM) or SLM (via `target` or `slm_shape`)"
                     )
-            if slm_shape is not None:
+            if not (slm_shape[0] is np.nan):
                 if not np.all(self.slm_shape == np.array(slm_shape)):
                     raise ValueError(
                         "The shape of SLM (via `target` or `slm_shape`) is not equal to the "

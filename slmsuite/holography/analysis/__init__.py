@@ -249,6 +249,7 @@ def take_plot(images, shape=None, separate_axes=False):
             take_tile(images, shape),
             interpolation='none'
         )
+        ax = plt.gca()
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
 

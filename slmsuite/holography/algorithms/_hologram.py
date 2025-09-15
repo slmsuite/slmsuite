@@ -1531,7 +1531,7 @@ class Hologram(_HologramStats):
 
     def _gs_farfield_routines(self, mraf_variables):
         # Weight, if desired.
-        if "WGS" in self.flags["method"]:
+        if "WGS" in self.flags["method"] and self.iter > 0:
             self._update_weights()
 
             # Decide whether to fix phase.

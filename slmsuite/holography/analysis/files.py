@@ -392,6 +392,9 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
 
     # Add a border if desired.
     if border is not None:
+        # If border is a single numeric value, convert it to a list
+        if np.isscalar(border):
+            border = [border]
         images[:,  0, :, :len(border)] = border
         images[:, -1, :, :len(border)] = border
         images[:, :,  0, :len(border)] = border

@@ -533,9 +533,10 @@ class _HologramStats(object):
         # Plot the full target, blurred so single pixels are visible in low res
         b = 2 * int(np.amax(self.shape) / 400) + 1  # FUTURE: fix arbitrary
         npsource_blur = cv2.GaussianBlur(npsource, (b, b), 0)
+        
         full = axs[0].imshow(
             npsource_blur,
-            vmin=0, vmax=np.nanmax(npsource_blur),
+            vmin=0, vmax=np.nanmax(npsource),
             cmap=("twilight" if isphase else None),
             interpolation=("none" if isphase else "gaussian")
         )

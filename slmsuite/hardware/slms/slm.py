@@ -21,7 +21,7 @@ from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
 
 
 class SLM(_Picklable, ABC):
-    """
+    r"""
     Abstract class for SLMs.
 
     Attributes

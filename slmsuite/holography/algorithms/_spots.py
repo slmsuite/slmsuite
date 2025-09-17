@@ -252,6 +252,12 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         If the kernel fails to load or :mod:`cupy` is unavailable, the option will downgrade
         to option 1. The choice is stored in :attr:`cuda`.
 
+        Note
+        ~~~~
+        MRAF can be used with :class:`CompressedSpotHologram` by setting elements of
+        ``spot_amp`` to ``np.nan`` (noise points) or zero (null points), to parallel
+        some of the `null_` parameter functionality of :class:`SpotHologram`.
+
         Parameters
         ----------
         spot_vectors : array_like
@@ -304,6 +310,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             normalize.
             MRAF functionality still works by setting elements of ``spot_amp``
             to ``np.nan``, denoting 'noise' points where amplitude can be dumped.
+            "Null" points can be set by setting elements of ``spot_amp`` to zero.
         cameraslm : ~slmsuite.hardware.cameraslms.FourierSLM
             Must be passed. The default of ``None`` with throw an error and is only
             optional such that we can retain the same argument ordering as :class:`SpotHologram`.

@@ -127,24 +127,20 @@ def take(
     else:
         size = (int(size[0]), int(size[1]))
 
-    vectors = format_2vectors(vectors)
+    vectors = np.floor(format_2vectors(vectors)).astype(int)
 
     if xp is None:
         xp = np
 
     # Prepare helper variables. Future: consider caching for speed, if not negligible.
-    edge_x = _coordinates(size[0], centered)
-    edge_y = _coordinates(size[1], centered)
+    edge_x = np.floor(_coordinates(size[0], centered)).astype(int)
+    edge_y = np.floor(_coordinates(size[1], centered)).astype(int)
 
     region_x, region_y = np.meshgrid(edge_x, edge_y)
 
     # Get the lists for the integration regions.
-    integration_x = np.rint(np.add(
-        region_x.ravel()[:, np.newaxis].T, vectors[:][0][:, np.newaxis]
-    )).astype(int)
-    integration_y = np.rint(np.add(
-        region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
-    )).astype(int)
+    integration_x = np.add(region_x.ravel()[:, np.newaxis].T, vectors[:][0][:, np.newaxis])
+    integration_y = np.add(region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis])
 
     images = xp.array(images, copy=(False if np.__version__[0] == '1' else None))
     shape = xp.shape(images)

@@ -425,7 +425,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         if np.isnan(psf_ij): psf_ij = 0
 
         # Use semi-arbitrary values to determine integration widths. The default width is:
-        #  - six times the psf,
+        #  - twice the psf,
         #  - but then clipped to be:
         #    + larger than 3 and
         #    + smaller than the minimum inf-norm distance between spots divided by 1.5
@@ -434,31 +434,31 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         #  - and finally forced to be an odd integer.
         min_psf = 3
 
-        # if self.spot_ij is not None:
-        #     dist_ij = np.max([toolbox.smallest_distance(self.spot_ij) / 1.5, min_psf])
-        #     if psf_ij > dist_ij:
-        #         warnings.warn(
-        #             "The expected camera spot point-spread-function is too large. "
-        #             "Clipping to a smaller "
-        #         )
-        #     self.spot_integration_width_ij = np.clip(6 * psf_ij, 3, dist_ij)
-        #     self.spot_integration_width_ij =  int(2 * np.floor(self.spot_integration_width_ij / 2) + 1)
+        if self.spot_ij is not None:
+            dist_ij = np.max([toolbox.smallest_distance(self.spot_ij) / 1.5, min_psf])
+            if psf_ij > dist_ij:
+                warnings.warn(
+                    "The expected camera spot point-spread-function is too large. "
+                    "Clipping to a smaller "
+                )
+            self.spot_integration_width_ij = np.clip(2 * psf_ij, 3, dist_ij)
+            self.spot_integration_width_ij =  int(2 * np.floor(self.spot_integration_width_ij / 2) + 1)
 
-        #     cam_shape = cameraslm.cam.shape
+            cam_shape = cameraslm.cam.shape
 
-        #     if (
-        #         np.any(self.spot_ij[0] < self.spot_integration_width_ij / 2) or
-        #         np.any(self.spot_ij[1] < self.spot_integration_width_ij / 2) or
-        #         np.any(self.spot_ij[0] >= cam_shape[1] - self.spot_integration_width_ij / 2) or
-        #         np.any(self.spot_ij[1] >= cam_shape[0] - self.spot_integration_width_ij / 2)
-        #     ):
-        #         raise ValueError(
-        #             "Spots outside camera bounds!\nSpots:\n{}\nBounds: {}".format(
-        #                 self.spot_ij, cam_shape
-        #             )
-        #         )
-        # else:
-        self.spot_integration_width_ij = None
+            if (
+                np.any(self.spot_ij[0] < self.spot_integration_width_ij / 2) or
+                np.any(self.spot_ij[1] < self.spot_integration_width_ij / 2) or
+                np.any(self.spot_ij[0] >= cam_shape[1] - self.spot_integration_width_ij / 2) or
+                np.any(self.spot_ij[1] >= cam_shape[0] - self.spot_integration_width_ij / 2)
+            ):
+                raise ValueError(
+                    "Spots outside camera bounds!\nSpots:\n{}\nBounds: {}".format(
+                        self.spot_ij, cam_shape
+                    )
+                )
+        else:
+            self.spot_integration_width_ij = None
 
         # Initialize target/etc with fake shape.
         super().__init__(shape=None, target_ij=None, cameraslm=cameraslm, **kwargs)

@@ -2,7 +2,7 @@
 setup.py - this module makes the package installable
 """
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 NAME = "slmsuite"
 VERSION = "0.3.0"
@@ -28,4 +28,5 @@ setup(
     install_requires=DEPENDENCIES,
     name=NAME,
     version=VERSION,
+    packages=find_packages(),
 )

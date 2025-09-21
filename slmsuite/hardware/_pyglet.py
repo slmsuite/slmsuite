@@ -4,14 +4,27 @@ Hidden abstract class for pyglet windowing in slmsuite.
 import os
 import ctypes
 import numpy as np
-import pyglet
 from packaging.version import Version
 
 try:
     import pyglet.gl as gl
     from pyglet.window import Window as __Window
+
+    # Helper to get display/canvas depending on pyglet version
+    PYGLET_VERSION = Version(getattr(pyglet, '__version__', '0'))
+
+    def get_pyglet_display():
+        if PYGLET_VERSION >= Version('2.1.0'):
+            return pyglet.display.get_display()
+        else:
+            return pyglet.canvas.get_display()
 except:
+    pyglet = None
+    gl = None
     __Window = object
+    PYGLET_VERSION = None
+    def get_pyglet_display():
+        raise ImportError("pyglet not installed.")
 
 # Helper to get display/canvas depending on pyglet version
 PYGLET_VERSION = Version(getattr(pyglet, '__version__', '0'))

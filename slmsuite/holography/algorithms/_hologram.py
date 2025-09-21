@@ -159,15 +159,15 @@ class Hologram(_HologramStats):
          - ``"method"`` : ``str``
             Stores the method used for optimization.
             See :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
-         - ``"fixed_phase"`` : ``bool``
-            Fixes the farfield phase as mandated by certain weighted algorithms
-            (see :meth:`~slmsuite.holography.algorithms.Hologram.optimize_gs()`).
          - ``"feedback"`` : ``str``
             Stores the values passed to
             :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
          - ``"stat_groups"`` : ``list of str``
             Stores the values passed to
             :meth:`~slmsuite.holography.algorithms.Hologram.optimize()`.
+         - ``"fixed_phase"`` : ``bool``
+            Fixes the farfield phase as mandated by certain weighted algorithms
+            (see :meth:`~slmsuite.holography.algorithms.Hologram.optimize_gs()`).
          - ``"raw_stats"`` : ``bool``
             Whether to store raw stats: the raw image and feedback data for each
             iteration. Note that this can be a good amount of data.
@@ -332,19 +332,19 @@ class Hologram(_HologramStats):
         else:
             self.slm_shape = np.rint(np.nanmean(stack, axis=0)).astype(int)
 
-            if amp is not None:
+            if not (amp_shape[0] is np.nan):
                 if not np.all(self.slm_shape == np.array(amp_shape)):
                     raise ValueError(
                         "The shape of amplitude (via `amp` or SLM) is not equal to the "
                         "shapes of the provided initial phase (`phase`) or SLM (via `target` or `slm_shape`)"
                     )
-            if phase is not None:
+            if not (phase_shape[0] is np.nan):
                 if not np.all(self.slm_shape == np.array(phase_shape)):
                     raise ValueError(
                         "The shape of the initial phase (`phase`) is not equal to the "
                         "shapes of the provided amplitude (via `amp` or SLM) or SLM (via `target` or `slm_shape`)"
                     )
-            if slm_shape is not None:
+            if not (slm_shape[0] is np.nan):
                 if not np.all(self.slm_shape == np.array(slm_shape)):
                     raise ValueError(
                         "The shape of SLM (via `target` or `slm_shape`) is not equal to the "
@@ -1531,7 +1531,7 @@ class Hologram(_HologramStats):
 
     def _gs_farfield_routines(self, mraf_variables):
         # Weight, if desired.
-        if "WGS" in self.flags["method"]:
+        if "WGS" in self.flags["method"] and self.iter > 0:
             self._update_weights()
 
             # Decide whether to fix phase.

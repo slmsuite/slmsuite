@@ -127,24 +127,20 @@ def take(
     else:
         size = (int(size[0]), int(size[1]))
 
-    vectors = format_2vectors(vectors)
+    vectors = np.floor(format_2vectors(vectors)).astype(int)
 
     if xp is None:
         xp = np
 
     # Prepare helper variables. Future: consider caching for speed, if not negligible.
-    edge_x = _coordinates(size[0], centered)
-    edge_y = _coordinates(size[1], centered)
+    edge_x = np.floor(_coordinates(size[0], centered)).astype(int)
+    edge_y = np.floor(_coordinates(size[1], centered)).astype(int)
 
     region_x, region_y = np.meshgrid(edge_x, edge_y)
 
     # Get the lists for the integration regions.
-    integration_x = np.rint(np.add(
-        region_x.ravel()[:, np.newaxis].T, vectors[:][0][:, np.newaxis]
-    )).astype(int)
-    integration_y = np.rint(np.add(
-        region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis]
-    )).astype(int)
+    integration_x = np.add(region_x.ravel()[:, np.newaxis].T, vectors[:][0][:, np.newaxis])
+    integration_y = np.add(region_y.ravel()[:, np.newaxis].T, vectors[:][1][:, np.newaxis])
 
     images = xp.array(images, copy=(False if np.__version__[0] == '1' else None))
     shape = xp.shape(images)
@@ -249,6 +245,7 @@ def take_plot(images, shape=None, separate_axes=False):
             take_tile(images, shape),
             interpolation='none'
         )
+        ax = plt.gca()
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
 
@@ -1053,6 +1050,8 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
     return result
 
 
+# Helpers for phase images.
+
 def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, **kwargs):
     """
     Fits sets of Zernike polynomials to a stack of ``images``, up to a desired ``order``.
@@ -1227,7 +1226,7 @@ def image_vortices_coordinates(phase_image, mask=None):
     return coordinates, weights
 
 
-def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False):
+def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
     """
     Find and then remove all the phase vortices in a phase image.
 
@@ -1247,20 +1246,20 @@ def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False
     phase_image
         The image or vortices, depending upon ``return_vortices``
     """
-    xp = _get_module(phase_image)
+    xp = _get_module(phase)
 
     if mask is not None:
         mask_eroded = binary_erosion(mask, np.ones((5,5)))
     else:
         mask_eroded = None
 
-    coordinates, weights = image_vortices_coordinates(phase_image, mask=mask_eroded)
-    grid = _generate_grid(phase_image.shape[1], phase_image.shape[0], integer=False)
+    coordinates, weights = image_vortices_coordinates(phase, mask=mask_eroded)
+    grid = _generate_grid(phase.shape[1], phase.shape[0], integer=False)
 
     if return_vortices_negative:
-        canvas = np.zeros_like(phase_image)
+        canvas = np.zeros_like(phase)
     else:
-        canvas = phase_image
+        canvas = phase
 
 
     if mask is None:
@@ -1271,6 +1270,116 @@ def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False
             canvas[mask] -= w * xp.arctan2(grid[0][mask] - x, grid[1][mask] - y)
 
     return canvas
+
+
+def image_remove_blaze(phase, mask=None, plot=False):
+    """
+    Remove a global blaze from
+    """
+    phase = np.mod(phase, 2*np.pi)
+
+    # Get the gradients across the image.
+    dx = np.mod(np.gradient(phase, axis=1) + np.pi/2, np.pi) - np.pi/2
+    dy = np.mod(np.gradient(phase, axis=0) + np.pi/2, np.pi) - np.pi/2
+
+    # Find the mean gradient, potentially weighted.
+    if mask is None:
+        dx_mean = np.nanmean(dx)
+        dy_mean = np.nanmean(dy)
+    else:
+        dx_mean = np.nansum(dx * mask) / np.nansum(mask)
+        dy_mean = np.nansum(dy * mask) / np.nansum(mask)
+
+    # Subtract the gradient and re-mod.
+    x = np.arange(phase.shape[1])
+    y = np.arange(phase.shape[0])
+    X, Y = np.meshgrid(x, y)
+    result = np.mod(phase - dx_mean * X - dy_mean * Y, 2 * np.pi)
+
+    if plot:
+        plt.figure(figsize=(20, 10))
+
+        plt.subplot(1, 4, 1)
+        plt.imshow(phase)
+        plt.title('phase')
+
+        plt.subplot(1, 4, 2)
+        plt.imshow(dx)
+        plt.title('dx')
+
+        plt.subplot(1, 4, 3)
+        plt.imshow(dy)
+        plt.title('dy')
+
+        plt.subplot(1, 4, 4)
+        plt.imshow(result)
+        plt.title('removed')
+        plt.show()
+
+    return result
+
+
+def image_reduce_wraps(phase, mask=None, steps=10, plot=False):
+    """
+    Reduce the number of phase wraps in the image by adding an offset.
+
+    Parameters
+    ----------
+    phase : np.ndarray
+        The phase image to be offset.
+    mask : np.ndarray OR None
+        If provided, the mask will weight the signicance of the phase wraps.
+        This can be the amplitude image, such that fewer wraps appear where there is
+        light.
+    steps : int
+        The number of steps to try for the phase offset.
+    plot : bool
+        Whether to enable debug plots.
+
+    Returns
+    -------
+    np.ndarray
+        The phase image with the offset applied.
+    """
+    # Initialize such that the first iteration is always the best.
+    fom_min = np.inf
+    result = None
+
+    # Loop through all offsets.
+    for phi in range(steps):
+        shift = phi * 2 * np.pi / steps
+        phase_shifted = np.mod(phase + shift, 2 * np.pi)
+
+        # Find where the phase wraps.
+        wrapping = (
+            np.abs(np.gradient(phase_shifted, axis=1)) +
+            np.abs(np.gradient(phase_shifted, axis=0))
+        ) > np.pi
+
+        if mask is not None:
+            wrapping = wrapping * mask
+
+        # Sum the total cut area, potentially weighted by the mask.
+        fom = np.sum(wrapping)
+
+        if fom < fom_min:
+            fom_min = fom
+            result = phase_shifted
+
+            # If the mask is smaller than the 0 -> 2pi range, shift to either end.
+            min = np.nanmin(result)
+            mean = np.nanmean(result)
+            max = np.nanmax(result)
+
+            if mean - min < max - mean:
+                result -= min
+            else:
+                result -= max - 2 * np.pi
+
+            result = np.mod(result, 2 * np.pi)
+
+    return result
+
 
 # Array fitting functions.
 

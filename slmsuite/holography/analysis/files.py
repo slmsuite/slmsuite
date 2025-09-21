@@ -328,7 +328,7 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
     images = np.array(images, copy=(False if np.__version__[0] == '1' else None))
     if len(images.shape) == 2:
         images = np.reshape(images, (1, images.shape[0], images.shape[1]))
-    elif len(images.shape) >= 3 and images.shape[-1] == 3:  # Already RGB
+    elif len(images.shape) >= 3 and images.shape[-1] in [3, 4]:  # Already RGB or RGBA
         return images
     elif len(images.shape) > 3:
         raise RuntimeError(f"Images shape {images.shape} could not be parsed.")
@@ -383,7 +383,7 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
             c = cm.colors
         else:
             c = cm(np.arange(0, cm.N))
-            
+
         images = 255 * c[images]
         if hasnan:
             images[nanmask, 3] = 0
@@ -392,6 +392,9 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
 
     # Add a border if desired.
     if border is not None:
+        # If border is a single numeric value, convert it to a list
+        if np.isscalar(border):
+            border = [border]
         images[:,  0, :, :len(border)] = border
         images[:, -1, :, :len(border)] = border
         images[:, :,  0, :len(border)] = border

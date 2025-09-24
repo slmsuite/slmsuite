@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import warnings
+from PIL import Image
 
 from abc import ABC, abstractmethod
 

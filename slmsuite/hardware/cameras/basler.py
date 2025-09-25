@@ -1,7 +1,7 @@
 """
 Hardware control for Basler cameras via the :mod:`pypylon` interface.
 Consider also installing Basler software for testing cameras outside of python
-(see `downloads <https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;language=all;version=7.3.0>`_).
+(see `downloads <https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware>`_).
 Install :mod:`pypylon` by following the `provided instructions <https://github.com/basler/pypylon>`_.
 """
 import warnings

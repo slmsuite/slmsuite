@@ -17,6 +17,11 @@ class ScreenMirrored(SLM):
     """
     Wraps a :mod:`pyglet` window for displaying data to an SLM.
 
+    .. warning::
+        Version `2.1.9` of `pyglet` introduced a bug that leaves the SLM display
+        zeroed even after phase data has been applied. Please use version `2.1.8` or earlier
+        until this is resolved in a future release.
+
     Important
     ~~~~~~~~~
     Many SLM manufacturers provide an SDK for interfacing with their devices.

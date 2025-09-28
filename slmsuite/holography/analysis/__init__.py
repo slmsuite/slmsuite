@@ -191,6 +191,10 @@ def take(
         else:
             pass
 
+        # Plot if desired
+        if plot:
+            take_plot(xp.reshape(result, (vectors.shape[1], size[1], size[0])), separate_axes=True)
+
         if integrate:  # Sum over the integration axis.
             return xp.squeeze(xp.sum(result.astype(float), axis=-1))
         else:  # Reshape the integration axis.

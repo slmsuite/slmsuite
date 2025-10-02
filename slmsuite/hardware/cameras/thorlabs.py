@@ -380,7 +380,7 @@ class ThorCam(Camera):
 
             self.profile = profile
 
-    def _get_image_hw(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
+    def _get_image_hw(self, timeout_s=.1, trigger=True, grab=True):
         """
         See :meth:`.Camera._get_image_hw`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
@@ -391,6 +391,8 @@ class ThorCam(Camera):
 
         Parameters
         ----------
+        timeout_s : float
+            Time in seconds to wait for a frame.
         trigger : bool
             Whether or not to issue a software trigger.
         grab : bool
@@ -401,29 +403,21 @@ class ThorCam(Camera):
         numpy.ndarray or None
             Array of shape :attr:`shape` if ``grab=True``, else ``None``.
         """
-        should_trigger = trigger and self.profile == "single"
+        t = time.time()
 
-        for _ in range(attempts):
-            if should_trigger:
-                t = time.time()
-                self.cam.issue_software_trigger()
+        if trigger and self.profile == "single":
+            self.cam.issue_software_trigger()
 
-            ret = None
-            if grab:
-                # Start the timer.
-                if not should_trigger:
-                    t = time.time()
+        ret = None
 
-                frame = None
+        if grab:
+            frame = None
 
-                # Try to grab a frame until we succeed.
-                while time.time() - t < timeout_s and frame is None:
-                    frame = self.cam.get_pending_frame_or_null()
+            # Try to grab a frame until we succeed.
+            while time.time() - t < timeout_s and frame is None:
+                frame = self.cam.get_pending_frame_or_null()
 
-                ret = np.copy(frame.image_buffer) if frame is not None else None
-
-                if ret is not None:
-                    break
+            ret = np.copy(frame.image_buffer) if frame is not None else None
 
         return ret
 

@@ -1056,9 +1056,9 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
 
 # Helpers for phase images.
 
-def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, **kwargs):
+def image_zernike_fit(phase_images, grid, order=10, iterations=2, leastsquares=True, **kwargs):
     """
-    Fits sets of Zernike polynomials to a stack of ``images``, up to a desired ``order``.
+    Fits sets of Zernike polynomials to a stack of ``phase_images``, up to a desired ``order``.
     This is done in two steps:
 
     -   First, an iterative approach is used to subtract Zernike orders from each image.
@@ -1079,12 +1079,12 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
 
     Parameters
     ----------
-    images : numpy.ndarray (``image_count``, ``height``, ``width``)
-        An image or array of images to fit. A single image is interpreted correctly as
+    phase_images : numpy.ndarray (``image_count``, ``height``, ``width``)
+        An image or array of phase_images to fit. A single image is interpreted correctly as
         ``(1, h, w)`` even if ``(h, w)`` is passed.
     grid : (array_like, array_like) OR None
-        Components of the meshgrid describing coordinates over the images.
-        If ``None``, makes a grid with unit pitch centered on the images.
+        Components of the meshgrid describing coordinates over the phase_images.
+        If ``None``, makes a grid with unit pitch centered on the phase_images.
     order : int
         Maximal radial Zernike order for the fitting basis.
     iterations : int
@@ -1095,9 +1095,9 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
         Passed to :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
     """
     # Setup.
-    if images.ndim == 2:
-        images = images.reshape((1, *images.shape))
-    image_count = images.shape[0]
+    if phase_images.ndim == 2:
+        phase_images = phase_images.reshape((1, *phase_images.shape))
+    image_count = phase_images.shape[0]
 
     # Generate Zernike terms and norms.
     order = int(order + 1)
@@ -1114,7 +1114,7 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
 
     # Preallocate the result.
     vectors_zernike = np.zeros((D, image_count))
-    images_remainders = np.copy(images)     # Copy the data
+    images_remainders = np.copy(phase_images)     # Copy the data
 
     # First, make a guess of the result based on iteratively subtracting Zernike terms.
     for _ in range(int(iterations)):
@@ -1151,7 +1151,7 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
 
             # Try the fit.
             try:
-                popt, _ = curve_fit(zsum, grid_ravel, images[j].ravel(), ftol=1e-5, p0=vectors_zernike[:, j])
+                popt, _ = curve_fit(zsum, grid_ravel, phase_images[j].ravel(), ftol=1e-5, p0=vectors_zernike[:, j])
                 vectors_zernike = popt.reshape(vectors_zernike.shape)
             except RuntimeError:    # The fit failed if scipy says so.
                 pass
@@ -1230,7 +1230,7 @@ def image_vortices_coordinates(phase_image, mask=None):
     return coordinates, weights
 
 
-def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
+def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False):
     """
     Find and then remove all the phase vortices in a phase image.
 
@@ -1250,20 +1250,20 @@ def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
     phase_image
         The image or vortices, depending upon ``return_vortices``
     """
-    xp = _get_module(phase)
+    xp = _get_module(phase_image)
 
     if mask is not None:
         mask_eroded = binary_erosion(mask, np.ones((5,5)))
     else:
         mask_eroded = None
 
-    coordinates, weights = image_vortices_coordinates(phase, mask=mask_eroded)
-    grid = _generate_grid(phase.shape[1], phase.shape[0], integer=False)
+    coordinates, weights = image_vortices_coordinates(phase_image, mask=mask_eroded)
+    grid = _generate_grid(phase_image.shape[1], phase_image.shape[0], integer=False)
 
     if return_vortices_negative:
-        canvas = np.zeros_like(phase)
+        canvas = np.zeros_like(phase_image)
     else:
-        canvas = phase
+        canvas = phase_image
 
 
     if mask is None:
@@ -1276,11 +1276,35 @@ def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
     return canvas
 
 
-def image_remove_blaze(phase, mask=None, plot=False):
+def image_remove_blaze(**kwargs):
     """
-    Remove a global blaze from
+    Backwards compatible alias for :meth:`image_blaze_remove()`.
     """
-    phase = np.mod(phase, 2*np.pi)
+    warnings.warn("image_remove_blaze is deprecated; use image_blaze_remove instead.", DeprecationWarning)
+    return image_blaze_remove(**kwargs)
+
+
+def image_blaze_remove(phase_image, mask=None, plot=False):
+    """
+    Remove a global blaze from a phase image.
+
+    Parameters
+    ----------
+    phase_image : np.ndarray
+        The phase image to have the blaze removed.
+    mask : np.ndarray OR None
+        If provided, the mask will weight the significance of the blaze.
+        This can be the amplitude image, such that the blaze removal is
+        more effective in brighter regions.
+    plot : bool
+        Whether to enable debug plots.
+
+    Returns
+    -------
+    np.ndarray
+        A phase image with the blaze removal applied.
+    """
+    phase = np.mod(phase_image, 2*np.pi)
 
     # Get the gradients across the image.
     dx = np.mod(np.gradient(phase, axis=1) + np.pi/2, np.pi) - np.pi/2
@@ -1323,16 +1347,16 @@ def image_remove_blaze(phase, mask=None, plot=False):
     return result
 
 
-def image_reduce_wraps(phase, mask=None, steps=10, plot=False):
+def image_reduce_wraps(phase_image, mask=None, steps=10, plot=False):
     """
-    Reduce the number of phase wraps in the image by adding an offset.
+    Reduce the number of phase wraps in the image by adding a global offset.
 
     Parameters
     ----------
-    phase : np.ndarray
+    phase_image : np.ndarray
         The phase image to be offset.
     mask : np.ndarray OR None
-        If provided, the mask will weight the signicance of the phase wraps.
+        If provided, the mask will weight the significance of the phase wraps.
         This can be the amplitude image, such that fewer wraps appear where there is
         light.
     steps : int
@@ -1343,7 +1367,7 @@ def image_reduce_wraps(phase, mask=None, steps=10, plot=False):
     Returns
     -------
     np.ndarray
-        The phase image with the offset applied.
+        A phase image with the offset applied.
     """
     # Initialize such that the first iteration is always the best.
     fom_min = np.inf
@@ -1352,7 +1376,7 @@ def image_reduce_wraps(phase, mask=None, steps=10, plot=False):
     # Loop through all offsets.
     for phi in range(steps):
         shift = phi * 2 * np.pi / steps
-        phase_shifted = np.mod(phase + shift, 2 * np.pi)
+        phase_shifted = np.mod(phase_image + shift, 2 * np.pi)
 
         # Find where the phase wraps.
         wrapping = (

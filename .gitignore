@@ -37,6 +37,7 @@
 !slmsuite/hardware/slms/meadowlark.csv
 
 # editor
+*.claude
 *.vscode
 *~
 \#*

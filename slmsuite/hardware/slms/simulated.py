@@ -58,7 +58,7 @@ class SimulatedSLM(SLM):
 
         self.set_phase(None)
 
-    def close():
+    def close(self):
         pass
 
     def _set_phase_hw(self, phase):

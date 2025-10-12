@@ -121,7 +121,7 @@ class SimulatedCamera(Camera):
         # Defaults to alignment with the SLM grid.
         self.set_affine(M, b)
 
-    def close():
+    def close(self):
         pass
 
     def set_affine(self, M=None, b=None, **kwargs):

@@ -510,12 +510,15 @@ class Camera(_Picklable, ABC):
         if averaging <= 0:
             raise ValueError("Cannot have negative averaging.")
 
+        # Get dtype instance from type if needed
+        dtype = np.dtype(self.dtype) if not hasattr(self.dtype, 'kind') else self.dtype
+
         # Switch based on image type
-        if self.dtype.kind == "i" or self.dtype.kind == "u":
-            dtype_bitdepth = 8*self.dtype.type(0).nbytes
+        if dtype.kind == "i" or dtype.kind == "u":
+            dtype_bitdepth = 8*dtype.type(0).nbytes
 
             # Remove depth for signed integer.
-            if self.dtype.kind == "i":
+            if dtype.kind == "i":
                 dtype_bitdepth -= 1
 
             extra_bits = int(np.rint(np.log2(averaging)))

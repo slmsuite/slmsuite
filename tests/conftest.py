@@ -16,6 +16,8 @@ import tempfile
 import os
 import json
 import importlib
+import matplotlib
+import matplotlib.pyplot as plt
 
 try:
     import cupy as cp
@@ -183,7 +185,6 @@ def camera(camera_class, camera_kwargs):
         except:
             pass
 
-
 @pytest.fixture
 def temp_dir():
     """Fixture providing a temporary directory for test files."""
@@ -203,9 +204,7 @@ def random_amplitude():
 
 def pytest_configure(config):
     """Configure pytest with custom settings."""
-    config.addinivalue_line(
-        "markers", "gpu: mark test as requiring GPU/CuPy"
-    )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow running"
-    )
+
+    matplotlib.use("tkagg")
+    plt.ion()
+    return

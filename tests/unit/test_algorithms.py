@@ -12,170 +12,59 @@ except ImportError:
     HAS_CUPY = False
 
 from slmsuite.holography.algorithms import Hologram
+import matplotlib.pyplot as plt
 
+class TestHologram:
+    """Tests for Hologram class."""
 
-def convert_stats_to_list(hologram):
-    """
-    Convert hologram.stats from dict-of-lists to list-of-dicts format.
-
-    Parameters
-    ----------
-    hologram : Hologram
-        The hologram object containing stats.
-
-    Returns
-    -------
-    list of dict
-        Stats in list-of-dicts format, where each dict represents one iteration.
-        Returns empty list if no stats are available.
-    """
-    if hologram.stats is None or "stats" not in hologram.stats:
-        return []
-
-    stats_dict = hologram.stats["stats"]
-    if not stats_dict:
-        return []
-
-    # Collect all stat groups (e.g., "computational", "experimental")
-    result = []
-
-    # Get the length from the first stat group
-    first_group = next(iter(stats_dict.values()))
-    if not first_group:
-        return []
-
-    first_key = next(iter(first_group.keys()))
-    num_iterations = len(first_group[first_key])
-
-    # Convert dict-of-lists to list-of-dicts
-    for i in range(num_iterations):
-        iter_stats = {}
-        for group_name, group_stats in stats_dict.items():
-            for stat_name, stat_values in group_stats.items():
-                iter_stats[stat_name] = stat_values[i]
-        result.append(iter_stats)
-
-    return result
-
-
-class TestHologramConstruction:
-    """Tests for Hologram class construction."""
-
-    def test_hologram_basic_construction(self):
-        """Test basic Hologram construction."""
-        target = np.zeros((256, 256))
-        target[120:136, 120:136] = 1  # Square target
-
-        hologram = Hologram(target=target)
-
-        assert hologram.shape == (256, 256)
-        assert hologram.slm_shape == (256, 256)
-        assert hologram.phase is not None
-        assert hologram.phase.shape == (256, 256)
-
-    def test_hologram_with_padding(self):
-        """Test Hologram construction with padding."""
+    def test_hologram_construction(self, random_phase, random_amplitude):
+        """Test the primitives for hologram formation."""
         slm_shape = (256, 256)
         shape = (512, 512)
-        target = np.zeros(shape)
-        target[240:272, 240:272] = 1
+        target = np.zeros(shape, dtype=np.float32)
+        hologram = Hologram(target=target,
+                            slm_shape=slm_shape,
+                            phase=random_phase,
+                            amp=random_amplitude)
 
-        hologram = Hologram(target=target, slm_shape=slm_shape)
-
+        # Check shape conventions
         assert hologram.slm_shape == slm_shape
         assert hologram.shape == shape
 
-    def test_hologram_dtype(self):
-        """Test Hologram dtype handling."""
-        target = np.zeros((128, 128), dtype=np.float32)
-        target[60:68, 60:68] = 1
-
-        hologram = Hologram(target=target, dtype=np.float32)
-
+        # Check dtype conversions
         assert hologram.dtype == np.float32
         assert hologram.dtype_complex == np.complex64
 
-    def test_hologram_with_initial_phase(self):
-        """Test Hologram with user-provided initial phase."""
+        # Check initial conditions
+        phase_diff = hologram.get_phase() - random_phase
+        assert np.allclose(phase_diff, phase_diff.flat[0])
+        amp_ratio = hologram.get_amp() / (random_amplitude + 1e-10)
+        plt.imshow(amp_ratio)
+        plt.colorbar()
+        plt.show()
+        assert np.allclose(amp_ratio, amp_ratio.flat[0])
+
+    @pytest.mark.parametrize("method", ["WGS-Leonardo", "WGS-Kim", "WGS-Nogrette"])
+    def test_gs_converges(self, method):
+
+        # Create a single far-field spot
         target = np.zeros((128, 128))
-        target[60:68, 60:68] = 1
-        initial_phase = np.random.rand(128, 128) * 2 * np.pi
-
-        hologram = Hologram(target=target, phase=initial_phase)
-
-        assert np.array_equal(hologram.phase, initial_phase)
-
-    def test_hologram_with_amplitude_constraint(self):
-        """Test Hologram with nearfield amplitude constraint."""
-        target = np.zeros((128, 128))
-        target[60:68, 60:68] = 1
-        amp = np.ones((128, 128)) * 0.5  # Reduced amplitude
-
-        hologram = Hologram(target=target, amp=amp)
-
-        assert hologram.amp is not None
-        assert np.array_equal(hologram.amp, amp)
-
-
-class TestHologramShapeConvention:
-    """Test that shape conventions are followed."""
-
-    def test_shape_convention_height_width(self):
-        """Verify (height, width) convention."""
-        height, width = 100, 200
-        target = np.zeros((height, width))
-        target[45:55, 95:105] = 1
-
+        target[32, 96] = 1
         hologram = Hologram(target=target)
+        hologram.optimize(method=method, maxiter=20, verbose=False, stat_groups=["computational"])
 
-        assert hologram.shape[0] == height
-        assert hologram.shape[1] == width
-        assert hologram.phase.shape[0] == height
-        assert hologram.phase.shape[1] == width
+        stats = hologram.stats["stats"]["computational"]
+        # Check that efficiency improves
+        assert stats["efficiency"][-1] >= stats["efficiency"][0]
 
+        # Check that efficiency converges
+        recent_efficiencies = stats["efficiency"][-5:]
+        assert np.std(recent_efficiencies) < 0.05
 
-class TestHologramGS:
-    """Tests for Gerchberg-Saxton algorithm."""
+        # Check that error decreases
+        assert stats["std_err"][-1] <= stats["std_err"][0]
 
-    def test_gs_runs_without_error(self):
-        """Test that GS algorithm runs without errors."""
-        target = np.zeros((128, 128))
-        target[60:68, 60:68] = 1
-
-        hologram = Hologram(target=target)
-        hologram.optimize(method="GS", maxiter=10, verbose=False, stat_groups=["computational"])
-        stats = convert_stats_to_list(hologram)
-
-        assert stats is not None
-        assert len(stats) > 0
-
-    def test_gs_improves_efficiency(self):
-        """Test that GS improves hologram efficiency."""
-        target = np.zeros((128, 128))
-        target[60:68, 60:68] = 1
-
-        hologram = Hologram(target=target)
-
-        # Run a few iterations
-        hologram.optimize(method="GS", maxiter=20, verbose=False, stat_groups=["computational"])
-        stats = convert_stats_to_list(hologram)
-
-        # Efficiency should improve (later iterations better than first)
-        assert stats[-1]["efficiency"] >= stats[0]["efficiency"]
-
-    def test_gs_converges(self):
-        """Test that GS converges over iterations."""
-        target = np.zeros((128, 128))
-        target[60:68, 60:68] = 1
-
-        hologram = Hologram(target=target)
-        hologram.optimize(method="GS", maxiter=50, verbose=False, stat_groups=["computational"])
-        stats = convert_stats_to_list(hologram)
-
-        # Efficiency should stabilize (last 10 iters similar)
-        recent_efficiencies = [s["efficiency"] for s in stats[-10:]]
-        efficiency_std = np.std(recent_efficiencies)
-        assert efficiency_std < 0.05  # Small variation indicates convergence
+        # Check that output matches the expected grating
 
     def test_gs_with_callback(self):
         """Test GS with callback function."""

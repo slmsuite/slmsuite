@@ -38,6 +38,7 @@
 
 # editor
 *.claude
+*.github
 *.vscode
 *~
 \#*

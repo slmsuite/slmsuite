@@ -366,15 +366,8 @@ class _HologramStats(object):
         fig, axs = plt.subplots(1, 2, figsize=figsize)
 
         if source is None:
-            try:
-                if isinstance(self.amp, float):
-                    amp = self.amp
-                else:
-                    amp = self.amp.get()
-                phase = self.phase.get()
-            except:
-                amp = self.amp
-                phase = self.phase
+            amp = self.get_amp()
+            phase = self.get_phase()
         else:
             try:
                 amp = cp.abs(source).get()

@@ -167,9 +167,8 @@ class SLM(_Picklable, ABC):
         # Multiplier for when the target wavelengths differ from the design wavelength.
         self.phase_scaling = self.wav_um / self.wav_design_um
 
-        # Resolution of the SLM.
+        # Pixel depth of the SLM.
         self.bitdepth = int(bitdepth)
-        self.bitresolution = 2**bitdepth
 
         # time to delay after writing (allows SLM to stabilize).
         self.settle_time_s = float(settle_time_s)
@@ -201,6 +200,10 @@ class SLM(_Picklable, ABC):
         # Display caches for user reference.
         self.phase = np.zeros(self.shape)
         self.display = np.zeros(self.shape, dtype=self.dtype)
+
+    @property
+    def bitresolution(self):
+        return 2**self.bitdepth
 
     @abstractmethod
     def close(self):

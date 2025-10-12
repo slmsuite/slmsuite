@@ -26,16 +26,16 @@ SCALAR_TYPES =  (
 
 def iseven(x):
     """
-    Test if an integer is even.
+    Test if integer(s) are even.
 
     Parameters
     ----------
-    x : int
-        The integer to test.
+    x : int OR list of int
+        The integer(s) to test.
 
     Returns
     -------
-    bool
-        Whether or not `x` is even.
+    bool OR list of bool
+        Whether or not ``x`` is even.
     """
-    return bool(~(x & 0x1))
+    return (np.around(x).astype(int) & 0x1) == 0

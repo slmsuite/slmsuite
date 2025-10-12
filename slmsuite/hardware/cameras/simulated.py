@@ -321,7 +321,7 @@ class SimulatedCamera(Camera):
 
         return M, b
 
-    def flush(self):
+    def flush(self, timeout_s=1):
         """
         See :meth:`.Camera.flush`.
         """

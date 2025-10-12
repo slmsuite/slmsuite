@@ -141,7 +141,7 @@ class Template(Camera):
     #     # _get_image_hw images.
     #     return self.cam.get_images_function()     # TODO: Fill in proper function.
 
-    # def flush(self):
+    # def flush(self, timeout_s=1):
     #     """See :meth:`.Camera.flush`."""
     #     raise NotImplementedError()
     #     # Clears ungrabbed images from the queue; the abstract default calls .get_image twice.

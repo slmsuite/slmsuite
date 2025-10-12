@@ -69,10 +69,11 @@ class RemoteCamera(_Client, Camera):
 
     ### Property Configuration ###
 
-    def flush(self):
+    def flush(self, timeout_s=1):
         """See :meth:`.Camera.flush`."""
         return self._com(
             command="flush",
+            kwargs=dict(timeout_s=timeout_s)
         )
 
     def _get_exposure_hw(self):

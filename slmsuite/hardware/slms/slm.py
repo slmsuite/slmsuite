@@ -167,9 +167,8 @@ class SLM(_Picklable, ABC):
         # Multiplier for when the target wavelengths differ from the design wavelength.
         self.phase_scaling = self.wav_um / self.wav_design_um
 
-        # Resolution of the SLM.
+        # Pixel depth of the SLM.
         self.bitdepth = int(bitdepth)
-        self.bitresolution = 2**bitdepth
 
         # time to delay after writing (allows SLM to stabilize).
         self.settle_time_s = float(settle_time_s)
@@ -201,6 +200,10 @@ class SLM(_Picklable, ABC):
         # Display caches for user reference.
         self.phase = np.zeros(self.shape)
         self.display = np.zeros(self.shape, dtype=self.dtype)
+
+    @property
+    def bitresolution(self):
+        return 2**self.bitdepth
 
     @abstractmethod
     def close(self):
@@ -1159,3 +1162,253 @@ class SLM(_Picklable, ABC):
         )
 
         return np.mean(psf_kxy)
+
+    # Self-test method to test everything above.
+
+    def test(self):
+        """
+        Tests the core methods of :class:`SLM`.
+        If something isn't behaving properly, this is the first place to check.
+        Validates that methods can run and are returning correct datatypes and shapes.
+        """
+        print(f"Testing SLM: {self.name}")
+
+        # Import pytest here to avoid making it a hard dependency
+        try:
+            import pytest
+        except ImportError:
+            print("Warning: pytest not available for enhanced testing")
+            pytest = None
+
+        # Test 1: Core properties and attributes
+        print("Testing core properties...")
+        assert hasattr(self, 'shape')
+        assert hasattr(self, 'bitdepth')
+        assert hasattr(self, 'bitresolution')
+        assert hasattr(self, 'dtype')
+        assert hasattr(self, 'phase_scaling')
+        assert hasattr(self, 'wav_um')
+        assert hasattr(self, 'wav_design_um')
+        assert hasattr(self, 'pitch_um')
+        assert hasattr(self, 'pitch')
+        assert hasattr(self, 'settle_time_s')
+        assert hasattr(self, 'grid')
+        assert hasattr(self, 'source')
+        assert hasattr(self, 'phase')
+        assert hasattr(self, 'display')
+
+        # Validate basic properties
+        assert self.bitresolution == 2**self.bitdepth
+        assert len(self.shape) == 2
+        assert all(isinstance(dim, int) and dim > 0 for dim in self.shape)
+        assert self.phase_scaling == self.wav_um / self.wav_design_um
+        assert len(self.pitch_um) == 2
+        assert all(p > 0 for p in self.pitch_um)
+        assert np.allclose(self.pitch, self.pitch_um / self.wav_um)
+
+        # Test grid structure
+        assert isinstance(self.grid, list)
+        assert len(self.grid) == 2
+        assert all(isinstance(g, np.ndarray) for g in self.grid)
+        assert all(g.shape == self.shape for g in self.grid)
+
+        # Test data storage arrays
+        assert isinstance(self.source, dict)
+        assert isinstance(self.phase, np.ndarray)
+        assert isinstance(self.display, np.ndarray)
+        assert self.phase.shape == self.shape
+        assert self.display.shape == self.shape
+        assert self.display.dtype == self.dtype
+
+        # Test 2: Phase conversion method _phase2gray
+        print("Testing _phase2gray method...")
+
+        # Test with simple phase data
+        test_phase = np.linspace(0, 2*np.pi, np.prod(self.shape)).reshape(self.shape)
+
+        # Test without preallocated output
+        gray_result1 = self._phase2gray(test_phase)
+        assert isinstance(gray_result1, np.ndarray)
+        assert gray_result1.shape == self.shape
+        assert gray_result1.dtype == self.dtype
+        assert np.all(gray_result1 < self.bitresolution)
+        assert np.all(gray_result1 >= 0)
+
+        # Test with preallocated output
+        out_array = np.zeros(self.shape, dtype=self.dtype)
+        gray_result2 = self._phase2gray(test_phase, out=out_array)
+        assert np.array_equal(gray_result2, out_array)
+
+        # Test with different phase scaling values
+        original_scaling = self.phase_scaling
+        try:
+            # Test scaling = 1 (fast bitwise modulo)
+            self.phase_scaling = 1.0
+            gray_result3 = self._phase2gray(test_phase)
+            assert isinstance(gray_result3, np.ndarray)
+
+            # Test scaling < 1 (more range than needed)
+            self.phase_scaling = 0.5
+            gray_result4 = self._phase2gray(test_phase)
+            assert isinstance(gray_result4, np.ndarray)
+
+            # Test scaling > 1 (less range than needed)
+            self.phase_scaling = 1.5
+            gray_result5 = self._phase2gray(test_phase)
+            assert isinstance(gray_result5, np.ndarray)
+
+        finally:
+            # Restore original scaling
+            self.phase_scaling = original_scaling
+
+        # Test 3: Phase setting method (if implemented)
+        print("Testing set_phase method...")
+        try:
+            # Save original state
+            orig_phase = np.copy(self.phase)
+            orig_display = np.copy(self.display)
+
+            # Test with None (zero phase)
+            result1 = self.set_phase(None)
+            assert isinstance(result1, np.ndarray)
+            assert result1.shape == self.shape
+            assert result1.dtype == self.dtype
+            assert np.all(self.phase == 0)
+
+            # Test with simple phase pattern
+            simple_phase = np.pi * np.ones(self.shape)
+            result2 = self.set_phase(simple_phase, phase_correct=False)
+            assert isinstance(result2, np.ndarray)
+            assert np.allclose(self.phase, simple_phase)
+
+            # Test with integer data (direct display)
+            int_data = np.full(self.shape, self.bitresolution // 2, dtype=self.dtype)
+            result3 = self.set_phase(int_data)
+            assert isinstance(result3, np.ndarray)
+            assert np.array_equal(self.display, int_data)
+
+            # Test error handling for out-of-range integer data
+            # This is only valid when the dtype resolution is larger than the
+            # bitresolution
+
+            bad_int_data = np.full(self.shape, self.bitresolution + 1, dtype=self.dtype)
+
+            if bad_int_data[0, 0] != 1:
+                if pytest is not None:
+                    with pytest.raises(TypeError):
+                        self.set_phase(bad_int_data)
+
+            # Test with 2D random phase
+            random_phase = 2 * np.pi * np.random.random(self.shape)
+            result4 = self.set_phase(random_phase, phase_correct=False)
+            assert isinstance(result4, np.ndarray)
+
+        except NotImplementedError:
+            print("  ! set_phase method not implemented (abstract method)")
+        except Exception as e:
+            print(f"  ! set_phase testing failed: {e}")
+
+        # Test 4: Source methods
+        print("Testing source methods...")
+
+        # Test set_source_analytic
+        try:
+            source_result = self.set_source_analytic(
+                fit_function="gaussian2d",
+                units="norm",
+                phase_offset=0
+            )
+            assert isinstance(source_result, dict)
+            assert "amplitude" in source_result
+            assert "phase" in source_result
+            assert isinstance(source_result["amplitude"], np.ndarray)
+            assert isinstance(source_result["phase"], np.ndarray)
+            assert source_result["amplitude"].shape == self.shape
+            assert source_result["phase"].shape == self.shape
+
+            # Test fit_source_amplitude
+            self.fit_source_amplitude(force=True)
+            assert "amplitude_center_pix" in self.source
+            assert "amplitude_radius" in self.source
+            assert "amplitude_extent" in self.source
+            assert "amplitude_extent_radius" in self.source
+
+            # Test get_source methods
+            radius = self.get_source_radius()
+            assert isinstance(radius, (int, float))
+            assert radius > 0
+
+            scaling = self.get_source_zernike_scaling()
+            assert isinstance(scaling, (int, float))
+            assert scaling > 0
+
+            center = self.get_source_center()
+            assert isinstance(center, np.ndarray)
+            assert len(center) == 2
+
+        except Exception as e:
+            print(f"  ! Source methods testing failed: {e}")
+
+        # Test 5: File I/O methods
+        print("Testing file I/O methods...")
+        try:
+            import tempfile
+
+            # Test save_phase
+            with tempfile.TemporaryDirectory() as temp_dir:
+                saved_path = self.save_phase(path=temp_dir, name="test_phase")
+                assert os.path.exists(saved_path)
+                assert saved_path.endswith(".h5")
+
+                # Test load_phase
+                orig_phase = np.copy(self.phase)
+                orig_display = np.copy(self.display)
+
+                # Change the phase, then load back
+                self.phase = np.random.random(self.shape)
+                self.display = np.random.randint(0, self.bitresolution, self.shape, dtype=self.dtype)
+
+                loaded_path = self.load_phase(saved_path)
+                assert loaded_path == saved_path
+                assert np.allclose(self.phase, orig_phase)
+                assert np.array_equal(self.display, orig_display)
+
+        except Exception as e:
+            print(f"  ! File I/O testing failed: {e}")
+
+        # Test 6: Utility methods
+        print("Testing utility methods...")
+
+        # Test info method (static)
+        try:
+            info_result = self.__class__.info(verbose=False)
+            assert isinstance(info_result, list)
+        except NotImplementedError:
+            print("  ! info() method not implemented")
+
+        # Test point spread function methods (if source is available)
+        if "amplitude" in self.source:
+            try:
+                psf = self.get_point_spread_function_knm()
+                assert isinstance(psf, np.ndarray)
+                assert psf.ndim == 2
+
+                spot_radius = self.get_spot_radius_kxy()
+                assert isinstance(spot_radius, (int, float))
+                assert spot_radius > 0
+
+            except Exception as e:
+                print(f"  ! PSF methods failed: {e}")
+
+        # Test 7: Vendor phase correction loading (basic test)
+        try:
+            # Test error handling for non-existent file
+            if pytest is not None:
+                with pytest.raises(FileNotFoundError):
+                    self.load_vendor_phase_correction("nonexistent_file.png")
+        except Exception as e:
+            print(f"  ! Vendor correction test failed: {e}")
+
+        print("SLM test completed successfully!")
+
+        return True

@@ -81,7 +81,7 @@ class Hamamatsu(SLM):
             Serial number of the connected device.
             If ``None``, the first connected device will be used.
         wav_um : float
-            Wavelength of operation in microns. Defaults to 1 um.
+            Wavelength of operation in microns. Defaults to 1 μm.
         pitch_um : (float, float)
             Pixel pitch in microns. Defaults to 12.5 micron square pixels.
 

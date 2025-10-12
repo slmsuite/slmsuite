@@ -115,7 +115,7 @@ class Meadowlark(SLM):
             See :meth:`load_lut` for how the default
             argument and other options are parsed.
         wav_um : float
-            Wavelength of operation in microns. Defaults to 1 um.
+            Wavelength of operation in microns. Defaults to 1 μm.
         pitch_um : (float, float) OR None
             Pixel pitch in microns.
             If ``None`` and using a PCIe SLM, this is automatically detected from the SDK.

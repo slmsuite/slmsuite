@@ -427,7 +427,7 @@ class ThorCam(Camera):
 
         return ret
 
-    def flush(self, timeout_s=1, verbose=False):
+    def flush(self, timeout_s=1):
         """
         See :meth:`.Camera.flush`.
 
@@ -443,9 +443,9 @@ class ThorCam(Camera):
         frame = self.cam.get_pending_frame_or_null()
         frametime = 0
 
-        # Continue flushing frames while the timeout is not exceeded, the
-        # returned frame is empty (None), or the frame returned super fast
-        # (cached)
+        # Continue flushing frames while the timeout is not exceeded,
+        # the returned frame is empty (None),
+        # or the frame returned super fast (cached)
         while (
             time.perf_counter() - t < timeout_s
             and frame is not None
@@ -455,13 +455,6 @@ class ThorCam(Camera):
             frame = self.cam.get_pending_frame_or_null()
             frametime = time.perf_counter() - t2
             ii += 1
-
-        if verbose:
-            print(
-                "Flushed {} frames in {:.2f} ms".format(
-                    ii, 1e3 * (time.perf_counter() - t)
-                )
-            )
 
     def is_capturing(self):
         """

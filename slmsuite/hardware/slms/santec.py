@@ -79,7 +79,7 @@ class Santec(SLM):
         bitdepth : int
             Depth of SLM pixel well in bits. Defaults to 10.
         wav_um : float
-            Wavelength of operation in microns. Defaults to 1 um.
+            Wavelength of operation in microns. Defaults to 1 μm.
         pitch_um : (float, float)
             Pixel pitch in microns. Defaults to 8 micron square pixels.
         verbose : bool

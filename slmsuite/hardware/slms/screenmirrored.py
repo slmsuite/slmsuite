@@ -138,7 +138,7 @@ class ScreenMirrored(SLM):
             This class currently supports SLMs with 8-bit precision or less.
             In the future, this class will also support 16-bit SLMs using RG color.
         wav_um : float
-            Wavelength of operation in microns. Defaults to 1 um.
+            Wavelength of operation in microns. Defaults to 1 μm.
         pitch_um : (float, float)
             Pixel pitch in microns. Defaults to 8 micron square pixels.
         verbose : bool
@@ -201,8 +201,8 @@ class ScreenMirrored(SLM):
         # Warn the user if wav_um > wav_design_um
         if self.phase_scaling > 1:
             print(
-                "Warning: Wavelength {} um is inaccessible to this SLM with "
-                "design wavelength {} um".format(self.wav_um, self.wav_design_um)
+                "Warning: Wavelength {} μm is inaccessible to this SLM with "
+                "design wavelength {} μm".format(self.wav_um, self.wav_design_um)
             )
 
     def _set_phase_hw(self, data):

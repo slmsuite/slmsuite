@@ -8,37 +8,32 @@ from slmsuite.hardware.slms.simulated import SimulatedSLM
 
 # TODO: camera fixture vs. SimulatedCamera cleanup (use camera wherever possible)
 
-class TestCameraConstruction:
-    """Tests for Camera construction and initialization."""
+def test_camera_init(self, slm):
+    """Test basic SimulatedCamera construction."""
+    cam = SimulatedCamera(
+        slm=slm,
+        resolution=(512, 512),
+        pitch_um=(5.5, 5.5),
+        bitdepth=8
+    )
 
-    def test_camera_basic(self, slm):
-        """Test basic SimulatedCamera construction."""
-        cam = SimulatedCamera(
-            slm=slm,
-            resolution=(512, 512),
-            pitch_um=(5.5, 5.5),
-            bitdepth=8
-        )
+    assert cam.shape == (512, 512)
+    assert np.allclose(cam.pitch_um, [5.5, 5.5])
+    assert cam.bitdepth == 8
+    assert cam.bitresolution == 256
 
-        assert cam.shape == (512, 512)
-        assert np.allclose(cam.pitch_um, [5.5, 5.5])
-        assert cam.bitdepth == 8
-        assert cam.bitresolution == 256
+    # Verify (height, width) shape convention.
+    height, width = 480, 640
+    cam = SimulatedCamera(slm=slm, resolution=(width, height))
 
-    def test_camera_shape_convention(self, slm):
-        """Verify (height, width) shape convention."""
-        height, width = 480, 640
-        cam = SimulatedCamera(slm=slm, resolution=(width, height))
+    assert cam.shape[0] == height
+    assert cam.shape[1] == width
 
-        assert cam.shape[0] == height
-        assert cam.shape[1] == width
+    # Test default camera parameters.
+    cam = SimulatedCamera(slm=slm, resolution=(256, 256))
 
-    def test_camera_default_parameters(self, slm):
-        """Test default camera parameters."""
-        cam = SimulatedCamera(slm=slm, resolution=(256, 256))
-
-        assert cam.exposure_s is not None
-        assert cam.averaging is None or isinstance(cam.averaging, int)
+    assert cam.exposure_s is not None
+    assert cam.averaging is None or isinstance(cam.averaging, int)
 
 
 class TestCameraImageAcquisition:
@@ -284,3 +279,24 @@ class TestCameraEdgeCases:
 
         image = cam.get_image()
         assert np.max(image) <= 65536
+
+
+class TestCameraSelfTest:
+    """Tests for the Camera.test() method."""
+
+    def test_camera_self_test(self, camera):
+        """Test that the camera's self-test method works."""
+        # The test method should return True on success
+        result = camera.test()
+        assert result is True
+
+    def test_camera_self_test_simulated(self, slm):
+        """Test self-test with a fresh SimulatedCamera."""
+        cam = SimulatedCamera(slm=slm, resolution=(64, 64), bitdepth=8)
+
+        # Test should pass for a properly constructed camera
+        result = cam.test()
+        assert result is True
+
+        # Cleanup
+        cam.close()

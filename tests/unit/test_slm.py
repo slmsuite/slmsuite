@@ -301,3 +301,24 @@ class TestSLMEdgeCases:
         # Should wrap via modulo
         assert np.all(gray >= 0)
         assert np.all(gray < slm.bitresolution)
+
+
+class TestSLMSelfTest:
+    """Tests for the SLM.test() method."""
+
+    def test_slm_self_test(self, slm):
+        """Test that the SLM's self-test method works."""
+        # The test method should return True on success
+        result = slm.test()
+        assert result is True
+
+    def test_slm_self_test_simulated(self):
+        """Test self-test with a fresh SimulatedSLM."""
+        slm = SimulatedSLM(resolution=(64, 64), bitdepth=8)
+
+        # Test should pass for a properly constructed SLM
+        result = slm.test()
+        assert result is True
+
+        # Cleanup
+        slm.close()

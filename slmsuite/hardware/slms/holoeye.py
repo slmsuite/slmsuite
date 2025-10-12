@@ -70,7 +70,7 @@ class Holoeye(SLM):
               a manually started process.
 
         wav_um : float
-            Wavelength of operation in microns. Defaults to 1 um.
+            Wavelength of operation in microns. Defaults to 1 μm.
         verbose : bool
             Whether to print extra information.
         **kwargs

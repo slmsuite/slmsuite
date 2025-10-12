@@ -865,10 +865,9 @@ class Camera(_Picklable, ABC):
 
     def test(self):
         """
-        Test the non-abstract core methods and capture methods of the Camera class.
-
-        Note: This method requires a concrete Camera implementation to work properly,
-        as the abstract methods (_get_image_hw, _set_exposure_hw, etc.) must be implemented.
+        Tests the core methods of :class:`Camera`.
+        If something isn't behaving properly, this is the first place to check.
+        Validates that methods can run and are returning correct datatypes and shapes.
         """
         print(f"Testing camera: {self.name}")
 
@@ -1070,19 +1069,7 @@ class Camera(_Picklable, ABC):
             print("    info() method not implemented - skipping")
 
         print("Camera test completed successfully!")
-        print("="*50)
-        print("SUMMARY:")
-        print(f"  Camera name: {self.name}")
-        print(f"  Shape: {self.shape}")
-        print(f"  Bitdepth: {self.bitdepth}")
-        print(f"  Bitresolution: {self.bitresolution}")
-        print(f"  Dtype: {self.dtype}")
-        print(f"  Pitch (μm): {self.pitch_um}")
-        print(f"  Averaging: {self.averaging}")
-        print(f"  HDR: {self.hdr}")
-        print(f"  WOI: {getattr(self, 'woi', 'Not set')}")
-        print("  All core methods tested successfully!")
-        print("="*50)
+
         return True
 
     # Display methods.

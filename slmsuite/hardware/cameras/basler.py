@@ -103,6 +103,14 @@ class Basler(Camera):
 
             self.cam.TriggerActivation.SetValue('RisingEdge')
             self.cam.TriggerSource.SetValue('Software')
+
+            self.GrabStrategy = pylon.GrabStrategy_LatestImages
+            self.cam.RegisterConfiguration(
+                pylon.SoftwareTriggerConfiguration(),
+                pylon.RegistrationMode_ReplaceAll,
+                pylon.Cleanup_Delete
+            )
+
         except Exception as e:
             warnings.warn("Basler default settings failed to ")
 
@@ -281,6 +289,7 @@ class Basler(Camera):
 
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
+        err = None
         maxwoi = (0, self.cam.Width.GetMax(), 0, self.cam.Height.GetMax())
 
         # Default WOI to max.
@@ -295,43 +304,18 @@ class Basler(Camera):
             # Reset to previous WOI (max if undefined) upon failure.
             woi = self.woi if self.woi is not None else maxwoi
             self._set_woi(woi)
-            raise e
+            err = e
 
-    def _get_image_hw_tolerant(self, *args, **kwargs):
-        err = None
-
-        # Start grabbing images
-        self.cam.RegisterConfiguration(
-            pylon.SoftwareTriggerConfiguration(),
-            pylon.RegistrationMode_ReplaceAll,
-            pylon.Cleanup_Delete
-        )
-
-        self.cam.StartGrabbing(
-            pylon.GrabStrategy_LatestImageOnly,
-            pylon.GrabLoop_ProvidedByUser
-        )
-
-        for i in range(self.capture_attempts):
-            try:
-                img = self._get_image_hw(*args, **kwargs)
-
-                # Stop grabbing images
-                self.cam.StopGrabbing()
-
-                return img
-            except Exception as e:
-                if i > 0: warnings.warn(f"'{self.name}' _get_image_hw() failed on attempt {i+1}.")
-                err = e
-
-        # Stop grabbing images
-        self.cam.StopGrabbing()
-
-        raise err
+        if err is not None:
+            raise err
 
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera.get_image`."""
+        self.cam.StartGrabbing(
+            self.GrabStrategy,
+            pylon.GrabLoop_ProvidedByUser
+        )
 
         if self.cam.IsGrabbing():
             self.cam.ExecuteSoftwareTrigger()
@@ -340,9 +324,11 @@ class Basler(Camera):
 
             # Image grabbed successfully?
             if not grab.GrabSucceeded():
+                self.cam.StopGrabbing()
                 raise RuntimeError(f"Basler error {grab.GetErrorCode()}: {grab.GetErrorDescription()}")
 
             im = grab.GetArray() # This returns an np.array
+            self.cam.StopGrabbing()
 
         return im
     

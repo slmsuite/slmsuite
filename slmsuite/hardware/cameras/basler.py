@@ -87,6 +87,8 @@ class Basler(Camera):
 
         # Apply default settings.
         try:
+            self.cam.CenterX=False
+            self.cam.CenterY=False
             self.cam.BinningHorizontal.SetValue(1)
             self.cam.BinningVertical.SetValue(1)
 
@@ -101,6 +103,14 @@ class Basler(Camera):
 
             self.cam.TriggerActivation.SetValue('RisingEdge')
             self.cam.TriggerSource.SetValue('Software')
+
+            self.GrabStrategy = pylon.GrabStrategy_LatestImages
+            self.cam.RegisterConfiguration(
+                pylon.SoftwareTriggerConfiguration(),
+                pylon.RegistrationMode_ReplaceAll,
+                pylon.Cleanup_Delete
+            )
+
         except Exception as e:
             warnings.warn("Basler default settings failed to ")
 
@@ -257,30 +267,78 @@ class Basler(Camera):
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.ExposureTime.SetValue(float(1e6 * exposure_s))   # in seconds
 
+    def _set_woi(self, woi):
+        """
+        Sets the window of interest (WOI).
+
+        Parameters
+        ----------
+        woi : list, None
+            See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
+        """
+        # Set the width and height to very small values 
+        # such that setting the offsets will not error.
+
+        # Now set the WOI.
+        x, w, y, h = woi
+
+        self.cam.OffsetX.SetValue(x)
+        self.cam.OffsetY.SetValue(y)
+        self.cam.Height.SetValue(h)
+        self.cam.Width.SetValue(w)
+
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
-        raise NotImplementedError("For now, use self.cam to crop the window of interest.")
+        err = None
+        maxwoi = (0, self.cam.Width.GetMax(), 0, self.cam.Height.GetMax())
+
+        # Default WOI to max.
+        if woi is None:
+            woi = maxwoi
+
+        try:
+            # Try to set the WOI.
+            self._set_woi(woi)
+            self.woi = woi
+        except Exception as e:
+            # Reset to previous WOI (max if undefined) upon failure.
+            woi = self.woi if self.woi is not None else maxwoi
+            self._set_woi(woi)
+            err = e
+
+        if err is not None:
+            raise err
+
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera.get_image`."""
-        self.cam.RegisterConfiguration(
-            pylon.SoftwareTriggerConfiguration(),
-            pylon.RegistrationMode_ReplaceAll,
-            pylon.Cleanup_Delete
-        )
-
         self.cam.StartGrabbing(
-            pylon.GrabStrategy_OneByOne,
+            self.GrabStrategy,
             pylon.GrabLoop_ProvidedByUser
         )
-        self.cam.ExecuteSoftwareTrigger()
-        grab = self.cam.RetrieveResult(int(timeout_s*1000), pylon.TimeoutHandling_Return)
 
-        # Image grabbed successfully?
-        if not grab.GrabSucceeded():
-            raise RuntimeError("Basler error: ", grab.ErrorCode, grab.ErrorDescription)
+        if self.cam.IsGrabbing():
+            self.cam.ExecuteSoftwareTrigger()
 
-        im = grab.GetArray()    # This returns an np.array
-        self.cam.StopGrabbing()
+            grab = self.cam.RetrieveResult(int(timeout_s*1000), pylon.TimeoutHandling_Return)
+
+            # Image grabbed successfully?
+            if not grab.GrabSucceeded():
+                self.cam.StopGrabbing()
+                raise RuntimeError(f"Basler error {grab.GetErrorCode()}: {grab.GetErrorDescription()}")
+
+            im = grab.GetArray() # This returns an np.array
+            self.cam.StopGrabbing()
 
         return im
+    
+    def is_grabbing(self):
+        """
+        Printing whether or not the camera is currently grabbing images.
+
+        Returns
+        -------
+        bool
+            Whether or not the camera is actively grabbing images.
+        """
+        return self.cam.IsGrabbing()

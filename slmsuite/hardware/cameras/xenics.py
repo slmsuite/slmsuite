@@ -4,6 +4,7 @@ Hardware control for Xenics camera via the :mod:`Xeneth` interface.
 Python wrapper for Xenith C++ SDK 2.7 from Xenics; see xeneth-sdk.chm
 there for additional documentation.
 """
+
 import time
 from ctypes import *
 
@@ -313,14 +314,7 @@ class Cheetah640(Camera):
 
     ### Camera Interface ###
 
-    def __init__(
-            self,
-            virtual=False,
-            temperature=None,
-            pitch_um=(20,20),
-            verbose=True,
-            **kwargs
-        ):
+    def __init__(self, virtual=False, temperature=None, pitch_um=(20, 20), verbose=True, **kwargs):
         """
         Initialize camera. Default ``profile`` is ``'free'``.
 
@@ -350,9 +344,7 @@ class Cheetah640(Camera):
         dev_count = c_uint()
         _ = self.xeneth.XCD_EnumerateDevices(None, byref(dev_count), XEF_CAMERALINK)
         device = _XDeviceInformation()
-        _ = self.xeneth.XCD_EnumerateDevices(
-            byref(device), byref(dev_count), XEF_USECACHED
-        )
+        _ = self.xeneth.XCD_EnumerateDevices(byref(device), byref(dev_count), XEF_USECACHED)
 
         # Open the first avaliable camera
         if virtual:
@@ -366,9 +358,7 @@ class Cheetah640(Camera):
                 self.cam = self.xeneth.XC_OpenCamera(device.url, 0, 0)
                 name = device.name.decode()
             else:
-                raise RuntimeError(
-                    "Camera not reachable! Close Xeneth GUI or check connections."
-                )
+                raise RuntimeError("Camera not reachable! Close Xeneth GUI or check connections.")
 
         # Check that the camera opened properly
         if self.xeneth.XC_IsInitialised(self.cam):
@@ -381,7 +371,7 @@ class Cheetah640(Camera):
                 bitdepth=12,
                 pitch_um=pitch_um,
                 name=name,
-                **kwargs
+                **kwargs,
             )
 
             # Initialize a 16-bit buffer for a single frame; initialize to 0
@@ -458,58 +448,24 @@ class Cheetah640(Camera):
             # Iterate over each property and output details such as name, type, value
             for x in range(property_count):
                 self.xeneth.XC_Getproperty_name(self.cam, x, property_name, 128)
-                self.xeneth.XC_Getproperty_category(
-                    self.cam, property_name, property_category, 128
-                )
-                self.xeneth.XC_Getproperty_type(
-                    self.cam, property_name, byref(property_type)
-                )
-                self.xeneth.XC_Getproperty_range(
-                    self.cam, property_name, property_range, 128
-                )
-                self.xeneth.XC_Getproperty_unit(
-                    self.cam, property_name, property_unit, 128
-                )
+                self.xeneth.XC_Getproperty_category(self.cam, property_name, property_category, 128)
+                self.xeneth.XC_Getproperty_type(self.cam, property_name, byref(property_type))
+                self.xeneth.XC_Getproperty_range(self.cam, property_name, property_range, 128)
+                self.xeneth.XC_Getproperty_unit(self.cam, property_name, property_unit, 128)
 
                 if verbose:
-                    print(
-                        "Property[%d]    Category: %s"
-                        % (x, property_category.value.decode())
-                    )
-                    print(
-                        "Property[%d]        Name: %s"
-                        % (x, property_name.value.decode())
-                    )
+                    print("Property[%d]    Category: %s" % (x, property_category.value.decode()))
+                    print("Property[%d]        Name: %s" % (x, property_name.value.decode()))
                     print(
                         "Property[%d]       Flags: %s"
                         % (
                             x,
-                            (
-                                "MinMax | "
-                                if property_type.value & XTYPE_BASE_MINMAX
-                                else ""
-                            )
-                            + (
-                                "ReadOnce | "
-                                if property_type.value & XTYPE_BASE_READONCE
-                                else ""
-                            )
-                            + (
-                                "NoPersist | "
-                                if property_type.value & XTYPE_BASE_NOPERSIST
-                                else ""
-                            )
+                            ("MinMax | " if property_type.value & XTYPE_BASE_MINMAX else "")
+                            + ("ReadOnce | " if property_type.value & XTYPE_BASE_READONCE else "")
+                            + ("NoPersist | " if property_type.value & XTYPE_BASE_NOPERSIST else "")
                             + ("NAI | " if property_type.value & XTYPE_BASE_NAI else "")
-                            + (
-                                "Writeable | "
-                                if property_type.value & XTYPE_BASE_WRITEABLE
-                                else ""
-                            )
-                            + (
-                                "Readable | "
-                                if property_type.value & XTYPE_BASE_READABLE
-                                else ""
-                            ),
+                            + ("Writeable | " if property_type.value & XTYPE_BASE_WRITEABLE else "")
+                            + ("Readable | " if property_type.value & XTYPE_BASE_READABLE else ""),
                         )
                     )
 
@@ -519,49 +475,29 @@ class Cheetah640(Camera):
                 # Write-only number
                 if type_num == XTYPE_BASE_NUMBER:
                     # Check camera doc for float vs. long
-                    self.xeneth.XC_GetPropertyValueL(
-                        self.cam, property_name, byref(lvalue)
-                    )
-                    self.xeneth.XC_GetPropertyValueF(
-                        self.cam, property_name, byref(fvalue)
-                    )
+                    self.xeneth.XC_GetPropertyValueL(self.cam, property_name, byref(lvalue))
+                    self.xeneth.XC_GetPropertyValueF(self.cam, property_name, byref(fvalue))
                     if verbose:
                         print("Property[%d]        Type: Number" % x)
-                        print(
-                            "Property[%d]       Range: %s"
-                            % (x, property_range.value.decode())
-                        )
-                        print(
-                            "Property[%d]        Unit: %s"
-                            % (x, property_unit.value.decode())
-                        )
+                        print("Property[%d]       Range: %s" % (x, property_range.value.decode()))
+                        print("Property[%d]        Unit: %s" % (x, property_unit.value.decode()))
                         print("Property[%d]  Long value: %lu" % (x, lvalue.value))
                         print("Property[%d] Float value: %f" % (x, fvalue.value))
 
                 # Write-only enumeration
                 elif type_num == XTYPE_BASE_ENUM:
-                    self.xeneth.XC_GetPropertyValueL(
-                        self.cam, property_name, byref(lvalue)
-                    )
+                    self.xeneth.XC_GetPropertyValueL(self.cam, property_name, byref(lvalue))
                     if verbose:
                         print("Property[%d]        Type: Enum" % x)
-                        print(
-                            "Property[%d]       Range: %s"
-                            % (x, property_range.value.decode())
-                        )
+                        print("Property[%d]       Range: %s" % (x, property_range.value.decode()))
                         print("Property[%d]       Value: %lu" % (x, lvalue.value))
 
                 # Boolean TF
                 elif type_num == XTYPE_BASE_BOOL:
-                    self.xeneth.XC_GetPropertyValueL(
-                        self.cam, property_name, byref(lvalue)
-                    )
+                    self.xeneth.XC_GetPropertyValueL(self.cam, property_name, byref(lvalue))
                     if verbose:
                         print("Property[%d]        Type: Bool" % x)
-                        print(
-                            "Property[%d]       Value: %s"
-                            % (x, "True" if lvalue.value == 1 else "False")
-                        )
+                        print("Property[%d]       Value: %s" % (x, "True" if lvalue.value == 1 else "False"))
 
                 # Binary large object (BLOB)
                 elif type_num == XTYPE_BASE_BLOB:
@@ -572,9 +508,7 @@ class Cheetah640(Camera):
                 elif type_num == XTYPE_BASE_STRING:
                     # Get the string.
                     cvalue = (c_char * 128)(0)
-                    self.xeneth.XC_GetPropertyValue(
-                        self.cam, property_name, cvalue, 128
-                    )
+                    self.xeneth.XC_GetPropertyValue(self.cam, property_name, cvalue, 128)
                     if verbose:
                         print("Property[%d]        Type: String" % x)
                         print("Property[%d]       Value: %s" % (x, cvalue.value))
@@ -608,9 +542,7 @@ class Cheetah640(Camera):
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
         exposure_old = c_double(0.0)
-        err1 = self.xeneth.XC_GetPropertyValueF(
-            self.cam, b"IntegrationTime", byref(exposure_old)
-        )
+        err1 = self.xeneth.XC_GetPropertyValueF(self.cam, b"IntegrationTime", byref(exposure_old))
         if err1:
             print("\nWarning -- error encountered! Error code: %d" % (err1))
         return exposure_old.value / 1e6
@@ -619,20 +551,11 @@ class Cheetah640(Camera):
         """See :meth:`.Camera._set_exposure_hw`."""
         exposure_old = c_double(0.0)
         exposure = c_double(exposure_s * 1e6)  # us
-        err1 = self.xeneth.XC_GetPropertyValueF(
-            self.cam, b"IntegrationTime", byref(exposure_old)
-        )
-        err2 = self.xeneth.XC_SetPropertyValueF(
-            self.cam, b"IntegrationTime", exposure, ""
-        )
-        err3 = self.xeneth.XC_GetPropertyValueF(
-            self.cam, b"IntegrationTime", byref(exposure)
-        )
+        err1 = self.xeneth.XC_GetPropertyValueF(self.cam, b"IntegrationTime", byref(exposure_old))
+        err2 = self.xeneth.XC_SetPropertyValueF(self.cam, b"IntegrationTime", exposure, "")
+        err3 = self.xeneth.XC_GetPropertyValueF(self.cam, b"IntegrationTime", byref(exposure))
         if err1 or err2 or err3:
-            print(
-                "\nWarning -- error encountered! Error codes: %d, %d, %d"
-                % (err1, err2, err3)
-            )
+            print("\nWarning -- error encountered! Error codes: %d, %d, %d" % (err1, err2, err3))
 
     def set_framerate(self, framerate):
         """
@@ -650,15 +573,9 @@ class Cheetah640(Camera):
         err1 = self.xeneth.XC_GetPropertyValueL(self.cam, b"FrameRate", byref(rate_old))
         err2 = self.xeneth.XC_SetPropertyValueL(self.cam, b"FrameRate", rate, "")
         err3 = self.xeneth.XC_GetPropertyValueL(self.cam, b"FrameRate", byref(rate))
-        print(
-            "Previous frame rate: %d Hz\nNew frame rate: %d Hz"
-            % (rate_old.value, rate.value)
-        )
+        print("Previous frame rate: %d Hz\nNew frame rate: %d Hz" % (rate_old.value, rate.value))
         if err1 or err2 or err3:
-            print(
-                "Warning -- error encountered! Error codes: %d, %d, %d"
-                % (err1, err2, err3)
-            )
+            print("Warning -- error encountered! Error codes: %d, %d, %d" % (err1, err2, err3))
 
     def get_frame_footer_length(self):
         """
@@ -681,22 +598,13 @@ class Cheetah640(Camera):
         """
         print("Setting API buffer frame count to %d..." % (frames))
         frame_current = c_ulong(0)
-        err1 = self.xeneth.XC_GetPropertyValueL(
-            self.cam, b"_API_FPC_BFRNUM", byref(frame_current)
-        )
+        err1 = self.xeneth.XC_GetPropertyValueL(self.cam, b"_API_FPC_BFRNUM", byref(frame_current))
         print("Previous API buffer size: %d frames" % (frame_current.value))
-        err2 = self.xeneth.XC_SetPropertyValueL(
-            self.cam, b"_API_FPC_BFRNUM", c_long(frames), ""
-        )
-        err3 = self.xeneth.XC_GetPropertyValueL(
-            self.cam, b"_API_FPC_BFRNUM", byref(frame_current)
-        )
+        err2 = self.xeneth.XC_SetPropertyValueL(self.cam, b"_API_FPC_BFRNUM", c_long(frames), "")
+        err3 = self.xeneth.XC_GetPropertyValueL(self.cam, b"_API_FPC_BFRNUM", byref(frame_current))
         print("     New API buffer size: %d frames" % (frame_current.value))
         if err1 or err2 or err3:
-            print(
-                "Warning -- error encountered! Error codes: %d, %d, %d"
-                % (err1, err2, err3)
-            )
+            print("Warning -- error encountered! Error codes: %d, %d, %d" % (err1, err2, err3))
 
     def set_timeout_api(self, timeout_ms=10000):
         """
@@ -713,22 +621,13 @@ class Cheetah640(Camera):
         """
         print("Setting API timeout to %d ms..." % (timeout_ms))
         timeout_current = c_ulong(0)
-        err1 = self.xeneth.XC_GetPropertyValueL(
-            self.cam, b"_API_GETFRAME_TIMEOUT", byref(timeout_current)
-        )
+        err1 = self.xeneth.XC_GetPropertyValueL(self.cam, b"_API_GETFRAME_TIMEOUT", byref(timeout_current))
         print("Previous API timeout: %d ms" % (timeout_current.value))
-        err2 = self.xeneth.XC_SetPropertyValueL(
-            self.cam, b"_API_GETFRAME_TIMEOUT", c_long(timeout_ms), ""
-        )
-        err3 = self.xeneth.XC_GetPropertyValueL(
-            self.cam, b"_API_GETFRAME_TIMEOUT", byref(timeout_current)
-        )
+        err2 = self.xeneth.XC_SetPropertyValueL(self.cam, b"_API_GETFRAME_TIMEOUT", c_long(timeout_ms), "")
+        err3 = self.xeneth.XC_GetPropertyValueL(self.cam, b"_API_GETFRAME_TIMEOUT", byref(timeout_current))
         print("     New API timeout: %d ms" % (timeout_current.value))
         if err1 or err2 or err3:
-            print(
-                "Warning -- error encountered! Error codes: %d, %d, %d"
-                % (err1, err2, err3)
-            )
+            print("Warning -- error encountered! Error codes: %d, %d, %d" % (err1, err2, err3))
 
     def set_temperature(self, temp_c):
         """
@@ -741,22 +640,13 @@ class Cheetah640(Camera):
         """
         print("Setting settle temperature to %1.2fC..." % (temp_c))
         temp_current = c_double(0)
-        err1 = self.xeneth.XC_GetPropertyValueF(
-            self.cam, b"SettleTemperature", byref(temp_current)
-        )
+        err1 = self.xeneth.XC_GetPropertyValueF(self.cam, b"SettleTemperature", byref(temp_current))
         print("Previous set temperature: %1.2f degC" % (temp_current.value - 273.15))
-        err2 = self.xeneth.XC_SetPropertyValueF(
-            self.cam, b"SettleTemperature", c_double(temp_c + 273.15), ""
-        )
-        err3 = self.xeneth.XC_GetPropertyValueF(
-            self.cam, b"SettleTemperature", byref(temp_current)
-        )
+        err2 = self.xeneth.XC_SetPropertyValueF(self.cam, b"SettleTemperature", c_double(temp_c + 273.15), "")
+        err3 = self.xeneth.XC_GetPropertyValueF(self.cam, b"SettleTemperature", byref(temp_current))
         print("     New set temperature: %1.2f degC" % (temp_current.value - 273.15))
         if err1 or err2 or err3:
-            print(
-                "Warning -- error encountered! Error codes: %d, %d, %d"
-                % (err1, err2, err3)
-            )
+            print("Warning -- error encountered! Error codes: %d, %d, %d" % (err1, err2, err3))
 
     def get_temperature(self):
         """
@@ -770,9 +660,7 @@ class Cheetah640(Camera):
         """
         temp = -1.0
         temp_current = c_double(0)
-        err = self.xeneth.XC_GetPropertyValueF(
-            self.cam, b"Temperature", byref(temp_current)
-        )
+        err = self.xeneth.XC_GetPropertyValueF(self.cam, b"Temperature", byref(temp_current))
 
         if err:
             print("Error while reading sensor temperature; code: " + str(err))
@@ -793,21 +681,12 @@ class Cheetah640(Camera):
         errs = []
         flip_x = c_long(int(flip_x))
         flip_y = c_long(int(flip_y))
-        errs.append(
-            self.xeneth.XC_SetPropertyValueL(self.cam, b"ReadoutFlipX", flip_x, "")
-        )
-        errs.append(
-            self.xeneth.XC_SetPropertyValueL(self.cam, b"ReadoutFlipY", flip_y, "")
-        )
-        errs.append(
-            self.xeneth.XC_GetPropertyValueL(self.cam, b"ReadoutFlipX", byref(flip_x))
-        )
-        errs.append(
-            self.xeneth.XC_GetPropertyValueL(self.cam, b"ReadoutFlipX", byref(flip_x))
-        )
+        errs.append(self.xeneth.XC_SetPropertyValueL(self.cam, b"ReadoutFlipX", flip_x, ""))
+        errs.append(self.xeneth.XC_SetPropertyValueL(self.cam, b"ReadoutFlipY", flip_y, ""))
+        errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, b"ReadoutFlipX", byref(flip_x)))
+        errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, b"ReadoutFlipX", byref(flip_x)))
         print(
-            "Readout orientation set to (flip_x,flip_y) = (%s,%s)"
-            % (str(bool(flip_x.value)), str(bool(flip_y.value)))
+            "Readout orientation set to (flip_x,flip_y) = (%s,%s)" % (str(bool(flip_x.value)), str(bool(flip_y.value)))
         )
 
         if any(errs):
@@ -826,9 +705,7 @@ class Cheetah640(Camera):
         if enable:
             err = self.xeneth.XC_SetPropertyValueE(self.cam, b"FrameMarker", b"Enabled")
         else:
-            err = self.xeneth.XC_SetPropertyValueE(
-                self.cam, b"FrameMarker", b"Disabled"
-            )
+            err = self.xeneth.XC_SetPropertyValueE(self.cam, b"FrameMarker", b"Disabled")
         if err:
             print("Error setting frame tags! Code: " + str(err))
         else:
@@ -879,31 +756,15 @@ class Cheetah640(Camera):
 
         # Get current trigger setup
         mode_old = (c_char * 128)(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(
-                self.cam, b"TriggerMode", byref(mode_old), 128
-            )
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"TriggerMode", byref(mode_old), 128))
         delay_old = c_double(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueF(
-                self.cam, b"TriggerInputDelay", byref(delay_old)
-            )
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueF(self.cam, b"TriggerInputDelay", byref(delay_old)))
         source_old = (c_char * 128)(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(
-                self.cam, b"TriggerSource", byref(source_old), 128
-            )
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"TriggerSource", byref(source_old), 128))
         skip_old = c_long(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueL(self.cam, b"TriggerSkip", byref(skip_old))
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, b"TriggerSkip", byref(skip_old)))
         fpt_old = c_long(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueL(self.cam, b"NrOfFrames", byref(fpt_old))
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, b"NrOfFrames", byref(fpt_old)))
         if verbose:
             print(
                 "Original trigger setup: Mode - %s | Delay - %1.2fus "
@@ -918,50 +779,18 @@ class Cheetah640(Camera):
             )
 
         # Set desired trigger setup
-        errs.append(
-            self.xeneth.XC_SetPropertyValueL(self.cam, b"NrOfFrames", c_long(fpt), "")
-        )
-        errs.append(
-            self.xeneth.XC_SetPropertyValueE(
-                self.cam, b"TriggerMode", trigger_modes[mode]
-            )
-        )
-        errs.append(
-            self.xeneth.XC_SetPropertyValueF(
-                self.cam, b"TriggerInputDelay", c_double(delay), ""
-            )
-        )
-        errs.append(
-            self.xeneth.XC_SetPropertyValueE(
-                self.cam, b"TriggerSource", trigger_sources[source]
-            )
-        )
-        errs.append(
-            self.xeneth.XC_SetPropertyValueL(self.cam, b"TriggerSkip", c_long(skip), "")
-        )
+        errs.append(self.xeneth.XC_SetPropertyValueL(self.cam, b"NrOfFrames", c_long(fpt), ""))
+        errs.append(self.xeneth.XC_SetPropertyValueE(self.cam, b"TriggerMode", trigger_modes[mode]))
+        errs.append(self.xeneth.XC_SetPropertyValueF(self.cam, b"TriggerInputDelay", c_double(delay), ""))
+        errs.append(self.xeneth.XC_SetPropertyValueE(self.cam, b"TriggerSource", trigger_sources[source]))
+        errs.append(self.xeneth.XC_SetPropertyValueL(self.cam, b"TriggerSkip", c_long(skip), ""))
 
         # Get final trigger setup
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(
-                self.cam, b"TriggerMode", byref(mode_old), 128
-            )
-        )
-        errs.append(
-            self.xeneth.XC_GetPropertyValueF(
-                self.cam, b"TriggerInputDelay", byref(delay_old)
-            )
-        )
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(
-                self.cam, b"TriggerSource", byref(source_old), 128
-            )
-        )
-        errs.append(
-            self.xeneth.XC_GetPropertyValueL(self.cam, b"TriggerSkip", byref(skip_old))
-        )
-        errs.append(
-            self.xeneth.XC_GetPropertyValueL(self.cam, b"NrOfFrames", byref(fpt_old))
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"TriggerMode", byref(mode_old), 128))
+        errs.append(self.xeneth.XC_GetPropertyValueF(self.cam, b"TriggerInputDelay", byref(delay_old)))
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"TriggerSource", byref(source_old), 128))
+        errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, b"TriggerSkip", byref(skip_old)))
+        errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, b"NrOfFrames", byref(fpt_old)))
         if verbose:
             print(
                 "     New trigger setup: Mode - %s | Delay - %1.2fus "
@@ -1022,35 +851,15 @@ class Cheetah640(Camera):
 
         # Get current trigger setup
         status_old = (c_char * 128)(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(
-                self.cam, b"TriggerOutEnable", byref(status_old), 128
-            )
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"TriggerOutEnable", byref(status_old), 128))
         mode_old = (c_char * 128)(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(
-                self.cam, b"TriggerOutMode", byref(mode_old), 128
-            )
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"TriggerOutMode", byref(mode_old), 128))
         delay_old = c_double(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueF(
-                self.cam, b"TriggerOutDelay", byref(delay_old)
-            )
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueF(self.cam, b"TriggerOutDelay", byref(delay_old)))
         source_old = (c_char * 128)(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(
-                self.cam, b"TriggerOutSource", byref(source_old), 128
-            )
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"TriggerOutSource", byref(source_old), 128))
         width_old = c_long(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueL(
-                self.cam, b"TriggerOutWidth", byref(width_old)
-            )
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, b"TriggerOutWidth", byref(width_old)))
         if verbose:
             print(
                 "Original trigger setup: Status - %s | Mode - %s | Delay - %1.2fus "
@@ -1065,58 +874,18 @@ class Cheetah640(Camera):
             )
 
         # Set desired trigger setup
-        errs.append(
-            self.xeneth.XC_SetPropertyValueE(
-                self.cam, b"TriggerOutEnable", trigger_status[enable]
-            )
-        )
-        errs.append(
-            self.xeneth.XC_SetPropertyValueE(
-                self.cam, b"TriggerOutMode", trigger_modes[mode]
-            )
-        )
-        errs.append(
-            self.xeneth.XC_SetPropertyValueF(
-                self.cam, b"TriggerOutDelay", c_double(delay), ""
-            )
-        )
-        errs.append(
-            self.xeneth.XC_SetPropertyValueE(
-                self.cam, b"TriggerOutSource", trigger_sources[source]
-            )
-        )
-        errs.append(
-            self.xeneth.XC_SetPropertyValueF(
-                self.cam, b"TriggerOutWidth", c_double(width), ""
-            )
-        )
+        errs.append(self.xeneth.XC_SetPropertyValueE(self.cam, b"TriggerOutEnable", trigger_status[enable]))
+        errs.append(self.xeneth.XC_SetPropertyValueE(self.cam, b"TriggerOutMode", trigger_modes[mode]))
+        errs.append(self.xeneth.XC_SetPropertyValueF(self.cam, b"TriggerOutDelay", c_double(delay), ""))
+        errs.append(self.xeneth.XC_SetPropertyValueE(self.cam, b"TriggerOutSource", trigger_sources[source]))
+        errs.append(self.xeneth.XC_SetPropertyValueF(self.cam, b"TriggerOutWidth", c_double(width), ""))
 
         # Get final trigger setup
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(
-                self.cam, b"TriggerOutEnable", byref(status_old), 128
-            )
-        )
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(
-                self.cam, b"TriggerOutMode", byref(mode_old), 128
-            )
-        )
-        errs.append(
-            self.xeneth.XC_GetPropertyValueF(
-                self.cam, b"TriggerOutDelay", byref(delay_old)
-            )
-        )
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(
-                self.cam, b"TriggerOutSource", byref(source_old), 128
-            )
-        )
-        errs.append(
-            self.xeneth.XC_GetPropertyValueL(
-                self.cam, b"TriggerOutWidth", byref(width_old)
-            )
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"TriggerOutEnable", byref(status_old), 128))
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"TriggerOutMode", byref(mode_old), 128))
+        errs.append(self.xeneth.XC_GetPropertyValueF(self.cam, b"TriggerOutDelay", byref(delay_old)))
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"TriggerOutSource", byref(source_old), 128))
+        errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, b"TriggerOutWidth", byref(width_old)))
         if verbose:
             print(
                 "     New trigger setup: Status - %s | Mode - %s | Delay - %1.2fus "
@@ -1154,28 +923,16 @@ class Cheetah640(Camera):
             2: b"Synchronous burst",  # Non-circular (Stops grabbing when buffer filled)
         }
         mode_old = (c_char * 128)(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(self.cam, b"Mode", byref(mode_old), 128)
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"Mode", byref(mode_old), 128))
         print("Previous capture mode: %s" % mode_old.value.decode())
         errs.append(self.xeneth.XC_SetPropertyValueE(self.cam, b"Mode", modes[mode]))
-        errs.append(
-            self.xeneth.XC_GetPropertyValueE(self.cam, b"Mode", byref(mode_old), 128)
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueE(self.cam, b"Mode", byref(mode_old), 128))
         print("     New capture mode: %s" % mode_old.value.decode())
 
         # Set the buffer size
-        errs.append(
-            self.xeneth.XC_SetPropertyValueL(
-                self.cam, b"FrameCount", c_long(frames), ""
-            )
-        )
+        errs.append(self.xeneth.XC_SetPropertyValueL(self.cam, b"FrameCount", c_long(frames), ""))
         frames = c_long(0)
-        errs.append(
-            self.xeneth.XC_GetPropertyValueL(
-                self.cam, b"FrameCount", byref(frames), 128
-            )
-        )
+        errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, b"FrameCount", byref(frames), 128))
         print("Buffer frame count set to %d frames" % frames.value)
 
         if any(errs):
@@ -1204,9 +961,7 @@ class Cheetah640(Camera):
         prop_val = c_long(0)
         errs = []
         for prop in woi_prop:
-            errs.append(
-                self.xeneth.XC_GetPropertyValueL(self.cam, prop, byref(prop_val))
-            )
+            errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, prop, byref(prop_val)))
             report_str += "%s: %d | " % (prop.decode(), prop_val.value)
         if verbose:
             print(report_str)
@@ -1217,28 +972,20 @@ class Cheetah640(Camera):
         if (woi[0]) % min_w_factor:
             woi[0] = max([woi[0] - woi[0] % min_w_factor, 0])
         if (woi[1] - woi[0] + 1) % min_w_factor:
-            woi[1] = (
-                woi[1] + min_w_factor - (woi[1] - woi[0]) % min_w_factor
-            )
+            woi[1] = woi[1] + min_w_factor - (woi[1] - woi[0]) % min_w_factor
         if (woi[2]) % min_h_factor:
             woi[2] = max([woi[2] - woi[2] % min_h_factor, 0])
         if (woi[3] - woi[2] + 1) % min_h_factor:
-            woi[3] = (
-                woi[3] + min_h_factor - (woi[3] - woi[2]) % min_h_factor
-            )
+            woi[3] = woi[3] + min_h_factor - (woi[3] - woi[2]) % min_h_factor
 
         # Set new WOI
         for i, prop in enumerate(woi_prop):
-            errs.append(
-                self.xeneth.XC_SetPropertyValueL(self.cam, prop, c_long(woi[i]), "")
-            )
+            errs.append(self.xeneth.XC_SetPropertyValueL(self.cam, prop, c_long(woi[i]), ""))
 
         # Report new WOI
         report_str = "     New WOI setup: "
         for i, prop in enumerate(woi_prop):
-            errs.append(
-                self.xeneth.XC_GetPropertyValueL(self.cam, prop, byref(prop_val))
-            )
+            errs.append(self.xeneth.XC_GetPropertyValueL(self.cam, prop, byref(prop_val)))
             report_str += "%s: %d | " % (prop.decode(), prop_val.value)
             woi[i] = prop_val.value
         if verbose:
@@ -1406,16 +1153,13 @@ class Cheetah640(Camera):
         if not convert:
             flag = flag | XGF_NOCONVERSION
 
-        ret = err = self.xeneth.XC_GetFrame(
-            self.cam, frame_type, flag, self.frame_buffer, self.frame_size
-        )
+        ret = err = self.xeneth.XC_GetFrame(self.cam, frame_type, flag, self.frame_buffer, self.frame_size)
         if err == I_OK:
             t = time.perf_counter()
             self.last_capture = np.frombuffer(self.frame_buffer, c_ushort)
             self.last_tag = np.uint16(
                 int(
-                    format(self.last_capture[1], "012b")[:8]
-                    + format(self.last_capture[0], "012b")[:8],
+                    format(self.last_capture[1], "012b")[:8] + format(self.last_capture[0], "012b")[:8],
                     2,
                 )
             )
@@ -1533,9 +1277,7 @@ class Cheetah640(Camera):
         errs = []
         for filter_key in self.filters:
             print("Closing %s filter..." % filter_key)
-            errs.append(
-                self.xeneth.XC_RemImageFilter(self.cam, self.filters[filter_key])
-            )
+            errs.append(self.xeneth.XC_RemImageFilter(self.cam, self.filters[filter_key]))
         self.filters = {}
         if any(errs):
             print("Errors when closing filters! Codes: ", errs)

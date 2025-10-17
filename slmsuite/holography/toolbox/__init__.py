@@ -22,31 +22,28 @@ LENGTH_FACTORS = {
     "um": 1,
     "nm": 1e-3,
 }
-LENGTH_LABELS = {k : k for k in LENGTH_FACTORS.keys()}
+LENGTH_LABELS = {k: k for k in LENGTH_FACTORS.keys()}
 LENGTH_LABELS["um"] = r"$\mu$m"
 
 CAMERA_UNITS = ["ij"]
 
 BLAZE_LABELS = {
-    "rad":  (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
+    "rad": (r"$\theta_x$ [rad]", r"$\theta_y$ [rad]"),
     "mrad": (r"$\theta_x$ [mrad]", r"$\theta_y$ [mrad]"),
-    "deg":  (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]"),
+    "deg": (r"$\theta_x$ [$^\circ$]", r"$\theta_y$ [$^\circ$]"),
     "norm": (r"$k_x/k$", r"$k_y/k$"),
-    "kxy":  (r"$k_x/k$", r"$k_y/k$"),
-    "knm":  (r"$k_n$ [pix]", r"$k_m$ [pix]"),
+    "kxy": (r"$k_x/k$", r"$k_y/k$"),
+    "knm": (r"$k_n$ [pix]", r"$k_m$ [pix]"),
     "freq": (r"$f_x$ [1/pix]", r"$f_y$ [1/pix]"),
     "lpmm": (r"$k_x/2\pi$ [1/mm]", r"$k_y/2\pi$ [1/mm]"),
-    "zernike": (
-        r"$x = Z_2 = Z_1^1$ [Zernike rad]",
-        r"$y = Z_1 = Z_1^{-1}$ [Zernike rad]"
-    ),
-    "ij":   (r"Camera $i$ [pix]", r"Camera $j$ [pix]"),
+    "zernike": (r"$x = Z_2 = Z_1^1$ [Zernike rad]", r"$y = Z_1 = Z_1^{-1}$ [Zernike rad]"),
+    "ij": (r"Camera $i$ [pix]", r"Camera $j$ [pix]"),
 }
 for prefix, name in zip(["", "mag_"], ["Camera", "Experiment"]):
     for k in LENGTH_FACTORS.keys():
         u = LENGTH_LABELS[k]
-        BLAZE_LABELS[prefix+k] = (f"{name} $x$ [{u}]", f"{name} $y$ [{u}]"),
-        CAMERA_UNITS.append(prefix+k)
+        BLAZE_LABELS[prefix + k] = ((f"{name} $x$ [{u}]", f"{name} $y$ [{u}]"),)
+        CAMERA_UNITS.append(prefix + k)
 
 BLAZE_UNITS = list(BLAZE_LABELS.keys())
 
@@ -223,25 +220,25 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     """
     # Parse units.
     if not (from_units in BLAZE_UNITS):
-        raise ValueError(f"From unit '{from_units}' not recognized \
-                         as a valid unit. Options: {BLAZE_UNITS}")
+        raise ValueError(
+            f"From unit '{from_units}' not recognized \
+                         as a valid unit. Options: {BLAZE_UNITS}"
+        )
     if not (to_units in BLAZE_UNITS):
-        raise ValueError(f"To unit '{to_units}' not recognized \
-                         as a valid unit. Options: {BLAZE_UNITS}")
+        raise ValueError(
+            f"To unit '{to_units}' not recognized \
+                         as a valid unit. Options: {BLAZE_UNITS}"
+        )
 
     # Parse vectors.
-    vector_parsed = format_vectors(
-        vector,
-        expected_dimension=2,
-        handle_dimension="pass"
-    ).astype(float)
+    vector_parsed = format_vectors(vector, expected_dimension=2, handle_dimension="pass").astype(float)
 
     if from_units == to_units:
         return vector_parsed
 
     vector_xy = vector_parsed[:2, :]
     if vector_parsed.shape[0] > 2:
-        vector_z =  vector_parsed[[2], :]
+        vector_z = vector_parsed[[2], :]
     else:
         vector_z = None
 
@@ -255,9 +252,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
 
     if from_units in CAMERA_UNITS or to_units in CAMERA_UNITS:
         if cameraslm is None or not "fourier" in cameraslm.calibrations:
-            warnings.warn(
-                f"CameraSLM must be passed to slm for conversion '{from_units}' to '{to_units}'"
-            )
+            warnings.warn(f"CameraSLM must be passed to slm for conversion '{from_units}' to '{to_units}'")
             return np.full_like(vector_parsed, np.nan)
 
         cam_pitch_um = cameraslm.cam.pitch_um
@@ -266,8 +261,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
             # Don't error if ij.
             if from_units in CAMERA_UNITS[1:] or to_units in CAMERA_UNITS[1:]:
                 warnings.warn(
-                    f"Camera must have filled attribute pitch_um "
-                    "for conversion '{from_units}' to '{to_units}'"
+                    f"Camera must have filled attribute pitch_um for conversion '{{from_units}}' to '{{to_units}}'"
                 )
                 return np.full_like(vector_parsed, np.nan)
         else:
@@ -335,7 +329,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     elif from_units in CAMERA_UNITS:
         unit = from_units.split("_")[-1]
         rad = cameraslm.ijcam_to_kxyslm(vector_xy * LENGTH_FACTORS[unit] / cam_pitch_um)
-        if "mag_" in from_units: rad *= cameraslm.mag
+        if "mag_" in from_units:
+            rad *= cameraslm.mag
 
     # Convert from normalized "kxy" units to the desired xy output units.
     if to_units == "norm" or to_units == "kxy" or to_units == "rad":
@@ -357,7 +352,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     elif to_units in CAMERA_UNITS:
         unit = to_units.split("_")[-1]
         vector_xy = cameraslm.kxyslm_to_ijcam(rad) * cam_pitch_um / LENGTH_FACTORS[unit]
-        if "mag_" in to_units: vector_xy /= cameraslm.mag
+        if "mag_" in to_units:
+            vector_xy /= cameraslm.mag
 
     # Z
 
@@ -367,7 +363,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
             if from_units != "ij":
                 unit = from_units.split("_")[-1]
                 vector_z *= LENGTH_FACTORS[unit] / np.mean(cam_pitch_um)
-                if "mag_" in from_units: vector_z /= cameraslm.mag
+                if "mag_" in from_units:
+                    vector_z /= cameraslm.mag
 
             focal_power = cameraslm._ijcam_to_kxyslm_depth(vector_z)
 
@@ -383,7 +380,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
             if to_units != "ij":
                 unit = to_units.split("_")[-1]
                 vector_z *= np.mean(cam_pitch_um) / LENGTH_FACTORS[unit]
-                if "mag_" in to_units: vector_z *= cameraslm.mag
+                if "mag_" in to_units:
+                    vector_z *= cameraslm.mag
 
         elif to_units == "zernike":
             vector_z = focal_power * ((zernike_scale * zernike_scale) / (8 * np.pi))
@@ -443,15 +441,9 @@ def convert_radius(radius, from_units="norm", to_units="norm", hardware=None, sh
     radius : float
         New scalar radius.
     """
-    v0 = convert_vector(
-        (0, 0), from_units=from_units, to_units=to_units, hardware=hardware, shape=shape
-    )
-    vx = convert_vector(
-        (radius, 0), from_units=from_units, to_units=to_units, hardware=hardware, shape=shape
-    )
-    vy = convert_vector(
-        (0, radius), from_units=from_units, to_units=to_units, hardware=hardware, shape=shape
-    )
+    v0 = convert_vector((0, 0), from_units=from_units, to_units=to_units, hardware=hardware, shape=shape)
+    vx = convert_vector((radius, 0), from_units=from_units, to_units=to_units, hardware=hardware, shape=shape)
+    vy = convert_vector((0, radius), from_units=from_units, to_units=to_units, hardware=hardware, shape=shape)
     return np.mean([np.linalg.norm(vx - v0), np.linalg.norm(vy - v0)])
 
 
@@ -511,9 +503,8 @@ def window_slice(window, shape=None, centered=False, circular=False):
             xc = xi + int((window[1] - 1) / 2)
             yc = yi + int((window[3] - 1) / 2)
 
-            rr_grid = (
-                (window[3] ** 2) * np.square(x_grid.astype(float) - xc) +
-                (window[1] ** 2) * np.square(y_grid.astype(float) - yc)
+            rr_grid = (window[3] ** 2) * np.square(x_grid.astype(float) - xc) + (window[1] ** 2) * np.square(
+                y_grid.astype(float) - yc
             )
 
             mask_grid = rr_grid <= (window[1] ** 2) * (window[3] ** 2) / 4.0
@@ -632,11 +623,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
     """
     vectors = format_2vectors(vectors)
 
-    if (
-        isinstance(grid, (list, tuple))
-        and isinstance(grid[0], (int))
-        and isinstance(grid[1], (int))
-    ):
+    if isinstance(grid, (list, tuple)) and isinstance(grid[0], (int)) and isinstance(grid[1], (int)):
         shape = grid
     else:
         (x_grid, y_grid) = _process_grid(grid)
@@ -646,12 +633,10 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
         x_list = x_grid[0, :]
         y_list = y_grid[:, 0]
 
-        vectors = np.vstack(
-            (
-                np.interp(vectors[0, :], x_list, np.arange(shape[1])),
-                np.interp(vectors[1, :], y_list, np.arange(shape[0])),
-            )
-        )
+        vectors = np.vstack((
+            np.interp(vectors[0, :], x_list, np.arange(shape[1])),
+            np.interp(vectors[1, :], y_list, np.arange(shape[0])),
+        ))
 
     # Half shape data.
     hsx = shape[1] / 2
@@ -659,12 +644,10 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
 
     # Add additional points in a diamond outside the shape of interest to cause all
     # windows of interest to be finite.
-    vectors_voronoi = np.concatenate(
-        (
-            vectors.T,
-            np.array([[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]),
-        )
-    )
+    vectors_voronoi = np.concatenate((
+        vectors.T,
+        np.array([[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]),
+    ))
 
     vor = Voronoi(vectors_voronoi, furthest_site=False)
 
@@ -827,25 +810,19 @@ def imprint(
 
     if not is_float:
         if grid is None:
-            raise ValueError(
-                "grid cannot be None if a function is given; None is a float-only option."
-            )
+            raise ValueError("grid cannot be None if a function is given; None is a float-only option.")
 
     # Modify the matrix.
     if imprint_operation == "replace":
         if is_float:
             matrix[slice_] = function
         else:
-            matrix[slice_] = function(
-                transform_grid((x_grid[slice_], y_grid[slice_]), transform, shift), **kwargs
-            )
+            matrix[slice_] = function(transform_grid((x_grid[slice_], y_grid[slice_]), transform, shift), **kwargs)
     elif imprint_operation == "add":
         if is_float:
             matrix[slice_] += function
         else:
-            matrix[slice_] += function(
-                transform_grid((x_grid[slice_], y_grid[slice_]), transform, shift), **kwargs
-            )
+            matrix[slice_] += function(transform_grid((x_grid[slice_], y_grid[slice_]), transform, shift), **kwargs)
     else:
         raise ValueError("Unrecognized imprint operation {}.".format(imprint_operation))
 
@@ -895,8 +872,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
     options_dimension = ["error", "crop", "pass"]
     if not (handle_dimension in options_dimension):
         raise ValueError(
-            f"handle_dimension option '{handle_dimension}' not recognized. "
-            f"Must be one of '{options_dimension}'."
+            f"handle_dimension option '{handle_dimension}' not recognized. Must be one of '{options_dimension}'."
         )
 
     # Convert to np.array and squeeze
@@ -914,19 +890,18 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
 
     if vectors.shape[0] == expected_dimension:
         pass
-    elif vectors.shape[0] > expected_dimension:     # Handle unexpected case.
+    elif vectors.shape[0] > expected_dimension:  # Handle unexpected case.
         if handle_dimension == "pass":
             pass
         elif handle_dimension == "crop":
             if vectors.shape[0] > expected_dimension:
-                vectors = vectors[:expected_dimension,:]
+                vectors = vectors[:expected_dimension, :]
             else:
                 raise ValueError(f"{vectors.shape[0]}-vectors too small to crop to {expected_dimension}-vectors.")
         elif handle_dimension == "error":
             raise ValueError(f"Expected {expected_dimension}-vectors. Found {vectors.shape[0]}-vectors.")
     else:
         raise ValueError(f"Expected {expected_dimension}-vectors. Found {vectors.shape[0]}-vectors.")
-
 
     return vectors
 
@@ -1077,7 +1052,7 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
     J = np.linalg.inv(np.squeeze(np.array([[dx1[0], dx2[0]], [dx1[1], dx2[1]]])))
 
     # Construct the matrix.
-    M = np.matmul(np.squeeze(np.array([[y1[0,0], y2[0,0]], [y1[1,0], y2[1,0]]])), J)
+    M = np.matmul(np.squeeze(np.array([[y1[0, 0], y2[0, 0]], [y1[1, 0], y2[1, 0]]])), J)
     b = y0 - np.matmul(M, x0)
 
     # Deal with N and make indices.
@@ -1091,12 +1066,7 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
             affine_return = True
         else:
             N = (N, N)
-    elif (
-        not np.isscalar(N)
-        and len(N) == 2
-        and isinstance(N[0], INTEGER_TYPES)
-        and isinstance(N[1], INTEGER_TYPES)
-    ):
+    elif not np.isscalar(N) and len(N) == 2 and isinstance(N[0], INTEGER_TYPES) and isinstance(N[1], INTEGER_TYPES):
         if N[0] <= 0 or N[1] <= 0:
             affine_return = True
     elif isinstance(N, np.ndarray):
@@ -1159,7 +1129,7 @@ def smallest_distance(vectors, metric="chebyshev"):
         N = v.shape[0]
 
         if N > min_div:
-            M = int(N/2)
+            M = int(N / 2)
 
             # Divide the problem recursively.
             d1 = _divide_and_conquer_recursive(v[:M, :], metric, axis)
@@ -1169,18 +1139,18 @@ def smallest_distance(vectors, metric="chebyshev"):
             d = min(d1, d2)
 
             # Leave if we don't need to merge.
-            if (v[M, axis] - v[M+1, axis]) > d:
+            if (v[M, axis] - v[M + 1, axis]) > d:
                 return d
 
             # Merge around average x0 between two sections.
-            x0 = (v[M, axis] + v[M+1, axis]) / 2
+            x0 = (v[M, axis] + v[M + 1, axis]) / 2
             mask = np.abs(v[:, axis] - x0) < d
             subset = v[mask, :]
 
             return min(d, distance.pdist(subset, metric=metric).min())
         else:
             # Use pdist as a fast low-level distance calculator.
-            return  distance.pdist(v, metric=metric).min()
+            return distance.pdist(v, metric=metric).min()
 
     vectors = format_2vectors(vectors)
     N = vectors.shape[1]
@@ -1188,7 +1158,7 @@ def smallest_distance(vectors, metric="chebyshev"):
     if N <= 1:
         return np.inf
 
-    if isinstance(metric, str):     # Divide and conquer.
+    if isinstance(metric, str):  # Divide and conquer.
         if not metric in distance._METRIC_ALIAS:
             raise RuntimeError("Distance metric '{metric}' not recognized by scipy.")
 
@@ -1198,19 +1168,19 @@ def smallest_distance(vectors, metric="chebyshev"):
         # pdist needs transpose.
         vectors = vectors.T
 
-        if N < 2*min_div:
+        if N < 2 * min_div:
             return distance.pdist(vectors, metric=metric).min()
         else:
             centroid = np.max(vectors, axis=axis, keepdims=True)
 
             # Slightly inefficient use of cdist.
-            xorder = distance.cdist(vectors[:,[axis]], centroid[:,[axis]], metric=metric)
+            xorder = distance.cdist(vectors[:, [axis]], centroid[:, [axis]], metric=metric)
 
             I = np.argsort(np.squeeze(xorder))
             vsort = vectors[I, :]
 
             return _divide_and_conquer_recursive(vsort, metric, axis=axis, min_div=min_div)
-    else:                           # Fallback to brute force.
+    else:  # Fallback to brute force.
         minimum = np.inf
 
         for x in range(N - 1):
@@ -1321,12 +1291,10 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
         # Add points outside the shape to ensure bounded Voronoi cells
         hsx = W / 2
         hsy = H / 2
-        vectors_ext = np.concatenate(
-            (
-                result.T,
-                np.array([[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]),
-            )
-        )
+        vectors_ext = np.concatenate((
+            result.T,
+            np.array([[hsx, -3 * hsy], [hsx, 5 * hsy], [-3 * hsx, hsy], [5 * hsx, hsy]]),
+        ))
 
         # Recomputing this each time isn't too inefficient.
         vor = Voronoi(vectors_ext)
@@ -1392,25 +1360,17 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
     numpy.ndarray
         The result of Lloyd's Algorithm.
     """
-    if (
-        isinstance(grid, (list, tuple))
-        and isinstance(grid[0], (int))
-        and isinstance(grid[1], (int))
-    ):
+    if isinstance(grid, (list, tuple)) and isinstance(grid[0], (int)) and isinstance(grid[1], (int)):
         shape = grid
     else:
         (x_grid, y_grid) = _process_grid(grid)
         shape = x_grid.shape
 
-    vectors = np.vstack(
-        (np.random.randint(0, shape[1], n_points), np.random.randint(0, shape[0], n_points))
-    )
+    vectors = np.vstack((np.random.randint(0, shape[1], n_points), np.random.randint(0, shape[0], n_points)))
 
     # Regenerate until no overlaps (improve for performance?)
     while smallest_distance(vectors) < 1:
-        vectors = np.vstack(
-            (np.random.randint(0, shape[1], n_points), np.random.randint(0, shape[0], n_points))
-        )
+        vectors = np.vstack((np.random.randint(0, shape[1], n_points), np.random.randint(0, shape[0], n_points)))
 
     grid2 = np.meshgrid(range(shape[1]), range(shape[0]))
 
@@ -1539,7 +1499,7 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
         transform = 0
     if not np.isscalar(transform):
         transform = np.squeeze(transform)
-        if transform.shape != (2,2):
+        if transform.shape != (2, 2):
             raise ValueError("Expected transform to be None, scalar, or a 2x2 matrix.")
 
     # Parse shift.

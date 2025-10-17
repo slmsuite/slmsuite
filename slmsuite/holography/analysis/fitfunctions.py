@@ -8,6 +8,7 @@ from scipy.special import factorial
 
 # 1D
 
+
 def linear(x, m, b):
     r"""
     For fitting a line.
@@ -160,24 +161,12 @@ def lorentzian_jacobian(x, x0, a, c, Q):
     gradf : numpy.ndarray
         Jacobian of Lorentzian fit evaluated at all ``x``.
     """
-    return np.array(
-        [
-            a
-            * 8
-            * Q ** 2
-            * (x - x0)
-            / x0 ** 2
-            * (1 + (x - x0) / x0)
-            / (1 + 4 * (Q * (x - x0) / x0) ** 2) ** 2,
-            1 / (1 + 4 * (Q * (x - x0) / x0) ** 2),
-            -8
-            * Q
-            * a
-            * ((x - x0) / x0) ** 2
-            / (1 + 4 * (Q * (x - x0) / x0) ** 2) ** 2,
-            1 - 1 / (1 + 4 * (Q * (x - x0) / x0) ** 2),
-        ]
-    ).T
+    return np.array([
+        a * 8 * Q**2 * (x - x0) / x0**2 * (1 + (x - x0) / x0) / (1 + 4 * (Q * (x - x0) / x0) ** 2) ** 2,
+        1 / (1 + 4 * (Q * (x - x0) / x0) ** 2),
+        -8 * Q * a * ((x - x0) / x0) ** 2 / (1 + 4 * (Q * (x - x0) / x0) ** 2) ** 2,
+        1 - 1 / (1 + 4 * (Q * (x - x0) / x0) ** 2),
+    ]).T
 
 
 def gaussian(x, x0, a, c, w):
@@ -207,10 +196,11 @@ def gaussian(x, x0, a, c, w):
     y : numpy.ndarray
         Gaussian fit evaluated at all ``x``.
     """
-    return c + a * np.exp(-.5 * np.square((x - x0) * (1/w)))
+    return c + a * np.exp(-0.5 * np.square((x - x0) * (1 / w)))
 
 
 # 2D
+
 
 def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     r"""
@@ -299,16 +289,16 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     x = xy[0] - x0
     y = xy[1] - y0
 
-    wxy = np.sign(wxy) * np.min([np.abs(wxy), wx*wy])
+    wxy = np.sign(wxy) * np.min([np.abs(wxy), wx * wy])
 
     try:
-        M = np.linalg.inv([[wx*wx, wxy], [wxy, wy*wy]])
+        M = np.linalg.inv([[wx * wx, wxy], [wxy, wy * wy]])
     except np.linalg.LinAlgError:
-        M = np.array([[1/wx/wx, 0], [0, 1/wy/wy]])
+        M = np.array([[1 / wx / wx, 0], [0, 1 / wy / wy]])
 
-    argument = np.square(x) * M[0,0] + np.square(y) * M[1,1] + 2 * x * y * M[1,0]
+    argument = np.square(x) * M[0, 0] + np.square(y) * M[1, 1] + 2 * x * y * M[1, 0]
 
-    return c + a * np.exp(-.5 * argument)
+    return c + a * np.exp(-0.5 * argument)
 
 
 def tophat2d(xy, x0, y0, R, a=1, c=0):
@@ -342,7 +332,7 @@ def tophat2d(xy, x0, y0, R, a=1, c=0):
     """
     x = xy[0] - x0
     y = xy[1] - y0
-    return np.where(np.square(x) + np.square(y) <= R*R, a+c, c)
+    return np.where(np.square(x) + np.square(y) <= R * R, a + c, c)
 
 
 def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
@@ -383,11 +373,13 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     x = xy[0] - x0
     y = xy[1] - y0
 
-    return np.square(np.sinc((1 / R) * x) * np.sinc((1 / R) * y)) \
-            * (a * 0.5 * (1 + np.cos(kx * x + ky * y - b)) + c) + d
+    return (
+        np.square(np.sinc((1 / R) * x) * np.sinc((1 / R) * y)) * (a * 0.5 * (1 + np.cos(kx * x + ky * y - b)) + c) + d
+    )
 
 
 # sinc variations
+
 
 def _sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
     r"""
@@ -417,9 +409,8 @@ def _sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
     z : numpy.ndarray
         Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
     """
-    return (
-        a * np.square(np.sinc((1 / R) * (xy[0] - x0)) * np.sinc((1 / R) * (xy[1] - y0))) + d
-    )
+    return a * np.square(np.sinc((1 / R) * (xy[0] - x0)) * np.sinc((1 / R) * (xy[1] - y0))) + d
+
 
 def _sinc2d_nomod_taylor(xy, x0, y0, R, a=1, d=0):
     r"""
@@ -449,9 +440,8 @@ def _sinc2d_nomod_taylor(xy, x0, y0, R, a=1, d=0):
     z : numpy.ndarray
         Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
     """
-    return (
-        a * np.square(_sinc_taylor((1 / R) * (xy[0] - x0)) * _sinc_taylor((1 / R) * (xy[1] - y0))) + d
-    )
+    return a * np.square(_sinc_taylor((1 / R) * (xy[0] - x0)) * _sinc_taylor((1 / R) * (xy[1] - y0))) + d
+
 
 def _sinc2d_centered(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     r"""
@@ -488,8 +478,10 @@ def _sinc2d_centered(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     """
     return (
         np.square(np.sinc((1 / R) * xy[0]) * np.sinc((1 / R) * xy[1]))
-        * (a * 0.5 * (1 + np.cos(kx * xy[0] + ky * xy[1] - b)) + c) + d
+        * (a * 0.5 * (1 + np.cos(kx * xy[0] + ky * xy[1] - b)) + c)
+        + d
     )
+
 
 def _sinc2d_centered_taylor(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     r"""
@@ -526,8 +518,10 @@ def _sinc2d_centered_taylor(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     """
     return (
         np.square(_sinc_taylor((1 / R) * xy[0]) * _sinc_taylor((1 / R) * xy[1]))
-        * (a * 0.5 * (1 + np.cos(kx * xy[0] + ky * xy[1] - b)) + c) + d
+        * (a * 0.5 * (1 + np.cos(kx * xy[0] + ky * xy[1] - b)) + c)
+        + d
     )
+
 
 def _sinc_taylor(x, order=12):
     """
@@ -544,12 +538,13 @@ def _sinc_taylor(x, order=12):
     monomial = squared.copy()
     result = 1
 
-    for n in range(2, order+2, 2):
+    for n in range(2, order + 2, 2):
         if n != 2:
             monomial *= squared
-        result += monomial * ((-1 if n % 4 == 2 else 1) / factorial(n+1))
+        result += monomial * ((-1 if n % 4 == 2 else 1) / factorial(n + 1))
 
     return result
+
 
 def _sinc2d_centered_jacobian(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     r"""
@@ -569,8 +564,7 @@ def _sinc2d_centered_jacobian(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     dcos_term = -0.5 * np.sin(kx * xy[0] + ky * xy[1] - b)
     return np.vstack((
         # R
-        (2 / R) * scx * scy * (scx * (scy - cy) + scy * (scx - cx))
-        * (a * cos_term + c),
+        (2 / R) * scx * scy * (scx * (scy - cy) + scy * (scx - cx)) * (a * cos_term + c),
         # a
         sinc_term * cos_term,
         # b
@@ -584,4 +578,3 @@ def _sinc2d_centered_jacobian(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
         # ky
         xy[1] * sinc_term * a * dcos_term,
     )).T
-

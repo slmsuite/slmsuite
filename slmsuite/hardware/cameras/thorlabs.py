@@ -44,6 +44,7 @@ DEFAULT_DLL_PATH = (
     "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"
 )
 
+
 def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
     """
     Adds Thorlabs camera DLLs to the DLL path.
@@ -56,7 +57,7 @@ def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
         Full path to the Thorlabs camera DLLs.
     """
     if DEFAULT_DLL_PATH == dll_path:
-        is_64bits = sys.maxsize > 2 ** 32
+        is_64bits = sys.maxsize > 2**32
 
         if is_64bits:
             dll_path += "64_lib"
@@ -74,6 +75,7 @@ def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
                 )
     else:
         os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]
+
 
 _configure_tlcam_dll_path()
 
@@ -158,9 +160,7 @@ class ThorCam(Camera):
                 raise RuntimeError("No cameras found by TLCameraSDK.")
             serial = camera_list[0]
         elif serial not in camera_list:
-            raise RuntimeError(
-                f"Serial '{serial}' not found by TLCameraSDK. Availible: {camera_list}"
-            )
+            raise RuntimeError(f"Serial '{serial}' not found by TLCameraSDK. Availible: {camera_list}")
 
         if verbose:
             print(f"ThorCam sn '{serial}' initializing... ", end="")
@@ -180,9 +180,10 @@ class ThorCam(Camera):
             bitdepth=self.cam.bit_depth,
             pitch_um=(self.cam.sensor_pixel_width_um, self.cam.sensor_pixel_height_um),
             name=serial,
-            **kwargs
+            **kwargs,
         )
-        if verbose: print("success")
+        if verbose:
+            print("success")
 
     def close(self, close_sdk=False):
         """
@@ -299,11 +300,9 @@ class ThorCam(Camera):
         if woi is None:  # Default to maximum WOI
             woi = (
                 self.cam.roi_range.upper_left_x_pixels_min,
-                self.cam.roi_range.lower_right_x_pixels_max
-                - self.cam.roi_range.upper_left_x_pixels_min + 1,
+                self.cam.roi_range.lower_right_x_pixels_max - self.cam.roi_range.upper_left_x_pixels_min + 1,
                 self.cam.roi_range.upper_left_y_pixels_min,
-                self.cam.roi_range.lower_right_y_pixels_max
-                - self.cam.roi_range.upper_left_y_pixels_min + 1,
+                self.cam.roi_range.lower_right_y_pixels_max - self.cam.roi_range.upper_left_y_pixels_min + 1,
             )
 
         self.woi = woi
@@ -380,7 +379,7 @@ class ThorCam(Camera):
 
             self.profile = profile
 
-    def _get_image_hw(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
+    def _get_image_hw(self, timeout_s=0.1, trigger=True, grab=True, attempts=1):
         """
         See :meth:`.Camera._get_image_hw`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
@@ -446,22 +445,14 @@ class ThorCam(Camera):
         # Continue flushing frames while the timeout is not exceeded, the
         # returned frame is empty (None), or the frame returned super fast
         # (cached)
-        while (
-            time.perf_counter() - t < timeout_s
-            and frame is not None
-            and frametime < 0.003
-        ):
+        while time.perf_counter() - t < timeout_s and frame is not None and frametime < 0.003:
             t2 = time.perf_counter()
             frame = self.cam.get_pending_frame_or_null()
             frametime = time.perf_counter() - t2
             ii += 1
 
         if verbose:
-            print(
-                "Flushed {} frames in {:.2f} ms".format(
-                    ii, 1e3 * (time.perf_counter() - t)
-                )
-            )
+            print("Flushed {} frames in {:.2f} ms".format(ii, 1e3 * (time.perf_counter() - t)))
 
     def is_capturing(self):
         """

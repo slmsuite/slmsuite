@@ -8,6 +8,7 @@ The python header can also be found in the `dddomodossola/nastroprint
 <https://github.com/dddomodossola/nastroprint/blob/master/mvsdk.py>`_
 GitHub package.
 """
+
 import time
 import numpy as np
 import warnings
@@ -20,6 +21,7 @@ try:
 except:
     _mvsdk = None
     warnings.warn("mvsdk not installed.")
+
 
 class MindVision(Camera):
     """
@@ -52,14 +54,18 @@ class MindVision(Camera):
             raise ImportError("mvsdk not installed.")
 
         if MindVision.sdk is None:
-            if verbose: print("mvsdk initializing... ", end="")
+            if verbose:
+                print("mvsdk initializing... ", end="")
             _mvsdk._Init()
-            if verbose: print("success")
+            if verbose:
+                print("success")
 
         # Grab the list of cameras.
-        if verbose: print("Looking for cameras... ", end="")
+        if verbose:
+            print("Looking for cameras... ", end="")
         camera_list = _mvsdk.CameraEnumerateDevice()
-        if not camera_list: raise RuntimeError("No cameras found by mvsdk.")
+        if not camera_list:
+            raise RuntimeError("No cameras found by mvsdk.")
         serial_list = [cam.GetSn() for cam in camera_list]
 
         # Find the camera by serial number or use the first available camera.
@@ -76,7 +82,8 @@ class MindVision(Camera):
         serial = self.cam.GetSn()
 
         # Turn the camera on.
-        if verbose: print(f"Initializing sn '{serial}'... ", end="")
+        if verbose:
+            print(f"Initializing sn '{serial}'... ", end="")
         self.handle = 0
         try:
             self.handle = _mvsdk.CameraInit(self.cam, -1, -1)
@@ -86,7 +93,7 @@ class MindVision(Camera):
 
         # Fill in parameters from the capability class.
         self.capability = _mvsdk.CameraGetCapability(self.handle)
-        self.mono = (self.capability.sIspCapacity.bMonoSensor != 0)
+        self.mono = self.capability.sIspCapacity.bMonoSensor != 0
         if self.mono:
             _mvsdk.CameraSetIspOutFormat(self.handle, _mvsdk.CAMERA_MEDIA_TYPE_MONO8)
         else:
@@ -99,9 +106,9 @@ class MindVision(Camera):
 
         # Calculate the size required for the RGB buffer, which is allocated directly according to the maximum resolution of the camera.
         buffer_size = (
-            self.capability.sResolutionRange.iWidthMax *
-            self.capability.sResolutionRange.iHeightMax *
-            (1 if self.mono else 3)
+            self.capability.sResolutionRange.iWidthMax
+            * self.capability.sResolutionRange.iHeightMax
+            * (1 if self.mono else 3)
         )
 
         # Allocate RGB buffer to store images output by ISP
@@ -113,16 +120,14 @@ class MindVision(Camera):
 
         # Fill in superclass parameters from the capability class.
         super().__init__(
-            (
-                self.capability.sResolutionRange.iWidthMax,
-                self.capability.sResolutionRange.iHeightMax
-            ),
+            (self.capability.sResolutionRange.iWidthMax, self.capability.sResolutionRange.iHeightMax),
             bitdepth=8,
             pitch_um=pitch_um,
             name=serial,
-            **kwargs
+            **kwargs,
         )
-        if verbose: print("success")
+        if verbose:
+            print("success")
 
     def close(self):
         """
@@ -149,7 +154,9 @@ class MindVision(Camera):
             List of :mod:`mvsdk` serial numbers.
         """
         if _mvsdk is None:
-            raise ImportError("mvsdk not installed. Copy mvsdk.py from dddomodossola/nastroprint to use Mindvision cameras.")
+            raise ImportError(
+                "mvsdk not installed. Copy mvsdk.py from dddomodossola/nastroprint to use Mindvision cameras."
+            )
 
         camera_list = _mvsdk.CameraEnumerateDevice()
         serial_list = [cam.GetSn() for cam in camera_list]
@@ -169,37 +176,37 @@ class MindVision(Camera):
 
         for i in range(cap.iTriggerDesc):
             desc = cap.pTriggerDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
         for i in range(cap.iImageSizeDesc):
             desc = cap.pImageSizeDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
         for i in range(cap.iClrTempDesc):
             desc = cap.pClrTempDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
         for i in range(cap.iMediaTypeDesc):
             desc = cap.pMediaTypeDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
         for i in range(cap.iFrameSpeedDesc):
             desc = cap.pFrameSpeedDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
         for i in range(cap.iPackLenDesc):
             desc = cap.pPackLenDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
         for i in range(cap.iPresetLut):
             desc = cap.pPresetLutDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
         for i in range(cap.iAeAlmSwDesc):
             desc = cap.pAeAlmSwDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
         for i in range(cap.iAeAlmHdDesc):
             desc = cap.pAeAlmHdDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
         for i in range(cap.iBayerDecAlmSwDesc):
             desc = cap.pBayerDecAlmSwDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
         for i in range(cap.iBayerDecAlmHdDesc):
             desc = cap.pBayerDecAlmHdDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()) )
+            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
 
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
@@ -226,7 +233,7 @@ class MindVision(Camera):
         # Get a frame from the camera
         try:
             #
-            raw_data, frame_head = _mvsdk.CameraGetImageBuffer(self.handle, int(timeout_s*1000))
+            raw_data, frame_head = _mvsdk.CameraGetImageBuffer(self.handle, int(timeout_s * 1000))
 
             # FUTURE: Go directly from the raw_data to numpy instead of through self.buffer?
             _mvsdk.CameraImageProcess(self.handle, raw_data, self.buffer, frame_head)
@@ -243,4 +250,3 @@ class MindVision(Camera):
 
         except _mvsdk.CameraException as e:
             print("CameraGetImageBuffer failed ({}):\n{}".format(e.error_code, e.message))
-

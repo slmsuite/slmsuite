@@ -20,6 +20,7 @@ Note
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
+
 import warnings
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -103,22 +104,22 @@ class Instrumental(Camera):
             cam = instrument(cam, reopen_policy="reuse")
 
         if not isinstance(cam, instrumental_cameras.Camera):
-            raise ValueError(
-                "A subclass of instrumental.drivers.cameras.Camera must be passed as cam."
-            )
+            raise ValueError("A subclass of instrumental.drivers.cameras.Camera must be passed as cam.")
 
         name = kwargs.pop("name", cam.model.decode("utf-8") + "_" + cam.serial.decode("utf-8"))
-        if verbose: print(f"Cam {name} parsing... ", end="")
+        if verbose:
+            print(f"Cam {name} parsing... ", end="")
         self.cam = cam
 
         super().__init__(
             (self.cam.width, self.cam.height),
-            bitdepth=8,         # Currently defaults to 8 because instrumental doesn't cache this. Update in the future, maybe.
+            bitdepth=8,  # Currently defaults to 8 because instrumental doesn't cache this. Update in the future, maybe.
             pitch_um=pitch_um,  # Currently unset because instrumental doesn't cache this. Update in the future, maybe.
             name=name,
-            **kwargs
+            **kwargs,
         )
-        if verbose: print("success")
+        if verbose:
+            print("success")
 
     def close(self):
         """
@@ -140,8 +141,7 @@ class Instrumental(Camera):
             An empty list.
         """
         raise RuntimeError(
-            ".info() is not applicable to instrumental cameras, which must be "
-            "constructed outside this wrapper."
+            ".info() is not applicable to instrumental cameras, which must be constructed outside this wrapper."
         )
 
     def _get_exposure_hw(self):
@@ -150,7 +150,7 @@ class Instrumental(Camera):
 
     def _set_exposure_hw(self, exposure_s):
         """See :meth:`.Camera._set_exposure_hw`."""
-        self.cam.exposure = 1000. * float(exposure_s)
+        self.cam.exposure = 1000.0 * float(exposure_s)
 
     def set_woi(self, woi=None):
         """

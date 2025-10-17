@@ -28,15 +28,7 @@ class FeedbackHologram(Hologram):
         Measured with :meth:`.measure()`.
     """
 
-    def __init__(
-            self,
-            shape,
-            target_ij=None,
-            cameraslm=None,
-            null_region=None,
-            null_region_radius_frac=None,
-            **kwargs
-        ):
+    def __init__(self, shape, target_ij=None, cameraslm=None, null_region=None, null_region_radius_frac=None, **kwargs):
         """
         Initializes a hologram with camera feedback.
 
@@ -118,21 +110,12 @@ class FeedbackHologram(Hologram):
             points_ij = toolbox.format_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
             points_kxy = self.cameraslm.ijcam_to_kxyslm(points_ij)
             self._cam_points = toolbox.convert_vector(
-                points_kxy,
-                from_units="kxy",
-                to_units="knm",
-                hardware=self.cameraslm.slm,
-                shape=self.shape
+                points_kxy, from_units="kxy", to_units="knm", hardware=self.cameraslm.slm, shape=self.shape
             )
 
             # Transform the target, if it is provided.
             if target_ij is not None:
-                self.update_target(
-                    target_ij,
-                    null_region,
-                    null_region_radius_frac,
-                    reset_weights=True
-                )
+                self.update_target(target_ij, null_region, null_region_radius_frac, reset_weights=True)
 
         else:
             self._cam_points = None
@@ -173,10 +156,9 @@ class FeedbackHologram(Hologram):
             raise RuntimeError("ijcam_to_knmslm requires a Fourier calibration.")
 
         # First transformation. FUTURE: make convert_basis to output a matrix like here?
-        conversion = (
-            toolbox.convert_vector((1, 1), "knm", "kxy", hardware=self.cameraslm.slm, shape=self.shape) -
-            toolbox.convert_vector((0, 0), "knm", "kxy", hardware=self.cameraslm.slm, shape=self.shape)
-        )
+        conversion = toolbox.convert_vector(
+            (1, 1), "knm", "kxy", hardware=self.cameraslm.slm, shape=self.shape
+        ) - toolbox.convert_vector((0, 0), "knm", "kxy", hardware=self.cameraslm.slm, shape=self.shape)
         M1 = np.diag(np.squeeze(conversion))
         b1 = np.matmul(M1, -toolbox.format_2vectors(np.flip(np.squeeze(self.shape)) / 2))
 
@@ -226,8 +208,7 @@ class FeedbackHologram(Hologram):
 
         if norm == 0:
             raise ValueError(
-                "No power in hologram. Maybe target_ij is out of range of knm space? "
-                "Check transformations."
+                "No power in hologram. Maybe target_ij is out of range of knm space? Check transformations."
             )
 
         return target
@@ -257,7 +238,9 @@ class FeedbackHologram(Hologram):
 
             # Measure the result.
             self.cameraslm.cam.flush()
-            self.img_ij = np.array(self.cameraslm.cam.get_image(), copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype)
+            self.img_ij = np.array(
+                self.cameraslm.cam.get_image(), copy=(False if np.__version__[0] == "1" else None), dtype=self.dtype
+            )
 
             if basis == "knm":  # Compute the knm basis image.
                 self.img_knm = self.ijcam_to_knmslm(self.img_ij, out=self.img_knm)
@@ -274,7 +257,6 @@ class FeedbackHologram(Hologram):
             pass
         else:
             raise ValueError(f"Unrecognized measurement basis '{basis}'. Options are 'ij' or 'knm'")
-
 
     # Target update.
     def update_target(self, new_target_ij, null_region=None, null_region_radius_frac=None, reset_weights=False):

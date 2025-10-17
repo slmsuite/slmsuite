@@ -4,6 +4,7 @@ Consider also installing Basler software for testing cameras outside of python
 (see `downloads <https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware>`_).
 Install :mod:`pypylon` by following the `provided instructions <https://github.com/basler/pypylon>`_.
 """
+
 import warnings
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -65,7 +66,7 @@ class Basler(Camera):
 
         serial_list = [dev.GetSerialNumber() for dev in device_list]
         if serial is None or serial == "":
-            if len(device_list)==0:
+            if len(device_list) == 0:
                 raise RuntimeError("No cameras found by pylon.")
             if len(device_list) > 0 and verbose:
                 print("No serial given... Choosing first of ", serial_list)
@@ -75,40 +76,36 @@ class Basler(Camera):
             if serial in serial_list:
                 device = Basler.sdk.CreateDevice(device_list[serial_list.index(serial)])
             else:
-                raise RuntimeError(
-                    "Serial " + serial + " not found by pylon. Available: ", serial_list
-                )
+                raise RuntimeError("Serial " + serial + " not found by pylon. Available: ", serial_list)
 
         if verbose:
-            print("pylon sn " "{}" " initializing... ".format(serial), end="")
+            print("pylon sn {} initializing... ".format(serial), end="")
         self.cam = pylon.InstantCamera()
         self.cam.Attach(device)
         self.cam.Open()
 
         # Apply default settings.
         try:
-            self.cam.CenterX=False
-            self.cam.CenterY=False
+            self.cam.CenterX = False
+            self.cam.CenterY = False
             self.cam.BinningHorizontal.SetValue(1)
             self.cam.BinningVertical.SetValue(1)
 
-            self.cam.GainAuto.SetValue('Off')
-            self.cam.ExposureAuto.SetValue('Off')
-            self.cam.ExposureMode.SetValue('Timed')
+            self.cam.GainAuto.SetValue("Off")
+            self.cam.ExposureAuto.SetValue("Off")
+            self.cam.ExposureMode.SetValue("Timed")
 
-            self.cam.AcquisitionMode.SetValue('SingleFrame')
+            self.cam.AcquisitionMode.SetValue("SingleFrame")
 
-            self.cam.TriggerSelector.SetValue('FrameStart')
-            self.cam.TriggerMode.SetValue('Off')
+            self.cam.TriggerSelector.SetValue("FrameStart")
+            self.cam.TriggerMode.SetValue("Off")
 
-            self.cam.TriggerActivation.SetValue('RisingEdge')
-            self.cam.TriggerSource.SetValue('Software')
+            self.cam.TriggerActivation.SetValue("RisingEdge")
+            self.cam.TriggerSource.SetValue("Software")
 
             self.GrabStrategy = pylon.GrabStrategy_LatestImages
             self.cam.RegisterConfiguration(
-                pylon.SoftwareTriggerConfiguration(),
-                pylon.RegistrationMode_ReplaceAll,
-                pylon.Cleanup_Delete
+                pylon.SoftwareTriggerConfiguration(), pylon.RegistrationMode_ReplaceAll, pylon.Cleanup_Delete
             )
 
         except Exception as e:
@@ -116,11 +113,11 @@ class Basler(Camera):
 
         # Initialize the superclass attributes.
         super().__init__(
-            (self.cam.SensorWidth(), self.cam.SensorHeight()), #pixels
-            bitdepth=self.cam.PixelSize.GetIntValue(), #bits
+            (self.cam.SensorWidth(), self.cam.SensorHeight()),  # pixels
+            bitdepth=self.cam.PixelSize.GetIntValue(),  # bits
             pitch_um=pitch_um,
             name=serial,
-            **kwargs
+            **kwargs,
         )
 
         if verbose:
@@ -136,7 +133,7 @@ class Basler(Camera):
             Does nothing, as the ``pylon.TlFactory`` instance stored in :attr:`sdk`
             does not appear to need to be closed.
         """
-        #self.cam.__exit__(None, None, None) weird
+        # self.cam.__exit__(None, None, None) weird
         self.cam.StopGrabbing()
         self.cam.Close()
 
@@ -173,9 +170,9 @@ class Basler(Camera):
         serial_list = [cam.GetSerialNumber() for cam in camera_list]
 
         if verbose:
-            print('Basler cameras:')
+            print("Basler cameras:")
             for serial in serial_list:
-                print("\"{}\"".format(serial))
+                print('"{}"'.format(serial))
 
         if close_sdk:
             Basler.close_sdk()
@@ -184,7 +181,7 @@ class Basler(Camera):
 
     @classmethod
     def close_sdk(cls):
-        """"
+        """ "
         Close the :mod:'pylon' instance.
         """
         if cls.sdk is not None:
@@ -193,7 +190,7 @@ class Basler(Camera):
     ### Property Configuration ###
 
     def get_properties(self, properties=None):
-        """"
+        """ "
         Print the list of camera properties.
 
         Parameters
@@ -206,7 +203,7 @@ class Basler(Camera):
             properties = self.cam.__dict__.keys()
 
         for key in properties:
-            prop=self.cam.__dict__[key]
+            prop = self.cam.__dict__[key]
             try:
                 print(prop.get_name(), end="\t")
             except BaseException as e:
@@ -261,11 +258,11 @@ class Basler(Camera):
 
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
-        return float(self.cam.ExposureTime.GetValue()) / 1e6   # in seconds
+        return float(self.cam.ExposureTime.GetValue()) / 1e6  # in seconds
 
     def _set_exposure_hw(self, exposure_s):
         """See :meth:`.Camera._set_exposure_hw`."""
-        self.cam.ExposureTime.SetValue(float(1e6 * exposure_s))   # in seconds
+        self.cam.ExposureTime.SetValue(float(1e6 * exposure_s))  # in seconds
 
     def _set_woi(self, woi):
         """
@@ -276,7 +273,7 @@ class Basler(Camera):
         woi : list, None
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        # Set the width and height to very small values 
+        # Set the width and height to very small values
         # such that setting the offsets will not error.
 
         # Now set the WOI.
@@ -309,29 +306,25 @@ class Basler(Camera):
         if err is not None:
             raise err
 
-
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera.get_image`."""
-        self.cam.StartGrabbing(
-            self.GrabStrategy,
-            pylon.GrabLoop_ProvidedByUser
-        )
+        self.cam.StartGrabbing(self.GrabStrategy, pylon.GrabLoop_ProvidedByUser)
 
         if self.cam.IsGrabbing():
             self.cam.ExecuteSoftwareTrigger()
 
-            grab = self.cam.RetrieveResult(int(timeout_s*1000), pylon.TimeoutHandling_Return)
+            grab = self.cam.RetrieveResult(int(timeout_s * 1000), pylon.TimeoutHandling_Return)
 
             # Image grabbed successfully?
             if not grab.GrabSucceeded():
                 self.cam.StopGrabbing()
                 raise RuntimeError(f"Basler error {grab.GetErrorCode()}: {grab.GetErrorDescription()}")
 
-            im = grab.GetArray() # This returns an np.array
+            im = grab.GetArray()  # This returns an np.array
             self.cam.StopGrabbing()
 
         return im
-    
+
     def is_grabbing(self):
         """
         Printing whether or not the camera is currently grabbing images.

@@ -1,6 +1,7 @@
 """
 Abstract camera functionality.
 """
+
 import time
 import asyncio
 import warnings
@@ -80,6 +81,7 @@ class Camera(_Picklable, ABC):
         used and the type of :attr:`averaging`.
         Is ``None`` if no image has ever been taken.
     """
+
     _pickle = [
         "name",
         "shape",
@@ -190,7 +192,7 @@ class Camera(_Picklable, ABC):
         # Set exposure information.
         self.exposure_bounds_s = None
 
-        self.exposure_s = 1 # Default to 1s for Simulated cameras.
+        self.exposure_s = 1  # Default to 1s for Simulated cameras.
         self.exposure_s = self.get_exposure()
 
         # Set datatype variables.
@@ -337,7 +339,7 @@ class Camera(_Picklable, ABC):
             such that there is always enough time to expose.
         """
         for _ in range(self._flush_iterations):
-            self._get_image_hw_tolerant(timeout_s=timeout_s+self.exposure_s)
+            self._get_image_hw_tolerant(timeout_s=timeout_s + self.exposure_s)
 
     @abstractmethod
     def _get_image_hw(self, timeout_s):
@@ -397,9 +399,7 @@ class Camera(_Picklable, ABC):
         out = self._get_out(image_count, out)
 
         for i in range(image_count):
-            out[i, :, :] = self._get_image_hw_tolerant(
-                timeout_s=timeout_s+self.exposure_s
-            )
+            out[i, :, :] = self._get_image_hw_tolerant(timeout_s=timeout_s + self.exposure_s)
 
         return out
 
@@ -412,7 +412,8 @@ class Camera(_Picklable, ABC):
             try:
                 return self._get_image_hw(*args, **kwargs)
             except Exception as e:
-                if i > 0: warnings.warn(f"'{self.name}' _get_image_hw() failed on attempt {i+1}.")
+                if i > 0:
+                    warnings.warn(f"'{self.name}' _get_image_hw() failed on attempt {i + 1}.")
                 err = e
 
         raise err
@@ -424,7 +425,8 @@ class Camera(_Picklable, ABC):
             try:
                 return self._get_images_hw(*args, **kwargs)
             except Exception as e:
-                if i > 0: warnings.warn(f"'{self.name}' _get_images_hw() failed on attempt {i+1}.")
+                if i > 0:
+                    warnings.warn(f"'{self.name}' _get_images_hw() failed on attempt {i + 1}.")
                 err = e
 
         raise err
@@ -432,10 +434,8 @@ class Camera(_Picklable, ABC):
     def _get_dtype(self):
         try:
             self.dtype = np.dtype(
-                np.array(
-                    self._get_image_hw_tolerant(timeout_s=1)
-                ).dtype
-            )   # Future: check if cameras change dtype after init.
+                np.array(self._get_image_hw_tolerant(timeout_s=1)).dtype
+            )  # Future: check if cameras change dtype after init.
         except:
             if self.bitdepth > 16:
                 self.dtype = np.dtype(float)
@@ -450,7 +450,7 @@ class Camera(_Picklable, ABC):
                     f"Camera '{self.name}' bitdepth of {self.bitdepth} does not conform "
                     f"with the image type {self.dtype} with {self.dtype.itemsize} bytes."
                 )
-        except:     # The above sometimes fails for non-numpy datatypes.
+        except:  # The above sometimes fails for non-numpy datatypes.
             pass
 
         return self.dtype
@@ -512,7 +512,7 @@ class Camera(_Picklable, ABC):
 
         # Switch based on image type
         if self.dtype.kind == "i" or self.dtype.kind == "u":
-            dtype_bitdepth = 8*self.dtype.type(0).nbytes
+            dtype_bitdepth = 8 * self.dtype.type(0).nbytes
 
             # Remove depth for signed integer.
             if self.dtype.kind == "i":
@@ -600,21 +600,19 @@ class Camera(_Picklable, ABC):
         (exposures, exposure_power) = self._parse_hdr(hdr)
 
         # Switch based on what imaging case we're in.
-        if exposures > 1:       # Average many images with increasing exposure.
+        if exposures > 1:  # Average many images with increasing exposure.
             return self.get_image_hdr(
                 (exposures, exposure_power),
                 timeout_s=timeout_s,
                 transform=transform,
                 averaging=averaging,
             )
-        elif averaging > 1:     # Average many images.
+        elif averaging > 1:  # Average many images.
             averaging_dtype = self._get_averaging_dtype(averaging)
 
             try:
                 # Using the camera-specific batch method if available
-                imgs = self._get_images_hw(
-                    averaging, timeout_s=timeout_s+self.exposure_s
-                ).astype(averaging_dtype)
+                imgs = self._get_images_hw(averaging, timeout_s=timeout_s + self.exposure_s).astype(averaging_dtype)
 
                 # Cast as the proper type so we can sum.
                 img = np.sum(imgs, axis=0)
@@ -623,13 +621,9 @@ class Camera(_Picklable, ABC):
                 img = np.zeros(self.default_shape, dtype=averaging_dtype)
 
                 for _ in range(averaging):
-                    img += self._get_image_hw_tolerant(
-                        timeout_s=timeout_s+self.exposure_s
-                    ).astype(averaging_dtype)
-        else:                   # Normal image
-            img = self._get_image_hw_tolerant(
-                timeout_s=timeout_s+self.exposure_s
-            )
+                    img += self._get_image_hw_tolerant(timeout_s=timeout_s + self.exposure_s).astype(averaging_dtype)
+        else:  # Normal image
+            img = self._get_image_hw_tolerant(timeout_s=timeout_s + self.exposure_s)
 
         # self.transform implements the flipping and rotating keywords passed to the
         # superclass constructor.
@@ -684,18 +678,11 @@ class Camera(_Picklable, ABC):
             self.flush()
 
         # Grab images (no transformation)
-        imgs = self._get_images_hw(
-            image_count,
-            timeout_s=timeout_s+self.exposure_s,
-            out=out
-        )
+        imgs = self._get_images_hw(image_count, timeout_s=timeout_s + self.exposure_s, out=out)
 
         # Transform if desired. Future: make more efficient.
         if transform:
-            imgs_ = np.empty(
-                (int(image_count), self.shape[0], self.shape[1]),
-                dtype=self.dtype
-            )
+            imgs_ = np.empty((int(image_count), self.shape[0], self.shape[1]), dtype=self.dtype)
             for i in range(image_count):
                 imgs_[i, :, :] = self.transform(imgs[i])
 
@@ -760,7 +747,7 @@ class Camera(_Picklable, ABC):
             The scale of the returned image is the same as the original exposure.
         """
         (exposures, exposure_power) = self._parse_hdr(exposures)
-        overexposure_threshold = self.bitresolution/2,
+        overexposure_threshold = (self.bitresolution / 2,)
         if self.averaging is not None:
             overexposure_threshold *= self.averaging
 
@@ -771,8 +758,8 @@ class Camera(_Picklable, ABC):
 
         for i in range(exposures):
             # FUTURE: record the set exposures and use these to do better analysis.
-            exposure_times[i] = self.set_exposure(int(exposure_power ** i) * original_exposure)
-            self.flush()    # Sometimes, cameras return bad frames after exposure change.
+            exposure_times[i] = self.set_exposure(int(exposure_power**i) * original_exposure)
+            self.flush()  # Sometimes, cameras return bad frames after exposure change.
             imgs[i, :, :] = self.get_image(hdr=False, **kwargs)
 
             # Terminate the loop if our image is entirely overexposed.
@@ -885,12 +872,12 @@ class Camera(_Picklable, ABC):
             image = self.get_image()
         if image is False:
             image = self.last_image
-        image = np.array(image, copy=(False if np.__version__[0] == '1' else None))
+        image = np.array(image, copy=(False if np.__version__[0] == "1" else None))
 
         if len(plt.get_fignums()) > 0:
             fig = plt.gcf()
         else:
-            fig = plt.figure(figsize=(20,8))
+            fig = plt.figure(figsize=(20, 8))
 
         if ax is not None:
             plt.sca(ax)
@@ -913,7 +900,7 @@ class Camera(_Picklable, ABC):
                 deltas = np.squeeze(np.diff(axlim, axis=1)) * limits / 2
 
                 limits = np.vstack((centers - deltas, centers + deltas)).T
-            elif np.shape(limits) == (2,2):
+            elif np.shape(limits) == (2, 2):
                 pass
             else:
                 raise ValueError(f"limits format {limits} not recognized; provide a scalar or limits.")
@@ -976,10 +963,7 @@ class Camera(_Picklable, ABC):
             a custom list of colormaps to appear in the widget dropdown as ``cmap_options=``.
         """
         if backend != "ipython":
-            raise ValueError(
-                f"'{backend}' not recognized; "
-                "'ipython' is currently the only supported .live() backend."
-            )
+            raise ValueError(f"'{backend}' not recognized; 'ipython' is currently the only supported .live() backend.")
 
         try:
             from ipywidgets import Image
@@ -991,12 +975,7 @@ class Camera(_Picklable, ABC):
             if self.viewer is not None:
                 self.viewer.close()
 
-            self.viewer = _CameraViewer(
-                self,
-                widgets,
-                backend,
-                **kwargs
-            )
+            self.viewer = _CameraViewer(self, widgets, backend, **kwargs)
         elif self.viewer is not None and (activate is None or not activate):
             self.viewer.close()
             self.viewer = None
@@ -1151,9 +1130,7 @@ class Camera(_Picklable, ABC):
 
         counts[0] = counts[1]
 
-        popt0 = np.array(
-            [z_list[np.argmax(counts)], np.max(counts) - np.min(counts), np.min(counts), 100]
-        )
+        popt0 = np.array([z_list[np.argmax(counts)], np.max(counts) - np.min(counts), np.min(counts), 100])
 
         try:
             popt, _ = curve_fit(
@@ -1204,25 +1181,23 @@ class _CameraViewer:
     """
     Hidden class for live camera viewing enabled by ipython widgets.
     """
+
     def __init__(
-            self,
-            cam,
-            widgets,
-            backend="ipython",
-            live=False,
-            min=None,
-            max=None,
-            log=False,
-            cmap=True,
-            scale=1,
-            border=None,
-            cmap_options=[
-                "default", "gray", "Blues", "turbo",
-                'viridis', 'plasma', 'inferno', 'magma', 'cividis'
-            ],
-            crosshair=False,
-            centroid=False,
-        ):
+        self,
+        cam,
+        widgets,
+        backend="ipython",
+        live=False,
+        min=None,
+        max=None,
+        log=False,
+        cmap=True,
+        scale=1,
+        border=None,
+        cmap_options=["default", "gray", "Blues", "turbo", "viridis", "plasma", "inferno", "magma", "cividis"],
+        crosshair=False,
+        centroid=False,
+    ):
         self.cam = cam
         self.backend = backend
 
@@ -1230,32 +1205,35 @@ class _CameraViewer:
         if min is None:
             min = 0
         if max is None:
-            max = cam.bitresolution-1
+            max = cam.bitresolution - 1
         range = [min, max]
         range = [np.min(range), np.max(range)]
 
-        if cmap is True: cmap = "default"
-        if cmap is False: cmap = "grayscale"
+        if cmap is True:
+            cmap = "default"
+        if cmap is False:
+            cmap = "grayscale"
 
         # Parse scale
         scale = 2 ** np.round(np.log2(scale))
 
         self.state = {
-            "backend" : backend,
-            "live" : live,
-            "range" : range,
-            "log" : bool(log),
-            "cmap" : cmap,
-            "scale" : scale,
-            "border" : border,
-            "cmap_options" : cmap_options,
-            "center_crosshair" : crosshair,
-            "centroid_crosshair" : centroid,
+            "backend": backend,
+            "live": live,
+            "range": range,
+            "log": bool(log),
+            "cmap": cmap,
+            "scale": scale,
+            "border": border,
+            "cmap_options": cmap_options,
+            "center_crosshair": crosshair,
+            "centroid_crosshair": centroid,
         }
 
         self.task = None
         self.widgets = {}
-        if widgets: self.init_widgets()
+        if widgets:
+            self.init_widgets()
         self.init_image()
 
     def parse(self, img=None):
@@ -1269,7 +1247,7 @@ class _CameraViewer:
             img = zoom(
                 self.prev_img,
                 [self.state["scale"], self.state["scale"]] + ([1] if len(self.prev_img.shape) == 3 else []),
-                order=1
+                order=1,
             )
         else:
             img = np.copy(self.prev_img)
@@ -1277,9 +1255,8 @@ class _CameraViewer:
         if self.state["centroid_crosshair"]:
             img_median_subtract = image_remove_field([img], deviations=None)
             cx, cy = np.rint(
-                (
-                    np.squeeze(image_centroids(img_median_subtract)) + np.flip(img.shape) / 2
-                ) * (self.state["scale"] if self.state["scale"] > 1 else 1)
+                (np.squeeze(image_centroids(img_median_subtract)) + np.flip(img.shape) / 2)
+                * (self.state["scale"] if self.state["scale"] > 1 else 1)
             ).astype(int)
 
         # Scale intensity of image
@@ -1290,16 +1267,10 @@ class _CameraViewer:
 
         if self.state["log"]:
             # clip to avoid log(0)
-            img = (np.log10(np.clip(img, 1, np.inf)) / np.log10(d+1))
+            img = np.log10(np.clip(img, 1, np.inf)) / np.log10(d + 1)
 
         # Make image color
-        rgb = _gray2rgb(
-            img,
-            cmap=self.state["cmap"],
-            lut=d,
-            normalize=False,
-            border=self.state["border"]
-        )
+        rgb = _gray2rgb(img, cmap=self.state["cmap"], lut=d, normalize=False, border=self.state["border"])
 
         # Upscaling can happen after intensive operations.
         if self.state["scale"] > 1:
@@ -1312,8 +1283,8 @@ class _CameraViewer:
 
         # Finally, add crosshair in the center.
         if self.state["center_crosshair"]:
-            rgb[:, :, int(rgb.shape[2]/2), :3] = 127 - rgb[:, :, int(rgb.shape[2]/2), :3]
-            rgb[:, int(rgb.shape[1]/2), :, :3] = 127 - rgb[:, int(rgb.shape[1]/2), :, :3]
+            rgb[:, :, int(rgb.shape[2] / 2), :3] = 127 - rgb[:, :, int(rgb.shape[2] / 2), :3]
+            rgb[:, int(rgb.shape[1] / 2), :, :3] = 127 - rgb[:, int(rgb.shape[1] / 2), :, :3]
 
         buff = io.BytesIO()
         rgb = PIL.Image.fromarray(rgb[0])
@@ -1379,74 +1350,84 @@ class _CameraViewer:
         display(self.image)
 
     def init_widgets(self):
-        from ipywidgets import HTML, IntRangeSlider, ToggleButton, Button, Checkbox, Dropdown, FloatLogSlider, Output, Layout
+        from ipywidgets import (
+            HTML,
+            IntRangeSlider,
+            ToggleButton,
+            Button,
+            Checkbox,
+            Dropdown,
+            FloatLogSlider,
+            Output,
+            Layout,
+        )
 
         item_layout = Layout(width="auto")
         range_layout = Layout(width="70%")
 
         self.widgets = {
-            "name" : HTML(
+            "name": HTML(
                 value=f"<b>{self.cam.name}</b>",
                 description="Viewing",
                 tooltip="Name of the camera.",
                 layout=item_layout,
             ),
-            "live" : ToggleButton(
+            "live": ToggleButton(
                 value=self.state["live"],
                 description="Live",
                 tooltip="Toggle an asyncio loop to poll images from the camera.",
                 layout=item_layout,
             ),
-            "range" : IntRangeSlider(
+            "range": IntRangeSlider(
                 value=self.state["range"],
                 min=0,
-                max=self.cam.bitresolution-1,
+                max=self.cam.bitresolution - 1,
                 step=1,
                 description="Range",
                 tooltip="Color scale of the plot.",
                 layout=range_layout,
             ),
-            "autorange" : Button(
+            "autorange": Button(
                 description="AutoRange",
                 tooltip="Scale the plot to the minimum and maximum of the current image.",
                 layout=item_layout,
             ),
-            "log" : Checkbox(
+            "log": Checkbox(
                 value=self.state["log"],
                 description="Logarithmic",
                 tooltip="Toggle logarithmic scaling of the current plot.",
                 layout=item_layout,
             ),
-            "center_crosshair" : Checkbox(
+            "center_crosshair": Checkbox(
                 value=self.state["center_crosshair"],
                 description="Center Crosshair",
                 tooltip="Toggle a crosshair centered on the image.",
                 layout=item_layout,
             ),
-            "centroid_crosshair" : Checkbox(
+            "centroid_crosshair": Checkbox(
                 value=self.state["centroid_crosshair"],
                 description="Centroid Crosshair",
                 tooltip="Toggle a crosshair at the median-subtracted centroid (center of mass) of the image.",
                 layout=item_layout,
             ),
-            "cmap" : Dropdown(
+            "cmap": Dropdown(
                 options=self.state["cmap_options"],
                 value=self.state["cmap"],
                 description="Colormap",
                 tooltip="Choose the colormap to use for display.",
                 layout=item_layout,
             ),
-            "scale" : FloatLogSlider(
+            "scale": FloatLogSlider(
                 value=self.state["scale"],
                 base=2,
-                min=-3, # 12.5%
+                min=-3,  # 12.5%
                 max=3,  # 800%
                 step=1,
                 description="Scale",
                 tooltip="Scale the image by powers of two.",
                 layout=item_layout,
             ),
-            "output": Output()
+            "output": Output(),
         }
 
         for k, w in self.widgets.items():
@@ -1474,18 +1455,8 @@ class _CameraViewer:
         #     self.widgets["output"],
         # ])
 
-        box_layout1 = Layout(
-            display="flex",
-            flex_flow="auto",
-            align_items="stretch",
-            width="70%"
-        )
-        box_layout2 = Layout(
-            display="flex",
-            flex_flow="auto",
-            align_items="stretch",
-            width="30%"
-        )
+        box_layout1 = Layout(display="flex", flex_flow="auto", align_items="stretch", width="70%")
+        box_layout2 = Layout(display="flex", flex_flow="auto", align_items="stretch", width="30%")
 
         self.widgets["layout"] = HBox([
             VBox(
@@ -1513,7 +1484,7 @@ class _CameraViewer:
                     self.widgets["autorange"],
                 ],
                 layout=box_layout2,
-            )
+            ),
         ])
 
         display(self.widgets["layout"])

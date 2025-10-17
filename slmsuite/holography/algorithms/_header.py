@@ -14,12 +14,12 @@ from scipy.ndimage import gaussian_filter as sp_gaussian_filter
 
 # Try to import cupy, but revert to base numpy/scipy upon ImportError.
 try:
-    import cupy as cp                                                           # type: ignore
-    import cupyx.scipy.fft as cpfft                                             # type: ignore
-    from cupyx import zeros_pinned as cp_zeros_pinned                           # type: ignore
-    from cupyx.scipy.ndimage import gaussian_filter1d as cp_gaussian_filter1d   # type: ignore
-    from cupyx.scipy.ndimage import gaussian_filter as cp_gaussian_filter       # type: ignore
-    from cupyx.scipy.ndimage import affine_transform as cp_affine_transform     # type: ignore
+    import cupy as cp  # type: ignore
+    import cupyx.scipy.fft as cpfft  # type: ignore
+    from cupyx import zeros_pinned as cp_zeros_pinned  # type: ignore
+    from cupyx.scipy.ndimage import gaussian_filter1d as cp_gaussian_filter1d  # type: ignore
+    from cupyx.scipy.ndimage import gaussian_filter as cp_gaussian_filter  # type: ignore
+    from cupyx.scipy.ndimage import affine_transform as cp_affine_transform  # type: ignore
 except ImportError:
     cp = np
     cpfft = spfft
@@ -27,9 +27,7 @@ except ImportError:
     cp_gaussian_filter1d = sp_gaussian_filter1d
     cp_gaussian_filter = sp_gaussian_filter
     cp_affine_transform = sp_affine_transform
-    warnings.warn(
-        "cupy is not installed; using numpy. Install cupy for faster GPU-based holography."
-    )
+    warnings.warn("cupy is not installed; using numpy. Install cupy for faster GPU-based holography.")
 
 try:
     import torch
@@ -60,16 +58,11 @@ ALGORITHM_DEFAULTS = {
         "feedback_exponent": 0.8,
     },
     "WGS-Nogrette": {"feedback": "computational", "feedback_factor": 0.1},
-    "WGS-Wu": {"feedback": "computational", "feedback_exponent": .5},
-    "WGS-tanh": {"feedback": "computational", "feedback_factor": .2, "feedback_exponent": .5},
-    "CG" : {
-        "feedback": "computational",
-        "optimizer": "Adam",
-        "optimizer_kwargs": {"lr": .1},
-        "loss": None
-    }
+    "WGS-Wu": {"feedback": "computational", "feedback_exponent": 0.5},
+    "WGS-tanh": {"feedback": "computational", "feedback_factor": 0.2, "feedback_exponent": 0.5},
+    "CG": {"feedback": "computational", "optimizer": "Adam", "optimizer_kwargs": {"lr": 0.1}, "loss": None},
 }
-ALGORITHM_INDEX = {key : i for i, key in enumerate(ALGORITHM_DEFAULTS.keys())}
+ALGORITHM_INDEX = {key: i for i, key in enumerate(ALGORITHM_DEFAULTS.keys())}
 
 # List of feedback options. See the documentation for the feedback keyword in optimize().
 FEEDBACK_OPTIONS = [

@@ -22,6 +22,7 @@ Note
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
+
 import warnings
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -30,6 +31,7 @@ try:
 except:
     ICamera = None
     warnings.warn("pylablib not installed. Install to use PyLabLib cameras.")
+
 
 class PyLabLib(Camera):
     """
@@ -83,16 +85,14 @@ class PyLabLib(Camera):
             raise ImportError("pylablib not installed. Install to use PyLabLib cameras.")
 
         if not isinstance(cam, ICamera):
-            raise ValueError(
-                "A subclass of pylablib.devices.interface.camera.Camera must be passed as cam."
-            )
+            raise ValueError("A subclass of pylablib.devices.interface.camera.Camera must be passed as cam.")
 
         # Create a name for the camera, defaulting to kwargs.
         name = ""
         di = cam.get_device_info()
         info_counter = 1
         for info in di:
-            if isinstance(info, str):   # This will usually catch the mode name and serial number.
+            if isinstance(info, str):  # This will usually catch the mode name and serial number.
                 name += info + "_"
                 info_counter += 1
 
@@ -103,18 +103,20 @@ class PyLabLib(Camera):
             name = "pylablibcamera"
         name = kwargs.pop("name", name)
 
-        if verbose: print(f"Cam {name} parsing... ", end="")
+        if verbose:
+            print(f"Cam {name} parsing... ", end="")
         height, width = cam.get_data_dimensions()
         self.cam = cam
 
         super().__init__(
             (width, height),
-            bitdepth=8,         # Currently defaults to 8 because pylablib doesn't cache this. Update in the future, maybe.
+            bitdepth=8,  # Currently defaults to 8 because pylablib doesn't cache this. Update in the future, maybe.
             pitch_um=pitch_um,  # Currently unset because pylablib doesn't cache this. Update in the future, maybe.
             name=name,
-            **kwargs
+            **kwargs,
         )
-        if verbose: print("success")
+        if verbose:
+            print("success")
 
     def close(self):
         """
@@ -136,8 +138,7 @@ class PyLabLib(Camera):
             An empty list.
         """
         raise RuntimeError(
-            ".info() is not applicable to pylablib cameras, which must be "
-            "constructed outside this wrapper."
+            ".info() is not applicable to pylablib cameras, which must be constructed outside this wrapper."
         )
 
     def _get_exposure_hw(self):

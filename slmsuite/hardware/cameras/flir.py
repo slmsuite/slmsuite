@@ -8,6 +8,7 @@ Warning
 ~~~~~~~~
 Implementation unfinished and untested. Consider using ``simple_pyspin`` as a dependency instead.
 """
+
 import warnings
 
 from .camera import Camera
@@ -80,7 +81,7 @@ class FLIR(Camera):
             bitdepth=int(self.cam.PixelSize.get()),
             pitch_um=pitch_um,
             name=serial,
-            **kwargs
+            **kwargs,
         )
         if verbose:
             print("success")
@@ -118,8 +119,6 @@ class FLIR(Camera):
         blocking : bool
             Whether to wait for the camera to return a frame, blocking other acquisition.
         """
-        frame = self.cam.GetNextImage(
-            PySpin.EVENT_TIMEOUT_INFINITE if blocking else PySpin.EVENT_TIMEOUT_NONE
-        )
+        frame = self.cam.GetNextImage(PySpin.EVENT_TIMEOUT_INFINITE if blocking else PySpin.EVENT_TIMEOUT_NONE)
 
         return frame.GetNDArray()

@@ -22,12 +22,14 @@ from slmsuite.hardware.cameras.camera import Camera
 
 try:
     import vmbpy
+
     vimba_system = vmbpy.VmbSystem
     vimba_name = "vmbpy"
 
 except ImportError:
     try:
         import vimba
+
         vimba_system = vimba.Vimba
         vimba_name = "vimba"
 
@@ -114,9 +116,7 @@ class AlliedVision(Camera):
             if serial in serial_list:
                 self.cam = camera_list[serial_list.index(serial)]
             else:
-                raise RuntimeError(
-                    f"Serial {serial} not found by {vimba_name}. Available: {serial_list}"
-                )
+                raise RuntimeError(f"Serial {serial} not found by {vimba_name}. Available: {serial_list}")
 
         if verbose:
             print(f"{vimba_name} sn '{serial}' initializing... ", end="")
@@ -300,7 +300,7 @@ class AlliedVision(Camera):
         woi : list, None
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        # Set the width and height to very small values 
+        # Set the width and height to very small values
         # such that setting the offsets will not error.
         self.cam.Height.set(8)
         self.cam.Width.set(8)
@@ -329,7 +329,6 @@ class AlliedVision(Camera):
             woi = self.woi if self.woi is not None else maxwoi
             self._set_woi(woi)
             raise e
-            
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""

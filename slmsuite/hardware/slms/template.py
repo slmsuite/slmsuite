@@ -2,7 +2,9 @@
 Template for writing a subclass for SLM hardware control in :mod:`slmsuite`.
 Outlines which SLM superclass functions must be implemented.
 """
+
 from .slm import SLM
+
 
 class Template(SLM):
     """
@@ -13,10 +15,10 @@ class Template(SLM):
 
     def __init__(
         self,
-        bitdepth=8,         # TODO: Remove these arguments if the SLM SDK
-        wav_um=1,           #       has some function to read them in.
-        pitch_um=(8,8),     #       Otherwise, the user must supply.
-        **kwargs
+        bitdepth=8,  # TODO: Remove these arguments if the SLM SDK
+        wav_um=1,  #       has some function to read them in.
+        pitch_um=(8, 8),  #       Otherwise, the user must supply.
+        **kwargs,
     ):
         r"""
         Initialize SLM and attributes.
@@ -56,13 +58,7 @@ class Template(SLM):
         # - Checking for and saving the SLM parameters (height, width, etc).
 
         # Instantiate the superclass
-        super().__init__(
-            (sdk.width(), sdk.height()),
-            bitdepth=bitdepth,
-            wav_um=wav_um,
-            pitch_um=pitch_um,
-            **kwargs
-        )
+        super().__init__((sdk.width(), sdk.height()), bitdepth=bitdepth, wav_um=wav_um, pitch_um=pitch_um, **kwargs)
 
         # Zero the display using the superclass `set_phase()` function.
         self.set_phase(None)
@@ -88,7 +84,7 @@ class Template(SLM):
             List of serial numbers or identifiers.
         """
         raise NotImplementedError()
-        serial_list = get_serial_list()     # TODO: Fill in proper function.
+        serial_list = get_serial_list()  # TODO: Fill in proper function.
         return serial_list
 
     def _set_phase_hw(self, phase):

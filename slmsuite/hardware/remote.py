@@ -71,6 +71,7 @@ The client connects to this hardware:
     cam.get_image()
     cam.plot()
 """
+
 import numpy as np
 import socket, sys, json, time
 import warnings
@@ -84,12 +85,13 @@ import base64
 from slmsuite.hardware import _Picklable
 from slmsuite import __version__
 
-DEFAULT_HOST = 'localhost'
-DEFAULT_PORT = 5025             # Commonly used for instrument control.
+DEFAULT_HOST = "localhost"
+DEFAULT_PORT = 5025  # Commonly used for instrument control.
 DEFAULT_TIMEOUT = 5
 SERVER_WAIT_TIMEOUT = 0.5
 
 _delim = "\n"
+
 
 # Common functions for encoding and decoding data.
 def _recurse_decompress(msg):
@@ -99,10 +101,7 @@ def _recurse_decompress(msg):
     if isinstance(msg, dict):
         if "__zlib__" in msg and len(msg) == 3:
             return np.frombuffer(
-                zlib.decompress(
-                    base64.b64decode(msg["__zlib__"])
-                ),
-                dtype=np.dtype(msg["__dtype__"])
+                zlib.decompress(base64.b64decode(msg["__zlib__"])), dtype=np.dtype(msg["__dtype__"])
             ).reshape(msg["__shape__"])
         elif "__dtype__" in msg and len(msg) == 1:
             return np.dtype(msg["__dtype__"])
@@ -115,22 +114,21 @@ def _recurse_decompress(msg):
 
     return msg
 
+
 # https://codetinkering.com/numpy-encoder-json/
 class _NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.bool_):
             return bool(obj)
-        if isinstance(obj, np.floating): #, np.complexfloating
+        if isinstance(obj, np.floating):  # , np.complexfloating
             return float(obj)
         if isinstance(obj, np.integer):
             return int(obj)
         if isinstance(obj, np.ndarray):
             return {
-                "__zlib__" : base64.b64encode(
-                    zlib.compress(obj.tobytes())
-                ).decode(),
-                "__shape__" : obj.shape,
-                "__dtype__" : str(obj.dtype)
+                "__zlib__": base64.b64encode(zlib.compress(obj.tobytes())).decode(),
+                "__shape__": obj.shape,
+                "__dtype__": str(obj.dtype),
             }
         if isinstance(obj, np.string_):
             return str(obj)
@@ -139,8 +137,9 @@ class _NpEncoder(json.JSONEncoder):
         if isinstance(obj, timedelta):
             return str(obj)
         if isinstance(obj, np.dtype):
-            return {"__dtype__" : str(obj)}
+            return {"__dtype__": str(obj)}
         return super(_NpEncoder, self).default(obj)
+
 
 # Common function to receive data from a socket.
 def _recv(sock, timeout):
@@ -154,7 +153,7 @@ def _recv(sock, timeout):
 
         buffer += data
         if data[-1] == _delim:
-            msg = json.loads(urllib.unquote_plus(buffer[0:-len(_delim)]))
+            msg = json.loads(urllib.unquote_plus(buffer[0 : -len(_delim)]))
 
             msg = _recurse_decompress(msg)
 
@@ -163,6 +162,7 @@ def _recv(sock, timeout):
     # Failed timeout returns empty.
     return False, f"Timeout: {len(buffer)} bytes received."
 
+
 # Server which hosts slmsuite hardware.
 class Server:
     """
@@ -170,12 +170,12 @@ class Server:
     """
 
     def __init__(
-            self,
-            hardware: List[object],
-            port: int = DEFAULT_PORT,
-            timeout: float = SERVER_WAIT_TIMEOUT,
-            allowlist: List[str] = None,
-        ):
+        self,
+        hardware: List[object],
+        port: int = DEFAULT_PORT,
+        timeout: float = SERVER_WAIT_TIMEOUT,
+        allowlist: List[str] = None,
+    ):
         """
         Initializes a server to host slmsuite hardware: cameras and SLMs.
         Interface with this server using
@@ -205,14 +205,8 @@ class Server:
         if len(set(names)) != len(names):
             raise ValueError(f"Hardware names must be unique. Found {names}.")
 
-        self.hardware = {
-            hw.name : hw
-            for hw in hardware
-        }
-        self.kind = {
-            hw.name : ("camera" if hasattr(hw, "_get_image_hw") else "slm")
-            for hw in hardware
-        }
+        self.hardware = {hw.name: hw for hw in hardware}
+        self.kind = {hw.name: ("camera" if hasattr(hw, "_get_image_hw") else "slm") for hw in hardware}
 
         # Server information.
         if not (1024 <= port <= 65535):
@@ -312,12 +306,7 @@ class Server:
             sock.close()
             raise e
 
-    def _handle(
-        self,
-        message : str,
-        client_addr: str = None,
-        verbose: bool = False
-    ) -> Tuple[bool, Any]:
+    def _handle(self, message: str, client_addr: str = None, verbose: bool = False) -> Tuple[bool, Any]:
         """
         Handle a message from a client.
         """
@@ -354,6 +343,7 @@ class Server:
         except:
             return False, traceback.format_exc()
 
+
 # Abstract client which connects to a server.
 class _Client(_Picklable):
     """
@@ -361,13 +351,13 @@ class _Client(_Picklable):
     """
 
     def __init__(
-            self,
-            name: str,
-            kind: str,
-            host: str = DEFAULT_HOST,
-            port: int = DEFAULT_PORT,
-            timeout: float = DEFAULT_TIMEOUT,
-        ):
+        self,
+        name: str,
+        kind: str,
+        host: str = DEFAULT_HOST,
+        port: int = DEFAULT_PORT,
+        timeout: float = DEFAULT_TIMEOUT,
+    ):
         """
         Superclass constructor. See RemoteSLM and RemoteCamera for more information.
         """
@@ -379,33 +369,22 @@ class _Client(_Picklable):
         hardware = self._com(command="ping")
 
         if not self.name in hardware:
-            raise ValueError(
-                f"Hardware '{self.name}' is not present at {self.host}:{self.port}. Options: {hardware}."
-            )
+            raise ValueError(f"Hardware '{self.name}' is not present at {self.host}:{self.port}. Options: {hardware}.")
         if hardware[self.name] != kind:
-            raise ValueError(
-                f"Hardware '{self.name}' is not a {kind} at {self.host}:{self.port}."
-            )
+            raise ValueError(f"Hardware '{self.name}' is not a {kind} at {self.host}:{self.port}.")
 
         try:
             t = time.perf_counter()
-            pickled = self._com(
-                command="pickle",
-                kwargs=dict(attributes=False, metadata=True)
-            )
+            pickled = self._com(command="pickle", kwargs=dict(attributes=False, metadata=True))
             t = time.perf_counter() - t
         except:
-            raise RuntimeError(
-                f"Could not connect to '{self.name}' at {self.host}:{self.port}. Options: {hardware}."
-            )
+            raise RuntimeError(f"Could not connect to '{self.name}' at {self.host}:{self.port}. Options: {hardware}.")
 
         self.latency_s = t
         self.server_attributes = pickled
 
         if pickled["__version__"] != __version__:
-            warnings.warn(
-                f"Client version {__version__} does not match server version {pickled['__version__']}."
-            )
+            warnings.warn(f"Client version {__version__} does not match server version {pickled['__version__']}.")
 
     def _com(
         self,
@@ -433,36 +412,25 @@ class _Client(_Picklable):
         try:
             sock.connect((host, port))
         except (TimeoutError, ConnectionRefusedError):
-            raise ValueError(
-                f"An slmsuite server is not active at {host}:{port}."
-            )
+            raise ValueError(f"An slmsuite server is not active at {host}:{port}.")
         except Exception as e:
             raise e
 
-
         # Send the message.
-        sock.sendall((
-            urllib.quote_plus(
-                json.dumps(
-                    {
-                        "name": name,
-                        "command": command,
-                        "args": args,
-                        "kwargs": kwargs
-                    },
-                    cls=_NpEncoder
+        sock.sendall(
+            (
+                urllib.quote_plus(
+                    json.dumps({"name": name, "command": command, "args": args, "kwargs": kwargs}, cls=_NpEncoder)
                 )
-            ) + _delim
-        ).encode())
-
+                + _delim
+            ).encode()
+        )
 
         # Wait for a reply.
         try:
             success, reply = _recv(sock, timeout)
             if success == False:
-                raise RuntimeError(
-                    f"Server {host}:{port} communication failed. Message:\n{reply}"
-                )
+                raise RuntimeError(f"Server {host}:{port} communication failed. Message:\n{reply}")
         except Exception as e:
             sock.close()
 
@@ -507,9 +475,6 @@ class _Client(_Picklable):
             if len(hardware) == 0:
                 print(f"Server found at {host}:{port} with no hardware.")
             else:
-                print(
-                    f"Server found at {host}:{port} with hardware:\n    " +
-                    "\n    ".join(list(hardware.keys()))
-                )
+                print(f"Server found at {host}:{port} with hardware:\n    " + "\n    ".join(list(hardware.keys())))
 
         return hardware

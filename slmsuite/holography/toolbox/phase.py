@@ -1,30 +1,29 @@
-"""
-Repository of common analytic phase patterns.
-"""
+"""Repository of common analytic phase patterns."""
 
 import os
 import warnings
-import time
+
 import numpy as np
 
 try:
     import cupy as cp  # type: ignore
 except ImportError:
     cp = np
-from scipy import special
+import pathlib
+from collections.abc import Callable
 from math import factorial
+
 import matplotlib.pyplot as plt
-from typing import Tuple, Union, Callable
+from scipy import special
 
-
+from slmsuite.holography.toolbox import _process_grid, format_2vectors, imprint
 from slmsuite.misc.math import REAL_TYPES
-from slmsuite.holography.toolbox import _process_grid, imprint, format_2vectors
 
 # Load CUDA code. This is used for cupy.RawKernels in this file and elsewhere.
 
 
-def _load_cuda():
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuda.cu"), "r") as file:
+def _load_cuda() -> str:
+    with pathlib.Path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuda.cu")).open() as file:
         CUDA_KERNELS = file.read()
 
     return CUDA_KERNELS
@@ -40,11 +39,10 @@ except:
 
 
 def blaze(
-    grid: Union[Tuple[np.ndarray, np.ndarray], object],
-    vector: Tuple[float, float] = (0, 0),
-):
-    r"""
-    Returns a simple `blazed grating <https://en.wikipedia.org/wiki/Blazed_grating>`_,
+    grid: tuple[np.ndarray, np.ndarray] | object,
+    vector: tuple[float, float] = (0, 0),
+) -> np.ndarray:
+    r"""Returns a simple `blazed grating <https://en.wikipedia.org/wiki/Blazed_grating>`_,
     a linear phase ramp, toward a given vector in :math:`k`-space.
 
     .. math:: \phi(\vec{x}) = 2\pi \cdot \vec{k} \cdot \vec{x}
@@ -81,20 +79,19 @@ def blaze(
 
 
 def sinusoid(
-    grid: Union[Tuple[np.ndarray, np.ndarray], object],
-    vector: Union[Tuple[float, float], Tuple[int, int]] = (0, 0),
+    grid: tuple[np.ndarray, np.ndarray] | object,
+    vector: tuple[float, float] | tuple[int, int] = (0, 0),
     shift: float = 0,
     a: float = np.pi,
     b: float = 0,
-):
-    r"""
-    Returns a simple `holographic grating
+) -> np.ndarray:
+    r"""Returns a simple `holographic grating
     <https://en.wikipedia.org/wiki/Diffraction_grating#SR_(Surface_Relief)_gratings>`_,
     a sinusoidal grating, toward a given vector in :math:`k`-space.
 
     .. math:: \phi(\vec{x}) = \frac{a-b}{2} [1 + \cos(2\pi \cdot \vec{k} \cdot \vec{x} + s)] + b
 
-    Important
+    Important:
     ---------
     Unlike a blazed grating :meth:`.blaze()`, power will efficiently be deflected toward
     the mirror -1st order at :math:`-\vec{k}` in addition to the 1st order, by symmetry.
@@ -134,15 +131,14 @@ def sinusoid(
 
 
 def binary(
-    grid: Union[Tuple[np.ndarray, np.ndarray], object],
-    vector: Union[Tuple[float, float], Tuple[int, int]] = (0, 0),
+    grid: tuple[np.ndarray, np.ndarray] | object,
+    vector: tuple[float, float] | tuple[int, int] = (0, 0),
     shift: float = 0,
     a: float = np.pi,
     b: float = 0,
     duty_cycle: float = 0.5,
 ) -> np.ndarray:
-    r"""
-    Returns a simple binary grating toward a given vector in :math:`k`-space.
+    r"""Returns a simple binary grating toward a given vector in :math:`k`-space.
 
     .. math:: \phi(\vec{x}) =
         \left\{
@@ -180,7 +176,7 @@ def binary(
             vector=(n_x, 0)
         )
 
-    Note
+    Note:
     ~~~~
     When parameters are chosen to produce integer period,
     this function uses speed optimizations **(implementation incomplete)**.
@@ -251,18 +247,17 @@ def binary(
 
 
 def _quadrants(
-    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    grid: tuple[np.ndarray, np.ndarray] | object,
     vectors: np.ndarray,
     grating: Callable = blaze,
 ) -> np.ndarray:
-    """
-    Given four 2-vectors in top-right bottom-right top-left bottom-left order,
+    """Given four 2-vectors in top-right bottom-right top-left bottom-left order,
     fill the quadrants with gratings in the chosen directions.
     """
     # Parse vectors
     vectors = format_2vectors(vectors)
     if vectors.shape != (2, 4):
-        raise ValueError("Expected four 2-vectors (2,4). Found {}.".format(vectors.shape))
+        raise ValueError(f"Expected four 2-vectors (2,4). Found {vectors.shape}.")
 
     # Parse grid.
     grid = (x_grid, y_grid) = _process_grid(grid)
@@ -288,13 +283,12 @@ def _quadrants(
 
 
 def bahtinov(
-    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    grid: tuple[np.ndarray, np.ndarray] | object,
     radius: float = 0.001,
     angle: float = 10 * np.pi / 180,
     grating: Callable = binary,
 ) -> np.ndarray:
-    r"""
-    Returns a `Bahtinov mask <https://en.wikipedia.org/wiki/Bahtinov_mask>`_,
+    r"""Returns a `Bahtinov mask <https://en.wikipedia.org/wiki/Bahtinov_mask>`_,
     commonly used for focusing telescopes.
     When the farfield pattern resulting from this mask is symmetric, the system is in focus.
 
@@ -338,12 +332,11 @@ def bahtinov(
 
 
 def quadrants(
-    grid: Union[Tuple[np.ndarray, np.ndarray], object],
+    grid: tuple[np.ndarray, np.ndarray] | object,
     radius: float = 0.001,
-    center: Tuple[float, float] = (0, 0),
+    center: tuple[float, float] = (0, 0),
 ) -> np.ndarray:
-    r"""
-    Returns a quadrant-based alignment mask similar to
+    r"""Returns a quadrant-based alignment mask similar to
     :meth:`~slmsuite.holography.toolbox.phase.bahtinov()`.
     In this case, each quadrant is filled with a blazed grating pointing in the
     direction of the quadrant. When the source is centered on the SLM, the four
@@ -386,7 +379,7 @@ def quadrants(
 # Basic lenses.
 
 
-def _parse_focal_length(f):
+def _parse_focal_length(f: float | list | tuple | np.ndarray) -> np.ndarray:
     """Helper function to parse focal length used by `lens` and `axicon`."""
     if isinstance(f, REAL_TYPES):
         f = [f, f]
@@ -394,16 +387,18 @@ def _parse_focal_length(f):
         f = np.squeeze(f)
 
         if f.size != 2:
-            raise ValueError("Expected two terms in focal list. Found {}.".format(f))
+            raise ValueError(f"Expected two terms in focal list. Found {f}.")
         if np.any(f == 0):
-            raise ValueError("Cannot interpret a focal length of zero. Found {}.".format(f))
+            raise ValueError(f"Cannot interpret a focal length of zero. Found {f}.")
 
     return f
 
 
-def lens(grid, f=(np.inf, np.inf)):
-    r"""
-    Returns a simple
+def lens(
+    grid: tuple[np.ndarray, np.ndarray] | object,
+    f: float | tuple[float, float] = (np.inf, np.inf),
+) -> np.ndarray:
+    r"""Returns a simple
     `thin parabolic lens <https://en.wikipedia.org/wiki/Thin_lens#Physical_optics>`_.
 
     When the focal length :math:`f` is isotropic,
@@ -428,7 +423,7 @@ def lens(grid, f=(np.inf, np.inf)):
         See :meth:`~slmsuite.holography.toolbox.convert_vector` to convert depths in
         focal power units (inverse of :math:`f`) into other units and back.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The phase for this function.
@@ -447,9 +442,12 @@ def lens(grid, f=(np.inf, np.inf)):
         return np.zeros_like(x_grid)
 
 
-def axicon(grid, f=(np.inf, np.inf), w=None):
-    r"""
-    Returns an `axicon <https://en.wikipedia.org/wiki/Axicon>`_ lens,
+def axicon(
+    grid: tuple[np.ndarray, np.ndarray] | object,
+    f: float | tuple[float, float] = (np.inf, np.inf),
+    w: float | None = None,
+) -> np.ndarray:
+    r"""Returns an `axicon <https://en.wikipedia.org/wiki/Axicon>`_ lens,
     the phase farfield for a Bessel beam. A (elliptically)-cylindrical axicon blazes
     according to :math:`\vec{k}_g = w / \vec{\,f\,} / 2` where
     :math:`w` is the radius of the axicon. With a flat input amplitude over
@@ -471,7 +469,7 @@ def axicon(grid, f=(np.inf, np.inf), w=None):
     w : float OR None
         See :meth:`~slmsuite.holography.toolbox._determine_source_radius()`.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The phase for this function.
@@ -536,9 +534,8 @@ ZERNIKE_NAMES = [
 ]
 
 
-def zernike_convert_index(indices, from_index="ansi", to_index="ansi"):
-    """
-    Helper function for converting between Zernike indexing conventions.
+def zernike_convert_index(indices, from_index: str = "ansi", to_index: str = "ansi") -> np.ndarray:
+    """Helper function for converting between Zernike indexing conventions.
 
     Currently supported conventions:
 
@@ -576,13 +573,13 @@ def zernike_convert_index(indices, from_index="ansi", to_index="ansi"):
     from_index, to_index : str
         Zernike index convention. Must be supported.
 
-    Returns
+    Returns:
     -------
     indices_converted : numpy.ndarray
         List of indices of shape ``(N, D)`` where ``D`` is the dimension of the indexing
         (1, apart from ``"radial"`` indexing which has a dimension of 2).
 
-    Raises
+    Raises:
     ------
     ValueError
         If an invalid index number or index type is given,
@@ -639,18 +636,17 @@ def zernike_convert_index(indices, from_index="ansi", to_index="ansi"):
     return result
 
 
-def zernike_aperture(grid, aperture=None):
-    """
-    Helper function to find the appropriate scaling for between the normalized units in
+def zernike_aperture(grid, aperture: str | tuple[float, float] | float | None = None) -> tuple[float, float]:
+    """Helper function to find the appropriate scaling for between the normalized units in
     the grid and the Zernike aperture (the unit disk).
 
-    Tip
+    Tip:
     ~~~
     Passing an :class:`~slmsuite.hardware.slms.slm.SLM` for ``grid`` makes this easy.
     The function :meth:`~slmsuite.hardware.slms.slm.SLM.get_source_zernike_scaling()`
     determines the optimal scaling of the aperture.
 
-    Important
+    Important:
     ~~~~~~~~~
     Zernike polynomials are canonically defined on a circular aperture. However, we may
     want to use these polynomials on other apertures (e.g. a rectangular SLM).
@@ -659,7 +655,7 @@ def zernike_aperture(grid, aperture=None):
     cropped set, we do not do so in :mod:`slmsuite`, as this is not critical for target
     applications such as aberration correction.
 
-    Caution
+    Caution:
     ~~~~~~~
     Anisotropic Zernike scaling can lead to unexpected behavior.
     For instance, the :math:`Z_4 = Z_2^0 = 1 - 2x^2 - 2y^2` Zernike term is commonly
@@ -699,7 +695,7 @@ def zernike_aperture(grid, aperture=None):
           ``(s_x * x_grid)**2 + (s_y * y_grid)**2 = 1``. If a scalar is given, assumes
           isotropic scaling.
 
-    Returns
+    Returns:
     ~~~~~~~
     (float, float)
     """
@@ -734,14 +730,13 @@ def zernike_aperture(grid, aperture=None):
         x_scale = aperture[0]
         y_scale = aperture[1]
     else:
-        raise ValueError("Aperture type {} not recognized.".format(type(aperture)))
+        raise ValueError(f"Aperture type {type(aperture)} not recognized.")
 
     return (x_scale, y_scale)
 
 
-def zernike(grid, index, weight=1, **kwargs):
-    r"""
-    Returns a single real
+def zernike(grid, index: int, weight: float = 1, **kwargs) -> np.ndarray:
+    r"""Returns a single real
     `Zernike polynomial <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
     as a subset of :meth:`.zernike_sum()`.
     These polynomials are commonly used as an orthonormal basis for optical aberration
@@ -765,7 +760,7 @@ def zernike(grid, index, weight=1, **kwargs):
     **kwargs
         Passed to :meth:`.zernike_sum()`.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The phase for this function.
@@ -773,9 +768,8 @@ def zernike(grid, index, weight=1, **kwargs):
     return zernike_sum(grid, (int(index),), (float(weight),), **kwargs)
 
 
-def zernike_get_string(index, derivative=(0, 0)):
-    r"""
-    Returns a :math:`\LaTeX` string corresponding to the cartesian representation of the
+def zernike_get_string(index: int, derivative: tuple[int, int] = (0, 0)) -> str:
+    r"""Returns a :math:`\LaTeX` string corresponding to the cartesian representation of the
     Zernike polynomial of the given index. The monomials are sorted in reverse Cantor order.
 
     Parameters
@@ -791,7 +785,7 @@ def zernike_get_string(index, derivative=(0, 0)):
 
     # Sum the monomial terms together.
     for i, w in zip(reversed(range(len(cw))), reversed(cw[:, 0])):
-        result += "{0:+}".format(int(w))
+        result += f"{int(w):+}"
 
         for j, n in enumerate(["x", "y"]):
             if cxy[i, j] >= 1:
@@ -806,7 +800,7 @@ def zernike_get_string(index, derivative=(0, 0)):
     return result.strip("+")  # Remove potential leading +
 
 
-def _zernike_get_cantor(indices, weights, derivative=(0, 0)):
+def _zernike_get_cantor(indices, weights, derivative: tuple[int, int] = (0, 0)):
     indices = np.array(indices)
     weights = np.array(weights)
 
@@ -878,10 +872,8 @@ def _zernike_get_cantor(indices, weights, derivative=(0, 0)):
     return final_pairing, final_weights
 
 
-def _zernike_indices_parse(indices=None, D=None, smaller_okay=False):
-    """
-    Parse Zernike indices applied to data expecting size D.
-    """
+def _zernike_indices_parse(indices=None, D=None, smaller_okay: bool = False) -> np.ndarray:
+    """Parse Zernike indices applied to data expecting size D."""
     # Deal with the scalar case: a request for DD indices.
     if np.isscalar(indices):
         DD = int(indices)
@@ -913,15 +905,16 @@ def _zernike_indices_parse(indices=None, D=None, smaller_okay=False):
     indices = np.ravel(indices)
     if indices.ndim == 0:
         indices = np.array([indices])
-    if D is not None and not ((smaller_okay and D <= len(indices)) or D == len(indices)):
+    if D is not None and not ((smaller_okay and len(indices) >= D) or len(indices) == D):
         raise ValueError(f"Expected data (dimension {D}) to have common size with indices (length {len(indices)}).")
 
     return indices
 
 
-def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative=(0, 0), out=None):
-    r"""
-    Returns a summation of
+def zernike_sum(
+    grid, indices, weights, aperture=None, use_mask=True, derivative: tuple[int, int] = (0, 0), out=None
+) -> np.ndarray:
+    r"""Returns a summation of
     `Zernike polynomials <https://en.wikipedia.org/wiki/Zernike_polynomials>`_
     in a computationally-efficient manner.
     These polynomials are commonly used as an orthonormal basis for optical aberration
@@ -935,7 +928,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     ``indices`` of the polynomials and
     :math:`w_k` are the floating point ``weights`` of each polynomial.
 
-    Important
+    Important:
     ~~~~~~~~~
     These polynomials :math:`Z_j` are normalized within the edge of a standard
     Zernike pupil to a peak-to-valley amplitude of 2, corresponding to :math:`\pm 1` for all
@@ -944,7 +937,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     This should be used carefully, as polynomials outside the unit circle quickly explode with
     :math:`r^O` for terms of order :math:`O`.
 
-    Tip
+    Tip:
     ~~~
     See the below example to generate
     :math:`Z_1 - Z_2 + Z_4 = Z_1^{-1} - Z_1^1 + Z_2^0`,
@@ -966,7 +959,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     To improve performance, especially for higher order polynomials,
     we store a cache of Zernike coefficients to avoid regeneration.
 
-    Tip
+    Tip:
     ~~~
     slmsuite uses `ANSI
     <https://en.wikipedia.org/wiki/Zernike_polynomials#OSA/ANSI_standard_indices>`_
@@ -1008,7 +1001,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
         Determines how the Zernike polynomials are laterally scaled.
         Parsed with :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`.
 
-        Important
+    Important:
         ~~~~~~~~~
         Read the documentation and tips in
         :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`
@@ -1030,7 +1023,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     out : array_like OR None
         Memory to be used for the phase output. Allocated separately if ``None``.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The phase for this function. Optionally returns the 2D Zernike mask.
@@ -1121,10 +1114,9 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
 
 
 def zernike_pyramid_plot(
-    grid, order, scale=1, titles=["ansi", "radial", "latex", "name"], cmap="twilight_shifted", noborder=False, **kwargs
-):
-    r"""
-    Plots :meth:`.zernike()` on a pyramid of subplots corresponding to the radial and
+    grid, order: int, scale: float = 1, titles=None, cmap: str = "twilight_shifted", noborder: bool = False, **kwargs
+) -> None:
+    r"""Plots :meth:`.zernike()` on a pyramid of subplots corresponding to the radial and
     azimuthal order. The user can resize the figure with ``plt.figure()`` beforehand
     and force ``plt.show()`` afterward.
 
@@ -1153,10 +1145,12 @@ def zernike_pyramid_plot(
     **kwargs
         Passed to :meth:`.zernike()`.
     """
+    if titles is None:
+        titles = ["ansi", "radial", "latex", "name"]
     order = int(order + 1)
     indices_ansi = np.arange((order * (order + 1)) // 2)
     indices_radial = zernike_convert_index(indices_ansi, from_index="ansi", to_index="radial")
-    derivative = kwargs["derivative"] if "derivative" in kwargs else (0, 0)
+    derivative = kwargs.get("derivative", (0, 0))
 
     # Get the pitch of the subplots for later.
     a1 = plt.subplot(order, order, 1)
@@ -1225,9 +1219,10 @@ def zernike_pyramid_plot(
         a.set_position(box)
 
 
-def _zernike_overlap(grid, indices, aperture=None, use_mask=True):
-    r"""
-    **(Incomplete)**
+def _zernike_overlap(
+    grid, indices, aperture: str | tuple[float, float] | float | None = None, use_mask: bool = True
+) -> np.ndarray | list:
+    r"""**(Incomplete)**
 
     Computes the overlaps
 
@@ -1266,7 +1261,7 @@ def _zernike_overlap(grid, indices, aperture=None, use_mask=True):
     return result
 
 
-def _zernike_cache_plot():
+def _zernike_cache_plot() -> None:
     plt.figure(figsize=(10, 10))
     plt.imshow(np.log2(_zernike_cache_vectorized))
     plt.ylabel("Zernike Index (ANSI)")
@@ -1280,29 +1275,28 @@ _zernike_cache = {}
 _zernike_cache_vectorized = np.array([[]], dtype=int)
 
 
-def _zernike_build_order(n):
+def _zernike_build_order(n: int) -> None:
     """Pre-caches Zernike polynomial coefficients up to order :math:`n`."""
     N = (n + 1) * (n + 2) // 2
     for i in range(N):
         _zernike_coefficients(i)
 
 
-def _zernike_build_indices(indices):
+def _zernike_build_indices(indices) -> None:
     """Pre-caches Zernike polynomial coefficients up to order :math:`n`."""
     for i in indices:
         _zernike_coefficients(i)
 
 
-def _zernike_coefficients(index):
-    """
-    Returns the coefficients for the :math:`x^ay^b` terms of the real Zernike polynomial
+def _zernike_coefficients(index: int) -> None:
+    """Returns the coefficients for the :math:`x^ay^b` terms of the real Zernike polynomial
     of ANSI index ``i``. This is returned as a dictionary of form ``{(a,b) : coefficient}``.
     Uses `this algorithm <https://doi.org/10.1117/12.294412>`_.
     """
     index = int(index)
 
     # Generate coefficients only if we have not already generated.
-    if not index in _zernike_cache:
+    if index not in _zernike_cache:
         zernike_this = {}
 
         (n, l) = zernike_convert_index(index, to_index="radial")[0]
@@ -1371,11 +1365,7 @@ def _zernike_coefficients(index):
     return _zernike_cache[index]
 
 
-def _zernike_populate_basis_map(indices):
-    """
-    This generates helper maps ``c_md``, ``i_md``, ``pxy_m`` for use in GPU kernels
-    (see ``populate_basis`` in cuda.cu).
-    """
+def _zernike_populate_basis_map(indices) -> tuple:
     indices = np.squeeze(indices)
     D = len(indices)
 
@@ -1424,7 +1414,7 @@ except:
     _zernike_test_kernel = None
 
 
-def _zernike_test(grid, indices):
+def _zernike_test(grid, indices) -> np.ndarray:
     _zernike_test_kernel = cp.RawKernel(_load_cuda(), "zernike_test")
     _zernike_test_kernel.compile()
 
@@ -1475,18 +1465,16 @@ def _zernike_test(grid, indices):
 # Polynomials.
 
 
-def _cantor_pairing(xy):
-    """
-    Converts a 2D index to a unique 1D index according to the
+def _cantor_pairing(xy) -> np.ndarray:
+    """Converts a 2D index to a unique 1D index according to the
     `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
     """
     xy = np.array(xy, dtype=int, copy=(False if np.__version__[0] == "1" else None)).reshape((-1, 2))
     return np.rint(0.5 * (xy[:, 0] + xy[:, 1]) * (xy[:, 0] + xy[:, 1] + 1) + xy[:, 1]).astype(int)
 
 
-def _inverse_cantor_pairing(z):
-    """
-    Converts a 1D index to a unique 2D index according to the
+def _inverse_cantor_pairing(z) -> np.ndarray:
+    """Converts a 1D index to a unique 2D index according to the
     `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
 
     Returns shape ``(D, 2)``
@@ -1508,9 +1496,8 @@ def _inverse_cantor_pairing(z):
     return np.vstack((x, y)).T
 
 
-def _term_pathing(xy):
-    """
-    Returns the index for term sorting to minimize number of monomial multiplications when summing
+def _term_pathing(xy) -> np.ndarray:
+    """Returns the index for term sorting to minimize number of monomial multiplications when summing
     polynomials (with only one storage variable).
 
     It may be the case that division could yield a shorter path, but division is
@@ -1526,7 +1513,7 @@ def _term_pathing(xy):
     xy : array_like
         Array of shape ``(M, 2)``.
 
-    Returns
+    Returns:
     -------
     I : numpy.ndarray
         Array of shape ``(M,)``. Best coefficient order.
@@ -1575,10 +1562,8 @@ def _term_pathing(xy):
     return I
 
 
-def _parse_out(x_grid, out, stack=1):
-    """
-    Helper function to error check the shape and type of ``out``.
-    """
+def _parse_out(x_grid: np.ndarray, out: np.ndarray | None, stack: int = 1) -> np.ndarray:
+    """Helper function to error check the shape and type of ``out``."""
     shape = tuple(np.concatenate(([stack], x_grid.shape)))
 
     if out is None:
@@ -1601,9 +1586,8 @@ def _parse_out(x_grid, out, stack=1):
         return out.reshape(shape)
 
 
-def polynomial(grid, weights, terms=None, pathing=None, out=None):
-    r"""
-    Returns a summation of monomials. Specifically,
+def polynomial(grid, weights, terms=None, pathing=None, out=None) -> np.ndarray:
+    r"""Returns a summation of monomials. Specifically,
 
     .. math:: \phi(x, y) = \sum_{n,m \in T} w_{nm}x^ny^m
 
@@ -1632,7 +1616,7 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
     out : numpy.ndarray OR cupy.ndarray
         A location where the result is stored. Use this to avoid allocating new memory.
 
-    Returns
+    Returns:
     -------
     out : numpy.ndarray OR cupy.ndarray
         Result of the sum.
@@ -1646,7 +1630,7 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
         terms = _inverse_cantor_pairing(terms)
 
     if terms.shape[1] != 2:
-        raise ValueError("Terms must be of shape (D, 2) or (D,). Found {}.".format(terms.shape))
+        raise ValueError(f"Terms must be of shape (D, 2) or (D,). Found {terms.shape}.")
 
     D = terms.shape[0]
 
@@ -1730,9 +1714,8 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
 # Structured light.
 
 
-def _determine_source_radius(grid, w=None):
-    r"""
-    Helper function to determine the assumed Gaussian source :math:`1/e` amplitude
+def _determine_source_radius(grid, w=None) -> float:
+    r"""Helper function to determine the assumed Gaussian source :math:`1/e` amplitude
     radius (:math:`1/e^2` power radius) for various
     structured light conversion functions. This is important because structured light
     conversions need knowledge of the size of the incident Gaussian beam.
@@ -1755,7 +1738,7 @@ def _determine_source_radius(grid, w=None):
         :meth:`slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`.
         If ``w`` is left as ``None``, ``w`` is set to a quarter of the smallest normalized screen dimension.
 
-    Returns
+    Returns:
     -------
     w : float
         Determined radius. In normalized units.
@@ -1772,20 +1755,19 @@ def _determine_source_radius(grid, w=None):
     return np.min([np.amax(x_grid), np.amax(y_grid)]) / 4
 
 
-def laguerre_gaussian(grid, l, p=0, w=None):
-    r"""
-    Returns the phase farfield for a
+def laguerre_gaussian(grid, l: int, p: int = 0, w: float | None = None) -> np.ndarray:
+    r"""Returns the phase farfield for a
     `Laguerre-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Laguerre-Gaussian_modes>`_
     beam. Uses the formalism described by
     `this paper <https://doi.org/10.1364/JOSAA.25.001642>`_.
 
-    Note
+    Note:
     ~~~~
     Without radial order (``p = 0``), this function distills to a
     `vortex waveplate <https://en.wikipedia.org/wiki/Optical_vortex>`_
     of given azimuthal order ``l``.
 
-    Tip
+    Tip:
     ~~~
     This function is especially useful to hone and validate SLM alignment. Perfect alignment will
     result in concentric and uniform fringes for higher order beams. Focusing issues, aberration,
@@ -1805,7 +1787,7 @@ def laguerre_gaussian(grid, l, p=0, w=None):
     w : float OR None
         See :meth:`~slmsuite.holography.toolbox._determine_source_radius()`.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The phase for this function.
@@ -1827,9 +1809,8 @@ def laguerre_gaussian(grid, l, p=0, w=None):
     return canvas
 
 
-def hermite_gaussian(grid, n, m, w=None):
-    r"""
-    Returns the phase farfield for a
+def hermite_gaussian(grid, n: int, m: int, w: float | None = None) -> np.ndarray:
+    r"""Returns the phase farfield for a
     `Hermite-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Hermite-Gaussian_modes>`_
     beam. Uses the formalism described by `this paper <https://doi.org/10.1364/AO.54.008444>`_.
 
@@ -1846,7 +1827,7 @@ def hermite_gaussian(grid, n, m, w=None):
     w : float
         See :meth:`~slmsuite.holography.toolbox._determine_source_radius()`.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The phase for this function.
@@ -1868,9 +1849,8 @@ def hermite_gaussian(grid, n, m, w=None):
     return phase
 
 
-def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
-    r"""
-    **(NotImplemented)** Returns the phase farfield for an
+def ince_gaussian(grid, p: int, m: int, parity: int = 1, ellipticity: float = 1, w: float | None = None) -> None:
+    r"""**(NotImplemented)** Returns the phase farfield for an
     `Ince-Gaussian <https://en.wikipedia.org/wiki/Gaussian_beam#Ince-Gaussian_modes>`_
     beam.
     `Consider <https://doi.org/10.1364/OL.29.000144>`_
@@ -1901,7 +1881,7 @@ def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
     w : float
         See :meth:`~slmsuite.holography.toolbox._determine_source_radius()`.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The phase for this function.
@@ -1911,10 +1891,10 @@ def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
 
     if parity == 1:
         if not 0 <= m <= p:
-            raise ValueError("{} is an invalid Ince polynomial.".format((p, m)))
+            raise ValueError(f"{(p, m)} is an invalid Ince polynomial.")
     else:
         if not 1 <= m <= p:
-            raise ValueError("{} is an invalid Ince polynomial.".format((p, m)))
+            raise ValueError(f"{(p, m)} is an invalid Ince polynomial.")
 
     complex_grid = x_grid + 1j * y_grid
 
@@ -1922,15 +1902,14 @@ def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
 
     elliptic_grid = np.arccosh(complex_grid * factor)
 
-    raise NotImplementedError()
+    raise NotImplementedError
 
 
-def matheui_gaussian(grid, r, q, w=None):
-    """
-    **(NotImplemented)** Returns the phase farfield for a
+def matheui_gaussian(grid, r: int, q: int, w: float | None = None) -> None:
+    """**(NotImplemented)** Returns the phase farfield for a
     `Matheui-Gaussian <https://doi.org/10.1364/AO.49.006903>`_ beam.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The phase for this function.
@@ -1938,12 +1917,11 @@ def matheui_gaussian(grid, r, q, w=None):
     (x_grid, y_grid) = _process_grid(grid)
     w = _determine_source_radius(grid, w)
 
-    raise NotImplementedError()
+    raise NotImplementedError
 
 
-def airy(grid, f=(np.inf, np.inf)):
-    """
-    **(NotImplemented)** Returns the cubic phase farfield for an
+def airy(grid, f: tuple[float, float] = (np.inf, np.inf)) -> None:
+    """**(NotImplemented)** Returns the cubic phase farfield for an
     `Airy <http://dx.doi.org/10.1103/PhysRevLett.99.213901>`_ beam.
 
     Maybe also
@@ -1953,7 +1931,7 @@ def airy(grid, f=(np.inf, np.inf)):
     `circular symmetric Airy <https://doi.org/10.1016/j.optcom.2020.126190>`_
     beams.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The phase for this function.
@@ -1961,4 +1939,4 @@ def airy(grid, f=(np.inf, np.inf)):
     (x_grid, y_grid) = _process_grid(grid)
     w = _determine_source_radius(grid, w)
 
-    raise NotImplementedError()
+    raise NotImplementedError

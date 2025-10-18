@@ -1,5 +1,4 @@
-"""
-Provides a TCPIP client-server interface to control remote hardware.
+"""Provides a TCPIP client-server interface to control remote hardware.
 Interface with a :class:`~slmsuite.hardware.remote.Server` using
 :class:`~slmsuite.hardware.slms.remote.RemoteSLM` and
 :class:`~slmsuite.hardware.cameras.remote.RemoteCamera`.
@@ -7,7 +6,7 @@ Under the hood, this uses :mod:`json` formatting with
 :mod:`zlib` compression used for any :mod:`numpy` data, including especially
 megapixel phase masks and megapixel camera images.
 
-Danger
+Danger:
 ~~~~~~
 This interface will operate best in a secure and trusted local network.
 Hosting a server on a public IP raises some risk of tampering
@@ -23,7 +22,7 @@ to also include whatever hardware-specific functionality is
 implemented. Moreover, CameraSLMs could be hosted on a server such that system
 calibrations could live in the cloud.
 
-Example
+Example:
 ~~~~~~~
 The following is a simple example of a setup communicating between two
 threads---for example, two Jupyter notebooks---on the same computer (via ``localhost:5025``).
@@ -72,18 +71,21 @@ The client connects to this hardware:
     cam.plot()
 """
 
-import numpy as np
-import socket, sys, json, time
-import warnings
-import urllib.parse as urllib
-from datetime import date, datetime, timedelta
-import traceback
-from typing import Any, List, Tuple, Dict
-import zlib
 import base64
+import json
+import socket
+import time
+import traceback
+import urllib.parse as urllib
+import warnings
+import zlib
+from datetime import date, datetime, timedelta
+from typing import Any
 
-from slmsuite.hardware import _Picklable
+import numpy as np
+
 from slmsuite import __version__
+from slmsuite.hardware import _Picklable
 
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 5025  # Commonly used for instrument control.
@@ -94,10 +96,8 @@ _delim = "\n"
 
 
 # Common functions for encoding and decoding data.
-def _recurse_decompress(msg):
-    """
-    Recursively decompresses the result of json serialization.
-    """
+def _recurse_decompress(msg) -> dict | list | np.ndarray | np.dtype | str | int | float | bool:
+    """Recursively decompresses the result of json serialization."""
     if isinstance(msg, dict):
         if "__zlib__" in msg and len(msg) == 3:
             return np.frombuffer(
@@ -130,7 +130,7 @@ class _NpEncoder(json.JSONEncoder):
                 "__shape__": obj.shape,
                 "__dtype__": str(obj.dtype),
             }
-        if isinstance(obj, np.string_):
+        if isinstance(obj, np.bytes_):
             return str(obj)
         if isinstance(obj, (datetime, date)):
             return obj.isoformat()
@@ -138,11 +138,11 @@ class _NpEncoder(json.JSONEncoder):
             return str(obj)
         if isinstance(obj, np.dtype):
             return {"__dtype__": str(obj)}
-        return super(_NpEncoder, self).default(obj)
+        return super().default(obj)
 
 
 # Common function to receive data from a socket.
-def _recv(sock, timeout):
+def _recv(sock, timeout: float):
     recv_buffer = 4096 * 64
     buffer = ""
     t = time.time()
@@ -165,19 +165,16 @@ def _recv(sock, timeout):
 
 # Server which hosts slmsuite hardware.
 class Server:
-    """
-    Server for handling client commands and interfacing with hardware.
-    """
+    """Server for handling client commands and interfacing with hardware."""
 
     def __init__(
         self,
-        hardware: List[object],
+        hardware: list[object],
         port: int = DEFAULT_PORT,
         timeout: float = SERVER_WAIT_TIMEOUT,
-        allowlist: List[str] = None,
+        allowlist: list[str] = None,
     ):
-        """
-        Initializes a server to host slmsuite hardware: cameras and SLMs.
+        """Initializes a server to host slmsuite hardware: cameras and SLMs.
         Interface with this server using
         :class:`~slmsuite.hardware.slms.remote.RemoteSLM` and
         :class:`~slmsuite.hardware.cameras.remote.RemoteCamera`.
@@ -229,8 +226,7 @@ class Server:
         ]
 
     def listen(self, verbose: bool = True):
-        """
-        Blocking command to listen for client commands and process them once they are
+        """Blocking command to listen for client commands and process them once they are
         given.
 
         :param verbose:
@@ -279,7 +275,7 @@ class Server:
 
                     connection.sendall(reply)
                     connection.close()
-                except IOError as e:
+                except OSError as e:
                     # This is a timeout error. Just continue.
                     pass
                 except Exception as e:
@@ -306,10 +302,8 @@ class Server:
             sock.close()
             raise e
 
-    def _handle(self, message: str, client_addr: str = None, verbose: bool = False) -> Tuple[bool, Any]:
-        """
-        Handle a message from a client.
-        """
+    def _handle(self, message: str, client_addr: str = None, verbose: bool = False) -> tuple[bool, Any]:
+        """Handle a message from a client."""
         try:
             name = message.pop("name", None)
             command = message.pop("command", None)
@@ -329,7 +323,7 @@ class Server:
                 return True, self.kind
 
             # Make sure that the hardware exists.
-            if not name in self.hardware:
+            if name not in self.hardware:
                 return False, f"Did not recognize hardware '{name}'. Options: {list(self.hardware.keys())}."
 
             if command in self.allowcommands and hasattr(self.hardware[name], command):
@@ -346,9 +340,7 @@ class Server:
 
 # Abstract client which connects to a server.
 class _Client(_Picklable):
-    """
-    Client for interfacing with a slmsuite server.
-    """
+    """Client for interfacing with a slmsuite server."""
 
     def __init__(
         self,
@@ -358,9 +350,7 @@ class _Client(_Picklable):
         port: int = DEFAULT_PORT,
         timeout: float = DEFAULT_TIMEOUT,
     ):
-        """
-        Superclass constructor. See RemoteSLM and RemoteCamera for more information.
-        """
+        """Superclass constructor. See RemoteSLM and RemoteCamera for more information."""
         self.name = name
         self.host = host
         self.port = port
@@ -368,7 +358,7 @@ class _Client(_Picklable):
 
         hardware = self._com(command="ping")
 
-        if not self.name in hardware:
+        if self.name not in hardware:
             raise ValueError(f"Hardware '{self.name}' is not present at {self.host}:{self.port}. Options: {hardware}.")
         if hardware[self.name] != kind:
             raise ValueError(f"Hardware '{self.name}' is not a {kind} at {self.host}:{self.port}.")
@@ -447,9 +437,8 @@ class _Client(_Picklable):
         port: int = DEFAULT_PORT,
         timeout: float = DEFAULT_TIMEOUT,
         verbose: bool = True,
-    ) -> Dict[str, str]:
-        """
-        Looks to see if a slmsuite server is active at the given host and port.
+    ) -> dict[str, str]:
+        """Looks to see if a slmsuite server is active at the given host and port.
 
         :param verbose:
             Whether to print the discovered information.

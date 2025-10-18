@@ -1,5 +1,4 @@
-"""
-Utilities for interfacing with files.
+"""Utilities for interfacing with files.
 This includes helper functions for naming directories without conflicts, and convenience
 wrappers for file writing. :mod:`slmsuite` uses the
 `HDF5 filetype <https://hdfgroup.org/solutions/hdf5>`_
@@ -10,23 +9,29 @@ This uses the :mod:`h5py` `module <https://h5py.org>`_.
 """
 
 import os
+import pathlib
 import re
 import warnings
+from typing import Any
 
-import h5py
-import numpy as np
 import cv2
-import scipy.ndimage as ndimage
+import h5py
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import numpy as np
+import scipy.ndimage as ndimage
 
-from slmsuite.holography.analysis import _make_8bit
 from slmsuite.holography.toolbox import pad
 
 
-def _max_numeric_id(path, name, extension=None, kind="file", digit_count=5):
-    """
-    Obtains the maximum numeric identifier ``id`` for the
+def _max_numeric_id(
+    path: str,
+    name: str,
+    extension: str | None = None,
+    kind: str = "file",
+    digit_count: int = 5,
+) -> int:
+    """Obtains the maximum numeric identifier ``id`` for the
     directory or file like ``path/name_id.extension``.
 
     Parameters
@@ -42,7 +47,7 @@ def _max_numeric_id(path, name, extension=None, kind="file", digit_count=5):
     digit_count
         See :meth:`generate_path`.
 
-    Returns
+    Returns:
     -------
     max_numeric_id : int
          The maximum numeric identifier of the specified object or -1 if no object with
@@ -51,23 +56,29 @@ def _max_numeric_id(path, name, extension=None, kind="file", digit_count=5):
     # Search all objects in path for conflicts.
     conflict_regex = "{}_{}{}{}".format(name, r"\d{", digit_count, r"}")
     if extension is not None and kind == "file":
-        conflict_regex = "{}.{}".format(conflict_regex, extension)
+        conflict_regex = f"{conflict_regex}.{extension}"
     max_numeric_id = -1
     for name_ in os.listdir(path):
         # Check current object for conflict.
         conflict = re.search(conflict_regex, name_) is not None
         # Get numeric identifier from conflicting object.
         if conflict:
-            suffix = name_.split("{}_".format(name))[1]
+            suffix = name_.split(f"{name}_")[1]
             numeric_id = int(suffix[:digit_count])
             max_numeric_id = max(numeric_id, max_numeric_id)
 
     return max_numeric_id
 
 
-def generate_path(path, name, extension=None, kind="file", digit_count=5, path_count=1):
-    """
-    Generate a file path like ``path/name_id.extension``
+def generate_path(
+    path: str,
+    name: str,
+    extension: str | None = None,
+    kind: str = "file",
+    digit_count: int = 5,
+    path_count: int = 1,
+) -> str | list[str]:
+    """Generate a file path like ``path/name_id.extension``
     or a directory path like ``path/name_id``
     where ``id`` is a unique numeric identifier.
 
@@ -90,30 +101,30 @@ def generate_path(path, name, extension=None, kind="file", digit_count=5, path_c
     path_count : int
         The number of paths to create. Currently only applicable to file creation.
 
-    Returns
+    Returns:
     -------
     file_path : str or list of str
         The full path or paths requested.
 
-    Notes
+    Notes:
     -----
     This function is not thread safe.
     """
     path = os.path.abspath(path)
     # Ensure path exists.
-    os.makedirs(path, exist_ok=True)
+    pathlib.Path(path).mkdir(exist_ok=True, parents=True)
 
     # Create the name
     max_numeric_id = _max_numeric_id(path, name, extension=extension, kind=kind, digit_count=digit_count)
-    name_format = "{{}}_{{:0{}d}}".format(digit_count)
+    name_format = f"{{}}_{{:0{digit_count}d}}"
     name_augmented = name_format.format(name, max_numeric_id + 1)
     if extension is not None and kind == "file":
-        name_augmented = "{}.{}".format(name_augmented, extension)
+        name_augmented = f"{name_augmented}.{extension}"
     name_augmented = os.path.join(path, name_augmented)
 
     # If it's a directory, create it.
     if kind == "dir":
-        os.makedirs(name_augmented)
+        pathlib.Path(name_augmented).mkdir(parents=True)
 
     ret = None
     if path_count == 1:
@@ -123,7 +134,7 @@ def generate_path(path, name, extension=None, kind="file", digit_count=5, path_c
         for path_idx in range(path_count):
             name_augmented = name_format.format(name, max_numeric_id + 1 + path_idx)
             if extension is not None and kind == "file":
-                name_augmented = "{}.{}".format(name_augmented, extension)
+                name_augmented = f"{name_augmented}.{extension}"
             name_augmented = os.path.join(path, name_augmented)
             ret.append(name_augmented)
         # ENDFOR
@@ -132,9 +143,14 @@ def generate_path(path, name, extension=None, kind="file", digit_count=5, path_c
     return ret
 
 
-def latest_path(path, name, extension=None, kind="file", digit_count=5):
-    """
-    Obtains the path for the file or directory in ``path`` like ``path/name_id``
+def latest_path(
+    path: str,
+    name: str,
+    extension: str | None = None,
+    kind: str = "file",
+    digit_count: int = 5,
+) -> str | None:
+    """Obtains the path for the file or directory in ``path`` like ``path/name_id``
     where ``id`` is the greatest identifier in ``path`` for the given ``name``.
 
     Parameters
@@ -150,7 +166,7 @@ def latest_path(path, name, extension=None, kind="file", digit_count=5):
     digit_count
         See :meth:`generate_path`.
 
-    Returns
+    Returns:
     -------
     file_path : str or None
         The path requested. ``None`` if no file could be found.
@@ -158,23 +174,22 @@ def latest_path(path, name, extension=None, kind="file", digit_count=5):
     ret = None
     max_numeric_id = _max_numeric_id(path, name, extension=extension, kind=kind, digit_count=digit_count)
     if max_numeric_id != -1:
-        name_format = "{{}}_{{:0{}d}}".format(digit_count)
+        name_format = f"{{}}_{{:0{digit_count}d}}"
         name_augmented = name_format.format(name, max_numeric_id)
         if extension is not None and kind == "file":
-            name_augmented = "{}.{}".format(name_augmented, extension)
+            name_augmented = f"{name_augmented}.{extension}"
         ret = os.path.join(path, name_augmented)
 
     return ret
 
 
-def read_h5(file_path, decode_bytes=True):
+def read_h5(file_path: str, decode_bytes: bool = True) -> dict[str, Any]:
     """Backwards-compatible alias of :meth:`load_h5`"""
     return load_h5(file_path, decode_bytes)
 
 
-def load_h5(file_path, decode_bytes=True):
-    """
-    Read data from an h5 file into a dictionary.
+def load_h5(file_path: str, decode_bytes: bool = True) -> dict[str, Any]:
+    """Read data from an h5 file into a dictionary.
     In the case of more complicated h5 hierarchy, a dictionary of dictionaries is returned.
 
     Parameters
@@ -186,7 +201,7 @@ def load_h5(file_path, decode_bytes=True):
         By default HDF5 writes strings as bytes objects; this functionality
         will make strings read back from the file ``str`` type.
 
-    Returns
+    Returns:
     -------
     data : dict
         Dictionary of the data stored in the file.
@@ -217,17 +232,16 @@ def load_h5(file_path, decode_bytes=True):
     return data
 
 
-def write_h5(file_path, data, mode="w"):
+def write_h5(file_path: str, data: dict[str, Any], mode: str = "w") -> None:
     """Backwards-compatible alias of :meth:`save_h5`"""
     return save_h5(file_path, data, mode)
 
 
-def save_h5(file_path, data, mode="w"):
-    """
-    Write data in a dictionary to an `h5 file
+def save_h5(file_path: str, data: dict[str, Any], mode: str = "w") -> None:
+    """Write data in a dictionary to an `h5 file
     <https://docs.h5py.org/en/stable/high/file.html#opening-creating-files>`_.
 
-    Note
+    Note:
     ~~~~
     There are some limitations to what the h5 file standard can store, along with
     limitations on what is currently implemented in this function.
@@ -267,8 +281,8 @@ def save_h5(file_path, data, mode="w"):
                     array = np.array(data[key])
                 except ValueError as e:
                     raise ValueError(
-                        "save_h5() does not support saving staggered arrays such as {}. "
-                        "Arrays must be uniform. {}".format(str(data[key]), str(e))
+                        f"save_h5() does not support saving staggered arrays such as {data[key]!s}. "
+                        f"Arrays must be uniform. {e!s}"
                     )
                 except Exception as e:
                     raise e
@@ -282,13 +296,19 @@ def save_h5(file_path, data, mode="w"):
         recurse(file_, data)
 
 
-def _load_image(path, shape, target_shape=None, angle=0, shift=(-225, -170)):
+def _load_image(
+    path: str,
+    shape: tuple[int, int],
+    target_shape: tuple[int, int] | None = None,
+    angle: float = 0,
+    shift: tuple[int, int] = (-225, -170),
+) -> np.ndarray:
     """Helper function for examples."""
     # Load the image.
     img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
 
     if img is None:
-        raise ValueError("Image not found at path '{}'".format(path))
+        raise ValueError(f"Image not found at path '{path}'")
 
     # Invert if necessary such that the majority of the image is dark.
     if np.mean(img) > np.mean(cv2.bitwise_not(img)):
@@ -311,12 +331,17 @@ def _load_image(path, shape, target_shape=None, angle=0, shift=(-225, -170)):
     return target_ij
 
 
-def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
-    """
-    Currently-hidden function to convert a stack of
+def _gray2rgb(
+    images: np.ndarray | list[np.ndarray],
+    cmap: bool | str = False,
+    lut: int | None = None,
+    normalize: bool = True,
+    border: int | list[int] | None = None,
+) -> np.ndarray:
+    """Currently-hidden function to convert a stack of
     grayscale images to color with a colormap.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The converted images. This is of size ``(image_count, h, w, 4)``,
@@ -401,9 +426,16 @@ def _gray2rgb(images, cmap=False, lut=None, normalize=True, border=None):
     return images
 
 
-def save_image(file_path, images, cmap=False, lut=None, normalize=True, border=None, **kwargs):
-    """
-    Save a grayscale image or stacks of grayscale images
+def save_image(
+    file_path: str,
+    images: np.ndarray | list[np.ndarray],
+    cmap: bool | str = False,
+    lut: int | None = None,
+    normalize: bool = True,
+    border: int | list[int] | None = None,
+    **kwargs: Any,
+) -> None:
+    """Save a grayscale image or stacks of grayscale images
     as a filetype supported by :mod:`imageio`.
     Handles :mod:`matplotlib` colormapping.
     Negative values are truncated to zero.
@@ -437,11 +469,11 @@ def save_image(file_path, images, cmap=False, lut=None, normalize=True, border=N
     images = _gray2rgb(images, cmap=cmap, lut=lut, normalize=normalize, border=border)
 
     # Determine the file format
-    extension = file_path.split(".")[-1]
+    extension = file_path.rsplit(".", maxsplit=1)[-1]
 
     # Check that imageio is there and write the data
     try:
-        from imageio import mimsave, imsave
+        from imageio import imsave, mimsave
     except:
         raise ValueError("imageio is required for save_image().")
 

@@ -1,17 +1,13 @@
-r"""
-Common fit functions.
-"""
+r"""Common fit functions."""
 
 import numpy as np
 from scipy.special import factorial
 
-
 # 1D
 
 
-def linear(x, m, b):
-    r"""
-    For fitting a line.
+def linear(x: np.ndarray, m: float, b: float) -> np.ndarray:
+    r"""For fitting a line.
 
     .. math:: y(x) = mx + b
 
@@ -24,7 +20,7 @@ def linear(x, m, b):
     b : float
         :math:`y`-intercept of the line.
 
-    Returns
+    Returns:
     -------
     y : numpy.ndarray
         Line evaluated at all ``x``.
@@ -32,9 +28,8 @@ def linear(x, m, b):
     return m * x + b
 
 
-def parabola(x, a, x0, y0):
-    r"""
-    For fitting a parabola.
+def parabola(x: np.ndarray, a: float, x0: float, y0: float) -> np.ndarray:
+    r"""For fitting a parabola.
 
     .. math:: y(x) = a(x - x_0)^2 + y_0
 
@@ -49,7 +44,7 @@ def parabola(x, a, x0, y0):
     y0 : float
         :math:`y` position of the vertex.
 
-    Returns
+    Returns:
     -------
     y : numpy.ndarray
         Line evaluated at all ``x``.
@@ -57,9 +52,8 @@ def parabola(x, a, x0, y0):
     return a * np.square(x - x0) + y0
 
 
-def hyperbola(z, w0, z0, zr):
-    r"""
-    For fitting a hyperbola.
+def hyperbola(z: np.ndarray, w0: float, z0: float, zr: float) -> np.ndarray:
+    r"""For fitting a hyperbola.
 
     .. math:: w(z) = w_0 \sqrt{1 + \left[\frac{z - z_0}{z_R}\right]^2}.
 
@@ -74,7 +68,7 @@ def hyperbola(z, w0, z0, zr):
     zr : float
         Rayleigh length :math:`z_R`, the depth of focus.
 
-    Returns
+    Returns:
     -------
     w : numpy.ndarray
         Hyperbola evaluated at all ``z``.
@@ -82,9 +76,8 @@ def hyperbola(z, w0, z0, zr):
     return w0 * np.sqrt(1 + np.square((z - z0) / zr))
 
 
-def cos(x, b, a, c, k=1):
-    r"""
-    For fitting an offset sinusoid.
+def cos(x: np.ndarray, b: float, a: float, c: float, k: float = 1) -> np.ndarray:
+    r"""For fitting an offset sinusoid.
 
     .. math:: y(x) = c + \frac{a}{2} \left[1+\cos(kx-b) \right].
 
@@ -101,7 +94,7 @@ def cos(x, b, a, c, k=1):
     k : float
         Phase scale factor. Default is 1.
 
-    Returns
+    Returns:
     -------
     y : numpy.ndarray
         Cosine fit evaluated at all ``x``.
@@ -109,9 +102,8 @@ def cos(x, b, a, c, k=1):
     return a * 0.5 * (1 + np.cos(k * x - b)) + c
 
 
-def lorentzian(x, x0, a, c, Q):
-    r"""
-    For fitting a resonance.
+def lorentzian(x: np.ndarray, x0: float, a: float, c: float, Q: float) -> np.ndarray:
+    r"""For fitting a resonance.
     There are many ways to describe a Lorentzian. Commonly, a full-width-half-maximum
     definition is used. Here, with roots in photonic crystal cavities, we use a
     form defined using the quality factor :math:`Q` of the resonance.
@@ -131,7 +123,7 @@ def lorentzian(x, x0, a, c, Q):
     Q : float
         Quality factor.
 
-    Returns
+    Returns:
     -------
     y : numpy.ndarray
         Lorentzian fit evaluated at all ``x``.
@@ -139,9 +131,8 @@ def lorentzian(x, x0, a, c, Q):
     return a / (1 + ((x - x0) / (x0 / Q / 2)) ** 2) + c
 
 
-def lorentzian_jacobian(x, x0, a, c, Q):
-    """
-    Jacobian of :meth:`lorentzian`.
+def lorentzian_jacobian(x: np.ndarray, x0: float, a: float, c: float, Q: float) -> np.ndarray:
+    """Jacobian of :meth:`lorentzian`.
 
     Parameters
     ----------
@@ -156,7 +147,7 @@ def lorentzian_jacobian(x, x0, a, c, Q):
     Q : float
         Quality factor.
 
-    Returns
+    Returns:
     -------
     gradf : numpy.ndarray
         Jacobian of Lorentzian fit evaluated at all ``x``.
@@ -169,9 +160,8 @@ def lorentzian_jacobian(x, x0, a, c, Q):
     ]).T
 
 
-def gaussian(x, x0, a, c, w):
-    r"""
-    For fitting a 1D Gaussian.
+def gaussian(x: np.ndarray, x0: float, a: float, c: float, w: float) -> np.ndarray:
+    r"""For fitting a 1D Gaussian.
 
     .. math:: y(x) = c + a \exp \left[-\frac{(x-x_0)^2}{2w^2}\right].
 
@@ -191,7 +181,7 @@ def gaussian(x, x0, a, c, w):
         This is related to the full width at half maximum (FWHM)
         by a factor of :math:`2\sqrt{2\ln{2}}`.
 
-    Returns
+    Returns:
     -------
     y : numpy.ndarray
         Gaussian fit evaluated at all ``x``.
@@ -202,9 +192,17 @@ def gaussian(x, x0, a, c, w):
 # 2D
 
 
-def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
-    r"""
-    For fitting a 2D Gaussian.
+def gaussian2d(
+    xy: np.ndarray,
+    x0: float,
+    y0: float,
+    a: float,
+    c: float,
+    wx: float,
+    wy: float,
+    wxy: float = 0,
+) -> np.ndarray:
+    r"""For fitting a 2D Gaussian.
     There are two cases which depend on the shear variance ``wxy``
     (equivalent to :math:`M_{11}`;
     see :meth:`~slmsuite.holography.analysis.image_moment()`).
@@ -250,13 +248,13 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
                 \end{bmatrix}
                 = M^{-1}.
 
-    Caution
+    Caution:
     ~~~~~~~
     The shear variance :math:`w_{xy}` does not have the same units as the widths
     :math:`w_x` and :math:`w_y`. The widths have units of space, whereas the shear
     variance has units of squared space.
 
-    Note
+    Note:
     ~~~~
     The shear variance ``wxy`` is currently bounded to magnitudes below ``wx*wy``.
     Higher values lead to solutions which cannot be normalized.
@@ -281,7 +279,7 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     wxy : float
         Shear variance. See above.
 
-    Returns
+    Returns:
     -------
     z : numpy.ndarray
         Gaussian fit evaluated at all ``(x,y)`` in ``xy``.
@@ -301,9 +299,8 @@ def gaussian2d(xy, x0, y0, a, c, wx, wy, wxy=0):
     return c + a * np.exp(-0.5 * argument)
 
 
-def tophat2d(xy, x0, y0, R, a=1, c=0):
-    r"""
-    For fitting a 2D tophat distribution.
+def tophat2d(xy: np.ndarray, x0: float, y0: float, R: float, a: float = 1, c: float = 0) -> np.ndarray:
+    r"""For fitting a 2D tophat distribution.
 
     .. math:: z(x,y) =  \left\{
                             \begin{array}{ll}
@@ -325,7 +322,7 @@ def tophat2d(xy, x0, y0, R, a=1, c=0):
     c : float
         Offset.
 
-    Returns
+    Returns:
     -------
     z : numpy.ndarray
         Tophat fit evaluated at all ``(x,y)`` in ``xy``.
@@ -335,9 +332,19 @@ def tophat2d(xy, x0, y0, R, a=1, c=0):
     return np.where(np.square(x) + np.square(y) <= R * R, a + c, c)
 
 
-def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
-    r"""
-    For fitting a 2D rectangular :math:`\text{sinc}^2` distribution, potentially with a sinusoidal modulation.
+def sinc2d(
+    xy: np.ndarray,
+    x0: float,
+    y0: float,
+    R: float,
+    a: float = 1,
+    b: float = 0,
+    c: float = 0,
+    d: float = 0,
+    kx: float = 0,
+    ky: float = 0,
+) -> np.ndarray:
+    r"""For fitting a 2D rectangular :math:`\text{sinc}^2` distribution, potentially with a sinusoidal modulation.
 
     .. math:: z(x,y) =  d + \left(c + \frac{a}{2} \left[1+\cos(k_xx+k_yy-b) \right]\right) *
                         \text{sinc}^2(\pi (x-x_0) / R) * \text{sinc}^2(\pi (y-y_0) / R).
@@ -365,7 +372,7 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     kx, ky : float
         Vector phase scale factor. Default is 0.
 
-    Returns
+    Returns:
     -------
     z : numpy.ndarray
         Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
@@ -381,9 +388,8 @@ def sinc2d(xy, x0, y0, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
 # sinc variations
 
 
-def _sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
-    r"""
-    For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
+def _sinc2d_nomod(xy: np.ndarray, x0: float, y0: float, R: float, a: float = 1, d: float = 0) -> np.ndarray:
+    r"""For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
 
     .. math:: z(x,y) =  d + a * \text{sinc}^2(\pi (x-x_0) / R) * \text{sinc}^2(\pi (y-y_0) / R).
 
@@ -404,7 +410,7 @@ def _sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
     d : float
         Global offset.
 
-    Returns
+    Returns:
     -------
     z : numpy.ndarray
         Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
@@ -412,9 +418,8 @@ def _sinc2d_nomod(xy, x0, y0, R, a=1, d=0):
     return a * np.square(np.sinc((1 / R) * (xy[0] - x0)) * np.sinc((1 / R) * (xy[1] - y0))) + d
 
 
-def _sinc2d_nomod_taylor(xy, x0, y0, R, a=1, d=0):
-    r"""
-    For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
+def _sinc2d_nomod_taylor(xy: np.ndarray, x0: float, y0: float, R: float, a: float = 1, d: float = 0) -> np.ndarray:
+    r"""For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
 
     .. math:: z(x,y) =  d + a * \text{sinc}^2(\pi (x-x_0) / R) * \text{sinc}^2(\pi (y-y_0) / R).
 
@@ -435,7 +440,7 @@ def _sinc2d_nomod_taylor(xy, x0, y0, R, a=1, d=0):
     d : float
         Global offset.
 
-    Returns
+    Returns:
     -------
     z : numpy.ndarray
         Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
@@ -443,9 +448,17 @@ def _sinc2d_nomod_taylor(xy, x0, y0, R, a=1, d=0):
     return a * np.square(_sinc_taylor((1 / R) * (xy[0] - x0)) * _sinc_taylor((1 / R) * (xy[1] - y0))) + d
 
 
-def _sinc2d_centered(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
-    r"""
-    For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
+def _sinc2d_centered(
+    xy: np.ndarray,
+    R: float,
+    a: float = 1,
+    b: float = 0,
+    c: float = 0,
+    d: float = 0,
+    kx: float = 0,
+    ky: float = 0,
+) -> np.ndarray:
+    r"""For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
 
     .. math:: z(x,y) =  d + \left(c + \frac{a}{2} \left[1+\cos(k_xx+k_yy-b) \right]\right) *
                         \text{sinc}^2(\pi (x-x_0) / R) * \text{sinc}^2(\pi (y-y_0) / R).
@@ -471,7 +484,7 @@ def _sinc2d_centered(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     kx, ky : float
         Vector phase scale factor. Default is 1.
 
-    Returns
+    Returns:
     -------
     z : numpy.ndarray
         Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
@@ -483,9 +496,17 @@ def _sinc2d_centered(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     )
 
 
-def _sinc2d_centered_taylor(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
-    r"""
-    For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
+def _sinc2d_centered_taylor(
+    xy: np.ndarray,
+    R: float,
+    a: float = 1,
+    b: float = 0,
+    c: float = 0,
+    d: float = 0,
+    kx: float = 0,
+    ky: float = 0,
+) -> np.ndarray:
+    r"""For fitting a 2D rectangular sinc distribution, potentially with a sinusoidal modulation.
 
     .. math:: z(x,y) =  d + \left(c + \frac{a}{2} \left[1+\cos(k_xx+k_yy-b) \right]\right) *
                         \text{sinc}^2(\pi (x-x_0) / R) * \text{sinc}^2(\pi (y-y_0) / R).
@@ -511,7 +532,7 @@ def _sinc2d_centered_taylor(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     kx, ky : float
         Vector phase scale factor. Default is 1.
 
-    Returns
+    Returns:
     -------
     z : numpy.ndarray
         Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.
@@ -523,9 +544,8 @@ def _sinc2d_centered_taylor(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
     )
 
 
-def _sinc_taylor(x, order=12):
-    """
-    Taylor series approximation for sinc. We use the numpy normalization.
+def _sinc_taylor(x: np.ndarray, order: int = 12) -> np.ndarray:
+    """Taylor series approximation for sinc. We use the numpy normalization.
 
     Parameters
     ----------
@@ -546,11 +566,19 @@ def _sinc_taylor(x, order=12):
     return result
 
 
-def _sinc2d_centered_jacobian(xy, R, a=1, b=0, c=0, d=0, kx=0, ky=0):
-    r"""
-    Jacobian of :meth:`.sinc2d_centered()`.
+def _sinc2d_centered_jacobian(
+    xy: np.ndarray,
+    R: float,
+    a: float = 1,
+    b: float = 0,
+    c: float = 0,
+    d: float = 0,
+    kx: float = 0,
+    ky: float = 0,
+) -> np.ndarray:
+    r"""Jacobian of :meth:`.sinc2d_centered()`.
 
-    Returns
+    Returns:
     -------
     z : numpy.ndarray
         Rectangular sinc fit evaluated at all ``(x,y)`` in ``xy``.

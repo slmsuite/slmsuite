@@ -1,16 +1,13 @@
-r"""
-Helper functions for manipulating phase patterns.
-"""
+r"""Helper functions for manipulating phase patterns."""
 
-import numpy as np
-from scipy.spatial import distance
-from scipy.spatial import Voronoi, voronoi_plot_2d
-import cv2
-import matplotlib.pyplot as plt
 import warnings
 
-from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.spatial import Voronoi, distance, voronoi_plot_2d
 
+from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 
 # Unit definitions.
 
@@ -22,7 +19,7 @@ LENGTH_FACTORS = {
     "um": 1,
     "nm": 1e-3,
 }
-LENGTH_LABELS = {k: k for k in LENGTH_FACTORS.keys()}
+LENGTH_LABELS = {k: k for k in LENGTH_FACTORS}
 LENGTH_LABELS["um"] = r"$\mu$m"
 
 CAMERA_UNITS = ["ij"]
@@ -40,7 +37,7 @@ BLAZE_LABELS = {
     "ij": (r"Camera $i$ [pix]", r"Camera $j$ [pix]"),
 }
 for prefix, name in zip(["", "mag_"], ["Camera", "Experiment"]):
-    for k in LENGTH_FACTORS.keys():
+    for k in LENGTH_FACTORS:
         u = LENGTH_LABELS[k]
         BLAZE_LABELS[prefix + k] = ((f"{name} $x$ [{u}]", f"{name} $y$ [{u}]"),)
         CAMERA_UNITS.append(prefix + k)
@@ -51,43 +48,42 @@ BLAZE_UNITS = list(BLAZE_LABELS.keys())
 # Unit helper functions.
 
 
-def convert_blaze_vector(*args, **kwargs):
-    """
-    Alias for :meth:`~slmsuite.holography.toolbox.convert_vector()`
+def convert_blaze_vector(*args, **kwargs) -> np.ndarray:
+    """Alias for :meth:`~slmsuite.holography.toolbox.convert_vector()`
     for backwards compatibility.
     """
     warnings.warn(
         "The backwards-compatible alias convert_blaze_vector will be depreciated "
-        "in favor of convert_vector in a future release."
+        "in favor of convert_vector in a future release.",
+        stacklevel=2,
     )
 
-    if "slm" in kwargs.keys():
+    if "slm" in kwargs:
         kwargs["hardware"] = kwargs.pop("slm")
-        warnings.warn("convert_vector(slm=) was renamed convert_vector(hardware=).")
+        warnings.warn("convert_vector(slm=) was renamed convert_vector(hardware=).", stacklevel=2)
 
     return convert_vector(*args, **kwargs)
 
 
-def convert_blaze_radius(*args, **kwargs):
-    """
-    Alias for :meth:`~slmsuite.holography.toolbox.convert_radius()`
+def convert_blaze_radius(*args, **kwargs) -> float:
+    """Alias for :meth:`~slmsuite.holography.toolbox.convert_radius()`
     for backwards compatibility.
     """
     warnings.warn(
         "The backwards-compatible alias convert_blaze_radius will be depreciated "
-        "in favor of convert_radius in a future release."
+        "in favor of convert_radius in a future release.",
+        stacklevel=2,
     )
 
-    if "slm" in kwargs.keys():
+    if "slm" in kwargs:
         kwargs["hardware"] = kwargs.pop("slm")
-        warnings.warn("convert_vector(slm=) was renamed convert_vector(hardware=).")
+        warnings.warn("convert_vector(slm=) was renamed convert_vector(hardware=).", stacklevel=2)
 
     return convert_radius(*args, **kwargs)
 
 
-def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, shape=None):
-    r"""
-    Helper function for vector unit conversions in the :math:`k`-space of the SLM.
+def convert_vector(vector, from_units: str = "norm", to_units: str = "norm", hardware=None, shape=None) -> np.ndarray:
+    r"""Helper function for vector unit conversions in the :math:`k`-space of the SLM.
 
     Currently supported units:
 
@@ -182,7 +178,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     Some of these units will not make sense in a system with anisotropic focusing, for
     instance due to cylindrical lenses in the optical train.
 
-    Warning
+    Warning:
     ~~~~~~~
     The units ``"freq"``, ``"knm"``, and ``"lpmm"`` depend on SLM pixel size,
     so a SLM should be passed to ``hardware``
@@ -213,18 +209,18 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         Shape of the computational SLM space. Needed for ``"knm"``.
         Defaults to ``slm.shape`` if ``hardware`` is not ``None``.
 
-    Returns
+    Returns:
     --------
     vector_converted : numpy.ndarray
         Result of the unit conversion, in the cleaned format of :meth:`format_2vectors()`.
     """
     # Parse units.
-    if not (from_units in BLAZE_UNITS):
+    if from_units not in BLAZE_UNITS:
         raise ValueError(
             f"From unit '{from_units}' not recognized \
                          as a valid unit. Options: {BLAZE_UNITS}"
         )
-    if not (to_units in BLAZE_UNITS):
+    if to_units not in BLAZE_UNITS:
         raise ValueError(
             f"To unit '{to_units}' not recognized \
                          as a valid unit. Options: {BLAZE_UNITS}"
@@ -251,7 +247,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         slm = hardware
 
     if from_units in CAMERA_UNITS or to_units in CAMERA_UNITS:
-        if cameraslm is None or not "fourier" in cameraslm.calibrations:
+        if cameraslm is None or "fourier" not in cameraslm.calibrations:
             warnings.warn(f"CameraSLM must be passed to slm for conversion '{from_units}' to '{to_units}'")
             return np.full_like(vector_parsed, np.nan)
 
@@ -261,7 +257,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
             # Don't error if ij.
             if from_units in CAMERA_UNITS[1:] or to_units in CAMERA_UNITS[1:]:
                 warnings.warn(
-                    f"Camera must have filled attribute pitch_um for conversion '{{from_units}}' to '{{to_units}}'"
+                    "Camera must have filled attribute pitch_um for conversion '{from_units}' to '{to_units}'"
                 )
                 return np.full_like(vector_parsed, np.nan)
         else:
@@ -327,7 +323,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     elif from_units == "ij":
         rad = cameraslm.ijcam_to_kxyslm(vector_xy)
     elif from_units in CAMERA_UNITS:
-        unit = from_units.split("_")[-1]
+        unit = from_units.rsplit("_", maxsplit=1)[-1]
         rad = cameraslm.ijcam_to_kxyslm(vector_xy * LENGTH_FACTORS[unit] / cam_pitch_um)
         if "mag_" in from_units:
             rad *= cameraslm.mag
@@ -350,7 +346,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     elif to_units == "ij":
         vector_xy = cameraslm.kxyslm_to_ijcam(rad)
     elif to_units in CAMERA_UNITS:
-        unit = to_units.split("_")[-1]
+        unit = to_units.rsplit("_", maxsplit=1)[-1]
         vector_xy = cameraslm.kxyslm_to_ijcam(rad) * cam_pitch_um / LENGTH_FACTORS[unit]
         if "mag_" in to_units:
             vector_xy /= cameraslm.mag
@@ -361,7 +357,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         # Convert the z input to normalized "focal power" units.
         if from_units in CAMERA_UNITS:
             if from_units != "ij":
-                unit = from_units.split("_")[-1]
+                unit = from_units.rsplit("_", maxsplit=1)[-1]
                 vector_z *= LENGTH_FACTORS[unit] / np.mean(cam_pitch_um)
                 if "mag_" in from_units:
                     vector_z /= cameraslm.mag
@@ -378,7 +374,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
             vector_z = cameraslm._kxyslm_to_ijcam_depth(focal_power)
 
             if to_units != "ij":
-                unit = to_units.split("_")[-1]
+                unit = to_units.rsplit("_", maxsplit=1)[-1]
                 vector_z *= np.mean(cam_pitch_um) / LENGTH_FACTORS[unit]
                 if "mag_" in to_units:
                     vector_z *= cameraslm.mag
@@ -393,9 +389,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         return vector_xy
 
 
-def print_blaze_conversions(vector, from_units="norm", **kwargs):
-    """
-    Helper function to understand unit conversions.
+def print_blaze_conversions(vector, from_units: str = "norm", **kwargs) -> None:
+    """Helper function to understand unit conversions.
     Prints all the supported unit conversions for a given vector.
     See :meth:`convert_vector()`.
 
@@ -411,16 +406,15 @@ def print_blaze_conversions(vector, from_units="norm", **kwargs):
     for unit in BLAZE_UNITS:
         result = convert_vector(vector, from_units=from_units, to_units=unit, **kwargs)
 
-        print("'{}' : {}".format(unit, result.T[0, :]))
+        print(f"'{unit}' : {result.T[0, :]}")
 
 
-def convert_radius(radius, from_units="norm", to_units="norm", hardware=None, shape=None):
-    """
-    Helper function for scalar unit conversions.
+def convert_radius(radius: float, from_units: str = "norm", to_units: str = "norm", hardware=None, shape=None) -> float:
+    """Helper function for scalar unit conversions.
     Uses :meth:`convert_vector` to deduce the (average, in the case of an
     anisotropic transformation) scalar radius when going between sets of units.
 
-    Tip
+    Tip:
     ~~~
     In the future, we might create a similar function to handle anisotropic
     conversions better by converting a 2x2 matrix representing a sheared parallelogram.
@@ -436,7 +430,7 @@ def convert_radius(radius, from_units="norm", to_units="norm", hardware=None, sh
     shape : (int, int) OR None
         Passed to :meth:`convert_vector`.
 
-    Returns
+    Returns:
     -------
     radius : float
         New scalar radius.
@@ -450,9 +444,10 @@ def convert_radius(radius, from_units="norm", to_units="norm", hardware=None, sh
 # Windows creation functions. Windows are views into 2D arrays.
 
 
-def window_slice(window, shape=None, centered=False, circular=False):
-    """
-    Parses the slices that describe the window's view into the larger array.
+def window_slice(
+    window, shape: tuple[int, int] | None = None, centered: bool = False, circular: bool = False
+) -> tuple[slice, slice] | tuple[np.ndarray, np.ndarray] | np.ndarray:
+    """Parses the slices that describe the window's view into the larger array.
 
     Parameters
     ----------
@@ -478,7 +473,7 @@ def window_slice(window, shape=None, centered=False, circular=False):
     circular : bool
         See ``window``.
 
-    Returns
+    Returns:
     -------
     slice_ : (slice, slice) OR (array_like, array_like) OR (array_like)
         The slice for the window.
@@ -532,9 +527,8 @@ def window_slice(window, shape=None, centered=False, circular=False):
     return slice_
 
 
-def window_extent(window, padding_frac=0, padding_pix=0):
-    """
-    Find a square that covers the active region of the 2D boolean mask ``window``.
+def window_extent(window, padding_frac: float = 0, padding_pix: float = 0) -> tuple[int, int, int, int]:
+    """Find a square that covers the active region of the 2D boolean mask ``window``.
 
     Parameters
     ----------
@@ -549,7 +543,7 @@ def window_extent(window, padding_frac=0, padding_pix=0):
         Additional padding to add, in pixels.
         This is applied after ``padding_frac``.
 
-    Returns
+    Returns:
     -------
     window_extent : (int, int, int, int)
         A rectangle that centered on the active region of ``window``
@@ -584,13 +578,12 @@ def window_extent(window, padding_frac=0, padding_pix=0):
     return (limits[0][0], limits[0][1] - limits[0][0], limits[1][0], limits[1][1] - limits[1][0])
 
 
-def voronoi_windows(grid, vectors, radius=None, plot=False):
-    r"""
-    Returns boolean array windows corresponding to the Voronoi cells for a set of vectors.
+def voronoi_windows(grid, vectors, radius=None, plot: bool = False) -> list:
+    r"""Returns boolean array windows corresponding to the Voronoi cells for a set of vectors.
     These boolean array windows are in the style of :meth:`~slmsuite.holography.toolbox.imprint()`.
     The ith window corresponds to the Voronoi cell centered around the ith vector.
 
-    Note
+    Note:
     ~~~~
     The :meth:`cv2.fillConvexPoly()` function used to fill each window dilates
     slightly outside the window bounds. To avoid pixels belonging to multiple windows
@@ -616,7 +609,7 @@ def voronoi_windows(grid, vectors, radius=None, plot=False):
     plot : bool
         Whether to plot the resulting Voronoi diagram with :meth:`scipy.spatial.voronoi_plot_2d()`.
 
-    Returns
+    Returns:
     -------
     list of numpy.ndarray
         The resulting windows.
@@ -703,16 +696,15 @@ def imprint(
     window,
     function,
     grid=None,
-    imprint_operation="replace",
-    centered=False,
-    circular=False,
-    clip=True,
-    transform=0,
-    shift=(0, 0),
+    imprint_operation: str = "replace",
+    centered: bool = False,
+    circular: bool = False,
+    clip: bool = True,
+    transform: float | tuple = 0,
+    shift: tuple[float, float] | None | bool = (0, 0),
     **kwargs,
-):
-    r"""
-    Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
+) -> np.ndarray:
+    r"""Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
     This ``function`` must be in the style of :mod:`~slmsuite.holography.toolbox.phase`
     phase helper functions, which expect a ``grid`` parameter to define the coordinate basis
     (see :meth:`~slmsuite.holography.toolbox.phase.blaze()` or
@@ -741,12 +733,12 @@ def imprint(
         A function in the style of :mod:`~slmsuite.holography.toolbox` helper functions,
         which accept ``grid`` as the first argument.
 
-        Note
+    Note:
         ~~~~
         2D functions in :mod:`~slmsuite.holography.analysis.fitfunctions`
         are also of this style.
 
-        Note
+    Note:
         ~~~~
         Also accepts floating point values, in which case the value is simply added.
     grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR None
@@ -786,13 +778,13 @@ def imprint(
     **kwargs :
         For passing additional arguments accepted by ``function``.
 
-    Returns
+    Returns:
     ----------
     matrix : numpy.ndarray
         The modified image. Note that the matrix is modified in place, and this return
         is merely a copy of the user's pointer to the data.
 
-    Raises
+    Raises:
     ----------
     ValueError
         If invalid ``window`` or ``imprint_operation`` are provided.
@@ -824,7 +816,7 @@ def imprint(
         else:
             matrix[slice_] += function(transform_grid((x_grid[slice_], y_grid[slice_]), transform, shift), **kwargs)
     else:
-        raise ValueError("Unrecognized imprint operation {}.".format(imprint_operation))
+        raise ValueError(f"Unrecognized imprint operation {imprint_operation}.")
 
     return matrix
 
@@ -832,9 +824,8 @@ def imprint(
 # Vector helper functions.
 
 
-def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
-    """
-    Validates that an array of M-dimensional vectors is a ``numpy.ndarray`` of shape ``(M, N)``.
+def format_vectors(vectors, expected_dimension: int = 2, handle_dimension: str = "pass") -> np.ndarray:
+    """Validates that an array of M-dimensional vectors is a ``numpy.ndarray`` of shape ``(M, N)``.
     Handles shaping and transposing if, for instance, tuples or row vectors are passed.
 
     Parameters
@@ -855,12 +846,12 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
 
         If the array has smaller dimensionality than expected, an error is always raised.
 
-    Returns
+    Returns:
     -------
     vectors : numpy.ndarray
         Cleaned column vector(s). Shape of ``(M, N)``.
 
-    Raises
+    Raises:
     ------
     ValueError
         If the vector input was inappropriate.
@@ -870,7 +861,7 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
 
     # Parse handle_dimension
     options_dimension = ["error", "crop", "pass"]
-    if not (handle_dimension in options_dimension):
+    if handle_dimension not in options_dimension:
         raise ValueError(
             f"handle_dimension option '{handle_dimension}' not recognized. Must be one of '{options_dimension}'."
         )
@@ -906,9 +897,8 @@ def format_vectors(vectors, expected_dimension=2, handle_dimension="pass"):
     return vectors
 
 
-def format_2vectors(vectors):
-    """
-    Validates that an array of 2-dimensional vectors is a ``numpy.ndarray`` of shape ``(2, N)``.
+def format_2vectors(vectors) -> np.ndarray:
+    """Validates that an array of 2-dimensional vectors is a ``numpy.ndarray`` of shape ``(2, N)``.
     Handles shaping and transposing if, for instance, tuples or row vectors are passed.
     This a wrapper of :meth:`format_vectors` for backwards compatibility.
 
@@ -918,12 +908,12 @@ def format_2vectors(vectors):
         2-vector or array of 2-vectors to process. Desires shape of ``(2, N)``.
         Uses the ``"crop"`` keyword of :meth:`format_vectors`.
 
-    Returns
+    Returns:
     -------
     vectors : numpy.ndarray
         Cleaned column vector(s). Shape of ``(2, N)``.
 
-    Raises
+    Raises:
     ------
     ValueError
         If the vector input was inappropriate.
@@ -931,9 +921,17 @@ def format_2vectors(vectors):
     return format_vectors(vectors, expected_dimension=2, handle_dimension="crop")
 
 
-def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_check=False):
-    r"""
-    Fits three points to an affine transformation. This transformation is given by:
+def fit_3pt(
+    y0,
+    y1,
+    y2,
+    N=None,
+    x0: tuple[float, float] = (0, 0),
+    x1: tuple[float, float] = (1, 0),
+    x2: tuple[float, float] = (0, 1),
+    orientation_check: bool = False,
+) -> tuple:
+    r"""Fits three points to an affine transformation. This transformation is given by:
 
     .. math:: \vec{y} = M \cdot \vec{x} + \vec{b}
 
@@ -1012,7 +1010,7 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
         If ``True``, removes the last two points in the affine grid.
         If ``False``, does nothing.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray OR dict
         2-vector or array of 2-vectors ``(2, N)`` in slm coordinates.
@@ -1072,7 +1070,7 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
     elif isinstance(N, np.ndarray):
         indices = format_2vectors(N)
     else:
-        raise ValueError("N={} not recognized.".format(N))
+        raise ValueError(f"N={N} not recognized.")
 
     if affine_return:
         return {"M": M, "b": b}
@@ -1089,17 +1087,16 @@ def fit_3pt(y0, y1, y2, N=None, x0=(0, 0), x1=(1, 0), x2=(0, 1), orientation_che
         return np.array(np.matmul(M, indices) + b)
 
 
-def smallest_distance(vectors, metric="chebyshev"):
-    r"""
-    Returns the smallest distance between pairs of points under a given ``metric``.
+def smallest_distance(vectors, metric: str = "chebyshev") -> float:
+    r"""Returns the smallest distance between pairs of points under a given ``metric``.
 
-    Tip
+    Tip:
     ~~~
     This function supports a :math:`\mathcal{O}(N\log(N))` divide and conquer algorithm
     and can handle large pointsets.
     An :math:`\mathcal{O}(N^2)` brute force approach is implemented as a backup.
 
-    Caution
+    Caution:
     ~~~~~~~
     Vectors using unsigned datatypes can lead to unexpected results when
     evaluating a distance metric. Be sure that your vectors are signed.
@@ -1117,7 +1114,7 @@ def smallest_distance(vectors, metric="chebyshev"):
         compatible with string inputs. allowed by :meth:`scipy.spatial.distance.pdist`.
         Function arguments will fallback to the brute force approach.
 
-    Returns
+    Returns:
     -------
     float
         Minimum distance between any pair of points under the given metric.
@@ -1128,7 +1125,7 @@ def smallest_distance(vectors, metric="chebyshev"):
         # Expects sorted v.
         N = v.shape[0]
 
-        if N > min_div:
+        if min_div < N:
             M = int(N / 2)
 
             # Divide the problem recursively.
@@ -1159,7 +1156,7 @@ def smallest_distance(vectors, metric="chebyshev"):
         return np.inf
 
     if isinstance(metric, str):  # Divide and conquer.
-        if not metric in distance._METRIC_ALIAS:
+        if metric not in distance._METRIC_ALIAS:
             raise RuntimeError("Distance metric '{metric}' not recognized by scipy.")
 
         axis = 0
@@ -1168,7 +1165,7 @@ def smallest_distance(vectors, metric="chebyshev"):
         # pdist needs transpose.
         vectors = vectors.T
 
-        if N < 2 * min_div:
+        if 2 * min_div > N:
             return distance.pdist(vectors, metric=metric).min()
         else:
             centroid = np.max(vectors, axis=axis, keepdims=True)
@@ -1192,9 +1189,8 @@ def smallest_distance(vectors, metric="chebyshev"):
         return minimum
 
 
-def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
-    r"""
-    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
+def lloyds_algorithm(grid, vectors, iterations: int = 10, plot: bool = False) -> np.ndarray:
+    r"""Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
     on a set of seed ``vectors`` to promote even vector spacing.
     Vectors are bound within the grid.
 
@@ -1211,7 +1207,7 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
     plot : bool
         Whether to plot each iteration of the algorithm.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The result of Lloyd's Algorithm.
@@ -1338,9 +1334,8 @@ def lloyds_algorithm(grid, vectors, iterations=10, plot=False):
     return result
 
 
-def lloyds_points(grid, n_points, iterations=10, plot=False):
-    r"""
-    Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
+def lloyds_points(grid, n_points: int, iterations: int = 10, plot: bool = False) -> np.ndarray:
+    r"""Implements `Lloyd's Algorithm <https://en.wikipedia.org/wiki/Lloyd's_algorithm>`_
     without seed ``vectors``; instead, autogenerates the seed ``vectors`` randomly.
     See :meth:`~slmsuite.holography.toolbox.lloyds_algorithm()`.
 
@@ -1355,7 +1350,7 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
     plot : bool
         Whether to plot each iteration of the algorithm.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The result of Lloyd's Algorithm.
@@ -1383,12 +1378,11 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
         return np.vstack((x_grid[result[0], result[1]], y_grid[result[0], result[1]]))
 
 
-def assign_vectors(vectors, assignment_options):
-    r"""
-    Assigns each vector in ``vectors`` to the closest counterpart ``assignment_options``.
+def assign_vectors(vectors, assignment_options) -> np.ndarray:
+    r"""Assigns each vector in ``vectors`` to the closest counterpart ``assignment_options``.
     Uses Euclidean distance.
 
-    Note
+    Note:
     ~~~~
     An :math:`\mathcal{O}(N^2)` brute force approach is currently implemented,
     though it is vectorized.
@@ -1401,7 +1395,7 @@ def assign_vectors(vectors, assignment_options):
     assignment_options : array_like
         Array of M-vectors of shape ``(M, option_count)``
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         For each vector, the index of the closest ``assignment_options``.
@@ -1418,9 +1412,8 @@ def assign_vectors(vectors, assignment_options):
 # Grid functions.
 
 
-def _process_grid(grid):
-    r"""
-    Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
+def _process_grid(grid) -> tuple:
+    r"""Functions in :mod:`.toolbox` make use of normalized meshgrids containing the normalized
     coordinate of each corresponding pixel. This helper function interprets what the user passes.
 
     Parameters
@@ -1431,7 +1424,7 @@ def _process_grid(grid):
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
 
-    Returns
+    Returns:
     --------
     (array_like, array_like)
         The grids in ``(x_grid, y_grid)`` form.
@@ -1455,9 +1448,8 @@ def _process_grid(grid):
     return grid
 
 
-def transform_grid(grid, transform=None, shift=None, direction="fwd"):
-    r"""
-    Returns a copy of a coordinate basis ``grid`` with a given ``shift`` and
+def transform_grid(grid, transform=None, shift=None, direction: str = "fwd") -> tuple:
+    r"""Returns a copy of a coordinate basis ``grid`` with a given ``shift`` and
     ``transformation``. These can be the :math:`\vec{b}` and :math:`M` of a standard
     affine transformation as used elsewhere in the package.
     Such grids are used as arguments for phase patterns, such as those in
@@ -1485,7 +1477,7 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
         For standard affine transforms, forward (reverse) mode transforms ``"kxy"`` to ``"ij"``
         (``"ij"`` to ``"kxy"``).
 
-    Returns
+    Returns:
     -------
     grid : (array_like, array_like)
         The shifted grid. In the case where the transform is the identity, a copy is
@@ -1545,9 +1537,8 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
 # Padding functions.
 
 
-def pad(matrix, shape):
-    """
-    Helper function to pad data with zeros. The padding is centered.
+def pad(matrix, shape) -> np.ndarray:
+    """Helper function to pad data with zeros. The padding is centered.
     This is used to get higher resolution in the :math:`k`-space upon Fourier transform.
 
     Parameters
@@ -1558,7 +1549,7 @@ def pad(matrix, shape):
         The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
         If ``None``, the ``matrix`` is returned unpadded.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         Padded ``matrix``.
@@ -1587,9 +1578,8 @@ def pad(matrix, shape):
     return padded
 
 
-def unpad(matrix, shape):
-    """
-    Helper function to unpad data. The padding is assumed to be centered.
+def unpad(matrix, shape) -> np.ndarray | tuple[int, int, int, int]:
+    """Helper function to unpad data. The padding is assumed to be centered.
     This is used to get higher resolution in the :math:`k`-space upon Fourier transform.
 
     Parameters
@@ -1601,7 +1591,7 @@ def unpad(matrix, shape):
         The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
         If ``None``, the ``matrix`` is returned unchanged.
 
-    Returns
+    Returns:
     ----------
     numpy.ndarray OR (int, int, int, int)
         Either the unpadded ``matrix`` or the four slicing integers used to unpad such a matrix,

@@ -1,6 +1,4 @@
-"""
-Common definitions.
-"""
+"""Common definitions."""
 
 import numpy as np
 
@@ -22,16 +20,15 @@ REAL_TYPES = (
 SCALAR_TYPES = (*REAL_TYPES, complex)
 
 
-def iseven(x):
-    """
-    Test if an integer is even.
+def iseven(x: int) -> bool:
+    """Test if an integer is even.
 
     Parameters
     ----------
     x : int
         The integer to test.
 
-    Returns
+    Returns:
     -------
     bool
         Whether or not `x` is even.

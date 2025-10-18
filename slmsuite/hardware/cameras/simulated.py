@@ -327,7 +327,7 @@ class SimulatedCamera(Camera):
         """See :meth:`.Camera._set_exposure_hw`."""
         self.exposure_s = exposure_s
 
-    def _get_dtype(self):
+    def _get_dtype(self) -> np.dtype:
         """Spoof the datatype because we don't have an image to return"""
         if self.bitdepth <= 0:
             raise ValueError("Non-positive bitdepth does not make sense.")
@@ -346,7 +346,7 @@ class SimulatedCamera(Camera):
         else:
             raise ValueError(f"Numpy cannot encode bitdepth {self.bitdepth}.")
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`. Computes and samples the affine-transformed SLM far-field.
 
         Returns:

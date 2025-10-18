@@ -283,7 +283,7 @@ class ThorCam(Camera):
         # Restore profile
         self.setup(profile)
 
-    def set_woi(self, woi: list | None = None):
+    def set_woi(self, woi: list | None = None) -> list:
         """See :meth:`.Camera.set_woi`."""
         # Save old profile and disarm
         profile = self.profile
@@ -370,7 +370,9 @@ class ThorCam(Camera):
 
             self.profile = profile
 
-    def _get_image_hw(self, timeout_s: float = 0.1, trigger: bool = True, grab: bool = True, attempts: int = 1):
+    def _get_image_hw(
+        self, timeout_s: float = 0.1, trigger: bool = True, grab: bool = True, attempts: int = 1
+    ) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
         For non-blocking acquisition,

@@ -193,7 +193,7 @@ class ScreenMirrored(SLM):
                 f"Warning: Wavelength {self.wav_um} um is inaccessible to this SLM with design wavelength {self.wav_design_um} um"
             )
 
-    def _set_phase_hw(self, data) -> None:
+    def _set_phase_hw(self, data: np.ndarray) -> None:
         """Writes to screen. See :class:`.SLM`."""
         # Write to buffer (.buffer points to the same data as .cbuffer).
         # Unfortunately, OpenGL2.0 needs the data copied three times (I think).

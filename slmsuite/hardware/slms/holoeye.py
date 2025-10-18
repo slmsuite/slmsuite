@@ -148,7 +148,7 @@ class Holoeye(SLM):
         error = self.slm_lib.window().close()
         self._handle_error(error)
 
-    def _set_phase_hw(self, phase) -> None:
+    def _set_phase_hw(self, phase: np.ndarray) -> None:
         """Low-level hardware interface to set_phase ``phase`` data onto the SLM.
         When the user calls the :meth:`.SLM.set_phase` method of
         :class:`.SLM`, ``phase`` is error checked before calling

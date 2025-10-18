@@ -10,6 +10,8 @@ Implementation unfinished and untested. Consider using ``simple_pyspin`` as a de
 
 import warnings
 
+import numpy as np
+
 from .camera import Camera
 
 try:
@@ -107,7 +109,7 @@ class FLIR(Camera):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def _get_image_hw(self, blocking: bool = True):
+    def _get_image_hw(self, blocking: bool = True) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`.
 
         Parameters

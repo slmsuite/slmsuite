@@ -117,7 +117,7 @@ def _recurse_decompress(msg) -> dict | list | np.ndarray | np.dtype | str | int 
 
 # https://codetinkering.com/numpy-encoder-json/
 class _NpEncoder(json.JSONEncoder):
-    def default(self, obj):
+    def default(self, obj) -> dict | bool | float | int | str:
         if isinstance(obj, np.bool_):
             return bool(obj)
         if isinstance(obj, np.floating):  # , np.complexfloating
@@ -142,7 +142,7 @@ class _NpEncoder(json.JSONEncoder):
 
 
 # Common function to receive data from a socket.
-def _recv(sock, timeout: float):
+def _recv(sock, timeout: float) -> tuple[bool, str] | dict | list | np.ndarray | np.dtype | str | int | float | bool:
     recv_buffer = 4096 * 64
     buffer = ""
     t = time.time()
@@ -225,7 +225,7 @@ class Server:
             "_get_images_hw",
         ]
 
-    def listen(self, verbose: bool = True):
+    def listen(self, verbose: bool = True) -> None:
         """Blocking command to listen for client commands and process them once they are
         given.
 

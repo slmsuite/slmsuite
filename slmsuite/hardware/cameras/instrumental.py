@@ -22,6 +22,8 @@ Color camera functionality is not currently implemented, and will lead to undefi
 
 import warnings
 
+import numpy as np
+
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
@@ -147,7 +149,7 @@ class Instrumental(Camera):
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.exposure = 1000.0 * float(exposure_s)
 
-    def set_woi(self, woi: list | None = None):
+    def set_woi(self, woi: list | None = None) -> list:
         """Method to narrow the imaging region to a 'window of interest'
         for faster framerates.
 
@@ -164,7 +166,7 @@ class Instrumental(Camera):
         """
         raise NotImplementedError
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """Method to pull an image from the camera and return.
 
         Parameters

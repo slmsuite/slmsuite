@@ -1,6 +1,7 @@
 r"""Helper functions for processing images."""
 
 import warnings
+from collections.abc import Callable
 from functools import reduce
 
 import cv2
@@ -2209,7 +2210,9 @@ def _make_8bit(img: np.ndarray) -> np.ndarray:
     return img.astype(np.uint8)
 
 
-def get_orientation_transformation(rot: str | int = "0", fliplr: bool = False, flipud: bool = False):
+def get_orientation_transformation(
+    rot: str | int = "0", fliplr: bool = False, flipud: bool = False
+) -> Callable[[np.ndarray], np.ndarray]:
     """Compile a transformation lambda from simple rotates and flips.
 
     Useful to turn an image to an orientation which is user-friendly.

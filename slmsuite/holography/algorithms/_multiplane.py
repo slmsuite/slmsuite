@@ -76,7 +76,7 @@ class MultiplaneHologram(Hologram):
         self.weights = np.array(weights, copy=(False if np.__version__[0] == "1" else None), dtype=self.dtype)
         self.weights /= Hologram._norm(self.weights, xp=np)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.holograms)
 
     @staticmethod
@@ -166,7 +166,7 @@ class MultiplaneHologram(Hologram):
 
     # Overload user functions with meta functionality.
 
-    def _update_flags(self, method, verbose, feedback, stat_groups, **kwargs):
+    def _update_flags(self, method: str, verbose: bool, feedback, stat_groups: list, **kwargs) -> None:
         # First update the parent flags.
         super()._update_flags(method, verbose, feedback, stat_groups, **kwargs)
 
@@ -174,15 +174,15 @@ class MultiplaneHologram(Hologram):
         for h in self.holograms:
             h.flags.update(self.flags)
 
-    def _update_weights(self, *args, **kwargs):
+    def _update_weights(self, *args, **kwargs) -> None:
         for h in self.holograms:
             h._update_weights(*args, **kwargs)
 
-    def _gs_farfield_routines(self, *args, **kwargs):
+    def _gs_farfield_routines(self, *args, **kwargs) -> None:
         for h in self.holograms:
             h._gs_farfield_routines(*args, **kwargs)
 
-    def _get_target_moments_knm_norm(self):
+    def _get_target_moments_knm_norm(self) -> tuple[np.ndarray, np.ndarray]:
         # Get the data from the child holograms.
         centers = []
         stds = []
@@ -208,7 +208,7 @@ class MultiplaneHologram(Hologram):
 
         return center, std
 
-    def reset(self, reset_phase=True, reset_flags=False):
+    def reset(self, reset_phase: bool = True, reset_flags: bool = False) -> None:
         # Resetting the phase of the parent resets the phase of the children because
         # phase is shared.
         super().reset(reset_phase, reset_flags)
@@ -217,27 +217,27 @@ class MultiplaneHologram(Hologram):
         for h in self.holograms:
             h.reset(reset_phase=False, reset_flags=reset_flags)
 
-    def reset_weights(self):
+    def reset_weights(self) -> None:
         for h in self.holograms:
             h.reset_weights()
 
-    def plot_farfield(self, *args, **kwargs):
+    def plot_farfield(self, *args, **kwargs) -> None:
         for h in self.holograms:
             h.plot_farfield(*args, **kwargs)
 
     # def plot_nearfield(self, *args, **kwargs):
     #     for h in self.holograms: h.plot_nearfield(*args, **kwargs)
 
-    def plot_stats(self, *args, **kwargs):
+    def plot_stats(self, *args, **kwargs) -> None:
         for h in self.holograms:
             h.plot_stats(*args, **kwargs)
 
-    def _update_stats(self, stat_groups=[]):
+    def _update_stats(self, stat_groups: list = []) -> None:
         # FUTURE: make meta stat group.
         for h in self.holograms:
             h._update_stats(stat_groups)
 
-    def set_target(self, *args, **kwargs):
+    def set_target(self, *args, **kwargs) -> None:
         raise RuntimeError(
             "Do not use MultiplaneHologram.set_target(). "
             "Instead, update the targets of the children holograms directly."
@@ -245,7 +245,7 @@ class MultiplaneHologram(Hologram):
 
     # Multiplane hacks to get meta optimization to work.
 
-    def _cg_loss(self, phase_torch):
+    def _cg_loss(self, phase_torch) -> Any:
         """Sum the losses of all the child holograms."""
         loss = self.holograms[0]._cg_loss(phase_torch)
 
@@ -254,13 +254,13 @@ class MultiplaneHologram(Hologram):
 
         return loss
 
-    def _nearfield2farfield(self):
+    def _nearfield2farfield(self) -> None:
         """Have all the holograms populate their own farfield variables."""
         for h in self.holograms:
             h._nearfield2farfield()
             h.iter = self.iter
 
-    def _farfield2nearfield(self):
+    def _farfield2nearfield(self) -> None:
         """Sum all the complex nearfields together for the meta nearfield."""
         self.nearfield.fill(0)
 
@@ -280,13 +280,13 @@ class MultiplaneHologram(Hologram):
         # Get meta self phase.
         self._nearfield_extract()
 
-    def _mraf_helper_routines(self):
+    def _mraf_helper_routines(self) -> list:
         return [h._mraf_helper_routines() for h in self.holograms]
 
-    def _gs_farfield_routines(self, mraf_variables):
+    def _gs_farfield_routines(self, mraf_variables: list) -> None:
         for h, mraf in zip(self.holograms, mraf_variables):
             h._gs_farfield_routines(mraf)
 
-    def remove_vortices(self):
+    def remove_vortices(self) -> None:
         for h in self.holograms:
             h.remove_vortices()

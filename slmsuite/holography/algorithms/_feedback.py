@@ -127,7 +127,13 @@ class FeedbackHologram(Hologram):
             self._cam_points = None
 
     # Image transformation helper function.
-    def ijcam_to_knmslm(self, img, out=None, blur_ij=None, order=3):
+    def ijcam_to_knmslm(
+        self,
+        img: np.ndarray,
+        out: np.ndarray | None = None,
+        blur_ij: int | None = None,
+        order: int = 3,
+    ) -> np.ndarray:
         """Convert an image in the camera domain to computational SLM k-space using, in part, the
         affine transformation stored in a cameraslm's Fourier calibration.
 
@@ -315,7 +321,7 @@ class FeedbackHologram(Hologram):
         if reset_weights:
             self.reset_weights()
 
-    def refine_offset(self, img, basis="kxy"):
+    def refine_offset(self, img: np.ndarray, basis: str = "kxy") -> np.ndarray:
         """**(NotImplemented)**
         Hones the position of the produced image to the desired target image to compensate for
         Fourier calibration imperfections. Works either by moving the desired camera
@@ -344,7 +350,7 @@ class FeedbackHologram(Hologram):
         raise NotImplementedError
 
     # Weighting and stats.
-    def _update_weights(self):
+    def _update_weights(self) -> None:
         """Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
         :attr:`amp_ff`, the computed farfield amplitude.
         """
@@ -356,7 +362,7 @@ class FeedbackHologram(Hologram):
             self.measure("knm")  # Make sure data is there.
             self._update_weights_generic(self.weights, self.img_knm, self.target)
 
-    def _calculate_stats_experimental(self, stats, stat_groups=[]):
+    def _calculate_stats_experimental(self, stats: dict, stat_groups: list = []) -> None:
         """Wrapped by :meth:`FeedbackHologram._update_stats()`."""
         if "experimental_knm" in stat_groups:
             self.measure("knm")  # Make sure data is there.
@@ -378,7 +384,7 @@ class FeedbackHologram(Hologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"],
             )
 
-    def _update_stats(self, stat_groups=[]):
+    def _update_stats(self, stat_groups: list = []) -> None:
         """Calculate statistics corresponding to the desired ``stat_groups``.
 
         Parameters

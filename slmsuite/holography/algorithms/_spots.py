@@ -12,10 +12,12 @@ class _AbstractSpotHologram(FeedbackHologram):
     can be simplified with more modern features from other parts of :mod:`slmsuite`.
     """
 
-    def remove_vortices(self):
+    def remove_vortices(self) -> None:
         """Spot holograms do not need to consider vortices."""
 
-    def refine_offset(self, img=None, basis="kxy", force_affine=True, plot=False):
+    def refine_offset(
+        self, img: np.ndarray | None = None, basis: str = "kxy", force_affine: bool = True, plot: bool = False
+    ) -> np.ndarray:
         """Hones the positions of the produced spots toward the desired targets to compensate for
         Fourier calibration imperfections. Works either by moving camera integration
         regions to the positions where the spots ended up (``basis="ij"``) or by moving
@@ -482,7 +484,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             except Exception as e:
                 warnings.warn("Raw CUDA kernels failed to load. Falling back to cupy.\n" + str(e))
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Overloads ``len()`` to return the number of spots in this :class:`CompressedSpotHologram`.
 
         Returns:
@@ -492,14 +494,14 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         """
         return self.spot_amp.size
 
-    def get_padded_shape(self, *args, **kwargs):
+    def get_padded_shape(self, *args, **kwargs) -> None:
         """Vestigial from :class:`~slmsuite.holography.algorithms.Hologram`, but unneeded here.
         :class:`~slmsuite.holography.algorithms.CompressedSpotHologram`
         does not use a DFT grid and does not need padding.
         """
         raise NameError("CompressedSpotHologram does not use a DFT grid and does not need padding.")
 
-    def _get_target_moments_knm_norm(self):
+    def _get_target_moments_knm_norm(self) -> tuple[np.ndarray, np.ndarray]:
         """Get the first and second order moments of the target in normalized knm space
         (knm integers divided by shape)
         """
@@ -523,7 +525,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         return np.squeeze(center_knm_norm), np.squeeze(std_knm_norm)
 
     # Projection backend helper functions.
-    def _build_cupy_kernel_batched(self, vectors=None, out=None):
+    def _build_cupy_kernel_batched(
+        self, vectors: np.ndarray | None = None, out: np.ndarray | None = None
+    ) -> np.ndarray:
         """Uses the coordinate stack to produce the kernel, a stack of images corresponding
         to the blaze and lens directing power to each desired spot in the farfield.
 
@@ -565,7 +569,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         return out
 
-    def _check_spot_zernike_change(self):
+    def _check_spot_zernike_change(self) -> bool:
         """Returns whether a change happened."""
         # Check if we need to update the kernel.
         changed = not hasattr(self, "_spot_zernike_cached") or np.any(self._spot_zernike_cached != self.spot_zernike)
@@ -576,7 +580,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         return changed
 
-    def _update_cupy_kernel(self, kernel_slice=None, batch_slice=None):
+    def _update_cupy_kernel(self, kernel_slice: slice | None = None, batch_slice: slice | None = None) -> None:
         # Check if we need to update the kernel.
         needs_update = self._check_spot_zernike_change() or (self._cupy_kernel is None)
 
@@ -598,7 +602,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
             self._cupy_kernel = self._build_cupy_kernel_batched(out=self._cupy_kernel)
 
-    def _nearfield2farfield(self, phase_torch=None):
+    def _nearfield2farfield(self, phase_torch=None) -> Any:
         """Maps the ``(H,W)`` nearfield (complex value on the SLM)
         onto the ``(N,)`` farfield (complex value for each spot).
         """
@@ -628,7 +632,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 self._midloop_cleaning()
                 return farfield_torch
 
-    def _nearfield2farfield_cuda(self, nearfield):
+    def _nearfield2farfield_cuda(self, nearfield: np.ndarray) -> np.ndarray:
         # CUDA_KERNELS = _load_cuda()
         # self._near2far_cuda = cp.RawKernel(
         #     CUDA_KERNELS,
@@ -690,7 +694,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         return self.farfield
 
-    def _nearfield2farfield_cupy(self, nearfield):
+    def _nearfield2farfield_cupy(self, nearfield: np.ndarray) -> np.ndarray:
         # Conjugate the nearfield to properly take the overlap integral.
         # FYI: Nearfield shape is (H,W)
         N = len(self)
@@ -745,7 +749,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
         return farfield
 
-    def _farfield2nearfield(self, extract=True):
+    def _farfield2nearfield(self, extract: bool = True) -> None:
         """Maps the ``(N,1)`` farfield (complex value for each spot)
         onto the ``(H,W)`` nearfield (complex value on the SLM).
         """
@@ -763,7 +767,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         if extract:
             self._nearfield_extract()
 
-    def _farfield2nearfield_cuda(self):
+    def _farfield2nearfield_cuda(self) -> None:
         # CUDA_KERNELS = _load_cuda()
         # self._far2near_cuda = cp.RawKernel(
         #     CUDA_KERNELS,
@@ -810,7 +814,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             ),
         )
 
-    def _farfield2nearfield_cupy(self):
+    def _farfield2nearfield_cupy(self) -> None:
         # FYI: Farfield shape is (N,)
         N = len(self)
 
@@ -844,7 +848,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                     self.nearfield += nearfield_out_temp
 
     # Target update.
-    def set_target(self, new_target=None, reset_weights=False):
+    def set_target(self, new_target: np.ndarray | None = None, reset_weights: bool = False) -> None:
         """Change the target to something new. This method handles cleaning and normalization.
 
         Parameters
@@ -875,7 +879,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             self.reset_weights()
 
     # Weighting and stats.
-    def _update_weights(self):
+    def _update_weights(self) -> None:
         """Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
         :attr:`amp_ff`, the computed farfield amplitude.
         """
@@ -919,7 +923,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             nan_checks=True,
         )
 
-    def _calculate_stats_computational_spot(self, stats, stat_groups=[]):
+    def _calculate_stats_computational_spot(self, stats: dict, stat_groups: list = []) -> None:
         """Wrapped by :meth:`SpotHologram._update_stats()`."""
         if "computational_spot" in stat_groups:
             stats["computational_spot"] = self._calculate_stats(
@@ -930,7 +934,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"],
             )
 
-    def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
+    def _calculate_stats_experimental_spot(self, stats: dict, stat_groups: list = []) -> None:
         """Wrapped by :meth:`SpotHologram._update_stats()`."""
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
@@ -963,7 +967,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"],
             )
 
-    def _update_stats(self, stat_groups=[]):
+    def _update_stats(self, stat_groups: list = []) -> None:
         """Calculate statistics corresponding to the desired ``stat_groups``.
 
         Parameters
@@ -1297,7 +1301,7 @@ class SpotHologram(_AbstractSpotHologram):
         # Fill the target with data.
         self.set_target(reset_weights=True)
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Overloads len() to return the number of spots in this :class:`SpotHologram`.
 
         Returns:
@@ -1405,7 +1409,7 @@ class SpotHologram(_AbstractSpotHologram):
         # Return a new SpotHologram.
         return SpotHologram(shape, vectors, basis=basis, spot_amp=None, **kwargs)
 
-    def _set_target_spots(self, reset_weights=False):
+    def _set_target_spots(self, reset_weights: bool = False) -> None:
         """Wrapped by :meth:`SpotHologram.set_target()`."""
         # Round the spot points to the nearest integer coordinates in knm space.
         self.spot_knm_rounded = np.rint(self.spot_knm).astype(int)
@@ -1461,7 +1465,7 @@ class SpotHologram(_AbstractSpotHologram):
         if reset_weights:
             self.reset_weights()
 
-    def set_target(self, reset_weights=False, plot=False):
+    def set_target(self, reset_weights: bool = False, plot: bool = False) -> None:
         """From the spot locations stored in :attr:`spot_knm`, update the target pattern.
 
         Note:
@@ -1485,7 +1489,7 @@ class SpotHologram(_AbstractSpotHologram):
         self._set_target_spots(reset_weights=reset_weights)
 
     # Weighting and stats.
-    def _update_weights(self):
+    def _update_weights(self) -> None:
         """Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
         :attr:`amp_ff`, the computed farfield amplitude.
         """
@@ -1539,7 +1543,7 @@ class SpotHologram(_AbstractSpotHologram):
                 nan_checks=True,
             )
 
-    def _calculate_stats_computational_spot(self, stats, stat_groups=[]):
+    def _calculate_stats_computational_spot(self, stats: dict, stat_groups: list = []) -> None:
         """Wrapped by :meth:`SpotHologram._update_stats()`."""
         if "computational_spot" in stat_groups:
             if self.shape == self.slm_shape:
@@ -1591,7 +1595,7 @@ class SpotHologram(_AbstractSpotHologram):
                         raw="raw_stats" in self.flags and self.flags["raw_stats"],
                     )
 
-    def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
+    def _calculate_stats_experimental_spot(self, stats: dict, stat_groups: list = []) -> None:
         """Wrapped by :meth:`SpotHologram._update_stats()`."""
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
@@ -1624,7 +1628,7 @@ class SpotHologram(_AbstractSpotHologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"],
             )
 
-    def _update_stats(self, stat_groups=[]):
+    def _update_stats(self, stat_groups: list = []) -> None:
         """Calculate statistics corresponding to the desired ``stat_groups``.
 
         Parameters

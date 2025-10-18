@@ -3,6 +3,8 @@
 import time
 import warnings
 
+import numpy as np
+
 from slmsuite.hardware.cameras.camera import Camera
 from slmsuite.hardware.remote import DEFAULT_HOST, DEFAULT_PORT, DEFAULT_TIMEOUT, _Client
 
@@ -79,14 +81,14 @@ class RemoteCamera(_Client, Camera):
         """See :meth:`.Camera._set_exposure_hw`."""
         return self._com(command="_set_exposure_hw", kwargs=dict(exposure_s=exposure_s))
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`."""
         t = time.perf_counter()
         img = self._com(command="_get_image_hw", kwargs=dict(timeout_s=timeout_s))
         print(time.perf_counter() - t)
         return img
 
-    def _get_images_hw(self, image_count: int, timeout_s: float, out=None):
+    def _get_images_hw(self, image_count: int, timeout_s: float, out=None) -> np.ndarray:
         """See :meth:`.Camera._get_images_hw`."""
         if out is not None:
             warnings.warn("Remote camera does not support in-place operations.")

@@ -2,6 +2,8 @@
 Outlines which camera superclass functions must be implemented.
 """
 
+import numpy as np
+
 from slmsuite.hardware.cameras.camera import Camera
 
 
@@ -116,7 +118,7 @@ class Template(Camera):
         raise NotImplementedError
         # Use self.cam to crop the window of interest.
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`."""
         raise NotImplementedError
         # The core method: grabs an image from the camera.

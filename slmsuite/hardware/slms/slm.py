@@ -227,7 +227,7 @@ class SLM(_Picklable, ABC):
             print(".info() NotImplemented.")
         return []
 
-    def load_vendor_phase_correction(self, file_path: str):
+    def load_vendor_phase_correction(self, file_path: str) -> None:
         """Loads vendor-provided phase correction from file,
         setting :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]`.
         By default, this is interpreted as an image file and is padded or unpadded to
@@ -372,7 +372,7 @@ class SLM(_Picklable, ABC):
         """
         raise NotImplementedError
 
-    def set_phase(self, phase, phase_correct: bool = True, settle: bool = False, **kwargs):
+    def set_phase(self, phase: np.ndarray, phase_correct: bool = True, settle: bool = False, **kwargs) -> None:
         r"""Checks, cleans, and adds to data, then sends the data to the SLM and
         potentially waits for settle. This method calls the SLM-specific private method
         :meth:`_set_phase_hw()` which transfers the data to the SLM.
@@ -538,7 +538,7 @@ class SLM(_Picklable, ABC):
 
         return self.display
 
-    def _phase2gray(self, phase, out=None) -> np.ndarray:
+    def _phase2gray(self, phase: np.ndarray, out: np.ndarray | None = None) -> np.ndarray:
         r"""Helper function to convert an array of phases (units of :math:`2\pi`) to an array of
         :attr:`~slmsuite.hardware.slms.slm.SLM.bitresolution` -scaled and -cropped integers.
         This is used by :meth:`set_phase()`. See special cases described in :meth:`set_phase()`.
@@ -649,7 +649,7 @@ class SLM(_Picklable, ABC):
 
         return file_path
 
-    def load_phase(self, file_path: str | None = None, settle: bool = False):
+    def load_phase(self, file_path: str | None = None, settle: bool = False) -> str:
         """Loads :attr:`~slmsuite.hardware.slms.slm.SLM.display`
         from a file and writes to the SLM.
 
@@ -777,7 +777,7 @@ class SLM(_Picklable, ABC):
 
         return self.source
 
-    def fit_source_amplitude(self, method: str = "moments", extent_threshold: float = 0.1, force: bool = True):
+    def fit_source_amplitude(self, method: str = "moments", extent_threshold: float = 0.1, force: bool = True) -> dict:
         """Extracts various :attr:`source` parameters from the source for use in
         analytic functions. This is done by analyzing the :attr:`source` ``["amplitude"]``
         distribution with ``"moments"`` or least squares ``"fit"``.

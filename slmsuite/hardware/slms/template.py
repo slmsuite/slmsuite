@@ -82,7 +82,7 @@ class Template(SLM):
         serial_list = get_serial_list()  # TODO: Fill in proper function.
         return serial_list
 
-    def _set_phase_hw(self, phase) -> None:
+    def _set_phase_hw(self, phase: np.ndarray) -> None:
         """Low-level hardware interface to set_phase ``phase`` data onto the SLM.
         When the user calls the :meth:`.SLM.write` method of
         :class:`.SLM`, ``phase`` is error checked before calling

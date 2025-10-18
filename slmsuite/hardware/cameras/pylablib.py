@@ -24,6 +24,8 @@ Color camera functionality is not currently implemented, and will lead to undefi
 
 import warnings
 
+import numpy as np
+
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
@@ -144,7 +146,7 @@ class PyLabLib(Camera):
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.set_exposure(float(exposure_s))
 
-    def set_woi(self, woi: list | None = None):
+    def set_woi(self, woi: list | None = None) -> list:
         """Method to narrow the imaging region to a 'window of interest'
         for faster framerates.
 
@@ -161,7 +163,7 @@ class PyLabLib(Camera):
         """
         raise NotImplementedError
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """Method to pull an image from the camera and return.
 
         Parameters
@@ -176,6 +178,6 @@ class PyLabLib(Camera):
         """
         return self.cam.snap(timeout=timeout_s)
 
-    def _get_images_hw(self, image_count: int, timeout_s: float, out=None):
+    def _get_images_hw(self, image_count: int, timeout_s: float, out=None) -> np.ndarray:
         """See :meth:`.Camera._get_images_hw`."""
         return self.cam.grab(nframes=image_count, frame_timeout=timeout_s)

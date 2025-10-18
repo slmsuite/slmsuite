@@ -1,23 +1,22 @@
 """Interface to experimental devices."""
 
-import warnings
 import datetime
+import warnings
 
 from slmsuite import __version__
-from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
+from slmsuite.misc.files import generate_path, save_h5
+from slmsuite.misc.files import latest_path as latest_path
+from slmsuite.misc.files import load_h5 as load_h5
 
 
 class _Picklable:
-    """
-    Class for hardware objects to handle state saving.
-    """
+    """Class for hardware objects to handle state saving."""
 
     _pickle = []  # Baseline parameters to pickle.
     _pickle_data = []  #
 
-    def pickle(self, attributes=True, metadata=True):
-        """
-        Returns a dictionary containing selected attributes of this class.
+    def pickle(self, attributes=True, metadata=True) -> dict:
+        """Returns a dictionary containing selected attributes of this class.
 
         Parameters
         ----------
@@ -62,9 +61,8 @@ class _Picklable:
         else:
             return pickled
 
-    def save(self, path=".", name=None, **kwargs):
-        """
-        Saves the dictionary returned from :meth:`pickle()` to a file like ``"path/name_id.h5"``.
+    def save(self, path: str = ".", name: str | None = None, **kwargs) -> str:
+        """Saves the dictionary returned from :meth:`pickle()` to a file like ``"path/name_id.h5"``.
 
         Parameters
         ----------
@@ -75,7 +73,7 @@ class _Picklable:
         **kwargs
             Passed to :meth:`pickle()` to customize how and what data is saved.
 
-        Returns
+        Returns:
         -------
         str
             The file path that the pickled data was saved to.

@@ -65,8 +65,5 @@ class SimulatedSLM(SLM):
     def close(self) -> None:
         pass
 
-    def _set_phase_hw(self, phase) -> None:
-        """Updates SLM.display to implement various physical artifacts of SLMs."""
-        # FUTURE: apply physical effects directly to SLM.display
-
-        return
+    def _set_phase_hw(self, phase: np.ndarray) -> None:
+        """See :meth:`.SLM._set_phase_hw`."""

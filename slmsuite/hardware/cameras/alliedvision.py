@@ -320,7 +320,7 @@ class AlliedVision(Camera):
             self._set_woi(woi)
             raise e
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`."""
         t = time.time()
 

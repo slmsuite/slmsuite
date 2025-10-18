@@ -117,7 +117,7 @@ class _HologramStats:
                 raw="raw_stats" in self.flags and self.flags["raw_stats"],
             )
 
-    def _update_stats_dictionary(self, stats):
+    def _update_stats_dictionary(self, stats: dict) -> None:
         """Helper function to manage additions to the :attr:`stats`.
 
         Parameters
@@ -151,7 +151,7 @@ class _HologramStats:
         # Update stats
         grouplist = set(stats.keys()).union(set(self.stats["stats"].keys()))
         if len(grouplist) > 0:
-            statlists = [set(stats[group].keys()) for group in stats.keys()]
+            statlists = [set(stats[group].keys()) for group in stats]
             if len(self.stats["stats"].keys()) > 0:
                 key = next(iter(self.stats["stats"]))
                 statlists.append(set(self.stats["stats"][key].keys()))
@@ -173,7 +173,7 @@ class _HologramStats:
                                 self.stats["stats"][group][stat].extend([np.nan for _ in range(diff)])
 
                         # Update stat
-                        if group in stats.keys() and stat in stats[group].keys():
+                        if group in stats and stat in stats[group].keys():
                             self.stats["stats"][group][stat][self.iter] = stats[group][stat]
 
         # Rawest stats
@@ -295,7 +295,7 @@ class _HologramStats:
 
     # Visualization helper functions.
     @staticmethod
-    def _compute_limits(source, epsilon=0, limit_padding=0.1):
+    def _compute_limits(source, epsilon: float = 0, limit_padding: float = 0.1) -> list:
         """Returns the rectangular region which crops around non-zero pixels in the
         ``source`` image. See :meth:`plot_farfield()`.
         """
@@ -543,7 +543,7 @@ class _HologramStats:
             slm = None
             units = "knm"
 
-        def rebase(ax, img, to_units):
+        def rebase(ax, img, to_units: str) -> None:
             if to_units != "knm":
                 ext_nm = img.get_extent()
                 ext_min = np.squeeze(
@@ -690,7 +690,13 @@ class _HologramStats:
 
         return limits
 
-    def plot_stats(self, stats_dict=None, stat_groups=[], ylim=None, show=False):
+    def plot_stats(
+        self,
+        stats_dict: dict | None = None,
+        stat_groups: list = [],
+        ylim: tuple | None = None,
+        show: bool = False,
+    ) -> Any:
         """Plots the statistics contained in the given dictionary.
 
         Parameters

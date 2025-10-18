@@ -211,7 +211,7 @@ class MindVision(Camera):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         # TODO: are the following two commands necessary for every call?
 
         # Switch camera mode to continuous acquisition.

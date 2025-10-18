@@ -8,6 +8,8 @@ import os
 import pathlib
 import warnings
 
+import numpy as np
+
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
@@ -90,7 +92,7 @@ class MMCore(Camera):
             print("success")
 
     @staticmethod
-    def info(path="C:\\Program Files\\Micro-Manager-2.0"):
+    def info(path="C:\\Program Files\\Micro-Manager-2.0") -> list:
         """Detects ``.cfg`` files present in the given path.
 
         Parameters
@@ -138,7 +140,7 @@ class MMCore(Camera):
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`."""
         self.cam.snapImage()
         return self.cam.getImage()

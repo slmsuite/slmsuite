@@ -6,6 +6,8 @@ Install :mod:`pypylon` by following the `provided instructions <https://github.c
 
 import warnings
 
+import numpy as np
+
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
@@ -301,7 +303,7 @@ class Basler(Camera):
         if err is not None:
             raise err
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera.get_image`."""
         self.cam.StartGrabbing(self.GrabStrategy, pylon.GrabLoop_ProvidedByUser)
 

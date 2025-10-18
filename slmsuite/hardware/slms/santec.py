@@ -375,7 +375,7 @@ class Santec(SLM):
         slm_funcs.SLM_Disp_Close(self.display_number)
         slm_funcs.SLM_Ctrl_Close(self.slm_number)
 
-    def _set_phase_hw(self, phase) -> None:
+    def _set_phase_hw(self, phase: np.ndarray) -> None:
         """See :meth:`.SLM._set_phase_hw`."""
         matrix = phase.astype(slm_funcs.USHORT)
         n_h, n_w = self.shape

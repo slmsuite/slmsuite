@@ -65,10 +65,6 @@ class RemoteSLM(_Client, SLM):
     def close(self) -> None:
         pass
 
-    def _set_phase_hw(self, phase) -> None:
-        """Low-level hardware interface to set_phase ``phase`` data onto the SLM.
-        When the user calls the :meth:`.SLM.write` method of
-        :class:`.SLM`, ``phase`` is error checked before calling
-        :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
-        """
-        self._com(command="_set_phase_hw", kwargs=dict(phase=phase))
+    def _set_phase_hw(self, phase: np.ndarray) -> None:
+        """See :meth:`.SLM._set_phase_hw`."""
+        self.client.request("set_phase", phase)

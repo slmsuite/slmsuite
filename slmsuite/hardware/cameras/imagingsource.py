@@ -42,7 +42,7 @@ class ImagingSource(Camera):
     sdk = None
 
     @classmethod
-    def init_sdk(cls):
+    def init_sdk(cls) -> int:
         """Class method for initializing the sdk. Called when the first instance is instantiated or when the static method info is called.
         Parameters
         ----------
@@ -66,7 +66,7 @@ class ImagingSource(Camera):
         return err
 
     @staticmethod
-    def safe_call(cb, to_raise, *args, **kwargs):
+    def safe_call(cb, to_raise, *args, **kwargs) -> int:
         """Decorator method that automatically error checks the result from callback `cb`.
 
         Parameters
@@ -272,7 +272,7 @@ class ImagingSource(Camera):
 
         self.shape = (height, width)
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera.get_image`."""
         buffer_size = 3 * self.bitdepth * self.shape[0] * self.shape[1]  # times 3 is because even Y800 is RGB
         # Starts the image acquisition

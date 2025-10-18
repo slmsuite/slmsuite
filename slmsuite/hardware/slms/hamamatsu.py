@@ -164,7 +164,7 @@ class Hamamatsu(SLM):
             **kwargs,
         )
 
-    def _set_phase_hw(self, phase, slot_number: int = 0) -> None:
+    def _set_phase_hw(self, phase: np.ndarray, slot_number: int = 0) -> None:
         r"""Method called inside the method :meth:'write()' of the SLM class.
         The array must contains np.uint8 values.
         ``slot_number`` can be passed as a ``**kwargs``

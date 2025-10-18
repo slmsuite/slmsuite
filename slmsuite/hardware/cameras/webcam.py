@@ -93,11 +93,11 @@ class Webcam(Camera):
         del self.cam
 
     @staticmethod
-    def info(verbose: bool = True):
+    def info(verbose: bool = True) -> list:
         """Not supported by :class:`Webcam`."""
         raise NotImplementedError
 
-    def set_woi(self, woi: list | None = None):
+    def set_woi(self, woi: list | None = None) -> tuple:
         if woi is not None:
             self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, woi[1])
             self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, woi[3])
@@ -113,7 +113,7 @@ class Webcam(Camera):
 
     # Property Configuration ###
 
-    def set_woi(self, woi: list | None = None):
+    def set_woi(self, woi: list | None = None) -> tuple:
         if woi is not None:
             self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, woi[1])
             self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, woi[3])
@@ -142,7 +142,7 @@ class Webcam(Camera):
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.set(cv2.CAP_PROP_EXPOSURE, np.log2(exposure_s))
 
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`."""
         (success, img) = self.cam.read()
         if not success:

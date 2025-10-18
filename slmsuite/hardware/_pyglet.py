@@ -14,7 +14,7 @@ try:
     # Helper to get display/canvas depending on pyglet version
     PYGLET_VERSION = Version(getattr(pyglet, "__version__", "0"))
 
-    def get_pyglet_display():
+    def get_pyglet_display():  # type: ignore
         if Version("2.1.0") <= PYGLET_VERSION:
             return pyglet.display.get_display()
         else:
@@ -26,7 +26,7 @@ except:
     __Window = object
     PYGLET_VERSION = None
 
-    def get_pyglet_display():
+    def get_pyglet_display():  # type: ignore
         raise ImportError("pyglet not installed.")
 
 
@@ -68,7 +68,7 @@ class _Window(__Window):
         except Exception as e:
             print(e)
 
-    def _setup_context(self):
+    def _setup_context(self) -> None:
         shape = self.shape
 
         if gl.base.gl_info.have_version(3, 0):  # Pyglet >= 2.0.0
@@ -197,7 +197,7 @@ class _Window(__Window):
         else:
             raise RuntimeError("Could not find a compatible GL context.")
 
-    def render(self):
+    def render(self) -> None:
         self.switch_to()
 
         shape = self.shape
@@ -279,7 +279,7 @@ class _Window(__Window):
         self.flip()
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list[tuple[int, tuple[int, int, int, int], bool, bool]]:
         """Get information about the available displays, their indexes, and their sizes.
 
         Parameters
@@ -300,13 +300,13 @@ class _Window(__Window):
         default = display.get_default_screen()
         windows = display.get_windows()
 
-        def parse_screen(screen):
+        def parse_screen(screen) -> str:
             return f"x={screen.x}, y={screen.y}, width={screen.width}, height={screen.height}"
 
-        def parse_screen_int(screen):
+        def parse_screen_int(screen) -> tuple[int, int, int, int]:
             return (screen.x, screen.y, screen.width, screen.height)
 
-        def parse_window(window):
+        def parse_window(window) -> str:
             x, y = window.get_location()
             return f"x={x}, y={y}, width={window.width}, height={window.height}"
 

@@ -247,7 +247,7 @@ class Camera(_Picklable, ABC):
             print(".info() NotImplemented.")
         return []
 
-    def get_exposure(self):
+    def get_exposure(self) -> float:
         """Get the frame integration time in seconds.
         Used in :meth:`.autoexposure()`.
 
@@ -259,7 +259,7 @@ class Camera(_Picklable, ABC):
         self.exposure_s = self._get_exposure_hw()
         return self.exposure_s
 
-    def set_exposure(self, exposure_s):
+    def set_exposure(self, exposure_s: float) -> None:
         """Set the frame integration time in seconds.
         Used in :meth:`.autoexposure()`.
 
@@ -330,7 +330,7 @@ class Camera(_Picklable, ABC):
             self._get_image_hw_tolerant(timeout_s=timeout_s + self.exposure_s)
 
     @abstractmethod
-    def _get_image_hw(self, timeout_s: float):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """Abstract method to capture camera images.
 
         Parameters
@@ -347,7 +347,7 @@ class Camera(_Picklable, ABC):
         """
         raise NotImplementedError(f"Camera {self.name} has not implemented _get_image_hw")
 
-    def _get_out(self, image_count: int, out=None):
+    def _get_out(self, image_count: int, out=None) -> np.ndarray:
         # Preallocate memory if necessary
         out_shape = (int(image_count), self.default_shape[0], self.default_shape[1])
         if out is None:
@@ -361,7 +361,7 @@ class Camera(_Picklable, ABC):
 
         return out
 
-    def _get_images_hw(self, image_count: int, timeout_s: float, out=None):
+    def _get_images_hw(self, image_count: int, timeout_s: float, out=None) -> np.ndarray:
         """Abstract method to capture a series of image_count images using camera-specific
         batch acquisition features.
 
@@ -391,7 +391,7 @@ class Camera(_Picklable, ABC):
 
     # Capture methods one level of abstraction above _get_image_hw().
 
-    def _get_image_hw_tolerant(self, *args, **kwargs):
+    def _get_image_hw_tolerant(self, *args, **kwargs) -> np.ndarray:
         err = None
 
         for i in range(self.capture_attempts):
@@ -404,7 +404,7 @@ class Camera(_Picklable, ABC):
 
         raise err
 
-    def _get_images_hw_tolerant(self, *args, **kwargs):
+    def _get_images_hw_tolerant(self, *args, **kwargs) -> np.ndarray:
         err = None
 
         for i in range(self.capture_attempts):
@@ -480,7 +480,7 @@ class Camera(_Picklable, ABC):
         # Force int so we have a chance of exposure aligning with camera clock.
         return (int(exposures), int(exposure_power))
 
-    def _get_averaging_dtype(self, averaging: int | None = None):
+    def _get_averaging_dtype(self, averaging: int | None = None) -> type | np.dtype:
         """Returns the appropriate image datatype for ``averaging`` levels of averaging."""
         if averaging is None:
             if self.averaging is None:
@@ -514,7 +514,9 @@ class Camera(_Picklable, ABC):
         else:
             raise ValueError(f"Datatype {self.dtype} does not make sense as a camera return.")
 
-    def get_image(self, timeout_s: float = 1, transform: bool = True, hdr=None, averaging: int | None = None):
+    def get_image(
+        self, timeout_s: float = 1, transform: bool = True, hdr=None, averaging: int | None = None
+    ) -> np.ndarray:
         """Capture, process, and return images from a camera.
 
         Tip:
@@ -623,7 +625,9 @@ class Camera(_Picklable, ABC):
 
         return img
 
-    def get_images(self, image_count: int, timeout_s: float = 1, out=None, transform: bool = True, flush: bool = False):
+    def get_images(
+        self, image_count: int, timeout_s: float = 1, out=None, transform: bool = True, flush: bool = False
+    ) -> np.ndarray:
         """Grab ``image_count`` images in succession.
 
         Important:
@@ -677,7 +681,9 @@ class Camera(_Picklable, ABC):
 
         return imgs
 
-    def get_image_hdr(self, exposures=None, return_raw: bool = False, **kwargs):
+    def get_image_hdr(
+        self, exposures=None, return_raw: bool = False, **kwargs
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
         r"""Often, the necessities of precision applications exceed the bitdepth of a
         camera. One way to recover High Dynamic Range (HDR) imaging is to use
         `multiple exposures <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
@@ -763,7 +769,9 @@ class Camera(_Picklable, ABC):
             return img
 
     @staticmethod
-    def get_image_hdr_analysis(imgs, overexposure_threshold: float | None = None, exposure_power: int = 2):
+    def get_image_hdr_analysis(
+        imgs, overexposure_threshold: float | None = None, exposure_power: int = 2
+    ) -> np.ndarray:
         r"""Analyzes raw data for High Dynamic Range (HDR) imaging
         `multiple exposures <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
         each with increasing exposure time.
@@ -821,7 +829,7 @@ class Camera(_Picklable, ABC):
 
     # Display methods.
 
-    def plot(self, image=None, limits=None, title: str = "Image", ax=None, cbar: bool = True):
+    def plot(self, image=None, limits=None, title: str = "Image", ax=None, cbar: bool = True):  # type: ignore
         """Plots the provided image.
 
         Parameters
@@ -1046,7 +1054,7 @@ class Camera(_Picklable, ABC):
 
         return exp_fin
 
-    def autofocus(self, get_z, set_z, z_list=None, plot: bool = False):
+    def autofocus(self, get_z, set_z, z_list: np.ndarray | list | None = None, plot: bool = False) -> tuple:
         """Uses a FFT contrast metric to find optimal focus when scanning over some variable
         ``z``. This ``z`` often takes the form of a vertical stage to position a sample precisely
         at the plane of imaging of a lens or objective. The contrast metric works particularly

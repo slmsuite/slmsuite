@@ -87,17 +87,17 @@ class Webcam(Camera):
         if verbose:
             print("success")
 
-    def close(self):
+    def close(self) -> None:
         """See :meth:`.Camera.close`."""
         self.cam.release()
         del self.cam
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True):
         """Not supported by :class:`Webcam`."""
         raise NotImplementedError
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None):
         if woi is not None:
             self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, woi[1])
             self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, woi[3])
@@ -113,7 +113,7 @@ class Webcam(Camera):
 
     # Property Configuration ###
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None):
         if woi is not None:
             self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, woi[1])
             self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, woi[3])
@@ -127,22 +127,22 @@ class Webcam(Camera):
 
         return (0, self.shape[1], 0, self.shape[0])
 
-    def get_auto_exposure(self):
+    def get_auto_exposure(self) -> float:
         return self.cam.get(cv2.CAP_PROP_AUTO_EXPOSURE)
 
-    def set_auto_exposure(self, tf):
+    def set_auto_exposure(self, tf: bool) -> None:
         self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)
         self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3 if tf else 1)
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return 2 ** float(self.cam.get(cv2.CAP_PROP_EXPOSURE))
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.set(cv2.CAP_PROP_EXPOSURE, np.log2(exposure_s))
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float):
         """See :meth:`.Camera._get_image_hw`."""
         (success, img) = self.cam.read()
         if not success:

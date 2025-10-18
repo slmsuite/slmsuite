@@ -85,7 +85,7 @@ class FLIR(Camera):
 
         raise NotImplementedError
 
-    def close(self, close_sdk=True):
+    def close(self, close_sdk: bool = True) -> None:
         """See :meth:`.Camera.close`."""
         try:
             self.cam.EndAcquisition()
@@ -95,19 +95,19 @@ class FLIR(Camera):
 
     # Property Configuration ###
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         return
 
-    def set_woi(self, window=None):
+    def set_woi(self, window: list | None = None) -> None:
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def _get_image_hw(self, blocking=True):
+    def _get_image_hw(self, blocking: bool = True):
         """See :meth:`.Camera._get_image_hw`.
 
         Parameters

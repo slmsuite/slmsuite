@@ -126,10 +126,10 @@ class SimulatedCamera(Camera):
         # Defaults to alignment with the SLM grid.
         self.set_affine(M, b)
 
-    def close():
+    def close() -> None:
         pass
 
-    def set_affine(self, M=None, b=None, **kwargs):
+    def set_affine(self, M=None, b=None, **kwargs) -> None:
         """Set the camera's placement in the SLM's k-space. ``M`` and/or ``b``, if provided,
         are used to transform the :class:`SimulatedCamera`'s ``"ij"`` grid to a ``"knm"`` grid
         for interpolation against the :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`'s
@@ -316,14 +316,14 @@ class SimulatedCamera(Camera):
 
         return M, b
 
-    def flush(self):
+    def flush(self) -> None:
         """See :meth:`.Camera.flush`."""
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return self.exposure_s
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.exposure_s = exposure_s
 
@@ -346,7 +346,7 @@ class SimulatedCamera(Camera):
         else:
             raise ValueError(f"Numpy cannot encode bitdepth {self.bitdepth}.")
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float):
         """See :meth:`.Camera._get_image_hw`. Computes and samples the affine-transformed SLM far-field.
 
         Returns:

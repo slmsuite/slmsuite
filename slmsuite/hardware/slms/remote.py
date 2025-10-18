@@ -1,15 +1,11 @@
-"""
-Connects to an SLM on a remote :class:`~slmsuite.hardware.remote.Server`.
-"""
+"""Connects to an SLM on a remote :class:`~slmsuite.hardware.remote.Server`."""
 
+from slmsuite.hardware.remote import DEFAULT_HOST, DEFAULT_PORT, DEFAULT_TIMEOUT, _Client
 from slmsuite.hardware.slms.slm import SLM
-from slmsuite.hardware.remote import _Client, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_TIMEOUT
 
 
 class RemoteSLM(_Client, SLM):
-    """
-    Connects to an SLM on a remote :class:`~slmsuite.hardware.remote.Server`.
-    """
+    """Connects to an SLM on a remote :class:`~slmsuite.hardware.remote.Server`."""
 
     _pickle = SLM._pickle + [
         "server_attributes",
@@ -25,11 +21,10 @@ class RemoteSLM(_Client, SLM):
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
         timeout: float = DEFAULT_TIMEOUT,
-        wav_um: float = None,
-        settle_time_s: float = None,
-    ):
-        r"""
-        Connects to an SLM on a remote :class:`~slmsuite.hardware.remote.Server`.
+        wav_um: float | None = None,
+        settle_time_s: float | None = None,
+    ) -> None:
+        r"""Connects to an SLM on a remote :class:`~slmsuite.hardware.remote.Server`.
 
         This client only (1) reads the SLM's attributes on initialization and (2) forwards
         :meth:`._set_phase_hw` commands. Class attributes are not concurrent (not kept up-to-date).
@@ -67,12 +62,11 @@ class RemoteSLM(_Client, SLM):
             settle_time_s=pickled["settle_time_s"] if settle_time_s is None else settle_time_s,
         )
 
-    def close(self):
+    def close(self) -> None:
         pass
 
-    def _set_phase_hw(self, phase):
-        """
-        Low-level hardware interface to set_phase ``phase`` data onto the SLM.
+    def _set_phase_hw(self, phase) -> None:
+        """Low-level hardware interface to set_phase ``phase`` data onto the SLM.
         When the user calls the :meth:`.SLM.write` method of
         :class:`.SLM`, ``phase`` is error checked before calling
         :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.

@@ -172,8 +172,8 @@ class Server:
         hardware: list[object],
         port: int = DEFAULT_PORT,
         timeout: float = SERVER_WAIT_TIMEOUT,
-        allowlist: list[str] = None,
-    ):
+        allowlist: list[str] | None = None,
+    ) -> None:
         """Initializes a server to host slmsuite hardware: cameras and SLMs.
         Interface with this server using
         :class:`~slmsuite.hardware.slms.remote.RemoteSLM` and

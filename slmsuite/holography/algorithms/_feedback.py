@@ -219,7 +219,7 @@ class FeedbackHologram(Hologram):
         return target
 
     # Measurement.
-    def measure(self, basis="ij"):
+    def measure(self, basis: str = "ij") -> None:
         """Method to request a measurement to occur. If :attr:`img_ij` is ``None``,
         then a new image will be grabbed from the camera (this is done automatically in
         algorithms).
@@ -263,7 +263,9 @@ class FeedbackHologram(Hologram):
             raise ValueError(f"Unrecognized measurement basis '{basis}'. Options are 'ij' or 'knm'")
 
     # Target update.
-    def update_target(self, new_target_ij, null_region=None, null_region_radius_frac=None, reset_weights=False):
+    def update_target(
+        self, new_target_ij, null_region=None, null_region_radius_frac=None, reset_weights: bool = False
+    ) -> None:
         """Change the target to something new. This method handles cleaning and normalization.
 
         Parameters

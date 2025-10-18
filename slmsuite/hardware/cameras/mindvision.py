@@ -124,7 +124,7 @@ class MindVision(Camera):
         if verbose:
             print("success")
 
-    def close(self):
+    def close(self) -> None:
         """Close the camera and release resources."""
         if self.handle:
             _mvsdk.CameraAlignFree(self.buffer)
@@ -132,7 +132,7 @@ class MindVision(Camera):
             self.handle = None
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list:
         """Discovers all cameras detected by the :mod:`mvsdk`.
 
         Parameters
@@ -159,7 +159,7 @@ class MindVision(Camera):
 
         return serial_list
 
-    def print_capability(self):
+    def print_capability(self) -> None:
         """MindVision specific method (copied from MindVision examples) to print the
         capability of the camera.
         """
@@ -199,19 +199,19 @@ class MindVision(Camera):
             desc = cap.pBayerDecAlmHdDesc[i]
             print(f"{desc.iIndex}: {desc.GetDescription()}")
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return _mvsdk.CameraGetExposureTime(self.handle) / 1e6
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         _mvsdk.CameraSetExposureTime(self.handle, exposure_s * 1e6)
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> None:
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float):
         # TODO: are the following two commands necessary for every call?
 
         # Switch camera mode to continuous acquisition.

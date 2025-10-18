@@ -149,7 +149,7 @@ class AlliedVision(Camera):
             **kwargs,
         )
 
-    def close(self, close_sdk=True):
+    def close(self, close_sdk: bool = True) -> None:
         """See :meth:`.Camera.close`
 
         Parameters
@@ -165,7 +165,7 @@ class AlliedVision(Camera):
         del self.cam
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list:
         """Discovers all AlliedVision cameras.
 
         Parameters
@@ -202,7 +202,7 @@ class AlliedVision(Camera):
         return serial_list
 
     @classmethod
-    def close_sdk(cls):
+    def close_sdk(cls) -> None:
         """Close the :mod:`vmbpy` instance."""
         if cls.sdk is not None:
             cls.sdk.__exit__(None, None, None)
@@ -210,7 +210,7 @@ class AlliedVision(Camera):
 
     # Property Configuration ###
 
-    def get_properties(self, properties=None):
+    def get_properties(self, properties: dict | None = None) -> None:
         """Print the list of camera properties.
 
         Parameters
@@ -245,7 +245,7 @@ class AlliedVision(Camera):
             except:
                 print()
 
-    def set_adc_bitdepth(self, bitdepth):
+    def set_adc_bitdepth(self, bitdepth: int) -> None:
         """Set the digitization bitdepth.
 
         Parameters
@@ -262,7 +262,7 @@ class AlliedVision(Camera):
                 break
             raise RuntimeError(f"ADC bitdepth {bitdepth} not found.")
 
-    def get_adc_bitdepth(self):
+    def get_adc_bitdepth(self) -> int:
         """Get the digitization bitdepth.
 
         Returns:
@@ -274,15 +274,15 @@ class AlliedVision(Camera):
         bitdepth = int("".join(char for char in value if char.isdigit()))
         return bitdepth
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.ExposureTime.get()) / 1e6
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.ExposureTime.set(float(exposure_s * 1e6))
 
-    def _set_woi(self, woi):
+    def _set_woi(self, woi: list) -> None:
         """Sets the window of interest (WOI).
 
         Parameters
@@ -302,7 +302,7 @@ class AlliedVision(Camera):
         self.cam.Height.set(h)
         self.cam.Width.set(w)
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> None:
         """See :meth:`.Camera.set_woi`."""
         maxwoi = (0, self.cam.WidthMax.get(), 0, self.cam.HeightMax.get())
 
@@ -320,7 +320,7 @@ class AlliedVision(Camera):
             self._set_woi(woi)
             raise e
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float):
         """See :meth:`.Camera._get_image_hw`."""
         t = time.time()
 

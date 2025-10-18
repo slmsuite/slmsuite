@@ -74,14 +74,14 @@ class Template(Camera):
         if verbose:
             print("success")
 
-    def close(self):
+    def close(self) -> None:
         """See :meth:`.Camera.close`."""
         raise NotImplementedError
         self.cam.close()  # TODO: Fill in proper function.
         del self.cam
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list:
         """Discovers all cameras detected by the SDK.
         Useful for a user to identify the correct serial numbers / etc.
 
@@ -101,22 +101,22 @@ class Template(Camera):
 
     # Property Configuration ###
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         raise NotImplementedError
         return float(self.cam.get_exposure()) / 1e3  # TODO: Fill in proper function.
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         raise NotImplementedError
         self.cam.set_exposure(1e3 * exposure_s)  # TODO: Fill in proper function.
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> None:
         """See :meth:`.Camera.set_woi`."""
         raise NotImplementedError
         # Use self.cam to crop the window of interest.
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float):
         """See :meth:`.Camera._get_image_hw`."""
         raise NotImplementedError
         # The core method: grabs an image from the camera.

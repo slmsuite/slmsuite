@@ -1,12 +1,13 @@
 from slmsuite.holography.algorithms._header import *
 
 
-class _HologramStats(object):
+class _HologramStats:
     # Statistics handling.
     @staticmethod
-    def _calculate_stats(feedback_amp, target_amp, xp=cp, efficiency_compensation=True, total=None, raw=False):
-        """
-        Helper function to analyze how close the feedback is to the target.
+    def _calculate_stats(
+        feedback_amp, target_amp, xp=cp, efficiency_compensation: bool = True, total=None, raw: bool = False
+    ) -> dict:
+        """Helper function to analyze how close the feedback is to the target.
 
         Parameters
         ----------
@@ -106,10 +107,8 @@ class _HologramStats(object):
 
         return final_stats
 
-    def _calculate_stats_computational(self, stats, stat_groups=[]):
-        """
-        Wrapped by :meth:`Hologram._update_stats()`.
-        """
+    def _calculate_stats_computational(self, stats, stat_groups: list = []) -> None:
+        """Wrapped by :meth:`Hologram._update_stats()`."""
         if "computational" in stat_groups:
             stats["computational"] = self._calculate_stats(
                 self.amp_ff,
@@ -119,8 +118,7 @@ class _HologramStats(object):
             )
 
     def _update_stats_dictionary(self, stats):
-        """
-        Helper function to manage additions to the :attr:`stats`.
+        """Helper function to manage additions to the :attr:`stats`.
 
         Parameters
         ----------
@@ -139,7 +137,7 @@ class _HologramStats(object):
         flaglist = set(self.flags.keys()).union(set(self.stats["flags"].keys()))
         for flag in flaglist:
             # Extend flag
-            if not flag in self.stats["flags"]:
+            if flag not in self.stats["flags"]:
                 self.stats["flags"][flag] = [np.nan for _ in range(M)]
             else:
                 diff = self.iter + 1 - len(self.stats["flags"][flag])
@@ -161,13 +159,13 @@ class _HologramStats(object):
 
             for group in grouplist:
                 # Check this group
-                if not group in self.stats["stats"]:
+                if group not in self.stats["stats"]:
                     self.stats["stats"][group] = {}
 
                 if len(statlist) > 0:
                     for stat in statlist:
                         # Extend stat
-                        if not stat in self.stats["stats"][group]:
+                        if stat not in self.stats["stats"][group]:
                             self.stats["stats"][group][stat] = [np.nan for _ in range(M)]
                         else:
                             diff = self.iter + 1 - len(self.stats["stats"][group][stat])
@@ -179,8 +177,8 @@ class _HologramStats(object):
                             self.stats["stats"][group][stat][self.iter] = stats[group][stat]
 
         # Rawest stats
-        if "raw_stats" in self.flags and self.flags["raw_stats"]:
-            if not "raw_farfield" in self.stats:
+        if self.flags.get("raw_stats"):
+            if "raw_farfield" not in self.stats:
                 self.stats["raw_farfield"] = []
 
             diff = self.iter + 1 - len(self.stats["raw_farfield"])
@@ -194,9 +192,8 @@ class _HologramStats(object):
 
             self.stats["raw_farfield"][self.iter] = farfield
 
-    def _update_stats(self, stat_groups=[]):
-        """
-        Calculate statistics corresponding to the desired ``stat_groups``.
+    def _update_stats(self, stat_groups: list = []) -> None:
+        """Calculate statistics corresponding to the desired ``stat_groups``.
 
         Parameters
         ----------
@@ -209,9 +206,8 @@ class _HologramStats(object):
 
         self._update_stats_dictionary(stats)
 
-    def save_stats(self, file_path, include_state=True):
-        """
-        Uses :meth:`save_h5` to export the statistics hierarchy to a given h5 file.
+    def save_stats(self, file_path: str, include_state: bool = True) -> None:
+        """Uses :meth:`save_h5` to export the statistics hierarchy to a given h5 file.
 
         Parameters
         ----------
@@ -256,11 +252,10 @@ class _HologramStats(object):
 
         save_h5(file_path, to_save)
 
-    def load_stats(self, file_path, include_state=True):
-        """
-        Uses :meth:`save_h5` to import the statistics hierarchy from a given h5 file.
+    def load_stats(self, file_path: str, include_state: bool = True) -> None:
+        """Uses :meth:`save_h5` to import the statistics hierarchy from a given h5 file.
 
-        Tip
+        Tip:
         ~~~
         Enabling the ``"raw_stats"`` flag will export feedback data from each iteration
         instead of only derived statistics. Consider enabling this to save more detailed
@@ -279,7 +274,7 @@ class _HologramStats(object):
         # Overwrite attributes if desired.
         if include_state:
             if len(from_save.keys()) <= 1:
-                raise ValueError("State was not stored in file '{}'and cannot be imported".format(file_path))
+                raise ValueError(f"State was not stored in file '{file_path}'and cannot be imported")
 
             is_cupy = ["phase", "amp", "target", "weights", "phase_ff"]
             for key in from_save.keys():
@@ -301,8 +296,7 @@ class _HologramStats(object):
     # Visualization helper functions.
     @staticmethod
     def _compute_limits(source, epsilon=0, limit_padding=0.1):
-        """
-        Returns the rectangular region which crops around non-zero pixels in the
+        """Returns the rectangular region which crops around non-zero pixels in the
         ``source`` image. See :meth:`plot_farfield()`.
         """
         limits = []
@@ -328,8 +322,7 @@ class _HologramStats(object):
         return limits
 
     def plot_nearfield(self, source=None, title="", padded=False, figsize=(8, 4), cbar=False):
-        """
-        Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
+        """Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
         The amplitude is assumed (whether uniform, assumed, or measured) while the
         phase is the result of optimization.
 
@@ -421,8 +414,7 @@ class _HologramStats(object):
         figsize=(8, 4),
         cbar=False,
     ):
-        """
-        Plots an overview (left) and zoom (right) view of ``source``.
+        """Plots an overview (left) and zoom (right) view of ``source``.
 
         Parameters
         ----------
@@ -454,7 +446,7 @@ class _HologramStats(object):
         cbar : bool
             Whether to add colorbars to the plots. Defaults to ``False``.
 
-        Returns
+        Returns:
         -------
         ((float, float), (float, float))
             Used ``limits``, which may be autocomputed. Autocomputed limits are returned
@@ -493,7 +485,7 @@ class _HologramStats(object):
                 npsource = np.abs(source)
 
         # Check units
-        if not units in toolbox.BLAZE_UNITS:
+        if units not in toolbox.BLAZE_UNITS:
             raise ValueError(f"'{units}' is not recognized as a valid blaze unit.")
         if units in toolbox.CAMERA_UNITS:
             raise ValueError(
@@ -699,8 +691,7 @@ class _HologramStats(object):
         return limits
 
     def plot_stats(self, stats_dict=None, stat_groups=[], ylim=None, show=False):
-        """
-        Plots the statistics contained in the given dictionary.
+        """Plots the statistics contained in the given dictionary.
 
         Parameters
         ----------

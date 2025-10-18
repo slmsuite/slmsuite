@@ -170,13 +170,13 @@ class ImagingSource(Camera):
         if verbose:
             print("success")
 
-    def close(self):
+    def close(self) -> None:
         """See :meth:`.Camera.close`."""
         ImagingSource.safe_call(ImagingSource.sdk.IC_ReleaseGrabber, self.cam)
         del self.cam
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list:
         """Discovers all cameras detected by the SDK.
         Useful for a user to identify the correct serial numbers / etc.
 
@@ -211,7 +211,7 @@ class ImagingSource(Camera):
 
     # Property Configuration ###
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         exposure = ctypes.c_float()
         ImagingSource.safe_call(
@@ -219,7 +219,7 @@ class ImagingSource(Camera):
         )
         return float(exposure.value)
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         # Turn off auto exposure and use the value given.
         ImagingSource.safe_call(
@@ -234,7 +234,7 @@ class ImagingSource(Camera):
             ctypes.c_float(exposure_s),
         )
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> None:
         """See :meth:`.Camera.set_woi`."""
         if woi is None:
             width = ctypes.c_long()
@@ -272,7 +272,7 @@ class ImagingSource(Camera):
 
         self.shape = (height, width)
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float):
         """See :meth:`.Camera.get_image`."""
         buffer_size = 3 * self.bitdepth * self.shape[0] * self.shape[1]  # times 3 is because even Y800 is RGB
         # Starts the image acquisition

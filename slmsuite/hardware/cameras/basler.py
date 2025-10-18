@@ -123,7 +123,7 @@ class Basler(Camera):
         if verbose:
             print("success")
 
-    def close(self, close_sdk=True):
+    def close(self, close_sdk: bool = True) -> None:
         """See :meth:`.Camera.close`.
 
         Parameters
@@ -140,7 +140,7 @@ class Basler(Camera):
             pass
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list:
         """Discovers all cameras detected by the SDK.
         Useful for a user to identify the correct serial numbers / etc.
 
@@ -178,7 +178,7 @@ class Basler(Camera):
         return serial_list
 
     @classmethod
-    def close_sdk(cls):
+    def close_sdk(cls) -> None:
         """ "
         Close the :mod:'pylon' instance.
         """
@@ -187,7 +187,7 @@ class Basler(Camera):
 
     # Property Configuration ###
 
-    def get_properties(self, properties=None):
+    def get_properties(self, properties: dict | None = None) -> None:
         """ "
         Print the list of camera properties.
 
@@ -223,7 +223,7 @@ class Basler(Camera):
             except:
                 print()
 
-    def set_adc_bitdepth(self, bitdepth):
+    def set_adc_bitdepth(self, bitdepth: int) -> None:
         """Set the digitization bitdepth.
 
         Parameters
@@ -240,7 +240,7 @@ class Basler(Camera):
                 break
             raise RuntimeError(f"ADC bitdepth {bitdepth} not found.")
 
-    def get_adc_bitdepth(self):
+    def get_adc_bitdepth(self) -> int:
         """Get the digitization bitdepth.
 
         Returns:
@@ -252,15 +252,15 @@ class Basler(Camera):
         bitdepth = int("".join(char for char in value if char.isdigit()))
         return bitdepth
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.ExposureTime.GetValue()) / 1e6  # in seconds
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.ExposureTime.SetValue(float(1e6 * exposure_s))  # in seconds
 
-    def _set_woi(self, woi):
+    def _set_woi(self, woi: list) -> None:
         """Sets the window of interest (WOI).
 
         Parameters
@@ -279,7 +279,7 @@ class Basler(Camera):
         self.cam.Height.SetValue(h)
         self.cam.Width.SetValue(w)
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> None:
         """See :meth:`.Camera.set_woi`."""
         err = None
         maxwoi = (0, self.cam.Width.GetMax(), 0, self.cam.Height.GetMax())
@@ -301,7 +301,7 @@ class Basler(Camera):
         if err is not None:
             raise err
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float):
         """See :meth:`.Camera.get_image`."""
         self.cam.StartGrabbing(self.GrabStrategy, pylon.GrabLoop_ProvidedByUser)
 
@@ -320,7 +320,7 @@ class Basler(Camera):
 
         return im
 
-    def is_grabbing(self):
+    def is_grabbing(self) -> bool:
         """Printing whether or not the camera is currently grabbing images.
 
         Returns:

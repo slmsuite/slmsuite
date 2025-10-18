@@ -108,7 +108,7 @@ class Holoeye(SLM):
         # Zero the display using the superclass `set_phase()` function.
         self.set_phase(None)
 
-    def _handle_error(self, error):
+    def _handle_error(self, error) -> None:
         """Handles errors from the Holoeye SDK.
         Raises an exception if the error code is not HEDSERR_NoError.
 
@@ -126,7 +126,7 @@ class Holoeye(SLM):
             raise RuntimeError(HEDS.SDK.ErrorString(self.slm_lib.errorCode()))
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list:
         """Discovers all SLMs detected by an SDK.
         Useful for a user to identify the correct serial numbers / etc.
 
@@ -143,12 +143,12 @@ class Holoeye(SLM):
             "This functionality is not supported by Holoeye. Use the EDID device detection GUI instead."
         )
 
-    def close(self):
+    def close(self) -> None:
         """See :meth:`.SLM.close`."""
         error = self.slm_lib.window().close()
         self._handle_error(error)
 
-    def _set_phase_hw(self, phase):
+    def _set_phase_hw(self, phase) -> None:
         """Low-level hardware interface to set_phase ``phase`` data onto the SLM.
         When the user calls the :meth:`.SLM.set_phase` method of
         :class:`.SLM`, ``phase`` is error checked before calling
@@ -158,7 +158,7 @@ class Holoeye(SLM):
         error = self.slm_lib.showPhaseData(phase, phase_unit=256)
         self._handle_error(error)
 
-    def load_vendor_phase_correction(self, file_path):
+    def load_vendor_phase_correction(self, file_path: str) -> None:
         """Load phase correction provided by Holoeye from file,
         directly into the SLM SDK.
         Note that this bypasses the slmsuite standard of setting

@@ -182,7 +182,7 @@ class ThorCam(Camera):
         if verbose:
             print("success")
 
-    def close(self, close_sdk=False):
+    def close(self, close_sdk: bool = False) -> None:
         """See :meth:`.Camera.close`.
 
         Parameters
@@ -201,7 +201,7 @@ class ThorCam(Camera):
             self.close_sdk()
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list:
         """Discovers all Thorlabs scientific cameras.
 
         Parameters
@@ -244,22 +244,22 @@ class ThorCam(Camera):
         return camera_list
 
     @staticmethod
-    def close_sdk():
+    def close_sdk() -> None:
         """Close the TLCameraSDK instance."""
         ThorCam.sdk.dispose()
         ThorCam.sdk = None
 
     # Property Configuration ###
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.exposure_time_us) / 1e6
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.exposure_time_us = int(exposure_s * 1e6)
 
-    def set_binning(self, bx=None, by=None):
+    def set_binning(self, bx: int | None = None, by: int | None = None) -> None:
         """Set the binning of the camera. Will error if a certain binning is not supported.
 
         Parameters
@@ -283,7 +283,7 @@ class ThorCam(Camera):
         # Restore profile
         self.setup(profile)
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None):
         """See :meth:`.Camera.set_woi`."""
         # Save old profile and disarm
         profile = self.profile
@@ -340,7 +340,7 @@ class ThorCam(Camera):
 
         return woi
 
-    def setup(self, profile):
+    def setup(self, profile) -> None:
         """Set operation mode.
 
         Parameters
@@ -370,7 +370,7 @@ class ThorCam(Camera):
 
             self.profile = profile
 
-    def _get_image_hw(self, timeout_s=0.1, trigger=True, grab=True, attempts=1):
+    def _get_image_hw(self, timeout_s: float = 0.1, trigger: bool = True, grab: bool = True, attempts: int = 1):
         """See :meth:`.Camera._get_image_hw`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
         For non-blocking acquisition,
@@ -416,7 +416,7 @@ class ThorCam(Camera):
 
         return ret
 
-    def flush(self, timeout_s=1, verbose=False):
+    def flush(self, timeout_s: float = 1, verbose: bool = False) -> None:
         """See :meth:`.Camera.flush`.
 
         Parameters
@@ -443,7 +443,7 @@ class ThorCam(Camera):
         if verbose:
             print(f"Flushed {ii} frames in {1e3 * (time.perf_counter() - t):.2f} ms")
 
-    def is_capturing(self):
+    def is_capturing(self) -> bool:
         """Determine whether or not the camera is currently capturing images.
 
         Returns:

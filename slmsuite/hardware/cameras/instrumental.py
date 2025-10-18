@@ -119,7 +119,7 @@ class Instrumental(Camera):
         if verbose:
             print("success")
 
-    def close(self):
+    def close(self) -> None:
         """See :meth:`.Camera.close`."""
         try:
             self.cam.close()
@@ -127,7 +127,7 @@ class Instrumental(Camera):
             raise RuntimeError("This instrumental camera does not support .close().")
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list:
         """Method to load display information.
 
         Returns:
@@ -139,15 +139,15 @@ class Instrumental(Camera):
             ".info() is not applicable to instrumental cameras, which must be constructed outside this wrapper."
         )
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.exposure._magnitude) / 1000
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.exposure = 1000.0 * float(exposure_s)
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None):
         """Method to narrow the imaging region to a 'window of interest'
         for faster framerates.
 
@@ -164,7 +164,7 @@ class Instrumental(Camera):
         """
         raise NotImplementedError
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float):
         """Method to pull an image from the camera and return.
 
         Parameters

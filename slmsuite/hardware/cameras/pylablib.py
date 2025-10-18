@@ -116,7 +116,7 @@ class PyLabLib(Camera):
         if verbose:
             print("success")
 
-    def close(self):
+    def close(self) -> None:
         """See :meth:`.Camera.close`."""
         try:
             self.cam.close()
@@ -124,7 +124,7 @@ class PyLabLib(Camera):
             raise RuntimeError("This instrumental camera does not support .close().")
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list:
         """Method to load display information.
 
         Returns:
@@ -136,15 +136,15 @@ class PyLabLib(Camera):
             ".info() is not applicable to pylablib cameras, which must be constructed outside this wrapper."
         )
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return self.cam.get_exposure()
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.set_exposure(float(exposure_s))
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None):
         """Method to narrow the imaging region to a 'window of interest'
         for faster framerates.
 
@@ -161,7 +161,7 @@ class PyLabLib(Camera):
         """
         raise NotImplementedError
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float):
         """Method to pull an image from the camera and return.
 
         Parameters
@@ -176,6 +176,6 @@ class PyLabLib(Camera):
         """
         return self.cam.snap(timeout=timeout_s)
 
-    def _get_images_hw(self, image_count, timeout_s, out=None):
+    def _get_images_hw(self, image_count: int, timeout_s: float, out=None):
         """See :meth:`.Camera._get_images_hw`."""
         return self.cam.grab(nframes=image_count, frame_timeout=timeout_s)

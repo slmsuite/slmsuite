@@ -100,17 +100,17 @@ class Camera(_Picklable, ABC):
     @abstractmethod
     def __init__(
         self,
-        resolution,
-        bitdepth=8,
-        pitch_um=None,
-        name="camera",
-        averaging=None,
-        capture_attempts=5,
-        hdr=None,
-        rot="0",
-        fliplr=False,
-        flipud=False,
-    ):
+        resolution: tuple[int, int],
+        bitdepth: int = 8,
+        pitch_um: tuple[float, float] | None = None,
+        name: str = "camera",
+        averaging: int | None = None,
+        capture_attempts: int = 5,
+        hdr: int | tuple[int, int] | None = None,
+        rot: str | int = "0",
+        fliplr: bool = False,
+        flipud: bool = False,
+    ) -> None:
         """Initializes a camera.
 
         In addition to the other class attributes, accepts the following parameters
@@ -1158,18 +1158,18 @@ class _CameraViewer:
         self,
         cam,
         widgets,
-        backend="ipython",
-        live=False,
-        min=None,
-        max=None,
-        log=False,
-        cmap=True,
-        scale=1,
-        border=None,
-        cmap_options=["default", "gray", "Blues", "turbo", "viridis", "plasma", "inferno", "magma", "cividis"],
-        crosshair=False,
-        centroid=False,
-    ):
+        backend: str = "ipython",
+        live: bool = False,
+        min: int | None = None,
+        max: int | None = None,
+        log: bool = False,
+        cmap: bool | str = True,
+        scale: float = 1,
+        border: int | None = None,
+        cmap_options: list[str] | None = None,
+        crosshair: bool = False,
+        centroid: bool = False,
+    ) -> None:
         self.cam = cam
         self.backend = backend
 

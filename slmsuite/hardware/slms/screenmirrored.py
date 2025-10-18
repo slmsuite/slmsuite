@@ -1,12 +1,11 @@
-"""
-Projects data onto the SLM's virtual display, using the :mod:`pyglet` library.
-"""
+"""Projects data onto the SLM's virtual display, using the :mod:`pyglet` library."""
 
 import warnings
+
 import numpy as np
 
-from slmsuite.hardware.slms.slm import SLM
 from slmsuite.hardware._pyglet import _Window, get_pyglet_display
+from slmsuite.hardware.slms.slm import SLM
 
 try:
     import pyglet
@@ -16,22 +15,21 @@ except ImportError:
 
 
 class ScreenMirrored(SLM):
-    """
-    Wraps a :mod:`pyglet` window for displaying data to an SLM.
+    """Wraps a :mod:`pyglet` window for displaying data to an SLM.
 
     .. warning::
         Version `2.1.9` of `pyglet` introduced a bug that leaves the SLM display
         zeroed even after phase data has been applied. Please use version `2.1.8` or earlier
         until this is resolved in a future release.
 
-    Important
+    Important:
     ~~~~~~~~~
     Many SLM manufacturers provide an SDK for interfacing with their devices.
     Using a python wrapper for these SDKs is recommended, instead of or in supplement to this class,
     as there often is functionality additional to a mirrored screen
     (e.g. USB for changing settings) along with device-specific optimizations.
 
-    Note
+    Note:
     ~~~~
     There are a variety of python packages that support blitting images onto a fullscreen display.
 
@@ -78,7 +76,7 @@ class ScreenMirrored(SLM):
     for transferring data from ``CUDA`` (on which :mod:`cupy` is based) to ``OpenGL``,
     though :mod:`cupy` does not currently directly support this.
 
-    Important
+    Important:
     ~~~~~~~~~
     :class:`ScreenMirrored` uses a double-buffered and vertically synchronized (vsync) ``OpenGL``
     context. This is to prevent "tearing" resulting from data being modified during a display write:
@@ -86,7 +84,7 @@ class ScreenMirrored(SLM):
     This feature is similar to the ``isImageLock`` flag in :mod:`slmpy`, but is implemented a bit
     closer to the hardware.
 
-    Attributes
+    Attributes:
     ----------
     window : pyglet.window.Window
         Fullscreen window used to send information to the SLM.
@@ -102,11 +100,18 @@ class ScreenMirrored(SLM):
         Identifier for the texture loaded into ``OpenGL`` memory.
     """
 
-    def __init__(self, display_number, bitdepth=8, wav_um=1, pitch_um=(8, 8), verbose=True, **kwargs):
-        """
-        Initializes a :mod:`pyglet` window for displaying data to an SLM.
+    def __init__(
+        self,
+        display_number: int,
+        bitdepth: int = 8,
+        wav_um: float = 1,
+        pitch_um: tuple[float, float] = (8, 8),
+        verbose: bool = True,
+        **kwargs,
+    ) -> None:
+        """Initializes a :mod:`pyglet` window for displaying data to an SLM.
 
-        Caution
+        Caution:
         ~~~~~~~
         An SLM designed at 1064 nm can be used for an application at 780 nm by passing
         ``wav_um=.780`` and ``wav_design_um=1.064``,
@@ -114,7 +119,7 @@ class ScreenMirrored(SLM):
         of the full dynamic range. Be sure these values are correct.
         Note that there are some performance losses from using this modality (see :meth:`.set_phase()`).
 
-        Caution
+        Caution:
         ~~~~~~~
         There is some subtlety to
         `complex display setups with Linux <https://pyglet.readthedocs.io/en/latest/modules/canvas.html>`_.
@@ -127,7 +132,7 @@ class ScreenMirrored(SLM):
         bitdepth : int
             Bitdepth of the SLM. Defaults to 8.
 
-            Caution
+        Caution:
             ~~~~~~~
             This class currently supports SLMs with 8-bit precision or less.
             In the future, this class will also support 16-bit SLMs using RG color.
@@ -149,15 +154,15 @@ class ScreenMirrored(SLM):
         screens = display.get_screens()
         if verbose:
             print("success")
-            print("Searching for window with display_number={}... ".format(display_number), end="")
+            print(f"Searching for window with display_number={display_number}... ", end="")
 
         if len(screens) <= display_number:
-            raise ValueError("Could not find display_number={}; only {} displays".format(display_number, len(screens)))
+            raise ValueError(f"Could not find display_number={display_number}; only {len(screens)} displays")
 
         screen_info = ScreenMirrored.info(verbose=False)
 
         if screen_info[display_number][3]:
-            raise ValueError("ScreenMirrored window already created on display_number={}".format(display_number))
+            raise ValueError(f"ScreenMirrored window already created on display_number={display_number}")
 
         if verbose and screen_info[display_number][2]:
             print("warning: this is the main display... ", end="")
@@ -185,12 +190,10 @@ class ScreenMirrored(SLM):
         # Warn the user if wav_um > wav_design_um
         if self.phase_scaling > 1:
             print(
-                "Warning: Wavelength {} um is inaccessible to this SLM with design wavelength {} um".format(
-                    self.wav_um, self.wav_design_um
-                )
+                f"Warning: Wavelength {self.wav_um} um is inaccessible to this SLM with design wavelength {self.wav_design_um} um"
             )
 
-    def _set_phase_hw(self, data):
+    def _set_phase_hw(self, data) -> None:
         """Writes to screen. See :class:`.SLM`."""
         # Write to buffer (.buffer points to the same data as .cbuffer).
         # Unfortunately, OpenGL2.0 needs the data copied three times (I think).
@@ -201,21 +204,20 @@ class ScreenMirrored(SLM):
 
         self.window.render()
 
-    def close(self):
+    def close(self) -> None:
         """Closes frame. See :class:`.SLM`."""
         self.window.close()
 
     @staticmethod
-    def info(verbose=True):
-        """
-        Get information about the available displays, their indexes, and their sizes.
+    def info(verbose: bool = True) -> list:
+        """Get information about the available displays, their indexes, and their sizes.
 
         Parameters
         ----------
         verbose : bool
             Whether or not to print display information.
 
-        Returns
+        Returns:
         -------
         list of (int, (int, int, int, int), bool, bool) tuples
             The number, geometry of each display.

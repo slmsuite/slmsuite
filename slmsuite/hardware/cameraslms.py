@@ -98,7 +98,17 @@ class CameraSLM(_Picklable):
 
         self.calibrations = {}
 
-    def plot(self, phase=None, image=None, slm_limits=None, cam_limits=None, title="", axs=None, cbar=True, **kwargs):
+    def plot(
+        self,
+        phase=None,
+        image=None,
+        slm_limits=None,
+        cam_limits=None,
+        title: str = "",
+        axs=None,
+        cbar: bool = True,
+        **kwargs,
+    ):
         """Plots the provided phase and image for the child hardware on a pair of subplot axes.
 
         Parameters
@@ -228,7 +238,7 @@ class FourierSLM(CameraSLM):
         # Size of the calibration point window relative to the spot radius.
         self._wavefront_calibration_window_multiplier = 4
 
-    def simulate(self):
+    def simulate(self) -> "FourierSLM":
         """Clones the hardware-based experiment into a simulation.
 
         Note:
@@ -322,7 +332,7 @@ class FourierSLM(CameraSLM):
 
     # Calibration Helpers ###
 
-    def name_calibration(self, calibration_type):
+    def name_calibration(self, calibration_type: str) -> str:
         """Creates ``"{self.name}-{calibration_type}-calibration"``.
 
         Parameters
@@ -338,7 +348,7 @@ class FourierSLM(CameraSLM):
         """
         return f"{self.name}-{calibration_type}-calibration"
 
-    def write_calibration(self, calibration_type, path, name):
+    def write_calibration(self, calibration_type: str, path: str, name: str) -> None:
         """Backwards-compatibility alias for :meth:`save_calibration()`."""
         warnings.warn(
             "The backwards-compatible alias FourierSLM.write_calibration will be depreciated "
@@ -346,7 +356,7 @@ class FourierSLM(CameraSLM):
         )
         self.save_calibration(calibration_type, path, name)
 
-    def save_calibration(self, calibration_type, path=".", name=None):
+    def save_calibration(self, calibration_type: str, path: str = ".", name: str | None = None) -> str:
         """To a file like ``"path/name_id.h5"``.
 
         Parameters
@@ -377,7 +387,7 @@ class FourierSLM(CameraSLM):
 
         return file_path
 
-    def read_calibration(self, calibration_type, file_path=None):
+    def read_calibration(self, calibration_type: str, file_path: str | None = None) -> None:
         """Backwards-compatibility alias for :meth:`load_calibration()`."""
         warnings.warn(
             "The backwards-compatible alias FourierSLM.read_calibration will be depreciated "
@@ -385,7 +395,7 @@ class FourierSLM(CameraSLM):
         )
         self.load_calibration(calibration_type, file_path)
 
-    def load_calibration(self, calibration_type, file_path=None):
+    def load_calibration(self, calibration_type: str, file_path: str | None = None) -> str:
         """From a file.
 
         Parameters

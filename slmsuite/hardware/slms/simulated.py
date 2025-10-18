@@ -1,16 +1,14 @@
-"""
-Simulated SLM.
-"""
+"""Simulated SLM."""
 
 import numpy as np
+
 from .slm import SLM
 
 
 class SimulatedSLM(SLM):
-    """
-    A simulated SLM to emulate physical artifacts of actual SLMs.
+    """A simulated SLM to emulate physical artifacts of actual SLMs.
 
-    Attributes
+    Attributes:
     ----------
     source : dict
         For a :class:`SimulatedSLM()`, :attr:`source` stores ``"amplitude_sim"`` and ``"phase_sim"``,
@@ -22,16 +20,21 @@ class SimulatedSLM(SLM):
             User-defined source phase (with the dimensions of :attr:`shape`) on the SLM.
     """
 
-    def __init__(self, resolution, pitch_um=(8, 8), source=None, **kwargs):
-        r"""
-        Initialize simulated slm.
+    def __init__(
+        self,
+        resolution: tuple[int, int],
+        pitch_um: tuple[float, float] = (8, 8),
+        source: dict | None = None,
+        **kwargs,
+    ) -> None:
+        r"""Initialize simulated slm.
 
         Parameters
         ----------
         resolution
             The width and height of the camera in ``(width, height)`` form.
 
-            Important
+        Important:
             ~~~~~~~~~
             This is the opposite of the numpy ``(height, width)``
             convention stored in :attr:`shape`.
@@ -59,12 +62,11 @@ class SimulatedSLM(SLM):
 
         self.set_phase(None)
 
-    def close():
+    def close(self) -> None:
         pass
 
-    def _set_phase_hw(self, phase):
+    def _set_phase_hw(self, phase) -> None:
         """Updates SLM.display to implement various physical artifacts of SLMs."""
-
         # FUTURE: apply physical effects directly to SLM.display
 
         return

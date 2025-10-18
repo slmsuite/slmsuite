@@ -109,7 +109,7 @@ class ThorCam(Camera):
 
     # Initialization and termination ###
 
-    def __init__(self, serial="", verbose=True, **kwargs):
+    def __init__(self, serial: str = "", verbose: bool = True, **kwargs) -> None:
         """Initialize camera and attributes. Initial profile is ``"single"``.
 
         Parameters

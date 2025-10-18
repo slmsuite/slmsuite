@@ -1,39 +1,43 @@
-"""
-Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class, which supports many webcams and videostreams.
-"""
+"""Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class, which supports many webcams and videostreams."""
 
-import numpy as np
-import cv2
 import time
+
+import cv2
+import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
 
 
 class Webcam(Camera):
-    """
-    Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class,
+    """Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class,
     which supports many webcams and videostreams.
 
-    Warning
+    Warning:
     -------
     This class does not properly handle color images
     and does not properly populate datatype information.
     Webcams usually support different codecs, and only the default is enabled here.
     Exposure may not be handled correctly for some cameras.
 
-    See Also
+    See Also:
     --------
     `OpenCV documentation <https://docs.opencv.org/4.x/d8/dfe/classcv_1_1VideoCapture.html>`_.
 
-    Attributes
+    Attributes:
     ----------
     cam : cv2.VideoCapture
         Most cameras will wrap some handle which connects to the the hardware.
     """
 
-    def __init__(self, identifier=0, capture_api=cv2.CAP_ANY, pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize camera and attributes.
+    def __init__(
+        self,
+        identifier: int | str = 0,
+        capture_api: int = cv2.CAP_ANY,
+        pitch_um: tuple | None = None,
+        verbose: bool = True,
+        **kwargs,
+    ) -> None:
+        """Initialize camera and attributes.
 
         Parameters
         ----------
@@ -91,7 +95,7 @@ class Webcam(Camera):
     @staticmethod
     def info(verbose=True):
         """Not supported by :class:`Webcam`."""
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def set_woi(self, woi=None):
         if woi is not None:
@@ -107,7 +111,7 @@ class Webcam(Camera):
 
         return (0, self.shape[1], 0, self.shape[0])
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
     def set_woi(self, woi=None):
         if woi is not None:

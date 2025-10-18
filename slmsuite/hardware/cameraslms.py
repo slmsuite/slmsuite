@@ -59,7 +59,7 @@ class CameraSLM(_Picklable):
     _pickle = ["name", "cam", "slm", "mag"]
     _pickle_data = []
 
-    def __init__(self, cam, slm, mag=1):
+    def __init__(self, cam, slm, mag: float = 1) -> None:
         """Initialize an SLM linked to a camera, with given magnification between the
         camera and experiment planes.
 
@@ -158,7 +158,7 @@ class NearfieldSLM(CameraSLM):
         and the camera sensor plane.
     """
 
-    def __init__(self, cam, slm, mag=None):
+    def __init__(self, cam, slm, mag: float | None = None) -> None:
         """See :meth:`CameraSLM.__init__`."""
         super().__init__(cam, slm)
         self.mag = mag
@@ -221,7 +221,7 @@ class FourierSLM(CameraSLM):
     _pickle = ["name", "cam", "slm", "mag"]
     _pickle_data = ["calibrations"]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         r"""See :meth:`CameraSLM.__init__`."""
         super().__init__(*args, **kwargs)
 

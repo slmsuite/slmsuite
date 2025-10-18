@@ -1,5 +1,4 @@
-"""
-Template for writing a subclass for camera hardware control in :mod:`slmsuite`.
+"""Template for writing a subclass for camera hardware control in :mod:`slmsuite`.
 Outlines which camera superclass functions must be implemented.
 """
 
@@ -7,12 +6,11 @@ from slmsuite.hardware.cameras.camera import Camera
 
 
 class Template(Camera):
-    """
-    Template for adding a new camera to :mod:`slmsuite`. Replace :class:`Template`
+    """Template for adding a new camera to :mod:`slmsuite`. Replace :class:`Template`
     with the desired subclass name. :class:`~slmsuite.hardware.cameras.camera.Camera` is the
     superclass that sets the requirements for :class:`Template`.
 
-    Attributes
+    Attributes:
     ----------
     sdk : object
         Many cameras have a singleton SDK class which handles all the connected cameras
@@ -24,9 +22,8 @@ class Template(Camera):
     # Class variable (same for all instances of Template) pointing to a singleton SDK.
     sdk = None
 
-    def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize camera and attributes.
+    def __init__(self, serial: str = "", pitch_um: tuple | None = None, verbose: bool = True, **kwargs) -> None:
+        """Initialize camera and attributes.
 
         Parameters
         ----------
@@ -53,7 +50,7 @@ class Template(Camera):
         # Most cameras have an SDK that needs to be loaded before the camera
         if verbose:
             print("Template SDK initializing... ", end="")
-        raise NotImplementedError()
+        raise NotImplementedError
         Template.sdk = something()  # TODO: Fill in proper function.
         if verbose:
             print("success")
@@ -61,7 +58,7 @@ class Template(Camera):
         # Then we load the camera from the SDK
         if verbose:
             print(f"'{serial}' initializing... ", end="")
-        raise NotImplementedError()
+        raise NotImplementedError
         self.cam = sdk.something(serial)  # TODO: Fill in proper function.
 
         # ... Other setup.
@@ -79,14 +76,13 @@ class Template(Camera):
 
     def close(self):
         """See :meth:`.Camera.close`."""
-        raise NotImplementedError()
+        raise NotImplementedError
         self.cam.close()  # TODO: Fill in proper function.
         del self.cam
 
     @staticmethod
     def info(verbose=True):
-        """
-        Discovers all cameras detected by the SDK.
+        """Discovers all cameras detected by the SDK.
         Useful for a user to identify the correct serial numbers / etc.
 
         Parameters
@@ -94,35 +90,35 @@ class Template(Camera):
         verbose : bool
             Whether to print the discovered information.
 
-        Returns
+        Returns:
         --------
         list of str
             List of serial numbers or identifiers.
         """
-        raise NotImplementedError()
+        raise NotImplementedError
         serial_list = Template.sdk.get_serial_list()  # TODO: Fill in proper function.
         return serial_list
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
-        raise NotImplementedError()
+        raise NotImplementedError
         return float(self.cam.get_exposure()) / 1e3  # TODO: Fill in proper function.
 
     def _set_exposure_hw(self, exposure_s):
         """See :meth:`.Camera._set_exposure_hw`."""
-        raise NotImplementedError()
+        raise NotImplementedError
         self.cam.set_exposure(1e3 * exposure_s)  # TODO: Fill in proper function.
 
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`."""
-        raise NotImplementedError()
+        raise NotImplementedError
         # Use self.cam to crop the window of interest.
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""
-        raise NotImplementedError()
+        raise NotImplementedError
         # The core method: grabs an image from the camera.
         # Note: the camera superclass' get_image function performs follow-on processing
         # (similar to how the SLM superclass' set_phase method pairs with _set_phase_hw methods

@@ -1,5 +1,4 @@
-"""
-**(Untested)** Hardware control for The Imaging Source cameras via :mod:`tisgrabber`.
+"""**(Untested)** Hardware control for The Imaging Source cameras via :mod:`tisgrabber`.
 :mod:`tisgrabber` is one of several different interfaces that The Imaging Source supports.
 See
 `the tisgrabber source
@@ -9,8 +8,9 @@ The tisgrabber .dll and tisgrabber.py are needed.
 Please either install tisgrabber.py or have it in your current working directory.
 """
 
-import warnings
 import ctypes
+import warnings
+
 import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
@@ -27,10 +27,9 @@ DLL_PATH = "./tisgrabber_x64.dll"
 
 
 class ImagingSource(Camera):
-    """
-    The Imaging Source camera.
+    """The Imaging Source camera.
 
-    Attributes
+    Attributes:
     ----------
     sdk : ctypes.CDLL
         Connects to the Imaging Source SDK. Shared among instances of :class:`ImagingSource`.
@@ -44,14 +43,13 @@ class ImagingSource(Camera):
 
     @classmethod
     def init_sdk(cls):
-        """
-        Class method for initializing the sdk. Called when the first instance is instantiated or when the static method info is called.
+        """Class method for initializing the sdk. Called when the first instance is instantiated or when the static method info is called.
         Parameters
         ----------
         cls : object
             required parameter for a class method.
 
-        Raises
+        Raises:
         ------
         RuntimeError
            If the library fails to initiate. See tisgrabber.h for error codes.
@@ -69,8 +67,7 @@ class ImagingSource(Camera):
 
     @staticmethod
     def safe_call(cb, to_raise, *args, **kwargs):
-        """
-        Decorator method that automatically error checks the result from callback `cb`.
+        """Decorator method that automatically error checks the result from callback `cb`.
 
         Parameters
         ----------
@@ -79,7 +76,7 @@ class ImagingSource(Camera):
         to_raise : bool
             Whether to raise an exception or simply print out an error.
 
-        Returns
+        Returns:
         -------
         err : int
             error code is returned regardless when Exception is raised. Error code information is in tisgrabber.h.
@@ -93,9 +90,15 @@ class ImagingSource(Camera):
                 print(err_str)
         return err
 
-    def __init__(self, serial="", vid_format=None, pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize camera and attributes.
+    def __init__(
+        self,
+        serial: str = "",
+        vid_format: str | None = None,
+        pitch_um: tuple | None = None,
+        verbose: bool = True,
+        **kwargs,
+    ) -> None:
+        """Initialize camera and attributes.
 
         Parameters
         ----------
@@ -130,7 +133,7 @@ class ImagingSource(Camera):
 
         # Then we load the camera from the SDK.
         if verbose:
-            print('"{}" initializing... '.format(serial), end="")
+            print(f'"{serial}" initializing... ', end="")
 
         # cam will be the handle that represents the camera.
         self.cam = ImagingSource.sdk.IC_CreateGrabber()
@@ -174,8 +177,7 @@ class ImagingSource(Camera):
 
     @staticmethod
     def info(verbose=True):
-        """
-        Discovers all cameras detected by the SDK.
+        """Discovers all cameras detected by the SDK.
         Useful for a user to identify the correct serial numbers / etc.
 
         Parameters
@@ -183,7 +185,7 @@ class ImagingSource(Camera):
         verbose : bool
             Whether to print the discovered information.
 
-        Returns
+        Returns:
         --------
         list of str
             List of serial numbers or identifiers.
@@ -199,7 +201,7 @@ class ImagingSource(Camera):
         # Get device count and then iterate through each device
         devicecount = ImagingSource.sdk.IC_GetDeviceCount()
         serial_list = []
-        for i in range(0, devicecount):
+        for i in range(devicecount):
             serial_list.append(tis.D(ImagingSource.sdk.IC_GetUniqueNamefromList(i)))
 
         if verbose:
@@ -207,7 +209,7 @@ class ImagingSource(Camera):
 
         return serial_list
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""

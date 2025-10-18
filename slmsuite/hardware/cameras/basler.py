@@ -1,11 +1,11 @@
-"""
-Hardware control for Basler cameras via the :mod:`pypylon` interface.
+"""Hardware control for Basler cameras via the :mod:`pypylon` interface.
 Consider also installing Basler software for testing cameras outside of python
 (see `downloads <https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware>`_).
 Install :mod:`pypylon` by following the `provided instructions <https://github.com/basler/pypylon>`_.
 """
 
 import warnings
+
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
@@ -16,10 +16,9 @@ except ImportError:
 
 
 class Basler(Camera):
-    """
-    Interface to Basler cameras.
+    """Interface to Basler cameras.
 
-    Attributes
+    Attributes:
     ----------
     sdk : pylon.TlFactory
         "Transport layer" factory used by Basler to find camera devices.
@@ -30,9 +29,10 @@ class Basler(Camera):
     # Class variable (same for all instances of Basler) pointing to a singleton SDK.
     sdk = None
 
-    def __init__(self, serial=None, pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize Basler camera and attributes.
+    def __init__(
+        self, serial: str | None = None, pitch_um: tuple | None = None, verbose: bool = True, **kwargs
+    ) -> None:
+        """Initialize Basler camera and attributes.
 
         Parameters
         ----------
@@ -79,7 +79,7 @@ class Basler(Camera):
                 raise RuntimeError("Serial " + serial + " not found by pylon. Available: ", serial_list)
 
         if verbose:
-            print("pylon sn {} initializing... ".format(serial), end="")
+            print(f"pylon sn {serial} initializing... ", end="")
         self.cam = pylon.InstantCamera()
         self.cam.Attach(device)
         self.cam.Open()
@@ -124,8 +124,7 @@ class Basler(Camera):
             print("success")
 
     def close(self, close_sdk=True):
-        """
-        See :meth:`.Camera.close`.
+        """See :meth:`.Camera.close`.
 
         Parameters
         ----------
@@ -142,8 +141,7 @@ class Basler(Camera):
 
     @staticmethod
     def info(verbose=True):
-        """
-        Discovers all cameras detected by the SDK.
+        """Discovers all cameras detected by the SDK.
         Useful for a user to identify the correct serial numbers / etc.
 
         Parameters
@@ -151,7 +149,7 @@ class Basler(Camera):
         verbose : bool
             Whether to print the discovered information.
 
-        Returns
+        Returns:
         --------
         list of str
             List of serial numbers or identifiers.
@@ -172,7 +170,7 @@ class Basler(Camera):
         if verbose:
             print("Basler cameras:")
             for serial in serial_list:
-                print('"{}"'.format(serial))
+                print(f'"{serial}"')
 
         if close_sdk:
             Basler.close_sdk()
@@ -187,7 +185,7 @@ class Basler(Camera):
         if cls.sdk is not None:
             cls.sdk = None
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
     def get_properties(self, properties=None):
         """ "
@@ -207,7 +205,7 @@ class Basler(Camera):
             try:
                 print(prop.get_name(), end="\t")
             except BaseException as e:
-                print("Error accessing property dictionary, '{}':{}".format(key, e))
+                print(f"Error accessing property dictionary, '{key}':{e}")
                 continue
 
             try:
@@ -223,11 +221,10 @@ class Basler(Camera):
             try:
                 print(prop.get_description(), end="\n")
             except:
-                print("")
+                print()
 
     def set_adc_bitdepth(self, bitdepth):
-        """
-        Set the digitization bitdepth.
+        """Set the digitization bitdepth.
 
         Parameters
         ----------
@@ -241,13 +238,12 @@ class Basler(Camera):
             if str(bitdepth) in value[0]:
                 self.cam.PixelSize.SetValue(value[1])
                 break
-            raise RuntimeError("ADC bitdepth {} not found.".format(bitdepth))
+            raise RuntimeError(f"ADC bitdepth {bitdepth} not found.")
 
     def get_adc_bitdepth(self):
-        """
-        Get the digitization bitdepth.
+        """Get the digitization bitdepth.
 
-        Returns
+        Returns:
         -------
         int
             The digitization bitdepth.
@@ -265,8 +261,7 @@ class Basler(Camera):
         self.cam.ExposureTime.SetValue(float(1e6 * exposure_s))  # in seconds
 
     def _set_woi(self, woi):
-        """
-        Sets the window of interest (WOI).
+        """Sets the window of interest (WOI).
 
         Parameters
         ----------
@@ -326,10 +321,9 @@ class Basler(Camera):
         return im
 
     def is_grabbing(self):
-        """
-        Printing whether or not the camera is currently grabbing images.
+        """Printing whether or not the camera is currently grabbing images.
 
-        Returns
+        Returns:
         -------
         bool
             Whether or not the camera is actively grabbing images.

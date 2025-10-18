@@ -1,10 +1,9 @@
-"""
-**(NotImplemented)** Hardware control for FLIR cameras via the :mod:`PySpin` interface to the Spinnaker SDK.
+"""**(NotImplemented)** Hardware control for FLIR cameras via the :mod:`PySpin` interface to the Spinnaker SDK.
 Install Spinnaker by following the
 `provided instructions <https://www.flir.com/products/spinnaker-sdk/>`_.
 Inspired by `this implementation <https://github.com/klecknerlab/simple_pyspin/>`_.
 
-Warning
+Warning:
 ~~~~~~~~
 Implementation unfinished and untested. Consider using ``simple_pyspin`` as a dependency instead.
 """
@@ -21,10 +20,9 @@ except ImportError:
 
 
 class FLIR(Camera):
-    """
-    FLIR camera.
+    """FLIR camera.
 
-    Attributes
+    Attributes:
     ----------
     sdk : PySpin.System
         Spinnaker SDK.
@@ -34,11 +32,10 @@ class FLIR(Camera):
 
     sdk = None
 
-    ### Initialization and termination ###
+    # Initialization and termination ###
 
-    def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize camera and attributes.
+    def __init__(self, serial: str = "", pitch_um: tuple | None = None, verbose: bool = True, **kwargs) -> None:
+        """Initialize camera and attributes.
 
         Parameters
         ----------
@@ -86,7 +83,7 @@ class FLIR(Camera):
         if verbose:
             print("success")
 
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def close(self, close_sdk=True):
         """See :meth:`.Camera.close`."""
@@ -96,7 +93,7 @@ class FLIR(Camera):
             pass
         del self.cam
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
@@ -111,8 +108,7 @@ class FLIR(Camera):
         return
 
     def _get_image_hw(self, blocking=True):
-        """
-        See :meth:`.Camera._get_image_hw`.
+        """See :meth:`.Camera._get_image_hw`.
 
         Parameters
         ----------

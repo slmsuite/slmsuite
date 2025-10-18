@@ -1,5 +1,4 @@
-"""
-Light wrapper for the :mod:`pylablib` package.
+"""Light wrapper for the :mod:`pylablib` package.
 See the supported `cameras
 <https://pylablib.readthedocs.io/en/stable/devices/cameras_root.html>`_.
 :mod:`pylablib` must be installed ``pip install pylablib``.
@@ -18,12 +17,13 @@ For example, the following code loads a UC480 camera:
     from slmsuite.hardware.cameras.pylablib import PyLabLib
     cam = PyLabLib(pll_cam)
 
-Note
+Note:
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
 
 import warnings
+
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
@@ -34,20 +34,18 @@ except:
 
 
 class PyLabLib(Camera):
-    """
-    A wrapped :mod:`instrumental` camera.
+    """A wrapped :mod:`instrumental` camera.
 
-    Attributes
+    Attributes:
     ----------
     cam : pylablib.devices.interface.camera.ICamera
         Object to talk with the desired camera.
     """
 
-    ### Initialization and termination ###
+    # Initialization and termination ###
 
-    def __init__(self, cam=None, pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize camera and attributes. Initial profile is ``"single"``.
+    def __init__(self, cam=None, pitch_um: tuple | None = None, verbose: bool = True, **kwargs) -> None:
+        """Initialize camera and attributes. Initial profile is ``"single"``.
 
         Parameters
         ----------
@@ -76,7 +74,7 @@ class PyLabLib(Camera):
         kwargs
             See :meth:`.Camera.__init__` for permissible options.
 
-        Raises
+        Raises:
         ------
         RuntimeError
            If the camera can not be reached.
@@ -119,9 +117,7 @@ class PyLabLib(Camera):
             print("success")
 
     def close(self):
-        """
-        See :meth:`.Camera.close`.
-        """
+        """See :meth:`.Camera.close`."""
         try:
             self.cam.close()
         except:
@@ -129,10 +125,9 @@ class PyLabLib(Camera):
 
     @staticmethod
     def info(verbose=True):
-        """
-        Method to load display information.
+        """Method to load display information.
 
-        Returns
+        Returns:
         -------
         list
             An empty list.
@@ -150,8 +145,7 @@ class PyLabLib(Camera):
         self.cam.set_exposure(float(exposure_s))
 
     def set_woi(self, woi=None):
-        """
-        Method to narrow the imaging region to a 'window of interest'
+        """Method to narrow the imaging region to a 'window of interest'
         for faster framerates.
 
         Parameters
@@ -160,23 +154,22 @@ class PyLabLib(Camera):
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
             If ``None``, defaults to largest possible.
 
-        Returns
+        Returns:
         ----------
         woi : list
             :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def _get_image_hw(self, timeout_s):
-        """
-        Method to pull an image from the camera and return.
+        """Method to pull an image from the camera and return.
 
         Parameters
         ----------
         timeout_s : float
             The time in seconds to wait for the frame to be fetched (currently unused).
 
-        Returns
+        Returns:
         -------
         numpy.ndarray
             Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.

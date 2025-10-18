@@ -1,43 +1,39 @@
-r"""
-Helper functions for processing images.
-"""
+r"""Helper functions for processing images."""
+
+import warnings
+from functools import reduce
 
 import cv2
-import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from functools import reduce
-from scipy.optimize import curve_fit, minimize
+import numpy as np
 from scipy.ndimage import binary_erosion
-import warnings
+from scipy.optimize import curve_fit, minimize
 
 try:
     import cupy as cp  # type: ignore
 except ImportError:
     cp = np
 
-from slmsuite.holography.toolbox import format_2vectors, _process_grid
-from slmsuite.holography.toolbox.phase import zernike_sum, laguerre_gaussian
-from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography.analysis.fitfunctions import gaussian2d
+from slmsuite.holography.toolbox import _process_grid, format_2vectors
+from slmsuite.holography.toolbox.phase import laguerre_gaussian as laguerre_gaussian
+from slmsuite.holography.toolbox.phase import zernike_sum
+from slmsuite.misc.math import REAL_TYPES as REAL_TYPES
 
 # Take and associated functions.
 
 
-def _center(width, integer=False):
-    """
-    Center of an index range with length ``width``.
-    """
+def _center(width: int, integer: bool = False) -> int | float:
+    """Center of an index range with length ``width``."""
     if integer:
         return int((width - 1) / 2 if width % 2 else width / 2)
     else:
         return float(width - 1) / 2
 
 
-def _coordinates(width, centered=False):
-    """
-    Coordinate indices of length ``width``.
-    """
+def _coordinates(width: int, centered: bool = False) -> np.ndarray:
+    """Coordinate indices of length ``width``."""
     xs = np.arange(width).astype(np.float64)
     if centered:
         center = np.float64(_center(width))
@@ -45,7 +41,7 @@ def _coordinates(width, centered=False):
     return xs
 
 
-def _generate_grid(w_x, w_y, centered=False, integer=False):
+def _generate_grid(w_x: int, w_y: int, centered: bool = False, integer: bool = False) -> tuple:
     """ """
     xs = np.reshape(np.arange(w_x, dtype=float), (1, 1, w_x))
     ys = np.reshape(np.arange(w_y, dtype=float), (1, w_y, 1))
@@ -56,9 +52,18 @@ def _generate_grid(w_x, w_y, centered=False, integer=False):
     return grid
 
 
-def take(images, vectors, size, centered=True, integrate=False, clip=False, return_mask=False, plot=False, xp=None):
-    """
-    Crop integration regions around an array of ``vectors``, yielding an array of images.
+def take(
+    images,
+    vectors,
+    size: int | tuple[int, int],
+    centered: bool = True,
+    integrate: bool = False,
+    clip: bool = False,
+    return_mask: bool | int = False,
+    plot: bool = False,
+    xp=None,
+) -> np.ndarray:
+    """Crop integration regions around an array of ``vectors``, yielding an array of images.
 
     Each integration region is a rectangle of the same ``size``. Similar to but more
     general than :meth:`numpy.take`. Useful for gathering data from spots in spot
@@ -101,7 +106,7 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, retu
         Indexing variables inside :meth:`take` still use :mod:`numpy` for speed, no
         matter what module is used.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray OR cupy.ndarray
         If ``integrate`` is ``False``, returns an array containing the images cropped
@@ -168,15 +173,13 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, retu
         elif len(shape) == 3:
             result = images[:, integration_y, integration_x]
         else:
-            raise RuntimeError("Unexpected shape for images: {}".format(shape))
+            raise RuntimeError(f"Unexpected shape for images: {shape}")
 
         if clip:  # Set values that were out of range to nan instead of erroring.
             try:  # If the datatype of result is incompatible with nan, set to zero instead.
                 result[:, mask] = np.nan
             except:
                 result[:, mask] = 0
-        else:
-            pass
 
         # Plot if desired
         if plot:
@@ -188,9 +191,8 @@ def take(images, vectors, size, centered=True, integrate=False, clip=False, retu
             return xp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
-def take_plot(images, shape=None, separate_axes=False):
-    """
-    Plots non-integrated results of :meth:`.take()` in a square array of subplots.
+def take_plot(images: np.ndarray, shape: tuple[int, int] | None = None, separate_axes: bool = False) -> None:
+    """Plots non-integrated results of :meth:`.take()` in a square array of subplots.
 
     Parameters
     ----------
@@ -232,10 +234,8 @@ def take_plot(images, shape=None, separate_axes=False):
         ax.axes.yaxis.set_visible(False)
 
 
-def _take_parse_shape(images, shape=None):
-    """
-    Parses the shape of the images and returns the number of images and the shape.
-    """
+def _take_parse_shape(images: np.ndarray, shape: tuple[int, int] | None = None) -> tuple[int, tuple[int, int]]:
+    """Parses the shape of the images and returns the number of images and the shape."""
     (img_count, _, _) = np.shape(images)
 
     # Parse shape.
@@ -244,16 +244,15 @@ def _take_parse_shape(images, shape=None):
     else:
         (M, N) = shape
 
-    if M * N < img_count:
-        warnings.warn("Not enough space to fit all images. Truncating the image count.")
+    if img_count > M * N:
+        warnings.warn("Not enough space to fit all images. Truncating the image count.", stacklevel=2)
         img_count = M * N
 
     return img_count, (M, N)
 
 
-def take_tile(images, shape=None):
-    """
-    Tiles a stack of images into a single image.
+def take_tile(images: np.ndarray, shape: tuple[int, int] | None = None) -> np.ndarray:
+    """Tiles a stack of images into a single image.
     The stack is arranged into a grid of shape ``shape``.
 
     Parameters
@@ -273,9 +272,8 @@ def take_tile(images, shape=None):
     return result.reshape(M, N, sy, sx).transpose(0, 2, 1, 3).reshape(M * sy, N * sx)
 
 
-def image_remove_field(images, deviations=1, out=None):
-    r"""
-    Zeros the field of a stack of images such that moment calculations will succeed.
+def image_remove_field(images: np.ndarray, deviations: int | None = 1, out: np.ndarray | None = None) -> np.ndarray:
+    r"""Zeros the field of a stack of images such that moment calculations will succeed.
     Consider, for example, a small spot on a field with strong background.
     Moment calculations in this situation will dominantly measure the moments
     of the background (i.e. the field). This function zeros the image below some threshold.
@@ -283,7 +281,7 @@ def image_remove_field(images, deviations=1, out=None):
     computed uniquely for each image, or the median of each image if ``deviations``
     is ``None``. This is equivalent to background subtraction.
 
-    Important
+    Important:
     ~~~~~~~~~
     If a stack of images is provided, field removal is done individually on each image.
     Field removal is not done in aggregate.
@@ -303,7 +301,7 @@ def image_remove_field(images, deviations=1, out=None):
         The array to place the output data into. Should be the same shape as ``images``.
         This function operates in-place if ``out`` equals ``images``.
 
-    Returns
+    Returns:
     -------
     out : numpy.ndarray
         ``images`` or a copy of ``images``, with each image background-subtracted.
@@ -318,7 +316,7 @@ def image_remove_field(images, deviations=1, out=None):
     # Parse out.
     if out is None:
         out = np.copy(images)
-    elif not (out is images):
+    elif out is not images:
         np.copyto(out, images)
 
     # Make sure that we're testing 3D images.
@@ -347,9 +345,8 @@ def image_remove_field(images, deviations=1, out=None):
     return out
 
 
-def image_relative_strehl(images):
-    r"""
-    Computes a metric proportional to the Strehl ratio of a stack of images.
+def image_relative_strehl(images: np.ndarray) -> np.ndarray:
+    r"""Computes a metric proportional to the Strehl ratio of a stack of images.
 
     .. math:: S = \frac{\max_{x,y} I}{\sum_{x,y} I}
 
@@ -361,7 +358,7 @@ def image_relative_strehl(images):
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The relative Strehl ratio evaluated for every image. This is of size ``(image_count,)``
@@ -374,9 +371,15 @@ def image_relative_strehl(images):
     return np.amax(images, axis=(1, 2)) / np.sum(images, axis=(1, 2))
 
 
-def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=True, nansum=False):
-    r"""
-    Computes the given `moment <https://en.wikipedia.org/wiki/Moment_(mathematics)>`_
+def image_moment(
+    images: np.ndarray,
+    moment: tuple[int, int] = (1, 0),
+    centers: tuple[float, float] | np.ndarray = (0, 0),
+    grid=None,
+    normalize: bool = True,
+    nansum: bool = False,
+) -> np.ndarray:
+    r"""Computes the given `moment <https://en.wikipedia.org/wiki/Moment_(mathematics)>`_
     :math:`M_{m_xm_y}` for a stack of images.
     This involves discretely integrating each image against polynomial trial functions:
 
@@ -390,12 +393,12 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
     where :math:`P(x, y)` is a given 2D image of size :math:`w_x \times w_y`,
     and :math:`(c_x, c_y)` is a shift in the center of the trial functions.
 
-    Caution
+    Caution:
     ~~~~~~~
     This function does not check for or correct for negative values in ``images``.
     Negative values may produce unusual results.
 
-    Warning
+    Warning:
     ~~~~~~~
     Higher order even moments (e.g. 2) will potentially yield unexpected results if
     the images are not background-subtracted. For instance, a calculation on an image
@@ -444,7 +447,7 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
         This is useful in the case where ``clip=True`` is passed to :meth:`take()`
         (out of range is set to ``nan``).
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The moment :math:`M_{m_xm_y}` evaluated for every image. This is of size ``(image_count,)``
@@ -542,9 +545,8 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
             return np_sum(images * x_grid * y_grid * reciprocal, axis=(1, 2), keepdims=False)
 
 
-def image_normalization(images, nansum=False):
-    """
-    Computes the zeroth order moments, equivalent to spot mass or normalization,
+def image_normalization(images: np.ndarray, nansum: bool = False) -> np.ndarray:
+    """Computes the zeroth order moments, equivalent to spot mass or normalization,
     for a stack of images.
 
     Parameters
@@ -557,7 +559,7 @@ def image_normalization(images, nansum=False):
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         The normalization factor :math:`M_{11}` in an array of shape ``(image_count,)``.
@@ -565,9 +567,8 @@ def image_normalization(images, nansum=False):
     return image_moment(images, (0, 0), normalize=False, nansum=nansum)
 
 
-def image_normalize(images, nansum=False, remove_field=False):
-    """
-    Normalizes of a stack of images via the the zeroth order moments
+def image_normalize(images: np.ndarray, nansum: bool = False, remove_field: bool = False) -> np.ndarray:
+    """Normalizes of a stack of images via the the zeroth order moments
     such that each image sums to one.
 
     Parameters
@@ -582,7 +583,7 @@ def image_normalize(images, nansum=False, remove_field=False):
     remove_field : bool
         Whether to apply :meth:`.image_remove_field()` to avoid background-dominated moments.
 
-    Returns
+    Returns:
     -------
     images_normalized : numpy.ndarray
         A copy of ``images``, with each image normalized.
@@ -607,9 +608,8 @@ def image_normalize(images, nansum=False, remove_field=False):
         return images * np.reshape(reciprocal, (len(normalization), 1, 1))
 
 
-def image_positions(images, grid=None, normalize=True, nansum=False):
-    r"""
-    Computes the two first order moments, equivalent to spot position
+def image_positions(images: np.ndarray, grid=None, normalize: bool = True, nansum: bool = False) -> np.ndarray:
+    r"""Computes the two first order moments, equivalent to spot position
     :math:`\left<x\right>` relative to image center, for a stack of images.
     Specifically, returns :math:`M_{10}` and :math:`M_{01}`.
 
@@ -638,7 +638,7 @@ def image_positions(images, grid=None, normalize=True, nansum=False):
     nansum : bool
         Whether to use :meth:`numpy.nansum()` in place of :meth:`numpy.sum()`.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         Stack of :math:`M_{10}`, :math:`M_{01}` in an array of shape ``(2, image_count)``.
@@ -652,14 +652,20 @@ def image_positions(images, grid=None, normalize=True, nansum=False):
     ))
 
 
-def image_centroids(images, grid=None, normalize=True, nansum=False):
+def image_centroids(images: np.ndarray, grid=None, normalize: bool = True, nansum: bool = False) -> np.ndarray:
     """Alias for :meth:`image_positions()`"""
     return image_positions(images, grid, normalize, nansum)
 
 
-def image_variances(images, centers=None, grid=None, normalize=True, nansum=False, exclude_shear=False):
-    r"""
-    Computes the three second order central moments, equivalent to variance, for a stack
+def image_variances(
+    images: np.ndarray,
+    centers: np.ndarray | None = None,
+    grid=None,
+    normalize: bool = True,
+    nansum: bool = False,
+    exclude_shear: bool = False,
+) -> np.ndarray:
+    r"""Computes the three second order central moments, equivalent to variance, for a stack
     of images.
     Specifically, this function returns a stack of the moments :math:`M_{20}` and
     :math:`M_{02}`, along with :math:`M_{11}`, which are the variance in the :math:`x`
@@ -673,7 +679,7 @@ def image_variances(images, centers=None, grid=None, normalize=True, nansum=Fals
     non-central moments; this function is a helper to access useful quantities
     for analysis of spot size and skewness.
 
-    Note
+    Note:
     ~~~~
     The moment :math:`M_{20} = (\Delta x)^2` is the variance in the
     :math:`x` direction, or the square of the standard deviation :math:`\Delta x`.
@@ -712,7 +718,7 @@ def image_variances(images, centers=None, grid=None, normalize=True, nansum=Fals
         Whether to exclude calculation of the shear variance.
         The user can choose this for speed.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         Stack of :math:`M_{20}`, :math:`M_{02}`, and :math:`M_{11}`
@@ -738,14 +744,15 @@ def image_variances(images, centers=None, grid=None, normalize=True, nansum=Fals
         return np.vstack((m20, m02, m11))
 
 
-def image_std(images, centers=None, grid=None, normalize=True, nansum=False):
+def image_std(
+    images: np.ndarray, centers: np.ndarray | None = None, grid=None, normalize: bool = True, nansum: bool = False
+) -> np.ndarray:
     """Near-alias of :meth:`image_variances()`. Excludes the shear variance."""
     return np.sqrt(image_variances(images, centers, grid, normalize, nansum, exclude_shear=True))
 
 
-def image_ellipticity(variances):
-    r"""
-    Given the output of :meth:`image_variances()`,
+def image_ellipticity(variances: np.ndarray) -> np.ndarray:
+    r"""Given the output of :meth:`image_variances()`,
     return a measure of spot ellipticity for each moment triplet.
     The output of :meth:`image_variances()` contains the moments :math:`M_{20}`,
     :math:`M_{02}`, and :math:`M_{11}`. These terms make up a :math:`2 \times 2` matrix,
@@ -779,7 +786,7 @@ def image_ellipticity(variances):
     variances : numpy.ndarray
         The output of :meth:`image_variances()`. Shape ``(3, image_count)``.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         Array of ellipticities for the given moments in an array of shape ``(image_count,)``.
@@ -801,9 +808,8 @@ def image_ellipticity(variances):
     return 1 - (eig_minus / eig_plus)
 
 
-def image_areas(variances):
-    r"""
-    Given the output of :meth:`image_variances()`,
+def image_areas(variances: np.ndarray) -> np.ndarray:
+    r"""Given the output of :meth:`image_variances()`,
     return a measure of spot area for each moment triplet.
     The output of :meth:`image_variances()` contains the moments :math:`M_{20}`,
     :math:`M_{02}`, and :math:`M_{11}`. We return the determinant :math:`|M|` which is a
@@ -814,7 +820,7 @@ def image_areas(variances):
     variances : numpy.ndarray
         The output of :meth:`image_variances()`. Shape ``(3, image_count)``.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         Array of areas for the given moments in an array of shape ``(image_count,)``.
@@ -826,9 +832,8 @@ def image_areas(variances):
     return m20 * m02 - m11 * m11
 
 
-def image_ellipticity_angle(variances):
-    r"""
-    Given the output of :meth:`image_variances()`,
+def image_ellipticity_angle(variances: np.ndarray) -> np.ndarray:
+    r"""Given the output of :meth:`image_variances()`,
     return the rotation angle of the scaled basis for each moment triplet.
     This is the angle between the :math:`x` axis and the
     major axis (large eigenvalue axis).
@@ -838,7 +843,7 @@ def image_ellipticity_angle(variances):
     moment2 : numpy.ndarray
         The output of :meth:`image_variances()`. Shape ``(3, image_count)``.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray
         Array of angles for the given moments.
@@ -865,9 +870,14 @@ def image_ellipticity_angle(variances):
     return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
 
 
-def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
-    """
-    Fit each image in a stack of images to a 2D ``function``.
+def image_fit(
+    images: np.ndarray,
+    grid=None,
+    function=gaussian2d,
+    guess: np.ndarray | bool | None = None,
+    plot: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fit each image in a stack of images to a 2D ``function``.
 
     Parameters
     ----------
@@ -898,7 +908,7 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
         Whether or not to call :meth:`matplotlib.pyplot.show` after generating
         the plot.
 
-    Returns
+    Returns:
     -------
     numpy.ndarray (``image_count``, ``result_count``)
         A matrix with the fit results. The first row
@@ -909,7 +919,7 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
         are set to the provided or constructed guess or ``numpy.nan``
         if no guess was provided or constructed; errors are set to ``numpy.nan``.
 
-    Raises
+    Raises:
     ------
     NotImplementedError
         If the provided ``function`` does not have a guess implemented.
@@ -942,7 +952,7 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
             mins = np.amin(images, axis=(1, 2))
             guess = np.vstack((centers, maxs - mins, mins, np.sqrt(variances[:2, :]), variances[2, :])).T
         else:
-            message = f"Default guess for function {str(function)} not implemented."
+            message = f"Default guess for function {function!s} not implemented."
             if guess is True:
                 raise NotImplementedError(message)
             else:
@@ -1011,7 +1021,7 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
 
             # Plot.
             fig, axs = plt.subplots(1, 3, figsize=(3 * 6.4, 4.8))
-            fig.suptitle("Image {}".format(img_idx))
+            fig.suptitle(f"Image {img_idx}")
             ax0, ax1, ax2 = axs
             ax0.imshow(data, vmin=vmin, vmax=vmax)
             ax0.set_title("Data")
@@ -1028,9 +1038,10 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
 # Helpers for phase images.
 
 
-def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, **kwargs):
-    """
-    Fits sets of Zernike polynomials to a stack of ``images``, up to a desired ``order``.
+def image_zernike_fit(
+    images: np.ndarray, grid, order: int = 10, iterations: int = 2, leastsquares: bool = True, **kwargs
+) -> np.ndarray:
+    """Fits sets of Zernike polynomials to a stack of ``images``, up to a desired ``order``.
     This is done in two steps:
 
     -   First, an iterative approach is used to subtract Zernike orders from each image.
@@ -1041,11 +1052,11 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
     -   Thus, the second step is to refine the guess with a least squares optimization.
         This can be time consuming.
 
-    Note
+    Note:
     ~~~~
     The piston term (Zernike ANSI index 0) is omitted from the fit return.
 
-    Note
+    Note:
     ~~~~
     In the future, we might also fit to the derivatives.
 
@@ -1120,16 +1131,15 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
     return vectors_zernike[1:, :]
 
 
-def _get_module(matrix):
+def _get_module(matrix: np.ndarray):  # type: ignore[return]
     if np == cp:
         return np
     else:
         return cp.get_array_module(matrix)
 
 
-def image_vortices(phase_image):
-    """
-    Find the coordinates of phase vortices inside a phase image by computing the
+def image_vortices(phase_image: np.ndarray) -> np.ndarray:
+    """Find the coordinates of phase vortices inside a phase image by computing the
     winding number directly. The coordinates are returned as an image.
 
     Parameters
@@ -1137,7 +1147,7 @@ def image_vortices(phase_image):
     phase_image : array_like
         Image to detect winding number upon.
 
-    Returns
+    Returns:
     -------
     winding_number
         Image with the integer winding number at each pixel.
@@ -1156,9 +1166,8 @@ def image_vortices(phase_image):
     return xp.rint(winding_number)
 
 
-def image_vortices_coordinates(phase_image, mask=None):
-    """
-    Find the coordinates of phase vortices inside a phase image by computing the
+def image_vortices_coordinates(phase_image: np.ndarray, mask: np.ndarray | None = None) -> tuple[tuple, np.ndarray]:
+    """Find the coordinates of phase vortices inside a phase image by computing the
     winding number directly.
 
     Parameters
@@ -1168,7 +1177,7 @@ def image_vortices_coordinates(phase_image, mask=None):
     mask : array_like OR None
         Boolean mask to determine coordinates at.
 
-    Returns
+    Returns:
     -------
     coordinates, weights
         The coordinates and winding number of each coordinate.
@@ -1186,9 +1195,10 @@ def image_vortices_coordinates(phase_image, mask=None):
     return coordinates, weights
 
 
-def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
-    """
-    Find and then remove all the phase vortices in a phase image.
+def image_vortices_remove(
+    phase: np.ndarray, mask: np.ndarray | None = None, return_vortices_negative: bool = False
+) -> np.ndarray:
+    """Find and then remove all the phase vortices in a phase image.
 
     Parameters
     ----------
@@ -1201,7 +1211,7 @@ def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
         inside the mask and returned.
         If ``True``, what would be added to the original image is returned instead.
 
-    Returns
+    Returns:
     -------
     phase_image
         The image or vortices, depending upon ``return_vortices``
@@ -1231,10 +1241,8 @@ def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
     return canvas
 
 
-def image_remove_blaze(phase, mask=None, plot=False):
-    """
-    Remove a global blaze from
-    """
+def image_remove_blaze(phase: np.ndarray, mask: np.ndarray | None = None, plot: bool = False) -> np.ndarray:
+    """Remove a global blaze from"""
     phase = np.mod(phase, 2 * np.pi)
 
     # Get the gradients across the image.
@@ -1278,9 +1286,10 @@ def image_remove_blaze(phase, mask=None, plot=False):
     return result
 
 
-def image_reduce_wraps(phase, mask=None, steps=10, plot=False):
-    """
-    Reduce the number of phase wraps in the image by adding an offset.
+def image_reduce_wraps(
+    phase: np.ndarray, mask: np.ndarray | None = None, steps: int = 10, plot: bool = False
+) -> np.ndarray:
+    """Reduce the number of phase wraps in the image by adding an offset.
 
     Parameters
     ----------
@@ -1295,7 +1304,7 @@ def image_reduce_wraps(phase, mask=None, steps=10, plot=False):
     plot : bool
         Whether to enable debug plots.
 
-    Returns
+    Returns:
     -------
     np.ndarray
         The phase image with the offset applied.
@@ -1340,9 +1349,8 @@ def image_reduce_wraps(phase, mask=None, steps=10, plot=False):
 # Array fitting functions.
 
 
-def fit_affine(x, y, guess_affine=None, plot=False):
-    r"""
-    For two sets of ordered points with equal length, find the best-fit affine
+def fit_affine(x: np.ndarray, y: np.ndarray, guess_affine: dict | None = None, plot: bool = False) -> dict:
+    r"""For two sets of ordered points with equal length, find the best-fit affine
     transformation that transforms from the first basis to the second.
     Best fit is defined as minimization on the least squares euclidean norm.
 
@@ -1359,7 +1367,7 @@ def fit_affine(x, y, guess_affine=None, plot=False):
     plot : bool
         Whether to produce a debug plot.
 
-    Returns
+    Returns:
     -------
     dict
         A dictionary with fields ``"M"`` and ``"b"``.
@@ -1450,9 +1458,10 @@ def fit_affine(x, y, guess_affine=None, plot=False):
     return {"M": M, "b": b}
 
 
-def blob_detect(img, filter=None, plot=False, **kwargs):
-    """
-    Detect blobs in an image.
+def blob_detect(
+    img: np.ndarray, filter: str | None = None, plot: bool = False, **kwargs
+) -> tuple[list, cv2.SimpleBlobDetector]:
+    """Detect blobs in an image.
 
     Wraps :class:`cv2.SimpleBlobDetector` (see
     `these <https://docs.opencv.org/3.4/d8/da7/structcv_1_1SimpleBlobDetector_1_1Params.html>`_
@@ -1479,7 +1488,7 @@ def blob_detect(img, filter=None, plot=False, **kwargs):
     **kwargs
        Extra arguments for :class:`cv2.SimpleBlobDetector`.
 
-    Returns
+    Returns:
     -------
     blobs : ndarray
         List of blobs found by  ``detector``.
@@ -1574,18 +1583,17 @@ def blob_detect(img, filter=None, plot=False, **kwargs):
 
 
 def blob_array_detect(
-    img,
-    size,
-    orientation=None,
-    orientation_check=True,
-    dft_threshold=100,
-    dft_padding=0,
-    k=8,
-    tol=0.1,
-    plot=False,
-):
-    r"""
-    Detect an array of spots and return the orientation as an affine transformation.
+    img: np.ndarray,
+    size: tuple[int, int] | int,
+    orientation: dict | None = None,
+    orientation_check: bool = True,
+    dft_threshold: float = 100,
+    dft_padding: int = 0,
+    k: int = 8,
+    tol: float = 0.1,
+    plot: bool = False,
+) -> dict:
+    r"""Detect an array of spots and return the orientation as an affine transformation.
     Primarily used for calibration.
 
     For a rectangular array of spots imaged in ``img``,
@@ -1627,7 +1635,7 @@ def blob_array_detect(
     plot : bool
         Whether or not to plot debug plots. Default is ``False``.
 
-    Returns
+    Returns:
     --------
     dict
         Orientation dictionary with the following keys, corresponding to
@@ -1736,7 +1744,7 @@ def blob_array_detect(
         # 3) Fit the primitive lattice vectors
         # 3.1) Make a list of displacements to each peak's k nearest neighbors
         def get_kNN(points, k):
-            "Return list of k closest points for each x"
+            """Return list of k closest points for each x"""
             dx = points[:, 0][:, np.newaxis] - points[:, 0][:, np.newaxis].T
             dy = points[:, 1][:, np.newaxis] - points[:, 1][:, np.newaxis].T
             d = np.sqrt(dx**2 + dy**2)
@@ -1762,8 +1770,7 @@ def blob_array_detect(
 
         # 3.2) Cluster into lattice vectors.
         def cluster(points, k, tol=tol):
-            "Cluster points from k nearest neighbors into groups and return the centers"
-
+            """Cluster points from k nearest neighbors into groups and return the centers"""
             # Find matrix of normalized displacements between points.
             dx = points[:, 0][:, np.newaxis] - points[:, 0][:, np.newaxis].T
             dy = points[:, 1][:, np.newaxis] - points[:, 1][:, np.newaxis].T
@@ -1779,7 +1786,7 @@ def blob_array_detect(
             tags = np.zeros(points.shape[0])
             for i in np.arange(points.shape[0]):
                 # Assign if they are within tol and have not been assigned yet.
-                new = ((dnorm[i, :] < tol) | (inorm[i, :] < tol)) & np.array(tags == 0)  #  | (inorm[i,:] < tol)
+                new = ((dnorm[i, :] < tol) | (inorm[i, :] < tol)) & np.array(tags == 0)  # | (inorm[i,:] < tol)
                 tags[new] = group
                 if np.any(new):
                     group += 1
@@ -2176,9 +2183,8 @@ def blob_array_detect(
 # Other image helper functions.
 
 
-def _make_8bit(img):
-    """
-    Convert an image to ``numpy.uint8``, scaling to the limits.
+def _make_8bit(img: np.ndarray) -> np.ndarray:
+    """Convert an image to ``numpy.uint8``, scaling to the limits.
 
     This function is useful to convert float or larger bitdepth images to
     8-bit, which :mod:`cv2` accepts and can speedily process.
@@ -2188,7 +2194,7 @@ def _make_8bit(img):
     img : numpy.ndarray
         The image in question.
 
-    Returns
+    Returns:
     -------
     ndarray
         img as an 8-bit image.
@@ -2203,9 +2209,8 @@ def _make_8bit(img):
     return img.astype(np.uint8)
 
 
-def get_orientation_transformation(rot="0", fliplr=False, flipud=False):
-    """
-    Compile a transformation lambda from simple rotates and flips.
+def get_orientation_transformation(rot: str | int = "0", fliplr: bool = False, flipud: bool = False):
+    """Compile a transformation lambda from simple rotates and flips.
 
     Useful to turn an image to an orientation which is user-friendly.
     Used by :class:`~slmsuite.hardware.cameras.camera.Camera` and subclasses.
@@ -2220,7 +2225,7 @@ def get_orientation_transformation(rot="0", fliplr=False, flipud=False):
     flipud : bool
         Flips returned image up down.
 
-    Returns
+    Returns:
     -------
     function (array_like) -> numpy.ndarray
         Compiled image transformation.

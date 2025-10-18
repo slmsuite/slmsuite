@@ -1,9 +1,8 @@
-"""
-Hidden abstract class for pyglet windowing in slmsuite.
-"""
+"""Hidden abstract class for pyglet windowing in slmsuite."""
 
-import os
 import ctypes
+import os
+
 import numpy as np
 from packaging.version import Version
 
@@ -16,7 +15,7 @@ try:
     PYGLET_VERSION = Version(getattr(pyglet, "__version__", "0"))
 
     def get_pyglet_display():
-        if PYGLET_VERSION >= Version("2.1.0"):
+        if Version("2.1.0") <= PYGLET_VERSION:
             return pyglet.display.get_display()
         else:
             return pyglet.canvas.get_display()
@@ -32,7 +31,7 @@ except:
 
 
 class _Window(__Window):
-    def __init__(self, shape, screen=None, caption=""):
+    def __init__(self, shape: tuple | None, screen=None, caption: str = "") -> None:
         # Make the window and do basic setup.
         if screen is None:
             display = get_pyglet_display()
@@ -281,15 +280,14 @@ class _Window(__Window):
 
     @staticmethod
     def info(verbose=True):
-        """
-        Get information about the available displays, their indexes, and their sizes.
+        """Get information about the available displays, their indexes, and their sizes.
 
         Parameters
         ----------
         verbose : bool
             Whether or not to print display information.
 
-        Returns
+        Returns:
         -------
         list of (int, (int, int, int, int), bool, bool) tuples
             The number, geometry of each display.
@@ -303,14 +301,14 @@ class _Window(__Window):
         windows = display.get_windows()
 
         def parse_screen(screen):
-            return "x={}, y={}, width={}, height={}".format(screen.x, screen.y, screen.width, screen.height)
+            return f"x={screen.x}, y={screen.y}, width={screen.width}, height={screen.height}"
 
         def parse_screen_int(screen):
             return (screen.x, screen.y, screen.width, screen.height)
 
         def parse_window(window):
             x, y = window.get_location()
-            return "x={}, y={}, width={}, height={}".format(x, y, window.width, window.height)
+            return f"x={x}, y={y}, width={window.width}, height={window.height}"
 
         default_str = parse_screen(default)
 
@@ -338,7 +336,7 @@ class _Window(__Window):
                 screen_str += " (has ScreenMirrored)"
 
             if verbose:
-                print("{},  {}".format(x, screen_str))
+                print(f"{x},  {screen_str}")
 
             screen_list.append((x, parse_screen_int(screen), main_bool, window_bool))
 

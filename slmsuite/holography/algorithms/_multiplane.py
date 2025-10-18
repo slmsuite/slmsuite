@@ -1,13 +1,9 @@
-from typing import Any
 from slmsuite.holography.algorithms._header import *
 from slmsuite.holography.algorithms._hologram import Hologram
-from slmsuite.holography.algorithms._spots import SpotHologram, CompressedSpotHologram
-from slmsuite.holography.algorithms._feedback import FeedbackHologram
 
 
 class MultiplaneHologram(Hologram):
-    """
-    Holography combining multiple objectives, potentially across planes of focus or color.
+    """Holography combining multiple objectives, potentially across planes of focus or color.
     Other :class:`Hologram` subclasses are restricted to either optimizing a hologram
     within a fixed basis of spots or
     within the grid of a discrete Fourier transform at a fixed plane of focus.
@@ -15,31 +11,30 @@ class MultiplaneHologram(Hologram):
     holograms simultaneously---over many planes or pointsets---producing a composite
     phase pattern.
 
-    Note
+    Note:
     ~~~~
     Though the infrastructure to make this trivial is not yet in place,
     the idea of a 'plane' extends to planes of color. That is, this class
     :class:`MultiplaneHologram` could also be used to optimize a multicolor hologram and
     account for how the farfield of each color scales with wavelength.
 
-    Tip
+    Tip:
     ~~~
     Calls to :meth:`.optimize()` which update :attr:`flags` also update the flags of any
     child hologram.
 
-    Attributes
+    Attributes:
     ----------
     holograms : list of :class:`Hologram`
         List of sub-holograms to optimize simultaneously.
     weights : list of float
         Weight for each hologram. This allows the user to redistribute power between
         holograms. Keep in mind that each hologram will normalize itself, so differences
-        in intensity between target patterns cannot be relied upon.
+        intensity between target patterns cannot be relied upon.
     """
 
-    def __init__(self, holograms, weights=None):
-        """
-        Initializes a 'meta' hologram consisting of several sub-holograms optimizing at
+    def __init__(self, holograms, weights: list | None = None) -> None:
+        """Initializes a 'meta' hologram consisting of several sub-holograms optimizing at
         the same time.
 
         Parameters
@@ -56,7 +51,7 @@ class MultiplaneHologram(Hologram):
         for h in self.holograms:
             if "MultiplaneHologram" in str(type(h)):
                 raise ValueError("Multiplane hologram recursion is not supported.")
-            if not "Hologram" in str(type(h)):
+            if "Hologram" not in str(type(h)):
                 raise ValueError(f"Multiplane hologram must be provided child holograms, not {type(h)}")
 
         # Construct the parent hologram with empty goals but complete context.
@@ -92,15 +87,14 @@ class MultiplaneHologram(Hologram):
         return_depths=None,
         sharp_focus=True,
     ):
-        """
-        From a stack of target (power) images at ``target_depths``, generate a stack
+        """From a stack of target (power) images at ``target_depths``, generate a stack
         of images at ``return_depths``, accounting for defocus blur.
         Power is summed as if all depths were transparent; i.e. objects do no block
         objects further behind.
         This is a partial farfield implementation of
         `realistic defocus blur <https://doi.org/10.48550/arXiv.2205.07030>`_.
 
-        Warning
+        Warning:
         -------
         This feature seems to lead to less stable holography without, perhaps, some
         additional optimizations.
@@ -111,7 +105,7 @@ class MultiplaneHologram(Hologram):
             Hardware to implement blur for. Calibrations are necessary to determine how
             much to blur.
 
-            Tip
+        Tip:
             ---
             Right now, the blurring is Gaussian and analytic, but in the future, the
             measurement of the point spread function should be used.

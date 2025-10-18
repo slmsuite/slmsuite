@@ -1,27 +1,22 @@
-from slmsuite.holography.toolbox.phase import _load_cuda
-from slmsuite.holography.toolbox import _process_grid
+from slmsuite.holography.algorithms._feedback import FeedbackHologram
 from slmsuite.holography.algorithms._header import *
 from slmsuite.holography.algorithms._hologram import Hologram
-from slmsuite.holography.algorithms._feedback import FeedbackHologram
+from slmsuite.holography.toolbox import _process_grid
+from slmsuite.holography.toolbox.phase import _load_cuda
 
 
 class _AbstractSpotHologram(FeedbackHologram):
-    """
-    Abstract class to handle :meth:`SpotHologram.refine_offset()`
+    """Abstract class to handle :meth:`SpotHologram.refine_offset()`
     and other shared methods for :class:`SpotHologram` and :class:`CompressedSpotHologram`.
     There are many parts of :class:`SpotHologram` with repetition and bloat that
     can be simplified with more modern features from other parts of :mod:`slmsuite`.
     """
 
-    pass
-
     def remove_vortices(self):
         """Spot holograms do not need to consider vortices."""
-        pass
 
     def refine_offset(self, img=None, basis="kxy", force_affine=True, plot=False):
-        """
-        Hones the positions of the produced spots toward the desired targets to compensate for
+        """Hones the positions of the produced spots toward the desired targets to compensate for
         Fourier calibration imperfections. Works either by moving camera integration
         regions to the positions where the spots ended up (``basis="ij"``) or by moving
         the :math:`k`-space targets to target the desired camera pixels
@@ -47,7 +42,7 @@ class _AbstractSpotHologram(FeedbackHologram):
         plot : bool
             Enables debug plots.
 
-        Returns
+        Returns:
         -------
         numpy.ndarray
             Spot shift in the ``"ij"`` basis for each spot.
@@ -141,7 +136,7 @@ class _AbstractSpotHologram(FeedbackHologram):
                 # Modify camera targets. Don't modify any k-vectors.
                 self.spot_ij = self.spot_ij + shift_vectors
             else:
-                raise Exception("Unrecognized basis '{}'.".format(basis))
+                raise Exception(f"Unrecognized basis '{basis}'.")
 
         return shift_vectors
 
@@ -152,19 +147,18 @@ N_BATCH_MAX = 256  # Corresponds to ~1 GB for a megapixel SLM.
 
 
 class CompressedSpotHologram(_AbstractSpotHologram):
-    """
-    Holography optimized for the generation of optical focal arrays (kernel-based).
+    """Holography optimized for the generation of optical focal arrays (kernel-based).
 
     Is a subclass of :class:`FeedbackHologram`, but falls back to non-camera-feedback
     routines if :attr:`cameraslm` is not passed.
 
-    Note
+    Note:
     ~~~~
     Changes to the SLM (e.g. change of ``wavelength``) will not necessarily propagate
     to values cached in :attr:`SpotHologram`. Reinitialize the hologram to correctly
     populate the caches.
 
-    Attributes
+    Attributes:
     ----------
     spot_zernike : numpy.ndarray
         Spot position vectors with shape ``(D, N)``, where
@@ -188,9 +182,10 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         Whether the custom CUDA kernel is used for optimization (option 2).
     """
 
-    def __init__(self, spot_vectors, basis="kxy", spot_amp=None, cameraslm=None, cuda=False, **kwargs):
-        r"""
-        Initializes a :class:`CompressedSpotHologram` targeting given spots at ``spot_vectors``.
+    def __init__(
+        self, spot_vectors, basis: str = "kxy", spot_amp=None, cameraslm=None, cuda: bool = False, **kwargs
+    ) -> None:
+        r"""Initializes a :class:`CompressedSpotHologram` targeting given spots at ``spot_vectors``.
         This class makes use of so-called 'compressed' methods. Instead of
         effectively evaluating a blazing nearfield-farfield transformation kernel
         :math:`\phi(x,y,k_x,k_y) = k_xx + k_yy` at every
@@ -211,7 +206,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         This calibration of course includes steering in the :math:`x`, :math:`y`, and :math:`z`
         directions with the 2nd, 1st, and 4th Zernike polynomials, respectively (tilt and focus).
 
-        Important
+        Important:
         ---------
         This class supports two options for generating compressed spot arrays.
 
@@ -241,7 +236,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         If the kernel fails to load or :mod:`cupy` is unavailable, the option will downgrade
         to option 1. The choice is stored in :attr:`cuda`.
 
-        Note
+        Note:
         ~~~~
         MRAF can be used with :class:`CompressedSpotHologram` by setting elements of
         ``spot_amp`` to ``np.nan`` (noise points) or zero (null points), to parallel
@@ -421,7 +416,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 or np.any(self.spot_ij[0] >= cam_shape[1] - self.spot_integration_width_ij / 2)
                 or np.any(self.spot_ij[1] >= cam_shape[0] - self.spot_integration_width_ij / 2)
             ):
-                raise ValueError("Spots outside camera bounds!\nSpots:\n{}\nBounds: {}".format(self.spot_ij, cam_shape))
+                raise ValueError(f"Spots outside camera bounds!\nSpots:\n{self.spot_ij}\nBounds: {cam_shape}")
         else:
             self.spot_integration_width_ij = None
 
@@ -488,10 +483,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 warnings.warn("Raw CUDA kernels failed to load. Falling back to cupy.\n" + str(e))
 
     def __len__(self):
-        """
-        Overloads ``len()`` to return the number of spots in this :class:`CompressedSpotHologram`.
+        """Overloads ``len()`` to return the number of spots in this :class:`CompressedSpotHologram`.
 
-        Returns
+        Returns:
         -------
         int
             The size of :attr:`spot_amp`.
@@ -499,16 +493,14 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         return self.spot_amp.size
 
     def get_padded_shape(self, *args, **kwargs):
-        """
-        Vestigial from :class:`~slmsuite.holography.algorithms.Hologram`, but unneeded here.
+        """Vestigial from :class:`~slmsuite.holography.algorithms.Hologram`, but unneeded here.
         :class:`~slmsuite.holography.algorithms.CompressedSpotHologram`
         does not use a DFT grid and does not need padding.
         """
         raise NameError("CompressedSpotHologram does not use a DFT grid and does not need padding.")
 
     def _get_target_moments_knm_norm(self):
-        """
-        Get the first and second order moments of the target in normalized knm space
+        """Get the first and second order moments of the target in normalized knm space
         (knm integers divided by shape)
         """
         # Grab the target.
@@ -532,8 +524,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     # Projection backend helper functions.
     def _build_cupy_kernel_batched(self, vectors=None, out=None):
-        """
-        Uses the coordinate stack to produce the kernel, a stack of images corresponding
+        """Uses the coordinate stack to produce the kernel, a stack of images corresponding
         to the blaze and lens directing power to each desired spot in the farfield.
 
         Parameters
@@ -608,8 +599,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             self._cupy_kernel = self._build_cupy_kernel_batched(out=self._cupy_kernel)
 
     def _nearfield2farfield(self, phase_torch=None):
-        """
-        Maps the ``(H,W)`` nearfield (complex value on the SLM)
+        """Maps the ``(H,W)`` nearfield (complex value on the SLM)
         onto the ``(N,)`` farfield (complex value for each spot).
         """
         # This may return a torch nearfield if we are in torch mode.
@@ -655,7 +645,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         D, N = np.int32(self.spot_zernike.shape)
         M = np.int32(self._i_md.shape[0])
 
-        threads_per_block = int(1024)
+        threads_per_block = 1024
         assert self._near2far_cuda.max_threads_per_block >= threads_per_block
         if self._near2far_cuda.max_threads_per_block > threads_per_block:
             warnings.warn(
@@ -756,8 +746,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         return farfield
 
     def _farfield2nearfield(self, extract=True):
-        """
-        Maps the ``(N,1)`` farfield (complex value for each spot)
+        """Maps the ``(N,1)`` farfield (complex value for each spot)
         onto the ``(H,W)`` nearfield (complex value on the SLM).
         """
         if self.cuda:
@@ -791,7 +780,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         D, N = np.int32(self.spot_zernike.shape)
         M = np.int32(self._i_md.shape[0])
 
-        threads_per_block = int(1024)
+        threads_per_block = 1024
         assert self._far2near_cuda.max_threads_per_block >= threads_per_block
         if self._far2near_cuda.max_threads_per_block > threads_per_block:
             warnings.warn(
@@ -856,8 +845,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     # Target update.
     def set_target(self, new_target=None, reset_weights=False):
-        """
-        Change the target to something new. This method handles cleaning and normalization.
+        """Change the target to something new. This method handles cleaning and normalization.
 
         Parameters
         ----------
@@ -888,8 +876,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     # Weighting and stats.
     def _update_weights(self):
-        """
-        Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
+        """Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
         :attr:`amp_ff`, the computed farfield amplitude.
         """
         feedback = self.flags["feedback"]
@@ -922,7 +909,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         elif feedback == "external_spot":
             amp_feedback = self.external_spot_amp
         else:
-            raise ValueError("Feedback '{}' not recognized.".format(feedback))
+            raise ValueError(f"Feedback '{feedback}' not recognized.")
 
         # Apply weights.
         self._update_weights_generic(
@@ -933,9 +920,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         )
 
     def _calculate_stats_computational_spot(self, stats, stat_groups=[]):
-        """
-        Wrapped by :meth:`SpotHologram._update_stats()`.
-        """
+        """Wrapped by :meth:`SpotHologram._update_stats()`."""
         if "computational_spot" in stat_groups:
             stats["computational_spot"] = self._calculate_stats(
                 self.amp_ff,
@@ -946,9 +931,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             )
 
     def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
-        """
-        Wrapped by :meth:`SpotHologram._update_stats()`.
-        """
+        """Wrapped by :meth:`SpotHologram._update_stats()`."""
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
 
@@ -981,8 +964,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             )
 
     def _update_stats(self, stat_groups=[]):
-        """
-        Calculate statistics corresponding to the desired ``stat_groups``.
+        """Calculate statistics corresponding to the desired ``stat_groups``.
 
         Parameters
         ----------
@@ -998,19 +980,18 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
 
 class SpotHologram(_AbstractSpotHologram):
-    """
-    Holography optimized for the generation of optical focal arrays (DFT-based).
+    """Holography optimized for the generation of optical focal arrays (DFT-based).
 
     Is a subclass of :class:`FeedbackHologram`, but falls back to non-camera-feedback
     routines if :attr:`cameraslm` is not passed.
 
-    Tip
+    Tip:
     ~~~
     Quality of life features to generate noise regions for mixed region amplitude
     freedom (MRAF) algorithms are supported. Specifically, set ``null_region``
     parameters to help specify where the noise region is not.
 
-    Attributes
+    Attributes:
     ----------
     spot_knm, spot_kxy, spot_ij : array_like of float OR None
         Stored vectors with shape ``(2, N)`` in the style of
@@ -1078,8 +1059,7 @@ class SpotHologram(_AbstractSpotHologram):
         null_region_radius_frac=None,
         **kwargs,
     ):
-        """
-        Initializes a :class:`SpotHologram` targeting given spots at ``spot_vectors``.
+        """Initializes a :class:`SpotHologram` targeting given spots at ``spot_vectors``.
 
         Parameters
         ----------
@@ -1201,7 +1181,7 @@ class SpotHologram(_AbstractSpotHologram):
                 vectors, from_units="ij", to_units="knm", hardware=cameraslm, shape=shape
             )
         else:
-            raise Exception("Unrecognized basis for spots '{}'.".format(basis))
+            raise Exception(f"Unrecognized basis for spots '{basis}'.")
 
         # Handle null conversions in the ij or kxy cases.
         if basis == "ij" or basis == "kxy":
@@ -1271,9 +1251,7 @@ class SpotHologram(_AbstractSpotHologram):
             or np.any(self.spot_knm[0] >= shape[1])
             or np.any(self.spot_knm[1] >= shape[0])
         ):
-            raise ValueError(
-                "Spots outside SLM computational space bounds!\nSpots:\n{}\nBounds: {}".format(self.spot_knm, shape)
-            )
+            raise ValueError(f"Spots outside SLM computational space bounds!\nSpots:\n{self.spot_knm}\nBounds: {shape}")
 
         if self.spot_ij is not None:
             cam_shape = cameraslm.cam.shape
@@ -1284,7 +1262,7 @@ class SpotHologram(_AbstractSpotHologram):
                 or np.any(self.spot_ij[0] >= cam_shape[1] - self.spot_integration_width_ij / 2)
                 or np.any(self.spot_ij[1] >= cam_shape[0] - self.spot_integration_width_ij / 2)
             ):
-                raise ValueError("Spots outside camera bounds!\nSpots:\n{}\nBounds: {}".format(self.spot_ij, cam_shape))
+                raise ValueError(f"Spots outside camera bounds!\nSpots:\n{self.spot_ij}\nBounds: {cam_shape}")
 
         # Decide the null_radius (if necessary)
         if self.null_knm is not None:
@@ -1320,10 +1298,9 @@ class SpotHologram(_AbstractSpotHologram):
         self.set_target(reset_weights=True)
 
     def __len__(self):
-        """
-        Overloads len() to return the number of spots in this :class:`SpotHologram`.
+        """Overloads len() to return the number of spots in this :class:`SpotHologram`.
 
-        Returns
+        Returns:
         -------
         int
             The length of :attr:`spot_amp`.
@@ -1341,16 +1318,15 @@ class SpotHologram(_AbstractSpotHologram):
         orientation_check=False,
         **kwargs,
     ):
-        """
-        Helper function to initialize a rectangular 2D array of spots, with certain size and pitch.
+        """Helper function to initialize a rectangular 2D array of spots, with certain size and pitch.
 
-        Note
+        Note:
         ~~~~
         The array can be in SLM k-space coordinates or in camera pixel coordinates, depending upon
         the choice of ``basis``. For the ``"ij"`` basis, ``cameraslm`` must be included as one
         of the ``kwargs``. See :meth:`__init__()` for more ``basis`` information.
 
-        Important
+        Important:
         ~~~~~~~~~
         Spot positions will be rounded to the grid of computational k-space ``"knm"``,
         to create the target image (of finite size) that algorithms optimize towards.
@@ -1430,9 +1406,7 @@ class SpotHologram(_AbstractSpotHologram):
         return SpotHologram(shape, vectors, basis=basis, spot_amp=None, **kwargs)
 
     def _set_target_spots(self, reset_weights=False):
-        """
-        Wrapped by :meth:`SpotHologram.set_target()`.
-        """
+        """Wrapped by :meth:`SpotHologram.set_target()`."""
         # Round the spot points to the nearest integer coordinates in knm space.
         self.spot_knm_rounded = np.rint(self.spot_knm).astype(int)
 
@@ -1488,17 +1462,16 @@ class SpotHologram(_AbstractSpotHologram):
             self.reset_weights()
 
     def set_target(self, reset_weights=False, plot=False):
-        """
-        From the spot locations stored in :attr:`spot_knm`, update the target pattern.
+        """From the spot locations stored in :attr:`spot_knm`, update the target pattern.
 
-        Note
+        Note:
         ~~~~
         If there's a ``cameraslm``, updates the :attr:`spot_ij_rounded` attribute
         corresponding to where pixels in the :math:`k`-space where actually placed (due to rounding
         to integers, stored in :attr:`spot_knm_rounded`), rather the
         idealized floats :attr:`spot_knm`.
 
-        Note
+        Note:
         ~~~~
         The :attr:`target` and :attr:`weights` matrices are modified in-place for speed,
         unlike :class:`.Hologram` or :class:`.FeedbackHologram` which make new matrices.
@@ -1513,8 +1486,7 @@ class SpotHologram(_AbstractSpotHologram):
 
     # Weighting and stats.
     def _update_weights(self):
-        """
-        Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
+        """Change :attr:`weights` to optimize towards the :attr:`target` using feedback from
         :attr:`amp_ff`, the computed farfield amplitude.
         """
         feedback = self.flags["feedback"]
@@ -1557,7 +1529,7 @@ class SpotHologram(_AbstractSpotHologram):
             elif feedback == "external_spot":
                 amp_feedback = self.external_spot_amp
             else:
-                raise ValueError("Feedback '{}' not recognized.".format(feedback))
+                raise ValueError(f"Feedback '{feedback}' not recognized.")
 
             # Update the weights of single pixels.
             self.weights[self.spot_knm_rounded[1, :], self.spot_knm_rounded[0, :]] = self._update_weights_generic(
@@ -1568,10 +1540,7 @@ class SpotHologram(_AbstractSpotHologram):
             )
 
     def _calculate_stats_computational_spot(self, stats, stat_groups=[]):
-        """
-        Wrapped by :meth:`SpotHologram._update_stats()`.
-        """
-
+        """Wrapped by :meth:`SpotHologram._update_stats()`."""
         if "computational_spot" in stat_groups:
             if self.shape == self.slm_shape:
                 # Spot size is one pixel wide: no integration required.
@@ -1623,10 +1592,7 @@ class SpotHologram(_AbstractSpotHologram):
                     )
 
     def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
-        """
-        Wrapped by :meth:`SpotHologram._update_stats()`.
-        """
-
+        """Wrapped by :meth:`SpotHologram._update_stats()`."""
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
 
@@ -1659,8 +1625,7 @@ class SpotHologram(_AbstractSpotHologram):
             )
 
     def _update_stats(self, stat_groups=[]):
-        """
-        Calculate statistics corresponding to the desired ``stat_groups``.
+        """Calculate statistics corresponding to the desired ``stat_groups``.
 
         Parameters
         ----------

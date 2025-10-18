@@ -1,9 +1,8 @@
-"""
-Simulated camera to image the simulated SLM.
-"""
+"""Simulated camera to image the simulated SLM."""
+
+import warnings
 
 import numpy as np
-import warnings
 
 try:
     import cupy as cp
@@ -12,24 +11,22 @@ except:
     cp = np
     from scipy.ndimage import map_coordinates
 
-import matplotlib.pyplot as plt
 
 from slmsuite.hardware.cameras.camera import Camera
-from slmsuite.holography.algorithms import Hologram
 from slmsuite.holography import toolbox
+from slmsuite.holography.algorithms import Hologram
 from slmsuite.misc.math import REAL_TYPES
 
 
 class SimulatedCamera(Camera):
-    """
-    Simulated camera.
+    """Simulated camera.
 
     Outputs simulated images (i.e., the far-field of an SLM interpolated to
     camera pixels based on the camera's location and orientation.
     Serves as a future testbed for simulation of other imaging artifacts, including non-affine
     aberrations (e.g. pincushion distortion) and imaging readout noise.
 
-    Note
+    Note:
     ~~~~
     For fastest simulation, initialize :class:`SimulatedCamera` with a
     :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM` *only*. Simulated camera images
@@ -39,7 +36,7 @@ class SimulatedCamera(Camera):
     which may also require additional padding (computed automatically upon initialization) for
     sufficient resolution.
 
-    Attributes
+    Attributes:
     ----------
     grid : (numpy.ndarray, numpy.ndarray)
         Pixel column/row number (``x_grid``, ``y_grid``) in the ``"ij"`` basis used for
@@ -53,7 +50,7 @@ class SimulatedCamera(Camera):
         ``'dark'`` and ``'read'``, representing exposure-dependent dark current/background noise
         and exposure-independent readout noise, respectively, are the only accepted keys.
 
-        Example
+    Example:
         ~~~~~~~
         The following code adds a Gaussian background with 50% mean and 5% standard
         deviation (relative to the dynamic range at the default ``self.exposure_s = 1``) and
@@ -69,9 +66,18 @@ class SimulatedCamera(Camera):
 
     """
 
-    def __init__(self, slm, resolution=None, M=None, b=None, noise=None, pitch_um=None, gain=1, **kwargs):
-        """
-        Initialize simulated camera.
+    def __init__(
+        self,
+        slm,
+        resolution: tuple | None = None,
+        M=None,
+        b=None,
+        noise: dict | None = None,
+        pitch_um: tuple | None = None,
+        gain: float = 1,
+        **kwargs,
+    ) -> None:
+        """Initialize simulated camera.
 
         Parameters
         ----------
@@ -92,7 +98,6 @@ class SimulatedCamera(Camera):
         **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
-
         # Store a reference to the SLM: we need this to compute the far-field camera images.
         self._slm = slm
 
@@ -125,8 +130,7 @@ class SimulatedCamera(Camera):
         pass
 
     def set_affine(self, M=None, b=None, **kwargs):
-        """
-        Set the camera's placement in the SLM's k-space. ``M`` and/or ``b``, if provided,
+        """Set the camera's placement in the SLM's k-space. ``M`` and/or ``b``, if provided,
         are used to transform the :class:`SimulatedCamera`'s ``"ij"`` grid to a ``"knm"`` grid
         for interpolation against the :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`'s
         ``"knm"`` grid. Keyword arguments, if provided, are passed to :meth:`.build_affine()`
@@ -146,7 +150,6 @@ class SimulatedCamera(Camera):
             to build ``M`` and ``b``, if not provided. See options documented in this
             method. ``f_eff`` is a required keyword.
         """
-
         # If kwargs are passed instead of M and b, use these to build M, b
         if M is None or b is None:
             f_eff = kwargs.pop("f_eff", None)
@@ -203,8 +206,7 @@ class SimulatedCamera(Camera):
         shear_angle=0,
         offset=None,
     ):
-        """
-        Builds an affine transform defining the SLM to camera transformation as
+        """Builds an affine transform defining the SLM to camera transformation as
         detailed in :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam`.
 
         Parameters
@@ -238,7 +240,7 @@ class SimulatedCamera(Camera):
             from the camera's origin. If ``None``, defaults to be centered on the center
             of the camera.
 
-        Returns
+        Returns:
         -------
         numpy.ndarray
             Affine matrix :math:`M`. Shape ``(2, 2)``.
@@ -268,8 +270,7 @@ class SimulatedCamera(Camera):
         cam_pitch_um=None,
         wav_um=None,
     ):
-        """
-        See documentation in :meth:`build_affine()` and
+        """See documentation in :meth:`build_affine()` and
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.build_fourier_calibration()`.
         This helper function is shared between those functions.
         """
@@ -316,10 +317,7 @@ class SimulatedCamera(Camera):
         return M, b
 
     def flush(self):
-        """
-        See :meth:`.Camera.flush`.
-        """
-        pass
+        """See :meth:`.Camera.flush`."""
 
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
@@ -349,10 +347,9 @@ class SimulatedCamera(Camera):
             raise ValueError(f"Numpy cannot encode bitdepth {self.bitdepth}.")
 
     def _get_image_hw(self, timeout_s):
-        """
-        See :meth:`.Camera._get_image_hw`. Computes and samples the affine-transformed SLM far-field.
+        """See :meth:`.Camera._get_image_hw`. Computes and samples the affine-transformed SLM far-field.
 
-        Returns
+        Returns:
         -------
         numpy.ndarray
             Array of shape :attr:`shape`

@@ -1,5 +1,4 @@
-"""
-**(Untested)** Hardware control for MindVision cameras via :mod:`mvsdk`.
+"""**(Untested)** Hardware control for MindVision cameras via :mod:`mvsdk`.
 This requires the :mod:`mvsdk` library and python header to be copied
 into the local directory and added to path.
 These files can be downloaded from `MindVision's download page
@@ -9,12 +8,11 @@ The python header can also be found in the `dddomodossola/nastroprint
 GitHub package.
 """
 
-import time
-import numpy as np
 import warnings
 
-from slmsuite.hardware.cameras.camera import Camera
+import numpy as np
 
+from slmsuite.hardware.cameras.camera import Camera
 
 try:
     import mvsdk as _mvsdk
@@ -24,16 +22,13 @@ except:
 
 
 class MindVision(Camera):
-    """
-    MindVision camera subclass for interfacing with the :mod:`mvsdk`.
-    """
+    """MindVision camera subclass for interfacing with the :mod:`mvsdk`."""
 
     # Class variable (same for all instances of MindVision) pointing to a singleton SDK.
     sdk = None
 
-    def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize the MindVision camera and attributes.
+    def __init__(self, serial: str = "", pitch_um: tuple | None = None, verbose: bool = True, **kwargs) -> None:
+        """Initialize the MindVision camera and attributes.
 
         Parameters
         ----------
@@ -88,7 +83,7 @@ class MindVision(Camera):
         try:
             self.handle = _mvsdk.CameraInit(self.cam, -1, -1)
         except _mvsdk.CameraException as e:
-            print("CameraInit Failed ({}):\n{}".format(e.error_code, e.message))
+            print(f"CameraInit Failed ({e.error_code}):\n{e.message}")
             raise e
 
         # Fill in parameters from the capability class.
@@ -130,9 +125,7 @@ class MindVision(Camera):
             print("success")
 
     def close(self):
-        """
-        Close the camera and release resources.
-        """
+        """Close the camera and release resources."""
         if self.handle:
             _mvsdk.CameraAlignFree(self.buffer)
             _mvsdk.CameraUnInit(self.handle)
@@ -140,15 +133,14 @@ class MindVision(Camera):
 
     @staticmethod
     def info(verbose=True):
-        """
-        Discovers all cameras detected by the :mod:`mvsdk`.
+        """Discovers all cameras detected by the :mod:`mvsdk`.
 
         Parameters
         ----------
         verbose : bool
             Whether to print the discovered information.
 
-        Returns
+        Returns:
         --------
         list of str
             List of :mod:`mvsdk` serial numbers.
@@ -168,45 +160,44 @@ class MindVision(Camera):
         return serial_list
 
     def print_capability(self):
-        """
-        MindVision specific method (copied from MindVision examples) to print the
+        """MindVision specific method (copied from MindVision examples) to print the
         capability of the camera.
         """
         cap = self.capability
 
         for i in range(cap.iTriggerDesc):
             desc = cap.pTriggerDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
         for i in range(cap.iImageSizeDesc):
             desc = cap.pImageSizeDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
         for i in range(cap.iClrTempDesc):
             desc = cap.pClrTempDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
         for i in range(cap.iMediaTypeDesc):
             desc = cap.pMediaTypeDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
         for i in range(cap.iFrameSpeedDesc):
             desc = cap.pFrameSpeedDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
         for i in range(cap.iPackLenDesc):
             desc = cap.pPackLenDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
         for i in range(cap.iPresetLut):
             desc = cap.pPresetLutDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
         for i in range(cap.iAeAlmSwDesc):
             desc = cap.pAeAlmSwDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
         for i in range(cap.iAeAlmHdDesc):
             desc = cap.pAeAlmHdDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
         for i in range(cap.iBayerDecAlmSwDesc):
             desc = cap.pBayerDecAlmSwDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
         for i in range(cap.iBayerDecAlmHdDesc):
             desc = cap.pBayerDecAlmHdDesc[i]
-            print("{}: {}".format(desc.iIndex, desc.GetDescription()))
+            print(f"{desc.iIndex}: {desc.GetDescription()}")
 
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
@@ -249,4 +240,4 @@ class MindVision(Camera):
                 return np.copy(np.frombuffer(frame_data, dtype=np.uint8).reshape(rgb_shape))
 
         except _mvsdk.CameraException as e:
-            print("CameraGetImageBuffer failed ({}):\n{}".format(e.error_code, e.message))
+            print(f"CameraGetImageBuffer failed ({e.error_code}):\n{e.message}")

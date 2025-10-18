@@ -1,5 +1,4 @@
-"""
-Hardware control for AlliedVision cameras via the Vimba-X :mod:`vmbpy` interface.
+"""Hardware control for AlliedVision cameras via the Vimba-X :mod:`vmbpy` interface.
 This class also supports backwards compatibility with the
 `archived <https://github.com/alliedvision/VimbaPython>`_ :mod:`vimba` interface.
 Install :mod:`vmbpy` by following the
@@ -9,14 +8,15 @@ as the :class:`AlliedVision` class makes use of these features. See especially t
 `vimba python manual <https://github.com/alliedvision/VimbaPython/blob/master/Documentation/Vimba%20Python%20Manual.pdf>`_
 for reference.
 
-Note
+Note:
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
 
 import time
-import numpy as np
 import warnings
+
+import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -41,17 +41,16 @@ except ImportError:
 
 
 class AlliedVision(Camera):
-    r"""
-    AlliedVision camera.
+    r"""AlliedVision camera.
 
-    Attributes
+    Attributes:
     ----------
     sdk : vmbpy.Vimba
         AlliedVision SDK. Shared among instances of :class:`AlliedVision`.
     cam : vmbpy.Camera
         Object to talk with the desired camera.
 
-    Caution
+    Caution:
     ~~~~~~~~
     The AlliedVision SDK :mod:`vmbpy` includes protections to maintain camera connectivity:
     specifically, the SDK :class:`vmbpy.VmbSystem` and cameras :class:`vmbpy.Camera` are designed
@@ -67,9 +66,8 @@ class AlliedVision(Camera):
 
     sdk = None
 
-    def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize camera and attributes.
+    def __init__(self, serial: str = "", pitch_um: tuple | None = None, verbose: bool = True, **kwargs) -> None:
+        """Initialize camera and attributes.
 
         Parameters
         ----------
@@ -152,8 +150,7 @@ class AlliedVision(Camera):
         )
 
     def close(self, close_sdk=True):
-        """
-        See :meth:`.Camera.close`
+        """See :meth:`.Camera.close`
 
         Parameters
         ----------
@@ -169,15 +166,14 @@ class AlliedVision(Camera):
 
     @staticmethod
     def info(verbose=True):
-        """
-        Discovers all AlliedVision cameras.
+        """Discovers all AlliedVision cameras.
 
         Parameters
         ----------
         verbose : bool
             Whether to print the discovered information.
 
-        Returns
+        Returns:
         --------
         list of str
             List of AlliedVision serial numbers.
@@ -207,18 +203,15 @@ class AlliedVision(Camera):
 
     @classmethod
     def close_sdk(cls):
-        """
-        Close the :mod:`vmbpy` instance.
-        """
+        """Close the :mod:`vmbpy` instance."""
         if cls.sdk is not None:
             cls.sdk.__exit__(None, None, None)
             cls.sdk = None
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
     def get_properties(self, properties=None):
-        """
-        Print the list of camera properties.
+        """Print the list of camera properties.
 
         Parameters
         ----------
@@ -250,11 +243,10 @@ class AlliedVision(Camera):
             try:
                 print(prop.get_description(), end="\n")
             except:
-                print("")
+                print()
 
     def set_adc_bitdepth(self, bitdepth):
-        """
-        Set the digitization bitdepth.
+        """Set the digitization bitdepth.
 
         Parameters
         ----------
@@ -271,10 +263,9 @@ class AlliedVision(Camera):
             raise RuntimeError(f"ADC bitdepth {bitdepth} not found.")
 
     def get_adc_bitdepth(self):
-        """
-        Get the digitization bitdepth.
+        """Get the digitization bitdepth.
 
-        Returns
+        Returns:
         -------
         int
             The digitization bitdepth.
@@ -292,8 +283,7 @@ class AlliedVision(Camera):
         self.cam.ExposureTime.set(float(exposure_s * 1e6))
 
     def _set_woi(self, woi):
-        """
-        Sets the window of interest (WOI).
+        """Sets the window of interest (WOI).
 
         Parameters
         ----------

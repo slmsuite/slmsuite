@@ -273,7 +273,7 @@ def save_h5(file_path: str, data: dict[str, Any], mode: str = "w") -> None:
                 new_group = group.create_group(key)
                 recurse(new_group, data[key])
             elif isinstance(data[key], str):
-                group[key] = bytes(data[key], "utf-8")
+                group[key] = data[key].encode("utf-8")
             elif data[key] is None:
                 group[key] = False
             else:

@@ -29,7 +29,6 @@ try:
 except ImportError:
     torch = None
 
-# Import helper functions
 
 # List of algorithms and default parameters.
 # See algorithm documentation for parameter definitions.

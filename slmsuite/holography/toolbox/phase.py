@@ -23,7 +23,7 @@ from slmsuite.misc.math import REAL_TYPES
 
 
 def _load_cuda() -> str:
-    with pathlib.Path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cuda.cu")).open() as file:
+    with (pathlib.Path(__file__).parent / "cuda.cu").open() as file:
         CUDA_KERNELS = file.read()
 
     return CUDA_KERNELS

@@ -1,12 +1,14 @@
-"""
-Hardware control for Micro-Manager cameras via the :mod:`pymmcore` interface.
+"""Hardware control for Micro-Manager cameras via the :mod:`pymmcore` interface.
 Micro-Manager supports a wide variety of scientific cameras.
 See :mod:`pymmcore` `documentation <https://github.com/micro-manager/pymmcore>`_
 for installation instructions.
 """
 
 import os
+import pathlib
 import warnings
+
+import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -16,11 +18,11 @@ except ImportError:
     pymmcore = None
     warnings.warn("pymmcore not installed. Install to use Micro-Manager cameras.")
 
-class MMCore(Camera):
-    """
-    Micro-Manager camera.
 
-    Attributes
+class MMCore(Camera):
+    """Micro-Manager camera.
+
+    Attributes:
     ----------
     cam : pymmcore.CMMCore
         Object to talk with the desired camera.
@@ -28,14 +30,13 @@ class MMCore(Camera):
 
     def __init__(
         self,
-        config,
-        path="C:\\Program Files\\Micro-Manager-2.0",
-        pitch_um=None,
-        verbose=True,
-        **kwargs
-    ):
-        """
-        Initialize camera and attributes.
+        config: str,
+        path: str = "C:\\Program Files\\Micro-Manager-2.0",
+        pitch_um: tuple[float, float] | None = None,
+        verbose: bool = True,
+        **kwargs,
+    ) -> None:
+        """Initialize camera and attributes.
 
         Parameters
         ----------
@@ -63,7 +64,7 @@ class MMCore(Camera):
         if len(config) > 4 and config[-4:] == ".cfg":
             config = config[:-4]
         config_path, config = os.path.split(config)
-        if not os.path.isabs(config_path):
+        if not pathlib.Path(config_path).is_absolute():
             config_path = os.path.join(path, config_path)
 
         # Load mmcore.
@@ -85,14 +86,14 @@ class MMCore(Camera):
             bitdepth=self.cam.getImageBitDepth(),
             pitch_um=pitch_um,
             name=config,
-            **kwargs
+            **kwargs,
         )
-        if verbose: print("success")
+        if verbose:
+            print("success")
 
     @staticmethod
-    def info(path="C:\\Program Files\\Micro-Manager-2.0"):
-        """
-        Detects ``.cfg`` files present in the given path.
+    def info(path="C:\\Program Files\\Micro-Manager-2.0") -> list:
+        """Detects ``.cfg`` files present in the given path.
 
         Parameters
         ----------
@@ -100,7 +101,7 @@ class MMCore(Camera):
             Path to search. This path defaults to the default Micro-Manager install location,
             as ``.cfg`` files save there by default.
 
-        Returns
+        Returns:
         -------
         list of str
             Names of the detected ``.cfg`` files.
@@ -111,36 +112,35 @@ class MMCore(Camera):
         cfg_files = []
 
         # Check if the provided path exists and is a directory.
-        if os.path.isdir(path):
+        if pathlib.Path(path).is_dir():
             # Loop through files in the directory.
             for file_name in os.listdir(path):
-                if file_name.endswith('.cfg'):
+                if file_name.endswith(".cfg"):
                     cfg_files.append(file_name)
         else:
             raise ValueError(f"The provided path '{path}' is not a valid directory.")
 
         return cfg_files
 
-
-    def close(self):
+    def close(self) -> None:
         """See :meth:`.Camera.close`."""
         del self.cam
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.getExposure()) / 1e3
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.setExposure(1e3 * exposure_s)
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> None:
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`."""
-        self.cam.snapImage();
+        self.cam.snapImage()
         return self.cam.getImage()

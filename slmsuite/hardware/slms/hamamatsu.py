@@ -1,11 +1,10 @@
-"""
-**(Untested)** Hardware control for Hamamatsu SLMs in USB/Trigger mode;
+"""**(Untested)** Hardware control for Hamamatsu SLMs in USB/Trigger mode;
 for DVI mode, use :class:`~slmsuite.hardware.slms.screenmirrored.ScreenMirrored`.
 For DVI mode, reset the SLM to DVI mode externally and
 project information onto the appropriate screen.
 A previous verions was tested with Hamamatsu LCOS-SLM X15213-02.
 
-Important
+Important:
 ~~~~~~~~~
 :class:`.Hamamatsu` requires dynamically linked libraries from Hamamatsu to be present in the
 runtime directory:
@@ -15,67 +14,70 @@ runtime directory:
 
 These two files must be in the same directory.
 
-Note
+Note:
 ~~~~
 Hamamatsu provides base wavefront correction accounting for the curvature of the SLM surface.
 Consider loading these files via :meth:`.SLM.load_vendor_phase_correction()`
 
-Note
+Note:
 ~~~~
 We does not currently support reading/writing data to the microSD card.
 """
+
 import os
+import pathlib
 import warnings
 from ctypes import *
 
 import numpy as np
+
 from slmsuite.hardware.slms.slm import SLM
 
 try:
     _libname = "hpkSLMdaLV.dll"
 
-    if hasattr(os, "add_dll_directory"):    # python >= 3.8
-        os.add_dll_directory(os.getcwd())
+    if hasattr(os, "add_dll_directory"):  # python >= 3.8
+        os.add_dll_directory(pathlib.Path.cwd())
         os.add_dll_directory(os.path.dirname(os.path.abspath(__file__)))
         Lcoslib = WinDLL(_libname)
-    else:                                   # python < 3.8
+    else:  # python < 3.8
         _libpath = os.path.dirname(os.path.abspath(__file__))
-        os.environ['PATH'] = _libpath + os.pathsep + os.environ['PATH']
+        os.environ["PATH"] = _libpath + os.pathsep + os.environ["PATH"]
         Lcoslib = windll.LoadLibrary(_libname)
 except Exception as e:
     warnings.warn(
         "Hamamatsu DLLs not installed; must be present in the runtime directory:\n"
         "  - hpkSLMdaLV.dll\n  - hpkSLMda.dll\n"
         "Install to use Hamamatsu SLMs.\n"
-        "Original error: {}".format(e)
+        f"Original error: {e}"
     )
     Lcoslib = None
 
-class Hamamatsu(SLM):
-    r"""
-    Initializes an instance of a Hamamatsu SLM.
 
-    Attributes
+class Hamamatsu(SLM):
+    r"""Initializes an instance of a Hamamatsu SLM.
+
+    Attributes:
     ----------
     serial_number : str
         Serial number of the connected device.
     """
+
     def __init__(
         self,
-        serial_number=None,
-        wav_um=1,
-        resolution=(1272, 1024),
-        pitch_um=(12.5, 12.5),
-        verbose=True,
-        **kwargs
-    ):
-        r"""
-        Initializes an instance of a Hamamatsu SLM.
+        serial_number: str | None = None,
+        wav_um: float = 1,
+        resolution: tuple[int, int] = (1272, 1024),
+        pitch_um: tuple[float, float] = (12.5, 12.5),
+        verbose: bool = True,
+        **kwargs,
+    ) -> None:
+        r"""Initializes an instance of a Hamamatsu SLM.
         Keep in mind that this initializes into USB/Trigger mode.
         For DVI mode, preset the SLM to DVI mode externally and use
         :class:`slmsuite.hardware.slms.screenmirrored.ScreenMirrored`.
 
-        Arguments
+        Arguments:
         ---------
         serial_number : str OR None
             Serial number of the connected device.
@@ -85,30 +87,34 @@ class Hamamatsu(SLM):
         pitch_um : (float, float)
             Pixel pitch in microns. Defaults to 12.5 micron square pixels.
 
-        Caution
+        Caution:
         ~~~~~~~
         This interface currently supports connecting to only one device.
 
-        Caution
+        Caution:
         ~~~~~~~
         The default values of ``resolution`` and ``pitch_um``
         are relative to the model LCOS-SLM X15213-02.
         """
         # Search for one device.
-        if verbose: print("Initializing Hamamatsu SDK...", end="")
+        if verbose:
+            print("Initializing Hamamatsu SDK...", end="")
         n_dev, board_ids = self._Open_Device(bID_size=1)
         self.board_id = list(board_ids)[0]
 
         if n_dev == 0:
             raise RuntimeError("No Hamamatsu devices found!")
         else:
-            if verbose: print("success")
+            if verbose:
+                print("success")
 
             # Read the serial number of the device.
             if serial_number is None:
-                if verbose: print(f"Looking for SLM...", end="")
+                if verbose:
+                    print("Looking for SLM...", end="")
             else:
-                if verbose: print(f"Looking for '{serial_number}'...", end="")
+                if verbose:
+                    print(f"Looking for '{serial_number}'...", end="")
 
             self.serial_number = self._Check_HeadSerial(board_id=self.board_id)
 
@@ -120,25 +126,31 @@ class Hamamatsu(SLM):
                     self._Close_Device(board_ids, bID_size=1)
                     raise RuntimeError(f"Could not find '{serial_number}'. Found '{self.serial_number}'.")
 
-            if verbose: print("success")
+            if verbose:
+                print("success")
 
         # Force the SLM to USB/Trigger mode.
         try:
-            if verbose: print("Checking SLM mode...", end="")
+            if verbose:
+                print("Checking SLM mode...", end="")
             mode = self._Mode_Check(board_id=self.board_id)
 
             if mode == 0:
-                if verbose: print("found DVI mode...switching to USB...", end="")
+                if verbose:
+                    print("found DVI mode...switching to USB...", end="")
                 self._Mode_Select(board_id=self.board_id, mode=1)
 
-                if verbose: print("rebooting...", end="")
+                if verbose:
+                    print("rebooting...", end="")
                 self._Reboot(board_id=self.board_id)
             elif mode == 1:
-                if verbose: print("found USB mode...", end="")
+                if verbose:
+                    print("found USB mode...", end="")
             else:
                 raise RuntimeError(f"Unknown SLM mode {mode}.")
 
-            if verbose: print("success")
+            if verbose:
+                print("success")
         except Exception as e:
             self._Close_Device(board_ids, bID_size=1)
             raise e
@@ -146,15 +158,14 @@ class Hamamatsu(SLM):
         # Use the superclass to construct the other variables.
         super().__init__(
             resolution=resolution,
-            bitdepth=8,             # SDK only supports 8-bit, so we're hardcoding.
+            bitdepth=8,  # SDK only supports 8-bit, so we're hardcoding.
             wav_um=wav_um,
             pitch_um=pitch_um,
-            **kwargs
+            **kwargs,
         )
 
-    def _set_phase_hw(self, phase, slot_number=0):
-        r"""
-        Method called inside the method :meth:'write()' of the SLM class.
+    def _set_phase_hw(self, phase: np.ndarray, slot_number: int = 0) -> None:
+        r"""Method called inside the method :meth:'write()' of the SLM class.
         The array must contains np.uint8 values.
         ``slot_number`` can be passed as a ``**kwargs``
         argument to :meth:`set_phase()` method;
@@ -165,16 +176,16 @@ class Hamamatsu(SLM):
         array = phase.astype(c_uint8)  # TODO: check if this is necessary
 
         write_fmemarray = Lcoslib.Write_FMemArray
-        write_fmemarray.argtyes = [c_uint8, c_uint8*array_size, c_int32, c_uint32, c_uint32, c_uint32]
+        write_fmemarray.argtyes = [c_uint8, c_uint8 * array_size, c_int32, c_uint32, c_uint32, c_uint32]
 
         # TODO: do python ints need to be converted explicitly to c_uint32?
         v = write_fmemarray(
             self.board_id,
-            array.ctypes.data_as(POINTER(c_uint8* array_size)).contents,
+            array.ctypes.data_as(POINTER(c_uint8 * array_size)).contents,
             array_size,
             self.shape[1],
             self.shape[0],
-            slot_number
+            slot_number,
         )
 
         if v != 1:
@@ -183,9 +194,8 @@ class Hamamatsu(SLM):
         # TODO: is this necessary to call every frame?
         self._Change_DispSlot(slot_number)
 
-    def set_slot_number(self, slot_number=0):
-        r"""
-        Switches the displayed pattern to the one in the specified slot number, from the
+    def set_slot_number(self, slot_number: int = 0) -> None:
+        r"""Switches the displayed pattern to the one in the specified slot number, from the
         frame memory. This function may be deprecated in the future.
 
         Parameters
@@ -195,22 +205,20 @@ class Hamamatsu(SLM):
         """
         self._Change_DispSlot(slot_number)
 
-    def get_display(self):
-        r"""
-        Reads the current displayed pattern from the SLM.
-        """
+    def get_display(self) -> np.ndarray:
+        r"""Reads the current displayed pattern from the SLM."""
         display = np.zeros(self.shape, dtype=np.uint8)
         array = display.astype(c_uint8)  # TODO: check if this is necessary
         array_size = int(self.shape[1] * self.shape[1])
 
         get_display = Lcoslib.Get_Display
-        get_display.argtyes = [c_uint8, c_int32, c_uint32, c_uint32, c_uint8*array_size]
+        get_display.argtyes = [c_uint8, c_int32, c_uint32, c_uint32, c_uint8 * array_size]
         v = get_display(
             self.board_id,
             array_size,
             self.shape[1],
             self.shape[0],
-            array.ctypes.data_as(POINTER(c_uint8* array_size)).contents,
+            array.ctypes.data_as(POINTER(c_uint8 * array_size)).contents,
         )
 
         if v != 1:
@@ -219,9 +227,8 @@ class Hamamatsu(SLM):
         return display
 
     @staticmethod
-    def _Mode_Select(board_id, mode):
-        r"""
-        Sets the SLM to the desired mode.
+    def _Mode_Select(board_id: int, mode: int) -> None:
+        r"""Sets the SLM to the desired mode.
 
         Parameters
         ----------
@@ -241,16 +248,15 @@ class Hamamatsu(SLM):
             raise RuntimeError("Failed to set Hamamatsu SLM mode.")
 
     @staticmethod
-    def _Mode_Check(board_id):
-        r"""
-        Returns the current mode of the SLM.
+    def _Mode_Check(board_id: int) -> int:
+        r"""Returns the current mode of the SLM.
 
         Parameters
         ----------
         board_id : int
             The ID of the SLM board.
 
-        Returns
+        Returns:
         -------
         mode : int
             The current mode of the SLM.
@@ -269,23 +275,20 @@ class Hamamatsu(SLM):
         return int(mode)
 
     @staticmethod
-    def _Reboot(board_id):
-        r"""
-        Allows to restart the controller board.
-        """
+    def _Reboot(board_id: int) -> None:
+        r"""Allows to restart the controller board."""
         reboot = Lcoslib.Reboot
         reboot.argtyes = [c_uint8]
         reboot(board_id)
 
     @staticmethod
-    def _Open_Device(bID_size=1):
-        r"""
-        Establishes the communication with all the LCOS-SLM controllers connected to the USB.
+    def _Open_Device(bID_size: int = 1) -> tuple:
+        r"""Establishes the communication with all the LCOS-SLM controllers connected to the USB.
 
         NB: make sure that the bID_list has the same length of the number of
             connected devices to avoid problem with other functions.
 
-        Returns
+        Returns:
         -------
         conn_dev :
             Number of connected devices.
@@ -293,21 +296,19 @@ class Hamamatsu(SLM):
             ID of the connected devices.
         """
         open_dev = Lcoslib.Open_Dev
-        open_dev.argtyes = [c_uint8*bID_size, c_int32]
+        open_dev.argtyes = [c_uint8 * bID_size, c_int32]
         open_dev.restype = c_int
-        array =c_uint8*bID_size
+        array = c_uint8 * bID_size
         ID_list = array(0)
         conn_dev = open_dev(byref(ID_list), bID_size)
 
         return conn_dev, ID_list
 
     @staticmethod
-    def _Close_Device(bID_list, bID_size=1):
-        r"""
-        Interrupts the communication with the target devices.
-        """
+    def _Close_Device(bID_list, bID_size: int = 1) -> None:
+        r"""Interrupts the communication with the target devices."""
         close_dev = Lcoslib.Close_Dev
-        close_dev.argtyes = [c_uint8*bID_size, c_int32]
+        close_dev.argtyes = [c_uint8 * bID_size, c_int32]
         close_dev.restype = c_int
 
         v = close_dev(byref(bID_list), bID_size)
@@ -316,13 +317,11 @@ class Hamamatsu(SLM):
             raise RuntimeError("Failed to close Hamamatsu device.")
 
     @staticmethod
-    def _Check_HeadSerial(board_id):
-        r"""
-        Reads the LCOS-SLM head serial number with the desired ID.
-        """
+    def _Check_HeadSerial(board_id: int) -> str:
+        r"""Reads the LCOS-SLM head serial number with the desired ID."""
         check_serial = Lcoslib.Check_HeadSerial
-        check_serial.argtyes = [c_uint8, c_char*11, c_int32]
-        hs = c_char*11
+        check_serial.argtyes = [c_uint8, c_char * 11, c_int32]
+        hs = c_char * 11
         head_serial = hs(0)
         v = check_serial(board_id, byref(head_serial), 11)
 
@@ -331,10 +330,8 @@ class Hamamatsu(SLM):
 
         return head_serial.value.decode("utf-8").strip("\x00")
 
-    def _Change_DispSlot(self, slot_number):
-        r"""
-        Changes the displayed pattern to the one in the specified slot number, from the frame memory.
-        """
+    def _Change_DispSlot(self, slot_number: int) -> None:
+        r"""Changes the displayed pattern to the one in the specified slot number, from the frame memory."""
         change_slot = Lcoslib.Change_DispSlot
         change_slot.argtyes = [c_uint8, c_uint32]
         v = change_slot(self.board_id, slot_number)
@@ -342,11 +339,10 @@ class Hamamatsu(SLM):
         if v != 1:
             raise RuntimeError("Failed to change the display slot for Hamamatsu SLM.")
 
-    def get_temperature(self):
-        r"""
-        Reads the temperature of the LCOS-SLM head and controller.
+    def get_temperature(self) -> tuple:
+        r"""Reads the temperature of the LCOS-SLM head and controller.
 
-        Returns
+        Returns:
         -------
         (head_temperature, controller_temperature) : (float, float)
             The temperatures of the SLM's head and controller.
@@ -354,7 +350,7 @@ class Hamamatsu(SLM):
         check_temp = Lcoslib.Check_Temp
         head_temperature = c_double(0)
         controller_temperature = c_double(0)
-        check_temp.argtyes = [c_uint8,c_double,c_double]
+        check_temp.argtyes = [c_uint8, c_double, c_double]
 
         v = check_temp(self.board_id, byref(head_temperature), byref(controller_temperature))
 
@@ -363,11 +359,10 @@ class Hamamatsu(SLM):
 
         return (float(head_temperature), float(controller_temperature))
 
-    def get_led_status(self):
-        r"""
-        Checks the lighting status of the LED.
+    def get_led_status(self) -> list:
+        r"""Checks the lighting status of the LED.
 
-        Returns
+        Returns:
         -------
         led_status : list of int
             List of 10 integers representing the LED status.
@@ -375,7 +370,7 @@ class Hamamatsu(SLM):
         check_led = Lcoslib.Check_LED
         ls = c_uint32 * 10
         led_status = ls(0)
-        check_led.argtyes = [c_uint8, c_uint32*10]
+        check_led.argtyes = [c_uint8, c_uint32 * 10]
         v = check_led(self.board_id, byref(led_status))
 
         if v != 1:

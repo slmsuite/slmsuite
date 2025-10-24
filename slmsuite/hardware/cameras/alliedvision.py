@@ -1,5 +1,4 @@
-"""
-Hardware control for AlliedVision cameras via the Vimba-X :mod:`vmbpy` interface.
+"""Hardware control for AlliedVision cameras via the Vimba-X :mod:`vmbpy` interface.
 This class also supports backwards compatibility with the
 `archived <https://github.com/alliedvision/VimbaPython>`_ :mod:`vimba` interface.
 Install :mod:`vmbpy` by following the
@@ -9,25 +8,28 @@ as the :class:`AlliedVision` class makes use of these features. See especially t
 `vimba python manual <https://github.com/alliedvision/VimbaPython/blob/master/Documentation/Vimba%20Python%20Manual.pdf>`_
 for reference.
 
-Note
+Note:
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
 
 import time
-import numpy as np
 import warnings
+
+import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
     import vmbpy
+
     vimba_system = vmbpy.VmbSystem
     vimba_name = "vmbpy"
 
 except ImportError:
     try:
         import vimba
+
         vimba_system = vimba.Vimba
         vimba_name = "vimba"
 
@@ -39,17 +41,16 @@ except ImportError:
 
 
 class AlliedVision(Camera):
-    r"""
-    AlliedVision camera.
+    r"""AlliedVision camera.
 
-    Attributes
+    Attributes:
     ----------
     sdk : vmbpy.Vimba
         AlliedVision SDK. Shared among instances of :class:`AlliedVision`.
     cam : vmbpy.Camera
         Object to talk with the desired camera.
 
-    Caution
+    Caution:
     ~~~~~~~~
     The AlliedVision SDK :mod:`vmbpy` includes protections to maintain camera connectivity:
     specifically, the SDK :class:`vmbpy.VmbSystem` and cameras :class:`vmbpy.Camera` are designed
@@ -65,9 +66,8 @@ class AlliedVision(Camera):
 
     sdk = None
 
-    def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize camera and attributes.
+    def __init__(self, serial: str = "", pitch_um: tuple | None = None, verbose: bool = True, **kwargs) -> None:
+        """Initialize camera and attributes.
 
         Parameters
         ----------
@@ -114,9 +114,7 @@ class AlliedVision(Camera):
             if serial in serial_list:
                 self.cam = camera_list[serial_list.index(serial)]
             else:
-                raise RuntimeError(
-                    f"Serial {serial} not found by {vimba_name}. Available: {serial_list}"
-                )
+                raise RuntimeError(f"Serial {serial} not found by {vimba_name}. Available: {serial_list}")
 
         if verbose:
             print(f"{vimba_name} sn '{serial}' initializing... ", end="")
@@ -151,9 +149,8 @@ class AlliedVision(Camera):
             **kwargs,
         )
 
-    def close(self, close_sdk=True):
-        """
-        See :meth:`.Camera.close`
+    def close(self, close_sdk: bool = True) -> None:
+        """See :meth:`.Camera.close`
 
         Parameters
         ----------
@@ -168,16 +165,15 @@ class AlliedVision(Camera):
         del self.cam
 
     @staticmethod
-    def info(verbose=True):
-        """
-        Discovers all AlliedVision cameras.
+    def info(verbose: bool = True) -> list:
+        """Discovers all AlliedVision cameras.
 
         Parameters
         ----------
         verbose : bool
             Whether to print the discovered information.
 
-        Returns
+        Returns:
         --------
         list of str
             List of AlliedVision serial numbers.
@@ -206,19 +202,16 @@ class AlliedVision(Camera):
         return serial_list
 
     @classmethod
-    def close_sdk(cls):
-        """
-        Close the :mod:`vmbpy` instance.
-        """
+    def close_sdk(cls) -> None:
+        """Close the :mod:`vmbpy` instance."""
         if cls.sdk is not None:
             cls.sdk.__exit__(None, None, None)
             cls.sdk = None
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
-    def get_properties(self, properties=None):
-        """
-        Print the list of camera properties.
+    def get_properties(self, properties: dict | None = None) -> None:
+        """Print the list of camera properties.
 
         Parameters
         ----------
@@ -250,11 +243,10 @@ class AlliedVision(Camera):
             try:
                 print(prop.get_description(), end="\n")
             except:
-                print("")
+                print()
 
-    def set_adc_bitdepth(self, bitdepth):
-        """
-        Set the digitization bitdepth.
+    def set_adc_bitdepth(self, bitdepth: int) -> None:
+        """Set the digitization bitdepth.
 
         Parameters
         ----------
@@ -270,11 +262,10 @@ class AlliedVision(Camera):
                 break
             raise RuntimeError(f"ADC bitdepth {bitdepth} not found.")
 
-    def get_adc_bitdepth(self):
-        """
-        Get the digitization bitdepth.
+    def get_adc_bitdepth(self) -> int:
+        """Get the digitization bitdepth.
 
-        Returns
+        Returns:
         -------
         int
             The digitization bitdepth.
@@ -283,24 +274,23 @@ class AlliedVision(Camera):
         bitdepth = int("".join(char for char in value if char.isdigit()))
         return bitdepth
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.ExposureTime.get()) / 1e6
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.ExposureTime.set(float(exposure_s * 1e6))
 
-    def _set_woi(self, woi):
-        """
-        Sets the window of interest (WOI).
+    def _set_woi(self, woi: list) -> None:
+        """Sets the window of interest (WOI).
 
         Parameters
         ----------
         woi : list, None
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        # Set the width and height to very small values 
+        # Set the width and height to very small values
         # such that setting the offsets will not error.
         self.cam.Height.set(8)
         self.cam.Width.set(8)
@@ -312,7 +302,7 @@ class AlliedVision(Camera):
         self.cam.Height.set(h)
         self.cam.Width.set(w)
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> None:
         """See :meth:`.Camera.set_woi`."""
         maxwoi = (0, self.cam.WidthMax.get(), 0, self.cam.HeightMax.get())
 
@@ -329,9 +319,8 @@ class AlliedVision(Camera):
             woi = self.woi if self.woi is not None else maxwoi
             self._set_woi(woi)
             raise e
-            
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`."""
         t = time.time()
 

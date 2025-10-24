@@ -1,29 +1,29 @@
-"""
-Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class, which supports many webcams and videostreams.
-"""
-import numpy as np
-import cv2
+"""Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class, which supports many webcams and videostreams."""
+
 import time
+
+import cv2
+import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
 
+
 class Webcam(Camera):
-    """
-    Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class,
+    """Wraps OpenCV's :mod:`cv2` ``VideoCapture`` class,
     which supports many webcams and videostreams.
 
-    Warning
+    Warning:
     -------
     This class does not properly handle color images
     and does not properly populate datatype information.
     Webcams usually support different codecs, and only the default is enabled here.
     Exposure may not be handled correctly for some cameras.
 
-    See Also
+    See Also:
     --------
     `OpenCV documentation <https://docs.opencv.org/4.x/d8/dfe/classcv_1_1VideoCapture.html>`_.
 
-    Attributes
+    Attributes:
     ----------
     cam : cv2.VideoCapture
         Most cameras will wrap some handle which connects to the the hardware.
@@ -31,14 +31,13 @@ class Webcam(Camera):
 
     def __init__(
         self,
-        identifier=0,
-        capture_api=cv2.CAP_ANY,
-        pitch_um=None,
-        verbose=True,
-        **kwargs
-    ):
-        """
-        Initialize camera and attributes.
+        identifier: int | str = 0,
+        capture_api: int = cv2.CAP_ANY,
+        pitch_um: tuple | None = None,
+        verbose: bool = True,
+        **kwargs,
+    ) -> None:
+        """Initialize camera and attributes.
 
         Parameters
         ----------
@@ -60,96 +59,96 @@ class Webcam(Camera):
             See :meth:`.Camera.__init__` for permissible options.
         """
         # Then we load the camera from the SDK
-        id = f'{identifier}' if isinstance(identifier, str) else identifier
-        if verbose: print(f"Webcam {id} initializing... ", end="")
+        id = f"{identifier}" if isinstance(identifier, str) else identifier
+        if verbose:
+            print(f"Webcam {id} initializing... ", end="")
         self.cam = cv2.VideoCapture(identifier, capture_api)
-        time.sleep(.5)
+        time.sleep(0.5)
         if not self.cam.isOpened():
             raise RuntimeError(f"Failed to initialize webcam {id}")
 
-        time.sleep(.5)
+        time.sleep(0.5)
 
         # Finally, use the superclass constructor to initialize other required variables.
         super().__init__(
-            (
-                int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            ),
+            (int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT))),
             bitdepth=8,
             pitch_um=pitch_um,
             name=str(identifier),
-            **kwargs
+            **kwargs,
         )
 
-        time.sleep(.5)
+        time.sleep(0.5)
         self.backend = self.cam.getBackendName()
         self.set_auto_exposure(False)
-        time.sleep(.5)
+        time.sleep(0.5)
         self.set_exposure(self.get_exposure())
-        time.sleep(.5)
-        if verbose: print("success")
+        time.sleep(0.5)
+        if verbose:
+            print("success")
 
-    def close(self):
+    def close(self) -> None:
         """See :meth:`.Camera.close`."""
         self.cam.release()
         del self.cam
 
     @staticmethod
-    def info(verbose=True):
+    def info(verbose: bool = True) -> list:
         """Not supported by :class:`Webcam`."""
-        raise NotImplementedError()
+        raise NotImplementedError
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> tuple:
         if woi is not None:
             self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, woi[1])
             self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, woi[3])
 
             self.shape = self.default_shape = (
                 int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH))
+                int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)),
             )
 
             time.sleep(1)
 
         return (0, self.shape[1], 0, self.shape[0])
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> tuple:
         if woi is not None:
             self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, woi[1])
             self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, woi[3])
 
             self.shape = self.default_shape = (
                 int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH))
+                int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)),
             )
 
             time.sleep(1)
 
         return (0, self.shape[1], 0, self.shape[0])
 
-    def get_auto_exposure(self):
+    def get_auto_exposure(self) -> float:
         return self.cam.get(cv2.CAP_PROP_AUTO_EXPOSURE)
 
-    def set_auto_exposure(self, tf):
+    def set_auto_exposure(self, tf: bool) -> None:
         self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)
         self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3 if tf else 1)
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
-        return 2**float(self.cam.get(cv2.CAP_PROP_EXPOSURE))
+        return 2 ** float(self.cam.get(cv2.CAP_PROP_EXPOSURE))
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.set(cv2.CAP_PROP_EXPOSURE, np.log2(exposure_s))
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`."""
         (success, img) = self.cam.read()
-        if not success: raise RuntimeError("Could not grab frame.")
+        if not success:
+            raise RuntimeError("Could not grab frame.")
         img = np.array(img)
         if len(img.shape) == 3:
-            return img[:,:,::-1]    # Flip BGR to RGB; FUTURE: Make more general.
+            return img[:, :, ::-1]  # Flip BGR to RGB; FUTURE: Make more general.
         else:
             return img

@@ -16,3 +16,141 @@ dynamic = ["version", "dependencies", "description", "authors"]
 [project.urls]
 "Homepage" = "https://github.com/slmsuite/slmsuite"
 "Documentation" = "https://slmsuite.readthedocs.io/en/latest/"
+
+[tool.ruff]
+line-length = 120
+exclude = []
+force-exclude = true
+target-version = "py311"
+
+[tool.ruff.lint]
+preview = true
+select = [
+    "A",      # flake8-builtins
+    "AIR",    # Airflow
+    "ARG",    # flake8-unused-arguments
+    "ASYNC",  # flake8-async
+    "B",      # flake8-bugbear
+    "BLE",    # flake8-blind-except
+    "C",      # Convention
+    "C4",     # flake8-comprehensions
+    "C90",    # mccabe
+    "D",      # pydocstyle
+    "DJ",     # flake8-django
+    "DOC",    # pydoclint
+    "DTZ",    # flake8-datetimez
+    "E",      # Error
+    "EM",     # flake8-errmsg
+    "ERA",    # eradicate
+    "EXE",    # flake8-executable
+    "F",      # Pyflakes
+    "FA",     # flake8-future-annotations
+    "FAST",   # FastAPI
+    "FBT",    # flake8-boolean-trap
+    "FIX",    # flake8-fixme
+    "FLY",    # flynt
+    "FURB",   # refurb
+    "G",      # flake8-logging-format
+    "I",      # isort
+    "ICN",    # flake8-import-conventions
+    "INP",    # flake8-no-pep420
+    "INT",    # flake8-gettext
+    "ISC",    # flake8-implicit-str-concat
+    "LOG",    # flake8-logging
+    "N",      # pep8-naming
+    "NPY",    # NumPy-specific rules
+    "PD",     # pandas-vet
+    "PERF",   # Perflint
+    "PGH",    # pygrep-hooks
+    "PIE",    # flake8-pie
+    "PL",     # Pylint
+    "PT",     # flake8-pytest-style
+    "PTH",    # flake8-use-pathlib
+    "R",      # Refactor
+    "RET",    # flake8-return
+    "RSE",    # flake8-raise
+    "RUF",    # Ruff-specific rules
+    "S",      # flake8-bandit
+    "SIM",    # flake8-simplify
+    "SLF",    # flake8-self
+    "SLOT",   # flake8-slots
+    "T10",    # flake8-debugger
+    "T20",    # flake8-print
+    "TCH",    # flake8-type-checking
+    "TD",     # flake8-todos
+    "TID",    # flake8-tidy-imports
+    "TRY",    # tryceratops
+    "UP",     # pyupgrade
+    "W",      # Warning
+    "YTT",    # flake8-2020
+    # "ANN",    # flake8-annotations
+    # "COM",    # flake8-commas
+    # "PYI",    # flake8-pyi
+    # "Q",      # flake8-quotes
+]
+ignore = [
+    "A005",     # Module shadowing built-in
+    "B027",     # Allow non-abstract empty methods in abstract base classes
+    "B039",     # Mutable default for contextvars
+    "B905",     # don't require strict option for zip
+    "C901",     # McCabe complexity too high
+    "CPY001",   # Copyright at top of file
+    "D100",     # missing docstring in public module
+    "D104",     # missing docstring in public package
+    "D105",     # missing docstring in magic method
+    "D107",     # missing docstring in public class __init__
+    "D203",     # One blank line before class
+    "D205",     # blank line after docstring
+    "D213",     # Multi-line docstring summary second line
+    "D407",     # Docstring dashes under section names
+    "D413",     # Docstring blank line after last section
+    "D415",     # docstring ends in period
+    "DOC201",   # Return type documentation
+    "DOC402",   # Yield type documentation
+    "DOC501",   # Ignore raises missing from docstring
+    "EM101",    # assign exception message to variable
+    "EM102",    # no f-strings in exception messages
+    "ERA001",   # commented out code (issue: https://github.com/astral-sh/ruff/issues/10072)
+    "FA102",    # missing from __future__ import annotations
+    "FBT003",   # Allow boolean positional values in function calls, like `dict.get(... True)`
+    "N806",     # uppercase variable name
+    "PERF203",  # try-except in for-loop
+    "PLE",      # pylint errors (type checker can handle this)
+    "PLR",      # pylint refactor
+    "RET501",   # unnecessary return None
+    "RET503",   # Explicit return
+    "RET505",   # superfluous else return
+    "RET506",   # superfluous else raise
+    "S101",     # assert statements
+    "S301",     # pickle unsafe
+    "S311",     # random number generation
+    "SIM108",   # ternary operator simplification
+    "TRY003",   # avoid specifying long messages outside exception
+    "TRY300",   # avoid return in try block
+]
+unfixable = [
+    "F841",  # don't remove unused variables to ease debugging
+]
+extend-safe-fixes = [
+    "TCH",      # move annotation-only imports in or out of TYPE_CHECKING block
+    "UP006",    # change typing annotations to builtin types (e.g List -> list)
+    "UP007",    # change union to | operator (e.g. Union[int, float] -> int | float)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/{test,tests}/**.py" = [
+    "D1",  # missing docstring in public function
+    "PLR2004",  # allow "magic values" in tests
+]
+"tasks/**/*.py" = [
+    "T201",  # allow print statements in tasks
+]
+"template/tasks/**/*.py" = [
+    "T201",  # allow print statements in tasks
+]
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

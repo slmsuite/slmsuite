@@ -1,14 +1,16 @@
-"""
-Connects to a camera on a remote :class:`~slmsuite.hardware.remote.Server`.
-"""
-import warnings, time
+"""Connects to a camera on a remote :class:`~slmsuite.hardware.remote.Server`."""
+
+import time
+import warnings
+
+import numpy as np
+
 from slmsuite.hardware.cameras.camera import Camera
-from slmsuite.hardware.remote import _Client, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_TIMEOUT
+from slmsuite.hardware.remote import DEFAULT_HOST, DEFAULT_PORT, DEFAULT_TIMEOUT, _Client
+
 
 class RemoteCamera(_Client, Camera):
-    """
-    Connects to a camera on a remote :class:`~slmsuite.hardware.remote.Server`.
-    """
+    """Connects to a camera on a remote :class:`~slmsuite.hardware.remote.Server`."""
 
     _pickle = Camera._pickle + [
         "server_attributes",
@@ -19,15 +21,9 @@ class RemoteCamera(_Client, Camera):
     ]
 
     def __init__(
-        self,
-        name: str,
-        host: str = DEFAULT_HOST,
-        port: int = DEFAULT_PORT,
-        timeout: float = DEFAULT_TIMEOUT,
-        **kwargs
+        self, name: str, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, timeout: float = DEFAULT_TIMEOUT, **kwargs
     ):
-        r"""
-        Connects to a camera on a remote :class:`~slmsuite.hardware.remote.Server`.
+        r"""Connects to a camera on a remote :class:`~slmsuite.hardware.remote.Server`.
 
         This client only (1) reads the camera's attributes on initialization and (2) forwards
         :meth:`._get_image_hw`, :meth:`._get_images_hw`,
@@ -61,49 +57,40 @@ class RemoteCamera(_Client, Camera):
             bitdepth=pickled["bitdepth"],
             pitch_um=pickled["pitch_um"],
             name=self.name,
-            **kwargs
+            **kwargs,
         )
 
-    def close(self):
+    def close(self) -> None:
         pass
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
-    def flush(self):
+    def flush(self) -> None:
         """See :meth:`.Camera.flush`."""
         return self._com(
             command="flush",
         )
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return self._com(
             command="_get_exposure_hw",
         )
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
-        return self._com(
-            command="_set_exposure_hw",
-            kwargs=dict(exposure_s=exposure_s)
-        )
+        return self._com(command="_set_exposure_hw", kwargs=dict(exposure_s=exposure_s))
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera._get_image_hw`."""
         t = time.perf_counter()
-        img = self._com(
-            command="_get_image_hw",
-            kwargs=dict(timeout_s=timeout_s)
-        )
-        print(time.perf_counter()-t)
+        img = self._com(command="_get_image_hw", kwargs=dict(timeout_s=timeout_s))
+        print(time.perf_counter() - t)
         return img
 
-    def _get_images_hw(self, image_count, timeout_s, out=None):
+    def _get_images_hw(self, image_count: int, timeout_s: float, out=None) -> np.ndarray:
         """See :meth:`.Camera._get_images_hw`."""
         if out is not None:
             warnings.warn("Remote camera does not support in-place operations.")
 
-        return self._com(
-            command="_get_images_hw",
-            kwargs=dict(image_count=image_count, timeout_s=timeout_s)
-        )
+        return self._com(command="_get_images_hw", kwargs=dict(image_count=image_count, timeout_s=timeout_s))

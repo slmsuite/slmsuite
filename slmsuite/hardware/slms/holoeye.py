@@ -1,26 +1,28 @@
-"""
-Hardware control for Holoeye SLMs.
+"""Hardware control for Holoeye SLMs.
 Created for SLM Display SDK (Python) v4.0.0.
 Tested with Holoeye SLM ERIS-NIR-153.
 
-Important
+Important:
 ~~~~
 Check that the SLM Display SDK is in the default folder
 ``C:\\Program Files\\HOLOEYE Photonics\\SLM Display SDK`` (Python) v4.0.0
 or otherwise add the installation folder to your python path.
 """
-import warnings
-from .slm import SLM
 
 # Set the path for the SLM Display SDK
 import os
+import pathlib
 import sys
+import warnings
+
+from .slm import SLM
+
 try:
     env_path = os.getenv("HEDS_4_0_PYTHON")
-    if env_path is None or not os.path.isdir(env_path):
+    if env_path is None or not pathlib.Path(env_path).is_dir():
         env_path = os.path.abspath("../..")
-    importpath_api =  os.path.join(env_path, "api", "python")
-    importpath_HEDS =  os.path.join(env_path, "examples")
+    importpath_api = os.path.join(env_path, "api", "python")
+    importpath_HEDS = os.path.join(env_path, "examples")
     sys.path.append(importpath_api)
     sys.path.append(importpath_HEDS)
 except:
@@ -29,17 +31,18 @@ except:
 # Load Holoeye's SDK module.
 try:
     import HEDS
+
     # from hedslib.heds_types import *
     from hedslib import heds_types
 except ImportError:
     HEDS = None
     warnings.warn("Holoeye SDK HEDS not installed. Install to use Holoeye SLMs.")
 
-class Holoeye(SLM):
-    """
-    Interfaces with Holoeye SLMs via the the ``HEDS`` library.
 
-    Attributes
+class Holoeye(SLM):
+    """Interfaces with Holoeye SLMs via the the ``HEDS`` library.
+
+    Attributes:
     ----------
     slm_lib : HEDS.SLM
         Handle to the SLM.
@@ -47,17 +50,10 @@ class Holoeye(SLM):
         Preselect string for the SLM. Used to identify the SLM.
     """
 
-    def __init__(
-        self,
-        preselect=None,
-        wav_um=1,
-        verbose=True,
-        **kwargs
-    ):
-        r"""
-        Initializes an instance of a Holoeye SLM.
+    def __init__(self, preselect: str | None = None, wav_um: float = 1, verbose: bool = True, **kwargs) -> None:
+        r"""Initializes an instance of a Holoeye SLM.
 
-        Arguments
+        Arguments:
         ---------
         preselect : str
             Preselect string for the SLM. Examples:
@@ -76,7 +72,7 @@ class Holoeye(SLM):
         **kwargs
             See :meth:`.SLM.__init__` for permissible options.
 
-        Important
+        Important:
         ~~~~~~~~
         The Holoeye SLM Display SDK must be installed and the path to the SDK must be added to the python path.
         See :mod:`~slmsuite.hardware.slms.holoeye` for instructions on how to do this.
@@ -85,15 +81,17 @@ class Holoeye(SLM):
             raise ImportError("SDK HEDS not installed. Install to use Holoeye SLMs.")
 
         # Initialize the SDK and check that version 4.0 of the SDK is being used.
-        error = HEDS.SDK.Init(4,0)
+        error = HEDS.SDK.Init(4, 0)
         self._handle_error(error)
 
         # Connect and open the SLM
-        if verbose: print("Opening SLM ...", end="")
+        if verbose:
+            print("Opening SLM ...", end="")
         self.preselect = preselect
         self.slm_lib = HEDS.SLM.Init(preselect=self.preselect)
         self._handle_error(self.slm_lib.errorCode())
-        if verbose: print("success")
+        if verbose:
+            print("success")
 
         # Set the SLM's operating wavelength (wav_um) in nm.
         error = self.slm_lib.setWavelength(wav_um * 1000)
@@ -105,20 +103,13 @@ class Holoeye(SLM):
         height = self.slm_lib.height_px()
 
         # Instantiate the superclass
-        super().__init__(
-            (width, height),
-            bitdepth=8,
-            wav_um=wav_um,
-            pitch_um=pitch_um,
-            **kwargs
-        )
+        super().__init__((width, height), bitdepth=8, wav_um=wav_um, pitch_um=pitch_um, **kwargs)
 
         # Zero the display using the superclass `set_phase()` function.
         self.set_phase(None)
 
-    def _handle_error(self, error):
-        """
-        Handles errors from the Holoeye SDK.
+    def _handle_error(self, error) -> None:
+        """Handles errors from the Holoeye SDK.
         Raises an exception if the error code is not HEDSERR_NoError.
 
         Parameters
@@ -126,7 +117,7 @@ class Holoeye(SLM):
         error : int
             Error code returned by the Holoeye SDK.
 
-        Raises
+        Raises:
         ------
         RuntimeError
             If the error code is not HEDSERR_NoError.
@@ -135,9 +126,8 @@ class Holoeye(SLM):
             raise RuntimeError(HEDS.SDK.ErrorString(self.slm_lib.errorCode()))
 
     @staticmethod
-    def info(verbose=True):
-        """
-        Discovers all SLMs detected by an SDK.
+    def info(verbose: bool = True) -> list:
+        """Discovers all SLMs detected by an SDK.
         Useful for a user to identify the correct serial numbers / etc.
 
         Parameters
@@ -145,33 +135,31 @@ class Holoeye(SLM):
         verbose : bool
             Whether to print the discovered information.
 
-        Raises
+        Raises:
         ------
         NotImplementedError
         """
-        raise NotImplementedError("This functionality is not supported by Holoeye. Use the EDID device detection GUI instead.")
+        raise NotImplementedError(
+            "This functionality is not supported by Holoeye. Use the EDID device detection GUI instead."
+        )
 
-    def close(self):
-        """
-        See :meth:`.SLM.close`.
-        """
+    def close(self) -> None:
+        """See :meth:`.SLM.close`."""
         error = self.slm_lib.window().close()
         self._handle_error(error)
 
-    def _set_phase_hw(self, phase):
-        """
-        Low-level hardware interface to set_phase ``phase`` data onto the SLM.
+    def _set_phase_hw(self, phase: np.ndarray) -> None:
+        """Low-level hardware interface to set_phase ``phase`` data onto the SLM.
         When the user calls the :meth:`.SLM.set_phase` method of
         :class:`.SLM`, ``phase`` is error checked before calling
         :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
         """
-        #2*pi is the standard phase assumed by Holoeye. The package slmsuite passes 8-bit greyscale to set_phase_hw
+        # 2*pi is the standard phase assumed by Holoeye. The package slmsuite passes 8-bit greyscale to set_phase_hw
         error = self.slm_lib.showPhaseData(phase, phase_unit=256)
         self._handle_error(error)
 
-    def load_vendor_phase_correction(self, file_path):
-        """
-        Load phase correction provided by Holoeye from file,
+    def load_vendor_phase_correction(self, file_path: str) -> None:
+        """Load phase correction provided by Holoeye from file,
         directly into the SLM SDK.
         Note that this bypasses the slmsuite standard of setting
         ``"phase"`` in :attr:`~slmsuite.hardware.slms.slm.SLM.source`.
@@ -182,10 +170,7 @@ class Holoeye(SLM):
             File path for the vendor-provided phase correction.
         """
         # Enable wavefront compensation visualization in SLM preview window and stay with SLM preview scale "Fit"
-        error = self.slm_lib.preview().setSettings(
-            flags=heds_types.HEDSSLMPF_ShowWavefrontCompensation,
-            zoom=0.0
-        )
+        error = self.slm_lib.preview().setSettings(flags=heds_types.HEDSSLMPF_ShowWavefrontCompensation, zoom=0.0)
         self._handle_error(error)
 
         # Load the wavefront compensation file

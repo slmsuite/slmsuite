@@ -1,9 +1,8 @@
-"""
-Simulated camera to image the simulated SLM.
-"""
+"""Simulated camera to image the simulated SLM."""
+
+import warnings
 
 import numpy as np
-import warnings
 
 try:
     import cupy as cp
@@ -12,24 +11,22 @@ except:
     cp = np
     from scipy.ndimage import map_coordinates
 
-import matplotlib.pyplot as plt
 
 from slmsuite.hardware.cameras.camera import Camera
-from slmsuite.holography.algorithms import Hologram
 from slmsuite.holography import toolbox
+from slmsuite.holography.algorithms import Hologram
 from slmsuite.misc.math import REAL_TYPES
 
 
 class SimulatedCamera(Camera):
-    """
-    Simulated camera.
+    """Simulated camera.
 
     Outputs simulated images (i.e., the far-field of an SLM interpolated to
     camera pixels based on the camera's location and orientation.
     Serves as a future testbed for simulation of other imaging artifacts, including non-affine
     aberrations (e.g. pincushion distortion) and imaging readout noise.
 
-    Note
+    Note:
     ~~~~
     For fastest simulation, initialize :class:`SimulatedCamera` with a
     :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM` *only*. Simulated camera images
@@ -39,7 +36,7 @@ class SimulatedCamera(Camera):
     which may also require additional padding (computed automatically upon initialization) for
     sufficient resolution.
 
-    Attributes
+    Attributes:
     ----------
     grid : (numpy.ndarray, numpy.ndarray)
         Pixel column/row number (``x_grid``, ``y_grid``) in the ``"ij"`` basis used for
@@ -53,7 +50,7 @@ class SimulatedCamera(Camera):
         ``'dark'`` and ``'read'``, representing exposure-dependent dark current/background noise
         and exposure-independent readout noise, respectively, are the only accepted keys.
 
-        Example
+    Example:
         ~~~~~~~
         The following code adds a Gaussian background with 50% mean and 5% standard
         deviation (relative to the dynamic range at the default ``self.exposure_s = 1``) and
@@ -69,9 +66,18 @@ class SimulatedCamera(Camera):
 
     """
 
-    def __init__(self, slm, resolution=None, M=None, b=None, noise=None, pitch_um=None, gain=1, **kwargs):
-        """
-        Initialize simulated camera.
+    def __init__(
+        self,
+        slm,
+        resolution: tuple | None = None,
+        M=None,
+        b=None,
+        noise: dict | None = None,
+        pitch_um: tuple | None = None,
+        gain: float = 1,
+        **kwargs,
+    ) -> None:
+        """Initialize simulated camera.
 
         Parameters
         ----------
@@ -92,7 +98,6 @@ class SimulatedCamera(Camera):
         **kwargs
             See :meth:`.Camera.__init__` for permissible options.
         """
-
         # Store a reference to the SLM: we need this to compute the far-field camera images.
         self._slm = slm
 
@@ -121,12 +126,11 @@ class SimulatedCamera(Camera):
         # Defaults to alignment with the SLM grid.
         self.set_affine(M, b)
 
-    def close():
+    def close() -> None:
         pass
 
-    def set_affine(self, M=None, b=None, **kwargs):
-        """
-        Set the camera's placement in the SLM's k-space. ``M`` and/or ``b``, if provided,
+    def set_affine(self, M=None, b=None, **kwargs) -> None:
+        """Set the camera's placement in the SLM's k-space. ``M`` and/or ``b``, if provided,
         are used to transform the :class:`SimulatedCamera`'s ``"ij"`` grid to a ``"knm"`` grid
         for interpolation against the :class:`~slmsuite.hardware.slms.simulated.SimulatedSLM`'s
         ``"knm"`` grid. Keyword arguments, if provided, are passed to :meth:`.build_affine()`
@@ -146,7 +150,6 @@ class SimulatedCamera(Camera):
             to build ``M`` and ``b``, if not provided. See options documented in this
             method. ``f_eff`` is a required keyword.
         """
-
         # If kwargs are passed instead of M and b, use these to build M, b
         if M is None or b is None:
             f_eff = kwargs.pop("f_eff", None)
@@ -169,29 +172,23 @@ class SimulatedCamera(Camera):
 
             # Fourier space must be sufficiently padded to resolve the camera pixels.
             dkxy = np.sqrt(
-                (self.grid[0][:2, :2] - self.grid[0][0, 0]) ** 2 +
-                (self.grid[1][:2, :2] - self.grid[1][0, 0]) ** 2
+                (self.grid[0][:2, :2] - self.grid[0][0, 0]) ** 2 + (self.grid[1][:2, :2] - self.grid[1][0, 0]) ** 2
             )
             dkxy_min = dkxy.ravel()[1:].min()
 
             self.shape_padded = Hologram.get_padded_shape(self._slm, precision=dkxy_min)
 
             # Convert kxy -> knm (0,0 at corner): 1/dx -> Npx
-            self.knm_cam = cp.array(
-                [
-                    self.shape_padded[0] * self._slm.pitch[1] * self.grid[1] + self.shape_padded[0] / 2,
-                    self.shape_padded[1] * self._slm.pitch[1] * self.grid[0] + self.shape_padded[1] / 2,
-                ]
-            )
+            self.knm_cam = cp.array([
+                self.shape_padded[0] * self._slm.pitch[1] * self.grid[1] + self.shape_padded[0] / 2,
+                self.shape_padded[1] * self._slm.pitch[1] * self.grid[0] + self.shape_padded[1] / 2,
+            ])
 
             if (
-                cp.amax(cp.abs(self.knm_cam[0] - self.shape_padded[0]/2)) > self.shape_padded[1]/2 or
-                cp.amax(cp.abs(self.knm_cam[1] - self.shape_padded[1]/2)) > self.shape_padded[0]/2
+                cp.amax(cp.abs(self.knm_cam[0] - self.shape_padded[0] / 2)) > self.shape_padded[1] / 2
+                or cp.amax(cp.abs(self.knm_cam[1] - self.shape_padded[1] / 2)) > self.shape_padded[0] / 2
             ):
-                warnings.warn(
-                    "Camera extends beyond the accessible SLM k-space;"
-                    " some pixels may not be targetable."
-                )
+                warnings.warn("Camera extends beyond the accessible SLM k-space; some pixels may not be targetable.")
 
         phase = -self._slm.display.astype(float) * (2 * np.pi / self._slm.bitresolution)
         self._hologram = Hologram(
@@ -202,15 +199,14 @@ class SimulatedCamera(Camera):
         )
 
     def build_affine(
-            self,
-            f_eff,
-            units="norm",
-            theta=0,
-            shear_angle=0,
-            offset=None,
-        ):
-        """
-        Builds an affine transform defining the SLM to camera transformation as
+        self,
+        f_eff,
+        units="norm",
+        theta=0,
+        shear_angle=0,
+        offset=None,
+    ):
+        """Builds an affine transform defining the SLM to camera transformation as
         detailed in :meth:`~slmsuite.hardware.cameraslms.FourierSLM.kxyslm_to_ijcam`.
 
         Parameters
@@ -244,7 +240,7 @@ class SimulatedCamera(Camera):
             from the camera's origin. If ``None``, defaults to be centered on the center
             of the camera.
 
-        Returns
+        Returns:
         -------
         numpy.ndarray
             Affine matrix :math:`M`. Shape ``(2, 2)``.
@@ -266,16 +262,15 @@ class SimulatedCamera(Camera):
 
     @staticmethod
     def _build_affine(
-            f_eff,
-            units="ij",
-            theta=0,
-            shear_angle=0,
-            offset=(0,0),
-            cam_pitch_um=None,
-            wav_um=None,
-        ):
-        """
-        See documentation in :meth:`build_affine()` and
+        f_eff,
+        units="ij",
+        theta=0,
+        shear_angle=0,
+        offset=(0, 0),
+        cam_pitch_um=None,
+        wav_um=None,
+    ):
+        """See documentation in :meth:`build_affine()` and
         :meth:`~slmsuite.hardware.cameraslms.FourierSLM.build_fourier_calibration()`.
         This helper function is shared between those functions.
         """
@@ -289,7 +284,7 @@ class SimulatedCamera(Camera):
         if isinstance(shear_angle, REAL_TYPES):
             shear_angle = [shear_angle, shear_angle]
         if offset is None:
-            offset = (0,0)
+            offset = (0, 0)
 
         f_eff = np.squeeze(f_eff).astype(float)
         shear_angle = np.squeeze(shear_angle)
@@ -321,21 +316,18 @@ class SimulatedCamera(Camera):
 
         return M, b
 
-    def flush(self):
-        """
-        See :meth:`.Camera.flush`.
-        """
-        pass
+    def flush(self) -> None:
+        """See :meth:`.Camera.flush`."""
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return self.exposure_s
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.exposure_s = exposure_s
 
-    def _get_dtype(self):
+    def _get_dtype(self) -> np.dtype:
         """Spoof the datatype because we don't have an image to return"""
         if self.bitdepth <= 0:
             raise ValueError("Non-positive bitdepth does not make sense.")
@@ -354,19 +346,16 @@ class SimulatedCamera(Camera):
         else:
             raise ValueError(f"Numpy cannot encode bitdepth {self.bitdepth}.")
 
-    def _get_image_hw(self, timeout_s):
-        """
-        See :meth:`.Camera._get_image_hw`. Computes and samples the affine-transformed SLM far-field.
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
+        """See :meth:`.Camera._get_image_hw`. Computes and samples the affine-transformed SLM far-field.
 
-        Returns
+        Returns:
         -------
         numpy.ndarray
             Array of shape :attr:`shape`
         """
         if not hasattr(self, "_hologram"):
-            raise RuntimeError(
-                "Cannot display SimulatedCamera before affine transformation is defined."
-            )
+            raise RuntimeError("Cannot display SimulatedCamera before affine transformation is defined.")
 
         # Update phase; calculate the far-field (keep on GPU if using cupy for follow-on interp)
         # FUTURE: in the case where sim is being used inside a GS loop, there could be
@@ -397,19 +386,19 @@ class SimulatedCamera(Camera):
         # Basic noise sources.
         if self.noise is not None:
             for key in self.noise.keys():
-                if key == 'dark':
+                if key == "dark":
                     # Background/dark current - exposure dependent
-                    dark = self.noise['dark'](np.ones_like(img) * self.bitresolution) / self.exposure_s
+                    dark = self.noise["dark"](np.ones_like(img) * self.bitresolution) / self.exposure_s
                     img = img + dark
-                elif key == 'read':
+                elif key == "read":
                     # Readout noise - exposure independent
-                    read = self.noise['read'](np.ones_like(img) * self.bitresolution)
+                    read = self.noise["read"](np.ones_like(img) * self.bitresolution)
                     img = img + read
                 else:
-                    raise RuntimeError('Unknown noise source %s specified!'%(key))
+                    raise RuntimeError("Unknown noise source %s specified!" % (key))
 
         # Truncate to maximum readout value
-        img[img > self.bitresolution-1] = self.bitresolution-1
+        img[img > self.bitresolution - 1] = self.bitresolution - 1
 
         # Quantize: all power in one pixel (img=1) -> maximum readout value at base exposure=1
         # img = np.rint(img)

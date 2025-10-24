@@ -1,25 +1,24 @@
-"""
-Template for writing a subclass for SLM hardware control in :mod:`slmsuite`.
+"""Template for writing a subclass for SLM hardware control in :mod:`slmsuite`.
 Outlines which SLM superclass functions must be implemented.
 """
+
 from .slm import SLM
 
+
 class Template(SLM):
-    """
-    Template for implementing a new SLM subclass. Replace :class:`Template`
+    """Template for implementing a new SLM subclass. Replace :class:`Template`
     with the desired subclass name. :class:`~slmsuite.hardware.slms.slm.SLM` is the
     superclass that sets the requirements for :class:`Template`.
     """
 
     def __init__(
         self,
-        bitdepth=8,         # TODO: Remove these arguments if the SLM SDK
-        wav_um=1,           #       has some function to read them in.
-        pitch_um=(8,8),     #       Otherwise, the user must supply.
-        **kwargs
-    ):
-        r"""
-        Initialize SLM and attributes.
+        bitdepth: int = 8,  # TODO: Remove these arguments if the SLM SDK
+        wav_um: float = 1,  # has some function to read them in.
+        pitch_um: tuple[float, float] = (8, 8),  # Otherwise, the user must supply.
+        **kwargs,
+    ) -> None:
+        r"""Initialize SLM and attributes.
 
         Parameters
         ----------
@@ -32,13 +31,12 @@ class Template(SLM):
         **kwargs
             See :meth:`.SLM.__init__` for permissible options.
 
-        Note
+        Note:
         ~~~~
         These arguments, which ultimately are used to instantiate the :class:`.SLM` superclass,
         may be more accurately filled by calling the SLM's SDK functions.
         See the other implemented SLM subclasses for examples.
         """
-
         # TODO: Insert code here to initialize the SLM hardware, load properties, etc.
 
         # Mandatory functions:
@@ -56,25 +54,18 @@ class Template(SLM):
         # - Checking for and saving the SLM parameters (height, width, etc).
 
         # Instantiate the superclass
-        super().__init__(
-            (sdk.width(), sdk.height()),
-            bitdepth=bitdepth,
-            wav_um=wav_um,
-            pitch_um=pitch_um,
-            **kwargs
-        )
+        super().__init__((sdk.width(), sdk.height()), bitdepth=bitdepth, wav_um=wav_um, pitch_um=pitch_um, **kwargs)
 
         # Zero the display using the superclass `set_phase()` function.
         self.set_phase(None)
 
-    def close(self):
+    def close(self) -> None:
         """Close the SLM and delete related objects."""
-        raise NotImplementedError()
+        raise NotImplementedError
 
     @staticmethod
-    def info(verbose=True):
-        """
-        Discovers all SLMs detected by an SDK.
+    def info(verbose: bool = True) -> list:
+        """Discovers all SLMs detected by an SDK.
         Useful for a user to identify the correct serial numbers / etc.
 
         Parameters
@@ -82,18 +73,17 @@ class Template(SLM):
         verbose : bool
             Whether to print the discovered information.
 
-        Returns
+        Returns:
         --------
         list of str
             List of serial numbers or identifiers.
         """
-        raise NotImplementedError()
-        serial_list = get_serial_list()     # TODO: Fill in proper function.
+        raise NotImplementedError
+        serial_list = get_serial_list()  # TODO: Fill in proper function.
         return serial_list
 
-    def _set_phase_hw(self, phase):
-        """
-        Low-level hardware interface to set_phase ``phase`` data onto the SLM.
+    def _set_phase_hw(self, phase: np.ndarray) -> None:
+        """Low-level hardware interface to set_phase ``phase`` data onto the SLM.
         When the user calls the :meth:`.SLM.write` method of
         :class:`.SLM`, ``phase`` is error checked before calling
         :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.

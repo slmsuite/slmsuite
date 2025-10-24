@@ -1,5 +1,4 @@
-"""
-Light wrapper for the :mod:`pylablib` package.
+"""Light wrapper for the :mod:`pylablib` package.
 See the supported `cameras
 <https://pylablib.readthedocs.io/en/stable/devices/cameras_root.html>`_.
 :mod:`pylablib` must be installed ``pip install pylablib``.
@@ -18,11 +17,15 @@ For example, the following code loads a UC480 camera:
     from slmsuite.hardware.cameras.pylablib import PyLabLib
     cam = PyLabLib(pll_cam)
 
-Note
+Note:
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
+
 import warnings
+
+import numpy as np
+
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
@@ -31,21 +34,20 @@ except:
     ICamera = None
     warnings.warn("pylablib not installed. Install to use PyLabLib cameras.")
 
-class PyLabLib(Camera):
-    """
-    A wrapped :mod:`instrumental` camera.
 
-    Attributes
+class PyLabLib(Camera):
+    """A wrapped :mod:`instrumental` camera.
+
+    Attributes:
     ----------
     cam : pylablib.devices.interface.camera.ICamera
         Object to talk with the desired camera.
     """
 
-    ### Initialization and termination ###
+    # Initialization and termination ###
 
-    def __init__(self, cam=None, pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize camera and attributes. Initial profile is ``"single"``.
+    def __init__(self, cam=None, pitch_um: tuple | None = None, verbose: bool = True, **kwargs) -> None:
+        """Initialize camera and attributes. Initial profile is ``"single"``.
 
         Parameters
         ----------
@@ -74,7 +76,7 @@ class PyLabLib(Camera):
         kwargs
             See :meth:`.Camera.__init__` for permissible options.
 
-        Raises
+        Raises:
         ------
         RuntimeError
            If the camera can not be reached.
@@ -83,16 +85,14 @@ class PyLabLib(Camera):
             raise ImportError("pylablib not installed. Install to use PyLabLib cameras.")
 
         if not isinstance(cam, ICamera):
-            raise ValueError(
-                "A subclass of pylablib.devices.interface.camera.Camera must be passed as cam."
-            )
+            raise ValueError("A subclass of pylablib.devices.interface.camera.Camera must be passed as cam.")
 
         # Create a name for the camera, defaulting to kwargs.
         name = ""
         di = cam.get_device_info()
         info_counter = 1
         for info in di:
-            if isinstance(info, str):   # This will usually catch the mode name and serial number.
+            if isinstance(info, str):  # This will usually catch the mode name and serial number.
                 name += info + "_"
                 info_counter += 1
 
@@ -103,54 +103,51 @@ class PyLabLib(Camera):
             name = "pylablibcamera"
         name = kwargs.pop("name", name)
 
-        if verbose: print(f"Cam {name} parsing... ", end="")
+        if verbose:
+            print(f"Cam {name} parsing... ", end="")
         height, width = cam.get_data_dimensions()
         self.cam = cam
 
         super().__init__(
             (width, height),
-            bitdepth=8,         # Currently defaults to 8 because pylablib doesn't cache this. Update in the future, maybe.
+            bitdepth=8,  # Currently defaults to 8 because pylablib doesn't cache this. Update in the future, maybe.
             pitch_um=pitch_um,  # Currently unset because pylablib doesn't cache this. Update in the future, maybe.
             name=name,
-            **kwargs
+            **kwargs,
         )
-        if verbose: print("success")
+        if verbose:
+            print("success")
 
-    def close(self):
-        """
-        See :meth:`.Camera.close`.
-        """
+    def close(self) -> None:
+        """See :meth:`.Camera.close`."""
         try:
             self.cam.close()
         except:
             raise RuntimeError("This instrumental camera does not support .close().")
 
     @staticmethod
-    def info(verbose=True):
-        """
-        Method to load display information.
+    def info(verbose: bool = True) -> list:
+        """Method to load display information.
 
-        Returns
+        Returns:
         -------
         list
             An empty list.
         """
         raise RuntimeError(
-            ".info() is not applicable to pylablib cameras, which must be "
-            "constructed outside this wrapper."
+            ".info() is not applicable to pylablib cameras, which must be constructed outside this wrapper."
         )
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return self.cam.get_exposure()
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.set_exposure(float(exposure_s))
 
-    def set_woi(self, woi=None):
-        """
-        Method to narrow the imaging region to a 'window of interest'
+    def set_woi(self, woi: list | None = None) -> list:
+        """Method to narrow the imaging region to a 'window of interest'
         for faster framerates.
 
         Parameters
@@ -159,29 +156,28 @@ class PyLabLib(Camera):
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
             If ``None``, defaults to largest possible.
 
-        Returns
+        Returns:
         ----------
         woi : list
             :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        raise NotImplementedError()
+        raise NotImplementedError
 
-    def _get_image_hw(self, timeout_s):
-        """
-        Method to pull an image from the camera and return.
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
+        """Method to pull an image from the camera and return.
 
         Parameters
         ----------
         timeout_s : float
             The time in seconds to wait for the frame to be fetched (currently unused).
 
-        Returns
+        Returns:
         -------
         numpy.ndarray
             Array of shape :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`.
         """
         return self.cam.snap(timeout=timeout_s)
 
-    def _get_images_hw(self, image_count, timeout_s, out=None):
+    def _get_images_hw(self, image_count: int, timeout_s: float, out=None) -> np.ndarray:
         """See :meth:`.Camera._get_images_hw`."""
         return self.cam.grab(nframes=image_count, frame_timeout=timeout_s)

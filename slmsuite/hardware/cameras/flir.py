@@ -1,14 +1,16 @@
-"""
-**(NotImplemented)** Hardware control for FLIR cameras via the :mod:`PySpin` interface to the Spinnaker SDK.
+"""**(NotImplemented)** Hardware control for FLIR cameras via the :mod:`PySpin` interface to the Spinnaker SDK.
 Install Spinnaker by following the
 `provided instructions <https://www.flir.com/products/spinnaker-sdk/>`_.
 Inspired by `this implementation <https://github.com/klecknerlab/simple_pyspin/>`_.
 
-Warning
+Warning:
 ~~~~~~~~
 Implementation unfinished and untested. Consider using ``simple_pyspin`` as a dependency instead.
 """
+
 import warnings
+
+import numpy as np
 
 from .camera import Camera
 
@@ -20,10 +22,9 @@ except ImportError:
 
 
 class FLIR(Camera):
-    """
-    FLIR camera.
+    """FLIR camera.
 
-    Attributes
+    Attributes:
     ----------
     sdk : PySpin.System
         Spinnaker SDK.
@@ -33,11 +34,10 @@ class FLIR(Camera):
 
     sdk = None
 
-    ### Initialization and termination ###
+    # Initialization and termination ###
 
-    def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize camera and attributes.
+    def __init__(self, serial: str = "", pitch_um: tuple | None = None, verbose: bool = True, **kwargs) -> None:
+        """Initialize camera and attributes.
 
         Parameters
         ----------
@@ -80,14 +80,14 @@ class FLIR(Camera):
             bitdepth=int(self.cam.PixelSize.get()),
             pitch_um=pitch_um,
             name=serial,
-            **kwargs
+            **kwargs,
         )
         if verbose:
             print("success")
 
-        raise NotImplementedError()
+        raise NotImplementedError
 
-    def close(self, close_sdk=True):
+    def close(self, close_sdk: bool = True) -> None:
         """See :meth:`.Camera.close`."""
         try:
             self.cam.EndAcquisition()
@@ -95,31 +95,28 @@ class FLIR(Camera):
             pass
         del self.cam
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         return
 
-    def set_woi(self, window=None):
+    def set_woi(self, window: list | None = None) -> None:
         """See :meth:`.Camera.set_woi`."""
         return
 
-    def _get_image_hw(self, blocking=True):
-        """
-        See :meth:`.Camera._get_image_hw`.
+    def _get_image_hw(self, blocking: bool = True) -> np.ndarray:
+        """See :meth:`.Camera._get_image_hw`.
 
         Parameters
         ----------
         blocking : bool
             Whether to wait for the camera to return a frame, blocking other acquisition.
         """
-        frame = self.cam.GetNextImage(
-            PySpin.EVENT_TIMEOUT_INFINITE if blocking else PySpin.EVENT_TIMEOUT_NONE
-        )
+        frame = self.cam.GetNextImage(PySpin.EVENT_TIMEOUT_INFINITE if blocking else PySpin.EVENT_TIMEOUT_NONE)
 
         return frame.GetNDArray()

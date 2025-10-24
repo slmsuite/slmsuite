@@ -1,10 +1,13 @@
-"""
-Hardware control for Basler cameras via the :mod:`pypylon` interface.
+"""Hardware control for Basler cameras via the :mod:`pypylon` interface.
 Consider also installing Basler software for testing cameras outside of python
 (see `downloads <https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware>`_).
 Install :mod:`pypylon` by following the `provided instructions <https://github.com/basler/pypylon>`_.
 """
+
 import warnings
+
+import numpy as np
+
 from slmsuite.hardware.cameras.camera import Camera
 
 try:
@@ -15,10 +18,9 @@ except ImportError:
 
 
 class Basler(Camera):
-    """
-    Interface to Basler cameras.
+    """Interface to Basler cameras.
 
-    Attributes
+    Attributes:
     ----------
     sdk : pylon.TlFactory
         "Transport layer" factory used by Basler to find camera devices.
@@ -29,9 +31,10 @@ class Basler(Camera):
     # Class variable (same for all instances of Basler) pointing to a singleton SDK.
     sdk = None
 
-    def __init__(self, serial=None, pitch_um=None, verbose=True, **kwargs):
-        """
-        Initialize Basler camera and attributes.
+    def __init__(
+        self, serial: str | None = None, pitch_um: tuple | None = None, verbose: bool = True, **kwargs
+    ) -> None:
+        """Initialize Basler camera and attributes.
 
         Parameters
         ----------
@@ -65,7 +68,7 @@ class Basler(Camera):
 
         serial_list = [dev.GetSerialNumber() for dev in device_list]
         if serial is None or serial == "":
-            if len(device_list)==0:
+            if len(device_list) == 0:
                 raise RuntimeError("No cameras found by pylon.")
             if len(device_list) > 0 and verbose:
                 print("No serial given... Choosing first of ", serial_list)
@@ -75,40 +78,36 @@ class Basler(Camera):
             if serial in serial_list:
                 device = Basler.sdk.CreateDevice(device_list[serial_list.index(serial)])
             else:
-                raise RuntimeError(
-                    "Serial " + serial + " not found by pylon. Available: ", serial_list
-                )
+                raise RuntimeError("Serial " + serial + " not found by pylon. Available: ", serial_list)
 
         if verbose:
-            print("pylon sn " "{}" " initializing... ".format(serial), end="")
+            print(f"pylon sn {serial} initializing... ", end="")
         self.cam = pylon.InstantCamera()
         self.cam.Attach(device)
         self.cam.Open()
 
         # Apply default settings.
         try:
-            self.cam.CenterX=False
-            self.cam.CenterY=False
+            self.cam.CenterX = False
+            self.cam.CenterY = False
             self.cam.BinningHorizontal.SetValue(1)
             self.cam.BinningVertical.SetValue(1)
 
-            self.cam.GainAuto.SetValue('Off')
-            self.cam.ExposureAuto.SetValue('Off')
-            self.cam.ExposureMode.SetValue('Timed')
+            self.cam.GainAuto.SetValue("Off")
+            self.cam.ExposureAuto.SetValue("Off")
+            self.cam.ExposureMode.SetValue("Timed")
 
-            self.cam.AcquisitionMode.SetValue('SingleFrame')
+            self.cam.AcquisitionMode.SetValue("SingleFrame")
 
-            self.cam.TriggerSelector.SetValue('FrameStart')
-            self.cam.TriggerMode.SetValue('Off')
+            self.cam.TriggerSelector.SetValue("FrameStart")
+            self.cam.TriggerMode.SetValue("Off")
 
-            self.cam.TriggerActivation.SetValue('RisingEdge')
-            self.cam.TriggerSource.SetValue('Software')
+            self.cam.TriggerActivation.SetValue("RisingEdge")
+            self.cam.TriggerSource.SetValue("Software")
 
             self.GrabStrategy = pylon.GrabStrategy_LatestImages
             self.cam.RegisterConfiguration(
-                pylon.SoftwareTriggerConfiguration(),
-                pylon.RegistrationMode_ReplaceAll,
-                pylon.Cleanup_Delete
+                pylon.SoftwareTriggerConfiguration(), pylon.RegistrationMode_ReplaceAll, pylon.Cleanup_Delete
             )
 
         except Exception as e:
@@ -116,19 +115,18 @@ class Basler(Camera):
 
         # Initialize the superclass attributes.
         super().__init__(
-            (self.cam.SensorWidth(), self.cam.SensorHeight()), #pixels
-            bitdepth=self.cam.PixelSize.GetIntValue(), #bits
+            (self.cam.SensorWidth(), self.cam.SensorHeight()),  # pixels
+            bitdepth=self.cam.PixelSize.GetIntValue(),  # bits
             pitch_um=pitch_um,
             name=serial,
-            **kwargs
+            **kwargs,
         )
 
         if verbose:
             print("success")
 
-    def close(self, close_sdk=True):
-        """
-        See :meth:`.Camera.close`.
+    def close(self, close_sdk: bool = True) -> None:
+        """See :meth:`.Camera.close`.
 
         Parameters
         ----------
@@ -136,7 +134,7 @@ class Basler(Camera):
             Does nothing, as the ``pylon.TlFactory`` instance stored in :attr:`sdk`
             does not appear to need to be closed.
         """
-        #self.cam.__exit__(None, None, None) weird
+        # self.cam.__exit__(None, None, None) weird
         self.cam.StopGrabbing()
         self.cam.Close()
 
@@ -144,9 +142,8 @@ class Basler(Camera):
             pass
 
     @staticmethod
-    def info(verbose=True):
-        """
-        Discovers all cameras detected by the SDK.
+    def info(verbose: bool = True) -> list:
+        """Discovers all cameras detected by the SDK.
         Useful for a user to identify the correct serial numbers / etc.
 
         Parameters
@@ -154,7 +151,7 @@ class Basler(Camera):
         verbose : bool
             Whether to print the discovered information.
 
-        Returns
+        Returns:
         --------
         list of str
             List of serial numbers or identifiers.
@@ -173,9 +170,9 @@ class Basler(Camera):
         serial_list = [cam.GetSerialNumber() for cam in camera_list]
 
         if verbose:
-            print('Basler cameras:')
+            print("Basler cameras:")
             for serial in serial_list:
-                print("\"{}\"".format(serial))
+                print(f'"{serial}"')
 
         if close_sdk:
             Basler.close_sdk()
@@ -183,17 +180,17 @@ class Basler(Camera):
         return serial_list
 
     @classmethod
-    def close_sdk(cls):
-        """"
+    def close_sdk(cls) -> None:
+        """ "
         Close the :mod:'pylon' instance.
         """
         if cls.sdk is not None:
             cls.sdk = None
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
-    def get_properties(self, properties=None):
-        """"
+    def get_properties(self, properties: dict | None = None) -> None:
+        """ "
         Print the list of camera properties.
 
         Parameters
@@ -206,11 +203,11 @@ class Basler(Camera):
             properties = self.cam.__dict__.keys()
 
         for key in properties:
-            prop=self.cam.__dict__[key]
+            prop = self.cam.__dict__[key]
             try:
                 print(prop.get_name(), end="\t")
             except BaseException as e:
-                print("Error accessing property dictionary, '{}':{}".format(key, e))
+                print(f"Error accessing property dictionary, '{key}':{e}")
                 continue
 
             try:
@@ -226,11 +223,10 @@ class Basler(Camera):
             try:
                 print(prop.get_description(), end="\n")
             except:
-                print("")
+                print()
 
-    def set_adc_bitdepth(self, bitdepth):
-        """
-        Set the digitization bitdepth.
+    def set_adc_bitdepth(self, bitdepth: int) -> None:
+        """Set the digitization bitdepth.
 
         Parameters
         ----------
@@ -244,13 +240,12 @@ class Basler(Camera):
             if str(bitdepth) in value[0]:
                 self.cam.PixelSize.SetValue(value[1])
                 break
-            raise RuntimeError("ADC bitdepth {} not found.".format(bitdepth))
+            raise RuntimeError(f"ADC bitdepth {bitdepth} not found.")
 
-    def get_adc_bitdepth(self):
-        """
-        Get the digitization bitdepth.
+    def get_adc_bitdepth(self) -> int:
+        """Get the digitization bitdepth.
 
-        Returns
+        Returns:
         -------
         int
             The digitization bitdepth.
@@ -259,24 +254,23 @@ class Basler(Camera):
         bitdepth = int("".join(char for char in value if char.isdigit()))
         return bitdepth
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
-        return float(self.cam.ExposureTime.GetValue()) / 1e6   # in seconds
+        return float(self.cam.ExposureTime.GetValue()) / 1e6  # in seconds
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
-        self.cam.ExposureTime.SetValue(float(1e6 * exposure_s))   # in seconds
+        self.cam.ExposureTime.SetValue(float(1e6 * exposure_s))  # in seconds
 
-    def _set_woi(self, woi):
-        """
-        Sets the window of interest (WOI).
+    def _set_woi(self, woi: list) -> None:
+        """Sets the window of interest (WOI).
 
         Parameters
         ----------
         woi : list, None
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        # Set the width and height to very small values 
+        # Set the width and height to very small values
         # such that setting the offsets will not error.
 
         # Now set the WOI.
@@ -287,7 +281,7 @@ class Basler(Camera):
         self.cam.Height.SetValue(h)
         self.cam.Width.SetValue(w)
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> None:
         """See :meth:`.Camera.set_woi`."""
         err = None
         maxwoi = (0, self.cam.Width.GetMax(), 0, self.cam.Height.GetMax())
@@ -309,34 +303,29 @@ class Basler(Camera):
         if err is not None:
             raise err
 
-
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s: float) -> np.ndarray:
         """See :meth:`.Camera.get_image`."""
-        self.cam.StartGrabbing(
-            self.GrabStrategy,
-            pylon.GrabLoop_ProvidedByUser
-        )
+        self.cam.StartGrabbing(self.GrabStrategy, pylon.GrabLoop_ProvidedByUser)
 
         if self.cam.IsGrabbing():
             self.cam.ExecuteSoftwareTrigger()
 
-            grab = self.cam.RetrieveResult(int(timeout_s*1000), pylon.TimeoutHandling_Return)
+            grab = self.cam.RetrieveResult(int(timeout_s * 1000), pylon.TimeoutHandling_Return)
 
             # Image grabbed successfully?
             if not grab.GrabSucceeded():
                 self.cam.StopGrabbing()
                 raise RuntimeError(f"Basler error {grab.GetErrorCode()}: {grab.GetErrorDescription()}")
 
-            im = grab.GetArray() # This returns an np.array
+            im = grab.GetArray()  # This returns an np.array
             self.cam.StopGrabbing()
 
         return im
-    
-    def is_grabbing(self):
-        """
-        Printing whether or not the camera is currently grabbing images.
 
-        Returns
+    def is_grabbing(self) -> bool:
+        """Printing whether or not the camera is currently grabbing images.
+
+        Returns:
         -------
         bool
             Whether or not the camera is actively grabbing images.

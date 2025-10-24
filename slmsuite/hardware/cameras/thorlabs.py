@@ -1,5 +1,4 @@
-"""
-Hardware control for modern Thorlabs cameras via :mod:`TLCameraSDK`.
+"""Hardware control for modern Thorlabs cameras via :mod:`TLCameraSDK`.
 The :mod:`thorlabs_tsi_sdk` module must
 be installed
 (See `ThorCam <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ -> Programming Interfaces).
@@ -11,7 +10,7 @@ After installing the SDK, extract the files in:
 Follow the instructions in the extracted file Python_README.txt to install into your
 python environment via ``pip``.
 
-Important
+Important:
 ~~~~~~~~~
 Legacy Thorlabs cameras (e.g. UC480) are not supported by the modern Thorlabs SDK.
 For these cameras, consider using the
@@ -20,12 +19,12 @@ or
 :class:`slmsuite.hardware.cameras.pylablib.PyLabLib`
 interfaces which support UC480 drivers.
 
-Note
+Note:
 ~~~~
 Older cameras, in particular UC480 cameras, may be supported by other camera interfaces
 such as :class:`~slmsuite.hardware.cameras.pylablib.PyLabLib`.
 
-Note
+Note:
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
@@ -33,8 +32,9 @@ Color camera functionality is not currently implemented, and will lead to undefi
 import os
 import sys
 import time
-import numpy as np
 import warnings
+
+import numpy as np
 
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -44,9 +44,9 @@ DEFAULT_DLL_PATH = (
     "Interfaces\\SDK\\Native Toolkit\\dlls\\Native_"
 )
 
-def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
-    """
-    Adds Thorlabs camera DLLs to the DLL path.
+
+def _configure_tlcam_dll_path(dll_path: str = DEFAULT_DLL_PATH) -> None:
+    """Adds Thorlabs camera DLLs to the DLL path.
     `"32_lib"` or `"64_lib"` is appended to the default .dll path
     depending on the type of system.
 
@@ -55,8 +55,8 @@ def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
     dll_path : str
         Full path to the Thorlabs camera DLLs.
     """
-    if DEFAULT_DLL_PATH == dll_path:
-        is_64bits = sys.maxsize > 2 ** 32
+    if dll_path == DEFAULT_DLL_PATH:
+        is_64bits = sys.maxsize > 2**32
 
         if is_64bits:
             dll_path += "64_lib"
@@ -67,28 +67,28 @@ def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
         try:
             os.add_dll_directory(dll_path)
         except:
-            if DEFAULT_DLL_PATH == dll_path:
+            if dll_path == DEFAULT_DLL_PATH:
                 warnings.warn(
-                    f"thorlabs_tsi_sdk DLLs not found at default path. "
+                    "thorlabs_tsi_sdk DLLs not found at default path. "
                     "Resolve to use Thorlabs cameras.\nDefault path: '{DEFAULT_DLL_PATH}'"
                 )
     else:
         os.environ["PATH"] = dll_path + os.pathsep + os.environ["PATH"]
 
+
 _configure_tlcam_dll_path()
 
 try:
-    from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, ROI
+    from thorlabs_tsi_sdk.tl_camera import ROI, TLCameraSDK
 except ImportError:
     TLCameraSDK = None
     warnings.warn("thorlabs_tsi_sdk not installed. Install to use Thorlabs cameras.")
 
 
 class ThorCam(Camera):
-    r"""
-    Thorlabs camera.
+    r"""Thorlabs camera.
 
-    Attributes
+    Attributes:
     ----------
     sdk : TLCameraSDK
         Object to talk with the Thorlabs SDK. Shared among instances of :class:`ThorCam`.
@@ -107,11 +107,10 @@ class ThorCam(Camera):
 
     sdk = None
 
-    ### Initialization and termination ###
+    # Initialization and termination ###
 
-    def __init__(self, serial="", verbose=True, **kwargs):
-        """
-        Initialize camera and attributes. Initial profile is ``"single"``.
+    def __init__(self, serial: str = "", verbose: bool = True, **kwargs) -> None:
+        """Initialize camera and attributes. Initial profile is ``"single"``.
 
         Parameters
         ----------
@@ -123,7 +122,7 @@ class ThorCam(Camera):
         **kwargs
             See :meth:`.Camera.__init__` for permissible options.
 
-        Raises
+        Raises:
         ------
         RuntimeError
            If the camera can not be reached.
@@ -158,9 +157,7 @@ class ThorCam(Camera):
                 raise RuntimeError("No cameras found by TLCameraSDK.")
             serial = camera_list[0]
         elif serial not in camera_list:
-            raise RuntimeError(
-                f"Serial '{serial}' not found by TLCameraSDK. Availible: {camera_list}"
-            )
+            raise RuntimeError(f"Serial '{serial}' not found by TLCameraSDK. Availible: {camera_list}")
 
         if verbose:
             print(f"ThorCam sn '{serial}' initializing... ", end="")
@@ -180,13 +177,13 @@ class ThorCam(Camera):
             bitdepth=self.cam.bit_depth,
             pitch_um=(self.cam.sensor_pixel_width_um, self.cam.sensor_pixel_height_um),
             name=serial,
-            **kwargs
+            **kwargs,
         )
-        if verbose: print("success")
+        if verbose:
+            print("success")
 
-    def close(self, close_sdk=False):
-        """
-        See :meth:`.Camera.close`.
+    def close(self, close_sdk: bool = False) -> None:
+        """See :meth:`.Camera.close`.
 
         Parameters
         ----------
@@ -204,16 +201,15 @@ class ThorCam(Camera):
             self.close_sdk()
 
     @staticmethod
-    def info(verbose=True):
-        """
-        Discovers all Thorlabs scientific cameras.
+    def info(verbose: bool = True) -> list:
+        """Discovers all Thorlabs scientific cameras.
 
         Parameters
         ----------
         verbose : bool
             Whether to print the discovered information.
 
-        Returns
+        Returns:
         --------
         list of str
             List of ThorCam serial numbers.
@@ -248,26 +244,23 @@ class ThorCam(Camera):
         return camera_list
 
     @staticmethod
-    def close_sdk():
-        """
-        Close the TLCameraSDK instance.
-        """
+    def close_sdk() -> None:
+        """Close the TLCameraSDK instance."""
         ThorCam.sdk.dispose()
         ThorCam.sdk = None
 
-    ### Property Configuration ###
+    # Property Configuration ###
 
-    def _get_exposure_hw(self):
+    def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
         return float(self.cam.exposure_time_us) / 1e6
 
-    def _set_exposure_hw(self, exposure_s):
+    def _set_exposure_hw(self, exposure_s: float) -> None:
         """See :meth:`.Camera._set_exposure_hw`."""
         self.cam.exposure_time_us = int(exposure_s * 1e6)
 
-    def set_binning(self, bx=None, by=None):
-        """
-        Set the binning of the camera. Will error if a certain binning is not supported.
+    def set_binning(self, bx: int | None = None, by: int | None = None) -> None:
+        """Set the binning of the camera. Will error if a certain binning is not supported.
 
         Parameters
         ----------
@@ -290,7 +283,7 @@ class ThorCam(Camera):
         # Restore profile
         self.setup(profile)
 
-    def set_woi(self, woi=None):
+    def set_woi(self, woi: list | None = None) -> list:
         """See :meth:`.Camera.set_woi`."""
         # Save old profile and disarm
         profile = self.profile
@@ -299,11 +292,9 @@ class ThorCam(Camera):
         if woi is None:  # Default to maximum WOI
             woi = (
                 self.cam.roi_range.upper_left_x_pixels_min,
-                self.cam.roi_range.lower_right_x_pixels_max
-                - self.cam.roi_range.upper_left_x_pixels_min + 1,
+                self.cam.roi_range.lower_right_x_pixels_max - self.cam.roi_range.upper_left_x_pixels_min + 1,
                 self.cam.roi_range.upper_left_y_pixels_min,
-                self.cam.roi_range.lower_right_y_pixels_max
-                - self.cam.roi_range.upper_left_y_pixels_min + 1,
+                self.cam.roi_range.lower_right_y_pixels_max - self.cam.roi_range.upper_left_y_pixels_min + 1,
             )
 
         self.woi = woi
@@ -349,9 +340,8 @@ class ThorCam(Camera):
 
         return woi
 
-    def setup(self, profile):
-        """
-        Set operation mode.
+    def setup(self, profile) -> None:
+        """Set operation mode.
 
         Parameters
         ----------
@@ -380,9 +370,10 @@ class ThorCam(Camera):
 
             self.profile = profile
 
-    def _get_image_hw(self, timeout_s=.1, trigger=True, grab=True, attempts=1):
-        """
-        See :meth:`.Camera._get_image_hw`. By default ``trigger=True`` and ``grab=True`` which
+    def _get_image_hw(
+        self, timeout_s: float = 0.1, trigger: bool = True, grab: bool = True, attempts: int = 1
+    ) -> np.ndarray:
+        """See :meth:`.Camera._get_image_hw`. By default ``trigger=True`` and ``grab=True`` which
         will result in blocking image acquisition.
         For non-blocking acquisition,
         set ``trigger=True`` and ``grab=False`` to issue a software trigger;
@@ -396,7 +387,7 @@ class ThorCam(Camera):
         grab : bool
             Whether or not to grab the frame (blocking).
 
-        Returns
+        Returns:
         -------
         numpy.ndarray or None
             Array of shape :attr:`shape` if ``grab=True``, else ``None``.
@@ -427,9 +418,8 @@ class ThorCam(Camera):
 
         return ret
 
-    def flush(self, timeout_s=1, verbose=False):
-        """
-        See :meth:`.Camera.flush`.
+    def flush(self, timeout_s: float = 1, verbose: bool = False) -> None:
+        """See :meth:`.Camera.flush`.
 
         Parameters
         ----------
@@ -446,28 +436,19 @@ class ThorCam(Camera):
         # Continue flushing frames while the timeout is not exceeded, the
         # returned frame is empty (None), or the frame returned super fast
         # (cached)
-        while (
-            time.perf_counter() - t < timeout_s
-            and frame is not None
-            and frametime < 0.003
-        ):
+        while time.perf_counter() - t < timeout_s and frame is not None and frametime < 0.003:
             t2 = time.perf_counter()
             frame = self.cam.get_pending_frame_or_null()
             frametime = time.perf_counter() - t2
             ii += 1
 
         if verbose:
-            print(
-                "Flushed {} frames in {:.2f} ms".format(
-                    ii, 1e3 * (time.perf_counter() - t)
-                )
-            )
+            print(f"Flushed {ii} frames in {1e3 * (time.perf_counter() - t):.2f} ms")
 
-    def is_capturing(self):
-        """
-        Determine whether or not the camera is currently capturing images.
+    def is_capturing(self) -> bool:
+        """Determine whether or not the camera is currently capturing images.
 
-        Returns
+        Returns:
         -------
         bool
             Whether or not the camera is actively capturing images.

@@ -8,38 +8,45 @@ This directory contains the unified testing framework for slmsuite, designed to 
 # Run all tests
 pytest
 
-# Run only unit tests
-pytest tests/unit/
-
-# Run integration tests
-pytest tests/integration/
+# Run tests for specific module
+pytest tests/holography/
+pytest tests/hardware/
+pytest tests/misc/
 
 # Run with verbose output
 pytest -v
 
 # Run specific test file
-pytest tests/unit/test_algorithms.py
+pytest tests/holography/test_algorithms.py
 
 # Run specific test class or function
-pytest tests/unit/test_algorithms.py::TestHologramGS::test_gs_runs_without_error
+pytest tests/holography/test_algorithms.py::TestHologram::test_gs_converges
 ```
 
 ## Test Structure
 
+The test directory structure mirrors the package structure:
+
 ```
 tests/
-├── conftest.py          # Shared fixtures and configuration
-├── pytest.ini           # Pytest configuration (in parent directory)
-├── unit/                # Unit tests (fast, no hardware)
-│   ├── test_misc.py              # Math utilities, fit functions
-│   ├── test_phase_toolbox.py     # Phase patterns (blaze, Zernike, etc)
-│   ├── test_algorithms.py        # Holography algorithms (GS, WGS)
-│   ├── test_analysis.py          # Image analysis functions
-│   ├── test_camera.py            # Camera base class tests
-│   └── test_slm.py               # SLM base class tests
-└── integration/         # Integration tests (simulated hardware)
-    └── (to be added)
+├── conftest.py              # Shared fixtures and configuration
+├── README.md                # This file
+├── pytest.ini               # Pytest configuration (in parent directory)
+├── hardware/                # Hardware module tests
+│   ├── test_camera.py       # Camera base class and implementations
+│   └── test_slm.py          # SLM base class and implementations
+├── holography/              # Holography module tests
+│   ├── test_algorithms.py   # Hologram optimization (GS, WGS, feedback)
+│   ├── test_analysis.py     # Image analysis and statistics
+│   └── test_toolbox.py      # Phase patterns (blaze, Zernike, etc)
+└── misc/                    # Misc utilities tests
+    └── test_misc.py         # Math functions, fit functions, I/O
 ```
+
+This structure mirrors `slmsuite/`:
+- `tests/hardware/` → `slmsuite/hardware/`
+- `tests/holography/` → `slmsuite/holography/`
+- `tests/misc/` → `slmsuite/misc/`
 
 ## Test Philosophy
 
@@ -51,29 +58,25 @@ All tests use simulated hardware (SimulatedCamera, SimulatedSLM) and synthetic d
 
 ### Test Categories
 
-#### Unit Tests (`tests/unit/`)
-- **Fast** (<10s total runtime)
-- **Isolated**: Test individual functions/classes
-- **No hardware**: Use SimulatedCamera/SimulatedSLM or mock objects
-- **Comprehensive**: Cover edge cases, error handling, data validation
+All tests are designed to run without physical hardware using simulated devices:
 
-Modules covered:
-- `test_misc.py`: Math functions, fit functions (Gaussian, Lorentzian, etc.)
-- `test_phase_toolbox.py`: Phase pattern generation (blaze, sinusoid, binary, lens, Zernike)
-- `test_algorithms.py`: Hologram optimization (GS, WGS variants, MRAF)
-- `test_analysis.py`: Image analysis (centroids, moments, variances, fitting)
-- `test_camera.py`: Camera interface (using SimulatedCamera)
-- `test_slm.py`: SLM interface (using SimulatedSLM)
+#### Hardware Tests (`tests/hardware/`)
+- **Camera tests** (`test_camera.py`): Camera base class interface, image acquisition, exposure control
+- **SLM tests** (`test_slm.py`): SLM base class interface, phase display, calibration
 
-#### Integration Tests (`tests/integration/`)
-- **Multi-component**: Test interactions between Camera, SLM, and algorithms
-- **Simulated hardware**: Use SimulatedCamera + SimulatedSLM
-- **Realistic workflows**: End-to-end calibration and optimization
+#### Holography Tests (`tests/holography/`)
+- **Algorithm tests** (`test_algorithms.py`): Hologram optimization (GS, WGS variants), feedback methods, convergence
+- **Toolbox tests** (`test_toolbox.py`): Phase pattern generation (blaze, sinusoid, binary, lens, Zernike)
+- **Analysis tests** (`test_analysis.py`): Image analysis (centroids, moments, variances, fitting)
 
-#### Hardware Tests (future, opt-in)
-- Tests requiring physical hardware will be marked with `@pytest.mark.hardware`
-- Skip by default: `pytest -m "not hardware"`
-- Run when available: `pytest -m hardware`
+#### Misc Tests (`tests/misc/`)
+- **Math and fit functions** (`test_misc.py`): Utility functions, 1D/2D fitting (Gaussian, Lorentzian, etc.)
+
+#### Test Characteristics
+- **Fast**: Most tests complete in <1 second (mark long tests with `@pytest.mark.slow`)
+- **Isolated**: Each test is independent and doesn't require external state
+- **No hardware by default**: Use SimulatedCamera/SimulatedSLM
+- **Hardware-ready**: All fixtures support real hardware via environment variables
 
 ## Fixtures
 
@@ -145,17 +148,17 @@ export SLMSUITE_TEST_SLM_CLASS=slmsuite.hardware.slms.thorlabs.ThorlabsSLM
 export SLMSUITE_TEST_SLM_ARGS='{"monitor_id": 1}'
 export SLMSUITE_TEST_CAMERA_CLASS=slmsuite.hardware.cameras.thorlabs.ThorlabsCamera
 export SLMSUITE_TEST_CAMERA_ARGS='{"serial": "12345"}'
-pytest tests/unit/
+pytest
 
 # Windows (PowerShell)
 $env:SLMSUITE_TEST_SLM_CLASS="slmsuite.hardware.slms.thorlabs.ThorlabsSLM"
 $env:SLMSUITE_TEST_SLM_ARGS='{"monitor_id": 1}'
-pytest tests/unit/
+pytest
 
 # Windows (CMD)
 set SLMSUITE_TEST_SLM_CLASS=slmsuite.hardware.slms.thorlabs.ThorlabsSLM
 set SLMSUITE_TEST_SLM_ARGS={"monitor_id": 1}
-pytest tests/unit/
+pytest
 ```
 
 The test fixtures automatically handle:
@@ -284,6 +287,118 @@ pytest --lf
 
 # Enter debugger on failure
 pytest --pdb
+```
+
+## Logging and Plot Capture
+
+### Output Directory Structure
+
+Each pytest run creates a **timestamped output directory**:
+
+```
+tests/output/
+├── 20250126_143015/         # First test run (YYYYMMDD_HHMMSS)
+│   ├── pytest.log
+│   └── test_*.png
+├── 20250126_154522/         # Second test run
+│   ├── pytest.log
+│   └── test_*.png
+└── latest -> 20250126_154522/  # Symlink to latest (if supported)
+```
+
+This allows you to:
+- Compare outputs from different test runs
+- Keep history of test results
+- Isolate each run's artifacts
+
+### Test Logging
+
+All tests **automatically log** to `tests/output/{timestamp}/pytest.log` with start/end markers:
+
+```bash
+# View logs in terminal during test run
+pytest --log-cli --log-cli-level=INFO
+
+# View logs after test run (latest)
+cat tests/output/latest/pytest.log
+tail -f tests/output/latest/pytest.log
+
+# View logs from specific run
+cat tests/output/20250126_143015/pytest.log
+```
+
+**Automatic Logging**: Every test automatically gets a logger (via `autouse=True` fixture). No need to add `test_logger` parameter unless you want to use it explicitly:
+
+```python
+# Option 1: Automatic logging (most tests)
+def test_example():
+    # Test automatically logs start/end
+    result = my_function()
+    assert result == expected
+
+# Option 2: Explicit logging (when needed)
+def test_complex_operation(test_logger):
+    test_logger.info("Starting complex operation...")
+    test_logger.debug(f"Parameters: {params}")
+    result = complex_function(params)
+    test_logger.info(f"Result: {result}")
+    assert result > 0
+```
+
+**Third-party Logging**: All external packages are automatically set to WARNING level. Only `slmsuite` package logs at INFO level.
+
+**Log Format:**
+```
+2025-01-26 14:30:15 [    INFO] [slmsuite.tests.test_algorithms.TestHologram.test_gs_converges] === START: holography/test_algorithms.py::TestHologram::test_gs_converges ===
+2025-01-26 14:30:16 [    INFO] [slmsuite.holography.algorithms] Optimizing with method=GS, maxiter=20
+2025-01-26 14:30:17 [    INFO] [slmsuite.tests.test_algorithms.TestHologram.test_gs_converges] === PASSED: holography/test_algorithms.py::TestHologram::test_gs_converges ===
+```
+
+### Matplotlib Plot Capture
+
+Plots are **automatically saved** to the current run's directory:
+
+```bash
+# Enable plot saving (default)
+pytest
+
+# Disable plot saving
+pytest --no-save-plots
+
+# Example output:
+# 📁 Test output directory: tests/output/20250126_143015
+# 📊 Saved plot: tests/output/20250126_143015/test_algorithms_TestHologram_test_hologram_construction_fig1.png
+```
+
+**Filename Format:** `{module}_{class}_{function}_fig{N}.png`
+
+Examples:
+- `test_algorithms_TestHologram_test_gs_converges_fig1.png`
+- `test_toolbox_test_blaze_basic_fig1.png` (no class)
+
+Existing tests using `plt.show()` work without modification - plots are automatically saved instead of displayed.
+
+**View saved plots:**
+```bash
+# Latest run
+ls tests/output/latest/*.png
+open tests/output/latest/*.png
+
+# Specific run
+ls tests/output/20250126_143015/*.png
+
+# Compare two runs
+diff tests/output/20250126_143015/pytest.log tests/output/20250126_154522/pytest.log
+```
+
+### Cleanup
+
+```bash
+# Remove old test runs (keep last 5)
+cd tests/output && ls -t | tail -n +6 | xargs rm -rf
+
+# Remove all output
+rm -rf tests/output/
 ```
 
 ## TODOs

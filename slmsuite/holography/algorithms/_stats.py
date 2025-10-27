@@ -430,6 +430,7 @@ class _HologramStats(object):
             limit_padding=0.1,
             figsize=(8,4),
             cbar=False,
+            axs=None
         ):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
@@ -463,6 +464,8 @@ class _HologramStats(object):
             Size of the plot.
         cbar : bool
             Whether to add colorbars to the plots. Defaults to ``False``.
+        axs : matplotlib.axes.Axes OR None
+            If provided, uses these axes instead of creating new ones.
 
         Returns
         -------
@@ -521,7 +524,11 @@ class _HologramStats(object):
                 raise ValueError("Clipped limit has zero length.")
 
         # Start making the plot
-        fig, axs = plt.subplots(1, 2, figsize=figsize)
+        if axs is None:
+            fig, axs = plt.subplots(1, 2, figsize=figsize)
+            _show = True
+        else:
+            _show = False
 
         # Plot the full target, blurred so single pixels are visible in low res
         b = 2 * int(np.amax(self.shape) / 400) + 1  # FUTURE: fix arbitrary
@@ -713,8 +720,9 @@ class _HologramStats(object):
             cax = make_axes_locatable(axs[1]).append_axes("right", size="5%", pad=0.05)
             fig.colorbar(zoom, cax=cax, orientation="vertical")
 
-        plt.tight_layout()
-        plt.show()
+        if _show:
+            plt.tight_layout()
+            plt.show()
 
         return limits
 

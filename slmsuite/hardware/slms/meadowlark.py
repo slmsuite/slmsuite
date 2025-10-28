@@ -481,6 +481,7 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[self.sdk_mode]
         if self.sdk_mode == _SDK_MODE.HDMI:
+            sdk.Get_SLMTemp.restype = ctypes.c_double
             return float(sdk.Get_SLMTemp())
         elif self.sdk_mode == _SDK_MODE.PCIE_MODERN:
             sdk.Get_SLMTemp.restype = ctypes.c_double
@@ -506,10 +507,11 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[self.sdk_mode]
         if self.sdk_mode == _SDK_MODE.HDMI:
+            sdk.Get_SLMVCom.restype = ctypes.c_double
             return float(sdk.Get_SLMVCom())
         elif self.sdk_mode == _SDK_MODE.PCIE_MODERN:
             sdk.Get_cover_voltage.restype = ctypes.c_double
-            return float(sdk.Get_cover_voltage(self.slm_number))
+            return float(sdk.Get_cover_voltage(ctypes.c_int(self.slm_number)))
         else:
             raise NotImplementedError(
                 "Coverglass voltage reading not supported for this model."

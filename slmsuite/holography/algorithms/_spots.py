@@ -1,3 +1,5 @@
+from typing import Any
+
 from slmsuite.holography.algorithms._feedback import FeedbackHologram
 from slmsuite.holography.algorithms._header import *
 from slmsuite.holography.algorithms._hologram import Hologram
@@ -185,7 +187,14 @@ class CompressedSpotHologram(_AbstractSpotHologram):
     """
 
     def __init__(
-        self, spot_vectors, basis: str = "kxy", spot_amp=None, cameraslm=None, cuda: bool = False, **kwargs
+        self,
+        spot_vectors: np.ndarray,
+        basis: str = "kxy",
+        spot_amp: np.ndarray | None = None,
+        cameraslm: Any = None,
+        cuda: bool = False,
+        spot_integration_width_ij: int | None = None,
+        **kwargs: Any,
     ) -> None:
         r"""Initializes a :class:`CompressedSpotHologram` targeting given spots at ``spot_vectors``.
         This class makes use of so-called 'compressed' methods. Instead of
@@ -411,6 +420,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             self.spot_integration_width_ij = int(2 * np.floor(self.spot_integration_width_ij / 2) + 1)
 
             cam_shape = cameraslm.cam.shape
+            self.spot_integration_width_ij = spot_integration_width_ij or self.spot_integration_width_ij
 
             if (
                 np.any(self.spot_ij[0] < self.spot_integration_width_ij / 2)
@@ -526,8 +536,8 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
     # Projection backend helper functions.
     def _build_cupy_kernel_batched(
-        self, vectors: np.ndarray | None = None, out: np.ndarray | None = None
-    ) -> np.ndarray:
+        self, vectors: np.ndarray | None = None, out: np.ndarray | cp.ndarray | None = None
+    ) -> np.ndarray | cp.ndarray:
         """Uses the coordinate stack to produce the kernel, a stack of images corresponding
         to the blaze and lens directing power to each desired spot in the farfield.
 
@@ -602,7 +612,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
 
             self._cupy_kernel = self._build_cupy_kernel_batched(out=self._cupy_kernel)
 
-    def _nearfield2farfield(self, phase_torch=None) -> Any:
+    def _nearfield2farfield(self, phase_torch: Any = None) -> Any:
         """Maps the ``(H,W)`` nearfield (complex value on the SLM)
         onto the ``(N,)`` farfield (complex value for each spot).
         """
@@ -707,7 +717,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             nearfield = torch.conj(nearfield)
             farfield = self._get_torch_tensor_from_cupy(self.farfield)
 
-            def collapse_kernel(kernel, out):
+            def collapse_kernel(kernel: Any, out: Any) -> None:
                 # (N, H*W), (H*W, 1) x  = (N,1)
                 result = torch.matmul(self._get_torch_tensor_from_cupy(kernel), nearfield.ravel()[:, np.newaxis])
                 out[:, np.newaxis] = result
@@ -716,7 +726,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             nearfield = cp.conj(nearfield, out=nearfield)
             farfield = self.farfield
 
-            def collapse_kernel(kernel, out):
+            def collapse_kernel(kernel: Any, out: Any) -> None:
                 # (N, H*W) x (H*W, 1) = (N,1)
                 cp.matmul(kernel, nearfield.ravel()[:, np.newaxis], out=out[:, np.newaxis])
 
@@ -818,7 +828,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         # FYI: Farfield shape is (N,)
         N = len(self)
 
-        def expand_kernel(kernel, farfield, out):
+        def expand_kernel(kernel: Any, farfield: Any, out: Any) -> Any:
             # (1, N) x (N, H*W) = (1, H*W)   ===reshape===>   (H,W)
             return cp.matmul(farfield[np.newaxis, :], kernel, out=out[np.newaxis, :])
 
@@ -923,8 +933,10 @@ class CompressedSpotHologram(_AbstractSpotHologram):
             nan_checks=True,
         )
 
-    def _calculate_stats_computational_spot(self, stats: dict, stat_groups: list = []) -> None:
+    def _calculate_stats_computational_spot(self, stats: dict[str, Any], stat_groups: list[str] | None = None) -> None:
         """Wrapped by :meth:`SpotHologram._update_stats()`."""
+        if stat_groups is None:
+            stat_groups = []
         if "computational_spot" in stat_groups:
             stats["computational_spot"] = self._calculate_stats(
                 self.amp_ff,
@@ -934,8 +946,10 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"],
             )
 
-    def _calculate_stats_experimental_spot(self, stats: dict, stat_groups: list = []) -> None:
+    def _calculate_stats_experimental_spot(self, stats: dict[str, Any], stat_groups: list[str] | None = None) -> None:
         """Wrapped by :meth:`SpotHologram._update_stats()`."""
+        if stat_groups is None:
+            stat_groups = []
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
 
@@ -967,7 +981,7 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"],
             )
 
-    def _update_stats(self, stat_groups: list = []) -> None:
+    def _update_stats(self, stat_groups: list[str] | None = None) -> None:
         """Calculate statistics corresponding to the desired ``stat_groups``.
 
         Parameters
@@ -975,7 +989,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
         stat_groups : list of str
             Which groups or types of statistics to analyze.
         """
-        stats = {}
+        if stat_groups is None:
+            stat_groups = []
+        stats: dict[str, Any] = {}
 
         # self._calculate_stats_computational_spot(stats, stat_groups)
         self._calculate_stats_experimental_spot(stats, stat_groups)
@@ -1052,17 +1068,18 @@ class SpotHologram(_AbstractSpotHologram):
 
     def __init__(
         self,
-        shape,
-        spot_vectors,
-        basis="kxy",
-        spot_amp=None,
-        cameraslm=None,
-        null_vectors=None,
-        null_radius=None,
-        null_region=None,
-        null_region_radius_frac=None,
-        **kwargs,
-    ):
+        shape: tuple[int, int],
+        spot_vectors: np.ndarray,
+        basis: str = "kxy",
+        spot_amp: np.ndarray | None = None,
+        cameraslm: Any = None,
+        null_vectors: np.ndarray | None = None,
+        null_radius: float | None = None,
+        null_region: np.ndarray | None = None,
+        null_region_radius_frac: float | None = None,
+        spot_integration_width_ij: int | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Initializes a :class:`SpotHologram` targeting given spots at ``spot_vectors``.
 
         Parameters
@@ -1244,6 +1261,8 @@ class SpotHologram(_AbstractSpotHologram):
         else:
             self.spot_integration_width_ij = None
 
+        self.spot_integration_width_ij = spot_integration_width_ij or self.spot_integration_width_ij
+
         # Check to make sure spots are within relevant camera and SLM shapes.
         if (
             # np.any(self.spot_knm[0] < self.spot_integration_width_knm / 2)
@@ -1314,14 +1333,14 @@ class SpotHologram(_AbstractSpotHologram):
     # Target update.
     @staticmethod
     def make_rectangular_array(
-        shape,
-        array_shape,
-        array_pitch,
-        array_center=None,
-        basis="knm",
-        orientation_check=False,
-        **kwargs,
-    ):
+        shape: tuple[int, int],
+        array_shape: tuple[int, int] | int,
+        array_pitch: tuple[float, float] | float,
+        array_center: tuple[float, float] | None = None,
+        basis: str = "knm",
+        orientation_check: bool = False,
+        **kwargs: Any,
+    ) -> "SpotHologram":
         """Helper function to initialize a rectangular 2D array of spots, with certain size and pitch.
 
         Note:
@@ -1543,8 +1562,10 @@ class SpotHologram(_AbstractSpotHologram):
                 nan_checks=True,
             )
 
-    def _calculate_stats_computational_spot(self, stats: dict, stat_groups: list = []) -> None:
+    def _calculate_stats_computational_spot(self, stats: dict[str, Any], stat_groups: list[str] | None = None) -> None:
         """Wrapped by :meth:`SpotHologram._update_stats()`."""
+        if stat_groups is None:
+            stat_groups = []
         if "computational_spot" in stat_groups:
             if self.shape == self.slm_shape:
                 # Spot size is one pixel wide: no integration required.
@@ -1595,8 +1616,10 @@ class SpotHologram(_AbstractSpotHologram):
                         raw="raw_stats" in self.flags and self.flags["raw_stats"],
                     )
 
-    def _calculate_stats_experimental_spot(self, stats: dict, stat_groups: list = []) -> None:
+    def _calculate_stats_experimental_spot(self, stats: dict[str, Any], stat_groups: list[str] | None = None) -> None:
         """Wrapped by :meth:`SpotHologram._update_stats()`."""
+        if stat_groups is None:
+            stat_groups = []
         if "experimental_spot" in stat_groups:
             self.measure(basis="ij")
 
@@ -1628,7 +1651,7 @@ class SpotHologram(_AbstractSpotHologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"],
             )
 
-    def _update_stats(self, stat_groups: list = []) -> None:
+    def _update_stats(self, stat_groups: list[str] | None = None) -> None:
         """Calculate statistics corresponding to the desired ``stat_groups``.
 
         Parameters
@@ -1636,7 +1659,9 @@ class SpotHologram(_AbstractSpotHologram):
         stat_groups : list of str
             Which groups or types of statistics to analyze.
         """
-        stats = {}
+        if stat_groups is None:
+            stat_groups = []
+        stats: dict[str, Any] = {}
 
         self._calculate_stats_computational(stats, stat_groups)
         self._calculate_stats_experimental(stats, stat_groups)

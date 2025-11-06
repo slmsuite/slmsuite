@@ -445,7 +445,7 @@ class ThorCam(Camera):
 
         # Continue flushing frames while the timeout is not exceeded,
         # the returned frame is empty (None),
-        # or the frame returned super fast (cached)
+        # or the frame returned super fast (cached).
         while (
             time.perf_counter() - t < timeout_s
             and frame is not None

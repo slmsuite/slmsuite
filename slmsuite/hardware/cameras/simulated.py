@@ -194,6 +194,7 @@ class SimulatedCamera(Camera):
                 )
 
         phase = -self._slm.display.astype(float) * (2 * np.pi / self._slm.bitresolution)
+        # TODO: suppress power of 2 warning
         self._hologram = Hologram(
             self.shape_padded,
             amp=self._slm.source["amplitude_sim"],

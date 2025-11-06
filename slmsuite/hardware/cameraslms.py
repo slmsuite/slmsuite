@@ -3040,10 +3040,10 @@ class FourierSLM(CameraSLM):
 
             results = []
             first_index = np.where(schedule != -1)[0][0]
-            
+
             # target_coords = index2coord(schedule)
             # phase_baselines = np.sum(
-            #     2 * np.pi * target_blaze_fixed * 
+            #     2 * np.pi * target_blaze_fixed *
             #     (target_coords - reference_superpixels_coords) *
             #     superpixel_size * self.slm.pitch[:, np.newaxis],
             #     axis=0,

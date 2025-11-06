@@ -66,6 +66,24 @@ def test_blaze_3d_vector(simple_grid):
     r_squared = simple_grid[0]**2 + simple_grid[1]**2
     assert np.allclose(diff, np.pi * r_squared)
 
+    # 3D vector should add a focusing term
+    phase_3d = phase.blaze(simple_grid, vector=(0.1, 0.2, 0.5))
+    phase_2d = phase.blaze(simple_grid, vector=(0.1, 0.2))
+
+    # Should be different due to the focusing term
+    assert not np.allclose(phase_3d, phase_2d)
+
+def test_phase_function_parameter_variations(simple_grid):
+    """Test blaze with different vector magnitudes."""
+    blaze_small = phase.blaze(simple_grid, vector=(0.01, 0.01))
+    blaze_large = phase.blaze(simple_grid, vector=(0.1, 0.1))
+
+    # Larger vector should produce steeper gradient
+    grad_small = np.max(np.gradient(blaze_small)[0])
+    grad_large = np.max(np.gradient(blaze_large)[0])
+    assert grad_large > grad_small
+
+
 # Test sinusoid()
 
 def test_sinusoid_zero_vector(simple_grid):
@@ -94,6 +112,23 @@ def test_sinusoid_shift(simple_grid):
     result2 = phase.sinusoid(simple_grid, vector=(1, 0), shift=np.pi)
     # Shifted by pi should flip the pattern
     assert not np.allclose(result1, result2)
+
+def test_sinusoid_edge_cases(simple_grid):
+    """Test sinusoid function edge cases."""
+    # Test with custom amplitude and offset
+    phase_custom = phase.sinusoid(simple_grid, vector=(0.1, 0.2), a=2*np.pi, b=np.pi/2)
+
+    # Check range is approximately correct
+    assert np.max(phase_custom) <= 2*np.pi + np.pi/2 + 0.1
+    assert np.min(phase_custom) >= np.pi/2 - 0.1
+
+    # Test with shift parameter
+    phase_shifted = phase.sinusoid(simple_grid, vector=(0.1, 0.2), shift=np.pi/4)
+    phase_unshifted = phase.sinusoid(simple_grid, vector=(0.1, 0.2), shift=0)
+
+    # Should be different
+    assert not np.allclose(phase_shifted, phase_unshifted)
+
 
 # Test binary()
 
@@ -125,6 +160,19 @@ def test_binary_integer_period(normalized_grid):
     high_fraction = np.sum(result > 0.5) / result.size
     assert high_fraction == pytest.approx(0.75, abs=0.05)
 
+def test_binary_edge_cases(simple_grid):
+    """Test binary grating edge cases."""
+    # Test with extreme duty cycle
+    phase_thin = phase.binary(simple_grid, vector=(0.1, 0.2), duty_cycle=0.1)
+    phase_thick = phase.binary(simple_grid, vector=(0.1, 0.2), duty_cycle=0.9)
+
+    # Should be different
+    assert not np.allclose(phase_thin, phase_thick)
+
+    # Should have some structure
+    assert np.std(phase_thin) > 0
+    assert np.std(phase_thick) > 0
+
 # Test lens()
 
 def test_lens_infinite_focal_length(simple_grid):
@@ -147,6 +195,19 @@ def test_lens_symmetry(simple_grid):
     assert dx == pytest.approx(0, abs=.1)
     assert dy == pytest.approx(0, abs=.1)
 
+def test_lens_edge_cases(simple_grid):
+    """Test lens function edge cases."""
+    # Test with negative focal length (diverging lens)
+    phase_pos = phase.lens(simple_grid, f=(10, 10))
+    phase_neg = phase.lens(simple_grid, f=(-10, -10))
+
+    # Should be negatives of each other (approximately)
+    assert np.allclose(phase_pos, -phase_neg, atol=1e-10)
+
+    phase_pos_neg = phase.lens(simple_grid, f=(10, -10))
+
+    assert np.all(np.abs(phase_pos_neg) <= phase_pos - phase_neg + 1e-10)
+
 # Test axicon()
 
 def test_axicon_infinite_focal_length(simple_grid):
@@ -166,6 +227,14 @@ def test_axicon_linear_in_radius(normalized_grid):
     result_center = result[center-50:center+50, center-50:center+50]
     # Should be approximately linear in r (not r^2)
     assert result_center.shape == r_center.shape
+
+def test_axicon_edge_cases(simple_grid):
+    """Test axicon function edge cases."""
+    # Test with zero angle (should be nearly flat)
+    phase_flat = phase.axicon(simple_grid, f=(np.inf, np.inf))
+
+    # Should be nearly constant
+    assert np.std(phase_flat) < 0.1
 
 # Test zernike()
 
@@ -213,6 +282,20 @@ def test_zernike_sum(normalized_grid):
     # Should be valid array
     assert result.shape == normalized_grid[0].shape
     assert np.all(np.isfinite(result))
+
+def test_zernike_edge_cases(normalized_grid):
+    """Test Zernike polynomial edge cases."""
+    # Test higher order Zernike polynomials
+    z_high = phase.zernike(normalized_grid, index=10)
+    assert z_high.shape == normalized_grid[0].shape
+    assert not np.allclose(z_high, 0)  # Should not be trivial
+
+    # Test with different weights
+    z_normal = phase.zernike(normalized_grid, index=5, weight=1.0)
+    z_scaled = phase.zernike(normalized_grid, index=5, weight=2.0)
+
+    # Should be scaled version
+    np.testing.assert_array_almost_equal(z_scaled, 2 * z_normal)
 
 # Test quadrants()
 
@@ -268,3 +351,4 @@ def test_phase_functions_preserve_shape(simple_grid):
     for func, kwargs in functions_to_test:
         result = func(simple_grid, **kwargs)
         assert result.shape == expected_shape, f"{func.__name__} changed shape"
+

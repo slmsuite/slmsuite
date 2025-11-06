@@ -13,6 +13,7 @@ import PIL
 import io
 from abc import ABC, abstractmethod
 import pytest
+from functools import partial
 
 from slmsuite.hardware import _Picklable
 from slmsuite.holography import analysis
@@ -387,7 +388,7 @@ class Camera(_Picklable, ABC):
             Number of frames to batch collect.
         timeout_s : float
             The time in seconds to wait for **each** frame to be fetched.
-            The frame exposure time  is **NOT added** to this timeout
+            The frame exposure time  is **added** to this timeout
             such that there is always enough time to expose.
         out : None OR numpy.ndarray
             Preallocated memory for in-place operations, if applicable.
@@ -433,11 +434,18 @@ class Camera(_Picklable, ABC):
 
         raise err
 
-    def _get_dtype(self):
+    def _get_dtype(self, get_image_function=None):
+        """
+        Captures a frame from the camera to make sure the datatype conforms with
+        the expected bitdepth.
+        """
+        if get_image_function is None:
+            get_image_function = partial(self._get_image_hw_tolerant, timeout_s=1)
+
         try:
             self.dtype = np.dtype(
                 np.array(
-                    self._get_image_hw_tolerant(timeout_s=1)
+                    get_image_function()
                 ).dtype
             )   # Future: check if cameras change dtype after init.
         except:
@@ -449,7 +457,16 @@ class Camera(_Picklable, ABC):
                 self.dtype = np.dtype(np.uint8)
 
         try:
-            if self.dtype(0).nbytes * 8 < self.bitdepth:
+            # Determine the bitdepth of the datatype.
+            if self.dtype.kind == "i" or self.dtype.kind == "u":
+                dtype_bitdepth = self.dtype(0).nbytes * 8
+                if self.dtype.kind == "i":
+                    dtype_bitdepth -= 1
+            elif self.dtype.kind == "f":
+                dtype_bitdepth = np.inf
+
+            # Warn the user if something is wrong.
+            if dtype_bitdepth < self.bitdepth:
                 raise warnings.warn(
                     f"Camera '{self.name}' bitdepth of {self.bitdepth} does not conform "
                     f"with the image type {self.dtype} with {self.dtype.itemsize} bytes."
@@ -533,7 +550,7 @@ class Camera(_Picklable, ABC):
             else:
                 # Otherwise, force floating point.
                 return float
-        elif self.dtype.kind == "f":
+        elif dtype.kind == "f":
             # Return floating point.
             return self.dtype
         else:
@@ -874,52 +891,38 @@ class Camera(_Picklable, ABC):
         # Test 1: Core non-abstract methods
         print("Testing core non-abstract methods...")
 
-        # Test _parse_averaging method
-        print("  Testing _parse_averaging...")
-        assert self._parse_averaging(None, preserve_none=True) is None
-        assert self._parse_averaging(False) == 1
-        assert self._parse_averaging(5) == 5
+        # Test _get_dtype method
+        orig_dtype = self.dtype
+        orig_bitdepth = self.bitdepth
 
-        # Test edge cases
-        with pytest.raises(ValueError, match="Cannot have negative averaging"):
-            self._parse_averaging(-1)
+        print("  Testing _get_dtype...")
 
-        # Test _parse_hdr method
-        print("  Testing _parse_hdr...")
-        assert self._parse_hdr(None, preserve_none=True) is None
-        assert self._parse_hdr(False) == (1, 0)
-        assert self._parse_hdr(3) == (3, 2)
-        assert self._parse_hdr((4, 3)) == (4, 3)
+        # solution_dtype, fake_dtype, bitdepth
+        tests = [
+            (orig_dtype, False, orig_bitdepth),
+            (np.dtype(np.uint8), None, 8),
+            (np.dtype(np.uint16), None, 12),
+            (np.dtype(np.uint8), np.uint8, 8),
+            (np.dtype(np.uint16), np.uint16, 12),
+        ]
+        for (solution_dtype, fake_dtype, bitdepth) in tests:
+            def fake_get_image():
+                if fake_dtype is False:
+                    return self._get_image_hw_tolerant(timeout_s=1)
+                elif fake_dtype is None:
+                    raise RuntimeError("Fake error")
+                else:
+                    return np.zeros((5,5), dtype=solution_dtype)
 
-        # Test _get_averaging_dtype method
-        print("  Testing _get_averaging_dtype...")
-        # Save original averaging setting
-        orig_averaging = getattr(self, 'averaging', None)
+            self.bitdepth = bitdepth
 
-        try:
-            # Test with various averaging values
-            self.averaging = 1
-            dtype1 = self._get_averaging_dtype(1)
-            assert dtype1 == self.dtype
+            with pytest.raises(Warning):
+                dtype = self._get_dtype(fake_get_image)
 
-            # Test with higher averaging that might promote to float
-            self.averaging = 1000
-            dtype_high = self._get_averaging_dtype(1000)
-            # Should either be original dtype or float
-            assert dtype_high == self.dtype or dtype_high == float
+            assert dtype is solution_dtype
 
-            # Test error case
-            self.averaging = None
-            with pytest.raises(ValueError, match="Averaging is not enabled"):
-                self._get_averaging_dtype()
-
-            # Test negative averaging error
-            with pytest.raises(ValueError, match="Cannot have negative averaging"):
-                self._get_averaging_dtype(-1)
-
-        finally:
-            # Restore original averaging
-            self.averaging = orig_averaging
+        self.dtype = orig_dtype
+        self.bitdepth = orig_bitdepth
 
         # Test 2: Basic properties and attributes
         print("  Testing basic properties...")
@@ -955,8 +958,15 @@ class Camera(_Picklable, ABC):
 
         # Test 4: Capture methods (requires concrete implementation)
         print("Testing capture methods...")
+        orig_averaging = self.averaging
+        orig_hdr = self.hdr
+
+        self.averaging = None
+        self.hdr = None
 
         try:
+            self.last_image = None
+
             # Test basic image capture
             print("  Testing get_image...")
             image = self.get_image(timeout_s=2)
@@ -976,12 +986,48 @@ class Camera(_Picklable, ABC):
             image_no_transform = self.get_image(transform=False, timeout_s=2)
             assert isinstance(image_no_transform, np.ndarray)
 
+            # Test _get_averaging_dtype method
+            print("  Testing _get_averaging_dtype...")
+
+            # Test with various averaging values
+            self.averaging = 1
+            dtype1 = self._get_averaging_dtype(1)
+            assert dtype1 == self.dtype
+
+            # Test edge cases
+            with pytest.raises(ValueError, match="Cannot have negative averaging"):
+                self._parse_averaging(-1)
+
+            # Test with higher averaging that might promote to float
+            self.averaging = 1000
+            dtype_high = self._get_averaging_dtype(1000)
+            # Should either be original dtype or float
+            assert dtype_high == self.dtype or dtype_high == float
+
+            # Test error case
+            self.averaging = None
+            with pytest.raises(ValueError, match="Averaging is not enabled"):
+                self._get_averaging_dtype()
+
+            # Test negative averaging error
+            with pytest.raises(ValueError, match="Cannot have negative averaging"):
+                self._get_averaging_dtype(-1)
+
+            # Test _parse_averaging method
+            self.averaging = 1
+            print("  Testing _parse_averaging...")
+            assert self._parse_averaging(None, preserve_none=True) is None
+            assert self._parse_averaging(None) == self.averaging
+            assert self._parse_averaging(False) == 1
+            assert self._parse_averaging(5) == 5
+
+            self.averaging = None
+
             # Test averaging
-            if hasattr(self, 'averaging') and self.averaging is not None:
-                print("  Testing averaging...")
-                image_avg = self.get_image(averaging=2, timeout_s=5)
-                assert isinstance(image_avg, np.ndarray)
-                assert image_avg.shape == self.shape
+            print("  Testing averaging...")
+            image_avg = self.get_image(averaging=2, timeout_s=5)
+            assert isinstance(image_avg, np.ndarray)
+            assert image_avg.shape == self.shape
 
             # Test get_images
             print("  Testing get_images...")
@@ -1002,7 +1048,14 @@ class Camera(_Picklable, ABC):
             print("  Testing flush...")
             self.flush(timeout_s=2)  # Should not raise an error
 
-            # Test HDR imaging if supported
+            # Test _parse_hdr method
+            print("  Testing _parse_hdr...")
+            assert self._parse_hdr(None, preserve_none=True) is None
+            assert self._parse_hdr(False) == (1, 0)
+            assert self._parse_hdr(3) == (3, 2)
+            assert self._parse_hdr((4, 3)) == (4, 3)
+
+            # Test HDR imaging
             try:
                 print("  Testing get_image_hdr...")
                 hdr_image = self.get_image_hdr(exposures=2, return_raw=False, timeout_s=3)
@@ -1026,6 +1079,9 @@ class Camera(_Picklable, ABC):
         except Exception as e:
             print(f"    Warning: Capture test failed with: {e}")
             # Don't fail the test for capture issues in abstract base
+        finally:
+            self.hdr = orig_hdr
+            self.averaging = orig_averaging
 
         # Test 5: HDR functionality (static method)
         print("  Testing HDR analysis...")

@@ -21,7 +21,8 @@ REAL_TYPES = (
 
 SCALAR_TYPES =  (
     *REAL_TYPES,
-    complex
+    complex,
+    np.complexfloating
 )
 
 def iseven(x):

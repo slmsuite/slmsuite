@@ -26,15 +26,57 @@ make html
 ```
 
 ### Testing
-Test files are located in the root directory with the pattern `test_*.py`. These are typically used to verify GPU acceleration, display functionality, and performance benchmarks:
-
 ```bash
-# Run individual test files
-python test_gpu_display.py
-python test_gpu_vs_cpu.py
-python test_pinned_memory.py
-python test_cpu_plm.py
+# Run all tests (from slmsuite/ directory)
+pytest
+
+# Run tests for specific module
+pytest tests/holography/
+pytest tests/hardware/
+pytest tests/misc/
+
+# Run specific test file or function
+pytest tests/holography/test_algorithms.py
+pytest tests/holography/test_algorithms.py::TestHologram::test_gs_converges
+
+# Run with options
+pytest -v              # Verbose output
+pytest -x              # Stop at first failure
+pytest --lf            # Run last failed tests
+pytest -m "not gpu"    # Skip GPU tests
+pytest -m "not slow"   # Skip slow tests
 ```
+
+**Test Structure**: Tests mirror the package structure with directories for `hardware/`, `holography/`, and `misc/`. All tests use simulated hardware by default (no physical SLM/camera required) via fixtures defined in `tests/conftest.py`.
+
+**Key Fixtures** (from `conftest.py`):
+- `slm`: Provides SimulatedSLM (configurable via env vars for real hardware)
+- `camera`: Provides SimulatedCamera (configurable via env vars for real hardware)
+- `temp_dir`: Temporary directory for test file I/O
+- `random_phase`, `random_amplitude`: Test data patterns
+- `has_cupy`: Boolean indicating GPU availability
+- `test_logger`: Automatic per-test logger (autouse=True, optional parameter)
+- `mpl_test`: Matplotlib fixture with automatic cleanup
+
+**Test Markers**:
+- `@pytest.mark.gpu`: Tests requiring CuPy/CUDA
+- `@pytest.mark.slow`: Long-running tests (>5 seconds)
+
+**Hardware Testing**: Fixtures support testing with real hardware via environment variables:
+```bash
+# Example: Test with real Thorlabs hardware
+export SLMSUITE_TEST_SLM_CLASS=slmsuite.hardware.slms.thorlabs.ThorlabsSLM
+export SLMSUITE_TEST_SLM_ARGS='{"monitor_id": 1}'
+pytest
+```
+
+**Output Directory**: Each pytest run creates `tests/output/YYYYMMDD_HHMMSS/` with logs and plots. Latest run: `tests/output/latest/`
+
+**Logging**: All tests automatically log start/end to `tests/output/latest/pytest.log`. Only slmsuite package (INFO+) and external packages (WARNING+) are logged. View during tests: `pytest --log-cli --log-cli-level=INFO`
+
+**Plot Capture**: Matplotlib plots auto-saved to current run directory as `{test_name}_fig{N}.png` (disable: `--no-save-plots`)
+
+See `tests/README.md` for comprehensive testing documentation.
 
 ## Architecture Overview
 
@@ -131,7 +173,6 @@ Calibration results (wavefront, Fourier transforms, etc.) are stored in `source`
 ## Working with Examples
 
 Examples are maintained in a separate repository (`slmsuite-examples`) and can be viewed:
-- Live through nbviewer
 - In documentation at https://slmsuite.readthedocs.io/en/latest/examples.html
 
 ## Important Notes

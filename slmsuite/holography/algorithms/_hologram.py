@@ -807,6 +807,22 @@ class Hologram(_HologramStats):
                 return self.phase.get() + np.pi
             else:
                 return self.phase + np.pi
+            
+    def get_amp(self):
+        """
+        Collects the current nearfield amplitude regardless of np/cp configuration.
+
+        Returns
+        -------
+        numpy.ndarray
+            Nearfield amplitude.
+        """
+        if cp.isscalar(self.amp):
+            return self.amp
+        elif cp != np:
+            return self.amp.get()
+        else:
+            return self.amp
 
     def set_weights(self, new_weights):
         r"""

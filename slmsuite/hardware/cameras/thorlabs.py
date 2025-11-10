@@ -22,11 +22,6 @@ interfaces which support UC480 drivers.
 
 Note
 ~~~~
-Older cameras, in particular UC480 cameras, may be supported by other camera interfaces
-such as :class:`~slmsuite.hardware.cameras.pylablib.PyLabLib`.
-
-Note
-~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
 

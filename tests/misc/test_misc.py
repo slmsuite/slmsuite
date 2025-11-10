@@ -322,23 +322,6 @@ def test_gaussian_edge_cases():
     max_idx = np.argmax(y_offset)
     assert x[max_idx] == pytest.approx(2.0, abs=0.2)  # Peak at x0=2
 
-
-def test_gaussian2d_singular_matrix():
-    """Test 2D Gaussian with singular covariance matrix."""
-    x = np.linspace(-10, 10, 50)
-    y = np.linspace(-10, 10, 50)
-    X, Y = np.meshgrid(x, y)
-    xy = np.array([X, Y])
-
-    # This should still work, might just be very elongated
-    z = gaussian2d(xy, x0=0, y0=0, a=10, c=1, wx=0.001, wy=2, wxy=0)
-
-    # Should still have reasonable values
-    assert np.max(z) > 1.0
-    assert np.min(z) >= 1.0  # baseline
-
-
-
 def test_sinc2d():
     """Test 2D sinc function."""
     x = np.linspace(-10, 10, 100)

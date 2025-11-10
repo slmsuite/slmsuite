@@ -59,7 +59,7 @@ def slm_class():
     Return the SLM class to use for testing.
 
     By default returns SimulatedSLM. Can be overridden via environment variable:
-    SLMSUITE_TEST_SLM_CLASS=slmsuite.hardware.slms.thorlabs.ThorlabsSLM
+    SLMSUITE_TEST_SLM_CLASS=slmsuite.hardware.slms.santec.Santec
 
     Returns
     -------
@@ -122,7 +122,7 @@ def camera_class():
     Return the Camera class to use for testing.
 
     By default returns SimulatedCamera. Can be overridden via:
-    SLMSUITE_TEST_CAMERA_CLASS=slmsuite.hardware.cameras.thorlabs.ThorlabsCamera
+    SLMSUITE_TEST_CAMERA_CLASS=slmsuite.hardware.cameras.alliedvision.AlliedVision
 
     Returns
     -------

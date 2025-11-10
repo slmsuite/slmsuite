@@ -5,7 +5,7 @@ import pytest
 import numpy as np
 from slmsuite.misc.math import iseven, INTEGER_TYPES, FLOAT_TYPES, REAL_TYPES, SCALAR_TYPES
 from slmsuite.misc.fitfunctions import (
-    linear, parabola, hyperbola, cos, lorentzian, lorentzian_jacobian,
+    linear, parabola, hyperbola, cos, lorentzian,
     gaussian, gaussian2d, tophat2d, sinc2d
 )
 
@@ -111,18 +111,12 @@ def test_cos():
 def test_lorentzian():
     """Test Lorentzian function."""
     x = np.linspace(990, 1010, 1000)
-    y = lorentzian(x, x0=1000, a=10, c=1, Q=100)
+    y = lorentzian(x, x0=1000, a=10, c=1, w=1)
     # Peak at x0
     max_idx = np.argmax(y)
     assert x[max_idx] == pytest.approx(1000.0, abs=0.1)
     # Check amplitude
     assert y[max_idx] == pytest.approx(11.0, abs=0.1)
-
-def test_lorentzian_jacobian():
-    """Test Lorentzian jacobian shape."""
-    x = np.linspace(990, 1010, 100)
-    jac = lorentzian_jacobian(x, x0=1000, a=10, c=1, Q=100)
-    assert jac.shape == (100, 4)  # 4 parameters
 
 def test_gaussian():
     """Test 1D Gaussian function."""
@@ -294,10 +288,10 @@ def test_lorentzian_edge_cases():
     x = np.linspace(990, 1010, 100)
 
     # Test high Q (narrow resonance)
-    y_high_q = lorentzian(x, x0=1000, a=10, c=1, Q=1000)
+    y_high_q = lorentzian(x, x0=1000, a=10, c=1, w=1)
 
     # Test low Q (broad resonance)
-    y_low_q = lorentzian(x, x0=1000, a=10, c=1, Q=10)
+    y_low_q = lorentzian(x, x0=1000, a=10, c=1, w=10)
 
     # High Q should be narrower (values away from center should be lower)
     assert y_high_q[10] < y_low_q[10]  # Away from center
@@ -306,7 +300,7 @@ def test_lorentzian_edge_cases():
     assert y_low_q[50] == pytest.approx(11.0, abs=0.5)
 
     # Test at resonance center
-    y_center = lorentzian(np.array([1000]), x0=1000, a=10, c=1, Q=100)
+    y_center = lorentzian(np.array([1000]), x0=1000, a=10, c=1, w=10)
     assert y_center[0] == pytest.approx(11.0, abs=0.001)  # c + a
 
 
@@ -344,15 +338,6 @@ def test_gaussian2d_singular_matrix():
     assert np.min(z) >= 1.0  # baseline
 
 
-def test_lorentzian_zero_Q():
-    """Test Lorentzian with Q approaching zero."""
-    x = np.linspace(990, 1010, 100)
-
-    # Very small Q should make it very broad
-    y = lorentzian(x, x0=1000, a=10, c=1, Q=0.001)
-
-    # Should be almost flat (very broad resonance)
-    assert np.std(y) < 1.0  # Low variation
 
 def test_sinc2d():
     """Test 2D sinc function."""
@@ -367,27 +352,3 @@ def test_sinc2d():
     max_idx = np.unravel_index(np.argmax(z), z.shape)
     assert max_idx[0] == pytest.approx(50, abs=2)
     assert max_idx[1] == pytest.approx(50, abs=2)
-
-
-# Test edge cases and numerical stability
-
-def test_gaussian2d_singular_matrix():
-    """Test gaussian2d with singular covariance matrix."""
-    x = np.linspace(-5, 5, 50)
-    y = np.linspace(-5, 5, 50)
-    X, Y = np.meshgrid(x, y)
-    xy = np.array([X, Y])
-
-    # This should not crash even with extreme wxy
-    z = gaussian2d(xy, x0=0, y0=0, a=10, c=1, wx=2, wy=2, wxy=4.0)
-
-    # Should still return valid array
-    assert z.shape == (50, 50)
-    assert np.all(np.isfinite(z))
-
-def test_lorentzian_zero_Q():
-    """Test Lorentzian behavior with very small Q."""
-    x = np.linspace(0, 100, 100)
-    # Should not crash with Q close to zero
-    y = lorentzian(x, x0=50, a=10, c=1, Q=0.01)
-    assert np.all(np.isfinite(y))

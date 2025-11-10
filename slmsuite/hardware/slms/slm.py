@@ -197,7 +197,7 @@ class SLM(_Picklable, ABC):
         else:
             self.dtype = np.dtype(np.uint16)
 
-        # Display caches for user reference.
+        # Phase and display caches for user reference.
         self.phase = np.zeros(self.shape)
         self.display = np.zeros(self.shape, dtype=self.dtype)
 

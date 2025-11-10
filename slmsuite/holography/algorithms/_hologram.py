@@ -940,7 +940,7 @@ class Hologram(_HologramStats):
         if hasattr(self, "img_knm"):
             self.img_knm = None
 
-    def remove_vortices(self, plot=False):
+    def _remove_vortices(self, plot=False):
         """
         Removes the computed phase vortices in the farfield where the target amplitude is positive.
         Useful for smoothing out the pattern and reducing speckle.

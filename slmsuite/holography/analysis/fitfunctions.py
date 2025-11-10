@@ -108,76 +108,31 @@ def cos(x, b, a, c, k=1):
     return a * 0.5 * (1 + np.cos(k * x - b)) + c
 
 
-def lorentzian(x, x0, a, c, Q):
+def lorentzian(x, x0, a, c, w):
     r"""
     For fitting a resonance.
-    There are many ways to describe a Lorentzian. Commonly, a full-width-half-maximum
-    definition is used. Here, with roots in photonic crystal cavities, we use a
-    form defined using the quality factor :math:`Q` of the resonance.
 
-    .. math:: y(x) = c + \frac{a}{1 + \left[\frac{x - x_0}{x_0/2Q}\right]^2}.
+    .. math:: y(x) = c + \frac{a}{1 + \left[\frac{x - x_0}{w}\right]^2}.
 
     Parameters
     ----------
     x : numpy.ndarray
         Points to fit upon.
     x0 : float
-        Center wavelength.
+        Center of the peak.
     a : float
         Amplitude.
     c : float
         Constant offset.
-    Q : float
-        Quality factor.
+    w : float
+        Full width at half maximum (FWHM).
 
     Returns
     -------
     y : numpy.ndarray
         Lorentzian fit evaluated at all ``x``.
     """
-    return a / (1 + ((x - x0) / (x0 / Q / 2)) ** 2) + c
-
-
-def lorentzian_jacobian(x, x0, a, c, Q):
-    """
-    Jacobian of :meth:`lorentzian`.
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        Wavelength.
-    x0 : float
-        Center wavelength.
-    a : float
-        Amplitude.
-    c : float
-        constant offset.
-    Q : float
-        Quality factor.
-
-    Returns
-    -------
-    gradf : numpy.ndarray
-        Jacobian of Lorentzian fit evaluated at all ``x``.
-    """
-    return np.array(
-        [
-            a
-            * 8
-            * Q ** 2
-            * (x - x0)
-            / x0 ** 2
-            * (1 + (x - x0) / x0)
-            / (1 + 4 * (Q * (x - x0) / x0) ** 2) ** 2,
-            1 / (1 + 4 * (Q * (x - x0) / x0) ** 2),
-            -8
-            * Q
-            * a
-            * ((x - x0) / x0) ** 2
-            / (1 + 4 * (Q * (x - x0) / x0) ** 2) ** 2,
-            1 - 1 / (1 + 4 * (Q * (x - x0) / x0) ** 2),
-        ]
-    ).T
+    return a / (1 + ((x - x0) / w) ** 2) + c
 
 
 def gaussian(x, x0, a, c, w):

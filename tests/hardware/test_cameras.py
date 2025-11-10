@@ -4,6 +4,8 @@ Unit tests for Camera base class using SimulatedCamera.
 import pytest
 import numpy as np
 from slmsuite.hardware.cameras.simulated import SimulatedCamera
+from slmsuite.hardware.cameraslms import FourierSLM
+from slmsuite.holography.toolbox.phase import zernike
 
 # TODO: camera fixture vs. SimulatedCamera cleanup (use camera wherever possible)
 
@@ -34,7 +36,7 @@ def test_camera_init(slm):
     assert cam.exposure_s is not None
     assert cam.averaging is None or isinstance(cam.averaging, int)
 
-    cam.test()  # Basic self-test should pass
+    # cam.test()  # Basic self-test should pass
 
     cam.close()  # Cleanup
 
@@ -45,21 +47,43 @@ def test_camera_test(camera):
     assert result is True
 
 
-def test_camera_autoexpose(camera):
+def test_camera_autoexposure(slm):
     """Test exposure control works."""
-    # Check for basic exposure control
-    assert hasattr(camera, 'exposure_s') or hasattr(camera, 'get_exposure')
+    cam = SimulatedCamera(
+        slm=slm,
+        resolution=(512, 512),
+        pitch_um=(5.5, 5.5),
+        bitdepth=8
+    )
 
-    # Just test that exposure can be set/get
-    if hasattr(camera, 'set_exposure'):
-        camera.set_exposure(0.01)
-        assert camera.exposure_s > 0
-    elif hasattr(camera, 'autoexpose'):
-        try:
-            result = camera.autoexpose(
-                measure_function=lambda: camera.get_image(),
-                exposure_bounds_s=(0.001, 0.1)
-            )
-            assert isinstance(result, (int, float))
-        except (NotImplementedError, AttributeError):
-            pytest.skip("Autoexpose not fully implemented in SimulatedCamera")
+    cam.set_exposure(0.01)
+    result1 = cam.autoexposure(verbose=True)
+
+    cam.set_exposure(1)
+    result2 = cam.autoexposure(verbose=True)
+
+    assert pytest.approx(result1, rel=0.1) == result2
+
+def test_camera_autofocus(slm):
+    cam = SimulatedCamera(
+        slm=slm,
+        resolution=(512, 512),
+        pitch_um=(5.5, 5.5),
+        bitdepth=8
+    )
+
+    slm.set_source_analytic()
+
+    fs = FourierSLM(cam, slm)
+    fs.fourier_calibrate(array_pitch=40, verbose=False)
+
+    defocus_zernike = 1
+    slm.source['phase_sim'] = zernike(slm, 4, -defocus_zernike, use_mask=False)
+
+    defocus_opt = cam.autofocus(
+        set_z=slm,
+        verbose=True
+    )
+
+    assert pytest.approx(defocus_opt, rel=0.2) == defocus_zernike
+

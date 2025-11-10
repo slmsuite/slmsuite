@@ -1239,7 +1239,8 @@ def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
     phase_image : array_like
         Image to remove vortices upon.
     mask : array_like OR None
-        Boolean mask to remove within. This is advisable for large images.
+        Removes vortices whose coordinates are inside this mask.
+        The full phase image is changed, even outside the mask.
     return_vortices_negative : bool
         If ``False``, the original image is modified in-place with vortices removed
         inside the mask and returned.
@@ -1265,13 +1266,8 @@ def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
     else:
         canvas = phase
 
-
-    if mask is None:
-        for x, y, w in zip(coordinates[1], coordinates[0], weights):
-            canvas -= w * xp.arctan2(grid[0] - x, grid[1] - y)
-    else:
-        for x, y, w in zip(coordinates[1], coordinates[0], weights):
-            canvas[mask] -= w * xp.arctan2(grid[0][mask] - x, grid[1][mask] - y)
+    for x, y, w in zip(coordinates[1], coordinates[0], weights):
+        canvas -= w * xp.arctan2(grid[0] - x, grid[1] - y)
 
     return canvas
 

@@ -2,6 +2,7 @@
 Hardware control for FLIR cameras via the :mod:`PySpin` interface to the Spinnaker SDK.
 Install Spinnaker by following the
 `provided instructions <https://www.flir.com/products/spinnaker-sdk/>`_.
+Tested with FLIR Blackfly S (BFS-PGE-16S2M).
 """
 
 from __future__ import annotations
@@ -24,10 +25,10 @@ from .camera import Camera
 
 class FLIR(Camera):
     """
-    FLIR Blackfly S camera subclass for interfacing with the PySpin / Spinnaker SDK.
+    FLIR camera subclass for interfacing with :mod:`PySpin` and the Spinnaker SDK.
 
     Each instance runs its own background acquisition thread. The thread owns
-    BeginAcquisition()/GetNextImage()/EndAcquisition(). The Camera.get_image()
+    ``BeginAcquisition()``/``GetNextImage()``/``EndAcquisition()``. The ``.get_image()``
     API pulls frames from an internal queue, so you can safely use multiple
     FLIR objects at once from a single Python thread.
     """
@@ -35,9 +36,7 @@ class FLIR(Camera):
     # Class variable pointing to a singleton Spinnaker System object.
     sdk: Optional["PySpin.System"] = None
 
-    # ------------------------------------------------------------------
     # Construction / initialization
-    # ------------------------------------------------------------------
 
     def __init__(
         self,
@@ -127,14 +126,7 @@ class FLIR(Camera):
 
             # ----- Configure basic image format -----
             bitdepth = self._configure_pixel_format(verbose=verbose)
-            self._bitdepth = bitdepth
-            if bitdepth <= 8:
-                self._dtype = np.uint8
-            elif bitdepth <= 16:
-                self._dtype = np.uint16
-            else:
-                # Fallback; most mono formats will still fit into uint16
-                self._dtype = np.uint16
+            # Datatype is later set in Camera.__init__.
 
             # Resolution (Width, Height) – note Camera.__init__ expects (width, height).
             width_node = PySpin.CIntegerPtr(self._nodemap.GetNode("Width"))
@@ -223,9 +215,7 @@ class FLIR(Camera):
                 pass
             raise
 
-    # ------------------------------------------------------------------
     # SDK / device discovery helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def info(verbose: bool = True) -> List[str]:
@@ -275,9 +265,7 @@ class FLIR(Camera):
 
         return serials
 
-    # ------------------------------------------------------------------
     # Camera lifecycle
-    # ------------------------------------------------------------------
 
     def close(self) -> None:
         """See :meth:`.Camera.close`."""
@@ -309,9 +297,7 @@ class FLIR(Camera):
             # Do not release FLIR.sdk here; other FLIR instances may be using it.
             self.cam = None  # type: ignore
 
-    # ------------------------------------------------------------------
     # Exposure control
-    # ------------------------------------------------------------------
 
     def _get_exposure_hw(self) -> float:
         """See :meth:`.Camera._get_exposure_hw`."""
@@ -359,9 +345,7 @@ class FLIR(Camera):
 
         self._exposure_node.SetValue(exposure_us)
 
-    # ------------------------------------------------------------------
     # Window of interest (hardware ROI)
-    # ------------------------------------------------------------------
 
     def set_woi(self, woi=None):
         """See :meth:`.Camera.set_woi`.
@@ -378,7 +362,7 @@ class FLIR(Camera):
         """
         if PySpin is None:
             raise RuntimeError("PySpin is not available.")
-        
+
         if self.cam is None:
             raise RuntimeError("Camera has been closed. Cannot set WOI.")
 
@@ -495,9 +479,7 @@ class FLIR(Camera):
 
         return list(woi)
 
-    # ------------------------------------------------------------------
     # Background acquisition worker
-    # ------------------------------------------------------------------
 
     def _acquisition_worker(self) -> None:
         """Background thread: owns BeginAcquisition / GetNextImage loop."""
@@ -566,9 +548,7 @@ class FLIR(Camera):
                 pass
             self._acquiring = False
 
-    # ------------------------------------------------------------------
     # Core image acquisition (used by Camera.get_image / get_images)
-    # ------------------------------------------------------------------
 
     def _get_image_hw(self, timeout_s: float = 0.1):
         """See :meth:`.Camera._get_image_hw`.
@@ -577,7 +557,7 @@ class FLIR(Camera):
         """
         if PySpin is None:
             raise RuntimeError("PySpin is not available.")
-        
+
         # Check if camera has been closed
         if self.cam is None:
             raise RuntimeError("Camera has been closed. Cannot get image.")
@@ -606,38 +586,7 @@ class FLIR(Camera):
 
         return item
 
-    def _get_images_hw(self, image_count, timeout_s=0.1, out=None):
-        """See :meth:`.Camera._get_images_hw`."""
-        if PySpin is None:
-            raise RuntimeError("PySpin is not available.")
-        if self.cam is None:
-            raise RuntimeError("Camera has been closed. Cannot get images.")
-
-        h, w = self.shape
-
-        if out is None:
-            out = np.empty((image_count, h, w), dtype=self._dtype)
-        else:
-            if out.shape != (image_count, h, w):
-                raise ValueError(
-                    f"'out' has shape {out.shape}, expected {(image_count, h, w)}"
-                )
-
-        for i in range(image_count):
-            frame = self._get_image_hw(timeout_s=timeout_s)
-
-            if frame.shape != (h, w):
-                # This shouldn't normally happen unless ROI has changed under us.
-                fh, fw = frame.shape
-                out[i, :fh, :fw] = frame
-            else:
-                out[i, :, :] = frame
-
-        return out
-
-    # ------------------------------------------------------------------
     # Internal helpers (unchanged)
-    # ------------------------------------------------------------------
 
     def _configure_stream(self, verbose: bool = True) -> None:
         """Configure streaming buffers for performance (NewestOnly, manual buffer count)."""
@@ -721,7 +670,7 @@ class FLIR(Camera):
                 trig_mode.SetIntValue(entry_off.GetValue())
                 if verbose:
                     print("TriggerMode set to Off (freerun)")
-    
+
     def _configure_bandwidth(self, num_cams: int, verbose: bool = True) -> None:
         """
         Limit per-camera bandwidth when multiple cameras share a link.
@@ -906,8 +855,6 @@ class FLIR(Camera):
         except Exception:
             if verbose:
                 warnings.warn("Failed to set AcquisitionFrameRate.")
-
-
 
     def _configure_pixel_format(self, verbose: bool = True) -> int:
         """

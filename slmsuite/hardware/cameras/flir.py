@@ -1,7 +1,5 @@
 """
 Hardware control for FLIR cameras via the :mod:`PySpin` interface to the Spinnaker SDK.
-Install Spinnaker by following the
-`provided instructions <https://www.flir.com/products/spinnaker-sdk/>`_.
 """
 
 from __future__ import annotations
@@ -188,6 +186,7 @@ class FLIR(Camera):
             self.woi = (0, width, 0, height)
             self.default_shape = (height, width)
             self.shape = (height, width)
+            self.resolution = (width, height)  # Store (width, height) for compatibility
 
             # Make sure we're not in some weird leftover streaming state
             try:
@@ -316,6 +315,8 @@ class FLIR(Camera):
         """See :meth:`.Camera._get_exposure_hw`."""
         if PySpin is None:
             raise RuntimeError("PySpin is not available.")
+        if self.cam is None:
+            raise RuntimeError("Camera has been closed. Cannot get exposure.")
         if not PySpin.IsAvailable(self._exposure_node) or not PySpin.IsReadable(
             self._exposure_node
         ):
@@ -327,6 +328,8 @@ class FLIR(Camera):
         """See :meth:`.Camera._set_exposure_hw`."""
         if PySpin is None:
             raise RuntimeError("PySpin is not available.")
+        if self.cam is None:
+            raise RuntimeError("Camera has been closed. Cannot set exposure.")
         if not PySpin.IsAvailable(self._exposure_node) or not PySpin.IsWritable(
             self._exposure_node
         ):
@@ -373,6 +376,9 @@ class FLIR(Camera):
         """
         if PySpin is None:
             raise RuntimeError("PySpin is not available.")
+        
+        if self.cam is None:
+            raise RuntimeError("Camera has been closed. Cannot set WOI.")
 
         # Camera.__init__ calls set_woi() before we start the acquisition thread,
         # so this guard only affects user calls *after* initialization.
@@ -569,6 +575,10 @@ class FLIR(Camera):
         """
         if PySpin is None:
             raise RuntimeError("PySpin is not available.")
+        
+        # Check if camera has been closed
+        if self.cam is None:
+            raise RuntimeError("Camera has been closed. Cannot get image.")
 
         # If the acquisition thread hit a fatal error, surface it.
         if self._acq_thread_error is not None:
@@ -598,6 +608,8 @@ class FLIR(Camera):
         """See :meth:`.Camera._get_images_hw`."""
         if PySpin is None:
             raise RuntimeError("PySpin is not available.")
+        if self.cam is None:
+            raise RuntimeError("Camera has been closed. Cannot get images.")
 
         h, w = self.shape
 

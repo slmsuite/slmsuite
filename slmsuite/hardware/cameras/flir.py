@@ -1,5 +1,7 @@
 """
 Hardware control for FLIR cameras via the :mod:`PySpin` interface to the Spinnaker SDK.
+Install Spinnaker by following the
+`provided instructions <https://www.flir.com/products/spinnaker-sdk/>`_.
 """
 
 from __future__ import annotations

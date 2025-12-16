@@ -516,14 +516,14 @@ class Meadowlark(SLM):
             )
 
     # Main write function
-    def _set_phase_hw(self, display: np.ndarray, slm_number: Optional[int] = None) -> None:
+    def _set_phase_hw(self, phase: np.ndarray, slm_number: Optional[int] = None) -> None:
         """
         See :meth:`.SLM._set_phase_hw`.
         """
         slm_number = ctypes.c_uint(slm_number if slm_number else self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
             Meadowlark._slm_lib[self.sdk_mode].Write_image(
-                display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                phase.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
                 ctypes.c_uint(self.bitdepth == 8),  # Is 8-bit
             )
         elif (
@@ -546,13 +546,13 @@ class Meadowlark(SLM):
             if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
                 Meadowlark._slm_lib[self.sdk_mode].Write_image(
                     slm_number,
-                    display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                    phase.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
                     trigger_timeout,
                 )
             elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 6:
                 Meadowlark._slm_lib[self.sdk_mode].Write_image(
                     slm_number,
-                    display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                    phase.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
                     wait_for_trigger,
                     flip_immediate,
                     output_pulse_image_flip,
@@ -561,7 +561,7 @@ class Meadowlark(SLM):
             elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 8:
                 Meadowlark._slm_lib[self.sdk_mode].Write_image(
                     slm_number,
-                    display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                    phase.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
                     ctypes.c_uint(self.shape[0] * self.shape[1]),
                     wait_for_trigger,
                     flip_immediate,

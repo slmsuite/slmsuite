@@ -163,6 +163,11 @@ class Meadowlark(SLM):
                     f"SLM number {self.slm_number} is outside the valid range {clip}"
                 )
 
+        # Triggering defaults
+        self._wait_for_trigger = False
+        self._output_pulse_image_flip = False
+        self._output_pulse_image_refresh = False
+
         # Adjust pre- and post-ramp slopes for accurate voltage setting
         # (otherwise, custom LUT calibration is not properly implemented [this feature
         # is not implemented in slmsuite]). You may need a special version of the SDK
@@ -515,22 +520,26 @@ class Meadowlark(SLM):
                 "Coverglass voltage reading not supported for this model."
             )
 
-    # External trigger
-    def set_input_trigger(self, on : bool = False, slm_number: Optional[int] = None):
+    # Triggering methods
+    def set_input_trigger(
+        self,
+        on : bool = False,
+    ):
         """
         Configure the SLM to wait for an external input trigger before writing an image.
+        No support for HDMI SLMs, partially supported for PCIe SLMs depending on
+        the SDK version.
 
         Parameters
         ----------
         on : bool, optional
-            If True, enable waiting for an external input trigger before image writes.
-            If False, disable trigger waiting.
-        slm_number : int or None, optional
+            If ``True``, enable waiting for an external input trigger before the image writes.
+        slm_number : int OR None, optional
             Target SLM device index.
         """
-        slm_number = ctypes.c_uint(slm_number if slm_number else self.slm_number)
+        slm_number = ctypes.c_uint(self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
-            raise NotImplementedError
+            raise NotImplementedError("HDMI SLMs do not support input triggering.")
         elif (
             self.sdk_mode == _SDK_MODE.PCIE_LEGACY
             or self.sdk_mode == _SDK_MODE.PCIE_MODERN
@@ -538,25 +547,85 @@ class Meadowlark(SLM):
             if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
                 Meadowlark._slm_lib[self.sdk_mode].SetWaitForTrigger(slm_number, ctypes.c_bool(on))
                 Meadowlark._slm_lib[self.sdk_mode].SetFlipImmediate(slm_number, ctypes.c_bool(False))
-                # WARN: Do not change this, as doing so will loses the guarantee that
-                #  all the pixels are synchronized to the same image (that is, the earliest
-                #  pixels can be updated to the next image before the last pixels are
-                #  updated to the current image).
-                Meadowlark._slm_lib[self.sdk_mode].SetOutputPulse(slm_number, ctypes.c_bool(on))
             else:
-                raise NotImplementedError
+                pass    # Handled with _wait_for_trigger in _set_phase_hw
+            self._wait_for_trigger = on
+        else:
+            # We should never end up here, but if for some reason we did... We would
+            # really want to know!!!
+            raise RuntimeError("Failed to change input trigger on SLM due to unknown SDK mode")
+
+    def set_output_trigger(
+        self,
+        on : bool = False,
+        on_refresh : Optional[bool] = None,
+    ):
+        """
+        Configure the SLM to send an external output triggers synchronized with image
+        writes. No support for HDMI SLMs, partially supported for PCIe SLMs depending on
+        the SDK version.
+
+        Parameters
+        ----------
+        on : bool, optional
+            If ``True``, an output trigger pulse is sent every time the image data changes.
+        on_refresh : bool, optional
+            If ``True``, an output trigger pulse is sent at the refresh rate of the SLM.
+            Not supported for all SDK versions.
+        slm_number : int OR None, optional
+            Target SLM device index.
+        """
+        slm_number = ctypes.c_uint(self.slm_number)
+        if self.sdk_mode == _SDK_MODE.HDMI:
+            raise NotImplementedError("HDMI SLMs do not support output triggering.")
+        elif (
+            self.sdk_mode == _SDK_MODE.PCIE_LEGACY
+            or self.sdk_mode == _SDK_MODE.PCIE_MODERN
+        ):
+            if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
+                Meadowlark._slm_lib[self.sdk_mode].SetOutputPulse(slm_number, ctypes.c_bool(on))
+            elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 6:
+                if on_refresh is not None:
+                    warnings.warn(
+                        "on_refresh argument is ignored for this SDK version.",
+                        stacklevel=2,
+                    )
+                # Handled with _output_pulse_image_flip in _set_phase_hw
+            elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 8:
+                if on_refresh is not None:
+                    self._output_pulse_image_refresh = on_refresh
+                # Handled with _output_pulse_image_flip in _set_phase_hw
+
+            self._output_pulse_image_flip = on
 
         else:
             # We should never end up here, but if for some reason we did... We would
             # really want to know!!!
-            raise RuntimeError("Failed to enable external trigger on SLM due to unknown SDK mode")
-          
+            raise RuntimeError("Failed to change output trigger on SLM due to unknown SDK mode")
+
     # Main write function
-    def _set_phase_hw(self, display: np.ndarray, slm_number: Optional[int] = None) -> None:
+    def _set_phase_hw(
+            self,
+            display: np.ndarray,
+            execute : bool = True,
+            block : bool = True,
+            timeout_s : float = 5.0, # TODO: check units
+        ) -> None:
         """
         See :meth:`.SLM._set_phase_hw`.
+
+        Parameters
+        ----------
+        display : np.ndarray
+            Integer data to display on the SLM.
+        slm_number : int OR None, optional
+            Target SLM device index.
+        execute : bool
+            Whether to actually send the image to the SLM.
+        block : bool
+            Whether to block the thread until the image is fully written.
         """
-        slm_number = ctypes.c_uint(slm_number if slm_number else self.slm_number)
+        slm_number = ctypes.c_uint(self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
             Meadowlark._slm_lib[self.sdk_mode].Write_image(
                 display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
@@ -568,49 +637,50 @@ class Meadowlark(SLM):
         ):
             # FUTURE: implement triggered mode.
             # Santec also has a triggered mode that is not currently implemented.
-            wait_for_trigger = ctypes.c_bool(False)
+            wait_for_trigger = ctypes.c_bool(self._wait_for_trigger)
             # WARN: Do not change this, as doing so will loses the guarantee that
             #  all the pixels are synchronized to the same image (that is, the earliest
             #  pixels can be updated to the next image before the last pixels are
             #  updated to the current image).
             flip_immediate = ctypes.c_bool(False)
-            output_pulse_image_flip = ctypes.c_bool(False)
-            output_pulse_image_refresh = ctypes.c_bool(False)
-            trigger_timeout = ctypes.c_uint(5000)
+            output_pulse_image_flip = ctypes.c_bool(self._output_pulse_image_flip)
+            output_pulse_image_refresh = ctypes.c_bool(self._output_pulse_image_refresh)
+            trigger_timeout = ctypes.c_uint(5000)   # TODO: replace with timeout_s
 
-            # Switch between the different supported cases for number of Write_image arguments:
-            if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
-                retVal = Meadowlark._slm_lib[self.sdk_mode].Write_image(
-                            slm_number,
-                            display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
-                            trigger_timeout,
-                         )
-            elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 6:
-                retVal = Meadowlark._slm_lib[self.sdk_mode].Write_image(
-                            slm_number,
-                            display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
-                            wait_for_trigger,
-                            flip_immediate,
-                            output_pulse_image_flip,
-                            trigger_timeout,
-                         )
-            elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 8:
-                retVal = Meadowlark._slm_lib[self.sdk_mode].Write_image(
-                            slm_number,
-                            display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
-                            ctypes.c_uint(self.shape[0] * self.shape[1]),
-                            wait_for_trigger,
-                            flip_immediate,
-                            output_pulse_image_flip,
-                            output_pulse_image_refresh,
-                            trigger_timeout,
-                         )
-            if retVal != 1:
-                raise RuntimeError("DMA Failed")
-            else:
-                # Ensure that partial images are not displayed
-                retVal = Meadowlark._slm_lib[self.sdk_mode].ImageWriteComplete(slm_number, trigger_timeout)
-                if retVal != 1:
+            if execute:
+                # Switch between the different supported cases for number of Write_image arguments:
+                if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
+                    status = Meadowlark._slm_lib[self.sdk_mode].Write_image(
+                        slm_number,
+                        display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                        trigger_timeout,
+                    )
+                elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 6:
+                    status = Meadowlark._slm_lib[self.sdk_mode].Write_image(
+                        slm_number,
+                        display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                        wait_for_trigger,
+                        flip_immediate,
+                        output_pulse_image_flip,
+                        trigger_timeout,
+                    )
+                elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 8:
+                    status = Meadowlark._slm_lib[self.sdk_mode].Write_image(
+                        slm_number,
+                        display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                        ctypes.c_uint(self.shape[0] * self.shape[1]),
+                        wait_for_trigger,
+                        flip_immediate,
+                        output_pulse_image_flip,
+                        output_pulse_image_refresh,
+                        trigger_timeout,
+                    )
+                if status != 1:
+                    raise RuntimeError("DMA Failed")
+
+            if block:
+                status = Meadowlark._slm_lib[self.sdk_mode].ImageWriteComplete(slm_number, trigger_timeout)
+                if status != 1:
                     raise RuntimeError("ImageWriteComplete failed, trigger never received?")
         else:
             # We should never end up here, but if for some reason we did... We would

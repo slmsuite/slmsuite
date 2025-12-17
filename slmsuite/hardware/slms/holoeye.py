@@ -158,15 +158,24 @@ class Holoeye(SLM):
         error = self.slm_lib.window().close()
         self._handle_error(error)
 
-    def _set_phase_hw(self, phase):
+    def _set_phase_hw(self, display):
         """
-        Low-level hardware interface to set_phase ``phase`` data onto the SLM.
+        Low-level hardware interface to project integer data onto the SLM.
         When the user calls the :meth:`.SLM.set_phase` method of
-        :class:`.SLM`, ``phase`` is error checked before calling
-        :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
+        :class:`.SLM`, the ``phase`` argument is error-checked and processed into
+        the integer array ``display`` that is passed to :meth:`_set_phase_hw()`.
+        When integer data is passed to :meth:`set_phase` instead of floating point, it
+        is passed directly to :meth:`_set_phase_hw()` as ``display``.
+        We call this parameter ``display`` to distinguish it from the (potentially)
+        floating point ``phase`` parameter of :meth:`set_phase`.
+        See :meth:`.SLM._set_phase_hw`.
+
+        Parameters
+        ----------
+        display
+            Integer data to display on the SLM.
         """
-        #2*pi is the standard phase assumed by Holoeye. The package slmsuite passes 8-bit greyscale to set_phase_hw
-        error = self.slm_lib.showPhaseData(phase, phase_unit=256)
+        error = self.slm_lib.showPhaseData(display, phase_unit=256)
         self._handle_error(error)
 
     def load_vendor_phase_correction(self, file_path):

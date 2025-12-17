@@ -152,17 +152,31 @@ class Hamamatsu(SLM):
             **kwargs
         )
 
-    def _set_phase_hw(self, phase, slot_number=0):
+    def _set_phase_hw(self, display, slot_number=0):
         r"""
-        Method called inside the method :meth:'write()' of the SLM class.
-        The array must contains np.uint8 values.
-        ``slot_number`` can be passed as a ``**kwargs``
-        argument to :meth:`set_phase()` method;
-        this variable may be renamed in a future slmsuite release to
-        conform with eventual implementation of this feature in other SLMs.
+        Low-level hardware interface to project integer data onto the SLM.
+        When the user calls the :meth:`.SLM.set_phase` method of
+        :class:`.SLM`, the ``phase`` argument is error-checked and processed into
+        the integer array ``display`` that is passed to :meth:`_set_phase_hw()`.
+        When integer data is passed to :meth:`set_phase` instead of floating point, it
+        is passed directly to :meth:`_set_phase_hw()` as ``display``.
+        We call this parameter ``display`` to distinguish it from the (potentially)
+        floating point ``phase`` parameter of :meth:`set_phase`.
+        See :meth:`.SLM._set_phase_hw`.
+
+        Parameters
+        ----------
+        display
+            Integer data to display on the SLM.
+        slot_number : int
+            The number of the frame memory slot where to write the pattern.
+            The default value is 0.
+            This can be passed as a ``**kwargs``argument to :meth:`set_phase()`;
+            this variable may be renamed in a future slmsuite release to
+            conform with eventual implementation of this feature in other SLMs.
         """
         array_size = int(self.shape[1] * self.shape[1])
-        array = phase.astype(c_uint8)  # TODO: check if this is necessary
+        array = display.astype(c_uint8)  # TODO: check if this is necessary
 
         write_fmemarray = Lcoslib.Write_FMemArray
         write_fmemarray.argtyes = [c_uint8, c_uint8*array_size, c_int32, c_uint32, c_uint32, c_uint32]

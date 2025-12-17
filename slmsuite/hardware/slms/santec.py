@@ -411,9 +411,24 @@ class Santec(SLM):
         slm_funcs.SLM_Disp_Close(self.display_number)
         slm_funcs.SLM_Ctrl_Close(self.slm_number)
 
-    def _set_phase_hw(self, phase):
-        """See :meth:`.SLM._set_phase_hw`."""
-        matrix = phase.astype(slm_funcs.USHORT)
+    def _set_phase_hw(self, display):
+        """
+        Low-level hardware interface to project integer data onto the SLM.
+        When the user calls the :meth:`.SLM.set_phase` method of
+        :class:`.SLM`, the ``phase`` argument is error-checked and processed into
+        the integer array ``display`` that is passed to :meth:`_set_phase_hw()`.
+        When integer data is passed to :meth:`set_phase` instead of floating point, it
+        is passed directly to :meth:`_set_phase_hw()` as ``display``.
+        We call this parameter ``display`` to distinguish it from the (potentially)
+        floating point ``phase`` parameter of :meth:`set_phase`.
+        See :meth:`.SLM._set_phase_hw`.
+
+        Parameters
+        ----------
+        display
+            Integer data to display on the SLM.
+        """
+        matrix = display.astype(slm_funcs.USHORT)
         n_h, n_w = self.shape
 
         # Write to SLM

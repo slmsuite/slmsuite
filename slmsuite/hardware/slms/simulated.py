@@ -61,7 +61,7 @@ class SimulatedSLM(SLM):
     def close():
         pass
 
-    def _set_phase_hw(self, phase):
+    def _set_phase_hw(self, display):
         """Updates SLM.display to implement various physical artifacts of SLMs."""
 
         # FUTURE: apply physical effects directly to SLM.display

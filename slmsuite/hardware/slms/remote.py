@@ -68,11 +68,21 @@ class RemoteSLM(_Client, SLM):
     def close(self):
         pass
 
-    def _set_phase_hw(self, phase):
+    def _set_phase_hw(self, display):
         """
-        Low-level hardware interface to set_phase ``phase`` data onto the SLM.
-        When the user calls the :meth:`.SLM.write` method of
-        :class:`.SLM`, ``phase`` is error checked before calling
-        :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
+        Low-level hardware interface to project integer data onto the SLM.
+        When the user calls the :meth:`.SLM.set_phase` method of
+        :class:`.SLM`, the ``phase`` argument is error-checked and processed into
+        the integer array ``display`` that is passed to :meth:`_set_phase_hw()`.
+        When integer data is passed to :meth:`set_phase` instead of floating point, it
+        is passed directly to :meth:`_set_phase_hw()` as ``display``.
+        We call this parameter ``display`` to distinguish it from the (potentially)
+        floating point ``phase`` parameter of :meth:`set_phase`.
+        See :meth:`.SLM._set_phase_hw`.
+
+        Parameters
+        ----------
+        display
+            Integer data to display on the SLM.
         """
-        self._com(command="_set_phase_hw", kwargs=dict(phase=phase))
+        self._com(command="_set_phase_hw", kwargs=dict(display=display))

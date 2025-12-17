@@ -205,14 +205,29 @@ class ScreenMirrored(SLM):
                 "design wavelength {} um".format(self.wav_um, self.wav_design_um)
             )
 
-    def _set_phase_hw(self, data):
-        """Writes to screen. See :class:`.SLM`."""
+    def _set_phase_hw(self, display):
+        """
+        Low-level hardware interface to project integer data onto the SLM.
+        When the user calls the :meth:`.SLM.set_phase` method of
+        :class:`.SLM`, the ``phase`` argument is error-checked and processed into
+        the integer array ``display`` that is passed to :meth:`_set_phase_hw()`.
+        When integer data is passed to :meth:`set_phase` instead of floating point, it
+        is passed directly to :meth:`_set_phase_hw()` as ``display``.
+        We call this parameter ``display`` to distinguish it from the (potentially)
+        floating point ``phase`` parameter of :meth:`set_phase`.
+        See :meth:`.SLM._set_phase_hw`.
+
+        Parameters
+        ----------
+        display
+            Integer data to display on the SLM.
+        """
         # Write to buffer (.buffer points to the same data as .cbuffer).
         # Unfortunately, OpenGL2.0 needs the data copied three times (I think).
         # FUTURE: For OpenGL3.0 and pyglet 2.0+, use the shader to minimize data transfer.
-        np.copyto(self.window.buffer[:,:,0], data)
-        np.copyto(self.window.buffer[:,:,1], data)
-        np.copyto(self.window.buffer[:,:,2], data)
+        np.copyto(self.window.buffer[:,:,0], display)
+        np.copyto(self.window.buffer[:,:,1], display)
+        np.copyto(self.window.buffer[:,:,2], display)
 
         self.window.render()
 

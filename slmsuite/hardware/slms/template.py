@@ -14,9 +14,9 @@ class Template(SLM):
     def __init__(
         self,
         bitdepth=8,         # TODO: Remove these arguments if the SLM SDK
-        wav_um=1,           #       has some function to read them in.
-        pitch_um=(8,8),     #       Otherwise, the user must supply.
-        **kwargs
+        wav_um=1,           #       has some function to read them from the SLM.
+        pitch_um=(8,8),     #       Otherwise, the user must supply them as they are
+        **kwargs            #       are critical for transformations and calibrations.
     ):
         r"""
         Initialize SLM and attributes.
@@ -91,11 +91,51 @@ class Template(SLM):
         serial_list = get_serial_list()     # TODO: Fill in proper function.
         return serial_list
 
-    def _set_phase_hw(self, phase):
+    def _set_phase_hw(
+            self,
+            display,
+            # other keyword arguments if needed; these are passed directly from set_phase(**kwargs)
+        ):
         """
-        Low-level hardware interface to set_phase ``phase`` data onto the SLM.
-        When the user calls the :meth:`.SLM.write` method of
-        :class:`.SLM`, ``phase`` is error checked before calling
-        :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
+        Low-level hardware interface to project integer data onto the SLM.
+        When the user calls the :meth:`.SLM.set_phase` method of
+        :class:`.SLM`, the ``phase`` argument is error-checked and processed into
+        the integer array ``display`` that is passed to :meth:`_set_phase_hw()`.
+        When integer data is passed to :meth:`set_phase` instead of floating point, it
+        is passed directly to :meth:`_set_phase_hw()` as ``display``.
+        We call this parameter ``display`` to distinguish it from the (potentially)
+        floating point ``phase`` parameter of :meth:`set_phase`.
+        See :meth:`.SLM._set_phase_hw`.
+
+        Parameters
+        ----------
+        display
+            Integer data to display on the SLM.
         """
         # TODO: Insert code here to write raw phase data to the SLM.
+
+    def set_input_trigger(self, on : bool = False):
+        r"""
+        Configures the input trigger of the SLM, where an external electronic signal can
+        synchronize the time at which the SLM updates its display.
+
+        Parameters
+        ----------
+        on : bool
+            Subclasses *must* support a boolean configuration argument, but can
+            also accept other datatypes or parameters as needed.
+        """
+        raise NotImplementedError("This SLM does not support input triggering.")
+
+    def set_output_trigger(self, on : bool = False):
+        r"""
+        Configures the output trigger of the SLM, where the SLM can send an electronic
+        signal upon updating its display.
+
+        Parameters
+        ----------
+        on : bool
+            Subclasses *must* support a boolean configuration argument, but can
+            also accept other datatypes or parameters as needed.
+        """
+        raise NotImplementedError("This SLM does not support output triggering.")

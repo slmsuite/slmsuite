@@ -481,10 +481,15 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[self.sdk_mode]
         if self.sdk_mode == _SDK_MODE.HDMI:
+            sdk.Get_SLMTemp.restype = ctypes.c_double
             return float(sdk.Get_SLMTemp())
         elif self.sdk_mode == _SDK_MODE.PCIE_MODERN:
-            sdk.Get_SLMTemp.restype = ctypes.c_double
-            return float(sdk.Get_SLMTemp(ctypes.c_int(self.slm_number)))
+            if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
+                sdk.Read_SLM_temperature.restype = ctypes.c_double
+                return float(sdk.Read_SLM_temperature(ctypes.c_int(self.slm_number)))
+            else:
+                sdk.Get_SLMTemp.restype = ctypes.c_double
+                return float(sdk.Get_SLMTemp(ctypes.c_int(self.slm_number)))
         else:
             raise NotImplementedError(
                 "Temperature reading not supported for this model."
@@ -506,24 +511,25 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[self.sdk_mode]
         if self.sdk_mode == _SDK_MODE.HDMI:
+            sdk.Get_SLMVCom.restype = ctypes.c_double
             return float(sdk.Get_SLMVCom())
         elif self.sdk_mode == _SDK_MODE.PCIE_MODERN:
             sdk.Get_cover_voltage.restype = ctypes.c_double
-            return float(sdk.Get_cover_voltage(self.slm_number))
+            return float(sdk.Get_cover_voltage(ctypes.c_int(self.slm_number)))
         else:
             raise NotImplementedError(
                 "Coverglass voltage reading not supported for this model."
             )
 
     # Main write function
-    def _set_phase_hw(self, phase: np.ndarray, slm_number: Optional[int] = None) -> None:
+    def _set_phase_hw(self, display: np.ndarray, slm_number: Optional[int] = None) -> None:
         """
         See :meth:`.SLM._set_phase_hw`.
         """
         slm_number = ctypes.c_uint(slm_number if slm_number else self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
             Meadowlark._slm_lib[self.sdk_mode].Write_image(
-                phase.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
                 ctypes.c_uint(self.bitdepth == 8),  # Is 8-bit
             )
         elif (
@@ -546,13 +552,13 @@ class Meadowlark(SLM):
             if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
                 Meadowlark._slm_lib[self.sdk_mode].Write_image(
                     slm_number,
-                    phase.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                    display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
                     trigger_timeout,
                 )
             elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 6:
                 Meadowlark._slm_lib[self.sdk_mode].Write_image(
                     slm_number,
-                    phase.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                    display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
                     wait_for_trigger,
                     flip_immediate,
                     output_pulse_image_flip,
@@ -561,7 +567,7 @@ class Meadowlark(SLM):
             elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 8:
                 Meadowlark._slm_lib[self.sdk_mode].Write_image(
                     slm_number,
-                    phase.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                    display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
                     ctypes.c_uint(self.shape[0] * self.shape[1]),
                     wait_for_trigger,
                     flip_immediate,

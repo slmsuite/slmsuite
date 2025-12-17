@@ -484,8 +484,12 @@ class Meadowlark(SLM):
             sdk.Get_SLMTemp.restype = ctypes.c_double
             return float(sdk.Get_SLMTemp())
         elif self.sdk_mode == _SDK_MODE.PCIE_MODERN:
-            sdk.Get_SLMTemp.restype = ctypes.c_double
-            return float(sdk.Get_SLMTemp(ctypes.c_int(self.slm_number)))
+            if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
+                sdk.Read_SLM_temperature.restype = ctypes.c_double
+                return float(sdk.Read_SLM_temperature(ctypes.c_int(self.slm_number)))
+            else:
+                sdk.Get_SLMTemp.restype = ctypes.c_double
+                return float(sdk.Get_SLMTemp(ctypes.c_int(self.slm_number)))
         else:
             raise NotImplementedError(
                 "Temperature reading not supported for this model."

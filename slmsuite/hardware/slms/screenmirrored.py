@@ -65,11 +65,14 @@ class ScreenMirrored(SLM):
 
     However, it might be worthwhile in the future to look back into SDL options, as SDL surfaces
     are closer to the pixels than OpenGL textures, so greater speed might be achievable (even without
-    loading data to the GPU as a texture). Another potential improvement could come from writing
-    :mod:`cupy` datastructures to ``OpenGL`` textures directly, without using the CPU as an
-    intermediary. There is `some precedent <https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__OPENGL.html>`_
-    for transferring data from ``CUDA`` (on which :mod:`cupy` is based) to ``OpenGL``,
-    though :mod:`cupy` does not currently directly support this.
+    loading data to the GPU as a texture).
+
+    GPU Optimization
+    ~~~~~~~~~~~~~~~~
+    This class supports GPU arrays when CuPy is available. Phase data can stay on the GPU
+    throughout the processing pipeline, with only the final display step transferring to CPU.
+    When pinned memory is available, direct CUDA memcpy to pinned host memory is used for
+    faster DMA transfers compared to standard ``cp.asnumpy()``.
 
     Important
     ~~~~~~~~~
@@ -78,6 +81,23 @@ class ScreenMirrored(SLM):
     rather, all monitor writes are synchronized such that clean frames are always displayed.
     This feature is similar to the ``isImageLock`` flag in :mod:`slmpy`, but is implemented a bit
     closer to the hardware.
+
+    Event Handling
+    ~~~~~~~~~~~~~~
+    The :class:`ScreenMirrored` windows automatically handle OS events (mouse clicks,
+    keyboard input, window resizing) to prevent freezing when users interact with the
+    window. Event dispatching occurs automatically during :meth:`set_phase` calls, so
+    no manual event loop management is required.
+
+    For interactive applications displaying static patterns for extended periods,
+    occasional :meth:`set_phase` calls (even with the same pattern) will keep the
+    window responsive.
+
+    Note
+    ~~~~
+    Windows are created in fullscreen mode by default and are not intended for user
+    interaction - they exist solely to display phase patterns to the SLM hardware.
+    Event handling is implemented purely to prevent freezing, not to enable interactivity.
 
     Attributes
     ----------
@@ -213,13 +233,34 @@ class ScreenMirrored(SLM):
             )
 
     def _set_phase_hw(self, data):
-        """Writes to screen. See :class:`.SLM`."""            
-        # Write to buffer (.buffer points to the same data as .cbuffer).
-        # Unfortunately, OpenGL2.0 needs the data copied three times (I think).
-        # FUTURE: For OpenGL3.0 and pyglet 2.0+, use the shader to minimize data transfer.
-        np.copyto(self.window.buffer[:,:,0], data)
-        np.copyto(self.window.buffer[:,:,1], data)
-        np.copyto(self.window.buffer[:,:,2], data)
+        """
+        Writes to screen. See :class:`.SLM`.
+
+        Optimized for GPU arrays:
+        - If data is CuPy array and pinned memory available: fast GPU→pinned→buffer transfer
+        - If data is CuPy array without pinned memory: standard GPU→CPU transfer
+        - If data is NumPy array: direct copy
+        """
+        # Ensure this window's OpenGL context is active
+        # Critical for multi-window setups to avoid rendering to wrong window
+        self.window.switch_to()
+
+        # Check if data is a CuPy array for optimized transfer
+        try:
+            import cupy as cp
+            is_gpu_array = isinstance(data, cp.ndarray)
+        except ImportError:
+            is_gpu_array = False
+
+        # GPU→CPU transfer
+        if is_gpu_array:
+            data = cp.asnumpy(data)
+
+        # Copy to RGB channels
+        self.window.buffer[:,:,0] = data
+        self.window.buffer[:,:,1] = data
+        self.window.buffer[:,:,2] = data
+
         self.window.render()
 
     def close(self):

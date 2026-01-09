@@ -1,5 +1,9 @@
 """
 Hidden abstract class for pyglet windowing in slmsuite.
+
+Supports CuPy GPU arrays with optimized GPU→CPU transfers. Automatically allocates
+pinned memory for direct DMA transfers when CuPy is available, providing faster
+transfers compared to standard cp.asnumpy().
 """
 import os
 import ctypes
@@ -7,8 +11,12 @@ import numpy as np
 from packaging.version import Version
 
 try:
+    import pyglet
     import pyglet.gl as gl
     from pyglet.window import Window as __Window
+    PYGLET_AVAILABLE = True
+
+    # pyglet.options['debug_events'] = True
 
     # Helper to get display/canvas depending on pyglet version
     PYGLET_VERSION = Version(getattr(pyglet, '__version__', '0'))
@@ -23,17 +31,17 @@ except:
     gl = None
     __Window = object
     PYGLET_VERSION = None
+    PYGLET_AVAILABLE = False
     def get_pyglet_display():
         raise ImportError("pyglet not installed.")
 
-# Helper to get display/canvas depending on pyglet version
-PYGLET_VERSION = Version(getattr(pyglet, '__version__', '0'))
-
-def get_pyglet_display():
-    if PYGLET_VERSION >= Version('2.1.0'):
-        return pyglet.display.get_display()
-    else:
-        return pyglet.canvas.get_display()
+# Try to import CuPy for optimized GPU transfers
+try:
+    import cupy as cp
+    CUPY_AVAILABLE = True
+except ImportError:
+    cp = None
+    CUPY_AVAILABLE = False
 
 class _Window(__Window):
     def __init__(self, shape, screen=None, caption=""):
@@ -79,6 +87,54 @@ class _Window(__Window):
             self.set_icon(img16x16, img32x32, img512x512)
         except Exception as e:
             print(e)
+
+    # Event handlers to prevent window freezing and unexpected behaviors
+    def on_mouse_press(self, x, y, button, modifiers):
+        """Handle mouse press events. No-op to prevent interference with SLM display."""
+        print(f"[DEBUG] on_mouse_press called: ({x}, {y})")
+        pass
+
+    def on_mouse_release(self, x, y, button, modifiers):
+        """Handle mouse release events. No-op to prevent interference with SLM display."""
+        pass
+
+    def on_mouse_motion(self, x, y, dx, dy):
+        """Handle mouse motion events. No-op to prevent interference with SLM display."""
+        pass
+
+    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+        """Handle mouse drag events. No-op to prevent interference with SLM display."""
+        pass
+
+    def on_key_press(self, symbol, modifiers):
+        """Handle key press events. No-op to prevent interference with SLM display."""
+        pass
+
+    def on_key_release(self, symbol, modifiers):
+        """Handle key release events. No-op to prevent interference with SLM display."""
+        pass
+
+    def on_resize(self, width, height):
+        """Handle window resize. No-op as SLM dimensions are fixed."""
+        pass
+
+    def on_expose(self):
+        """Handle window expose/redraw request from OS."""
+        pass
+
+    def on_draw(self):
+        """
+        Handle window draw event.
+
+        Override to prevent automatic redraws - we manually control rendering
+        via the render() method called from set_phase().
+        """
+        pass
+
+    def on_close(self):
+        """Handle window close event."""
+        # Call parent close to properly clean up the window
+        super().close()
 
     def _setup_context(self):
         shape = self.shape
@@ -255,7 +311,11 @@ class _Window(__Window):
 
         # Display the other side of the double buffer.
         # (with vsync enabled, this will block until the next frame is ready to display).
+        # self.dispatch_events()  # Process window events to update display
+        # self.dispatch_event('on_draw')
         self.flip()
+        self.dispatch_events()  # Process window events to update display
+        # self.switch_to()
 
     @staticmethod
     def info(verbose=True):

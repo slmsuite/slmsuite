@@ -519,8 +519,15 @@ class SLM(_Picklable, ABC):
             self.phase.fill(0)
             zero_phase = True
         else:
-            # Make sure the array is an ndarray.
-            phase = np.array(phase)
+            # Make sure the array is an ndarray (NumPy or CuPy).
+            # Allow CuPy arrays to pass through for GPU-accelerated processing.
+            try:
+                import cupy as cp
+                if not isinstance(phase, (np.ndarray, cp.ndarray)):
+                    phase = np.array(phase)
+            except ImportError:
+                if not isinstance(phase, np.ndarray):
+                    phase = np.array(phase)
 
         if hasattr(phase, "get_phase"):
             # If we passed a hologram, grab the phase from there.
@@ -536,7 +543,17 @@ class SLM(_Picklable, ABC):
                 )
 
             # If integer data was passed, check that we are not out of range.
-            if np.any(phase >= self.bitresolution):
+            # Convert CuPy arrays to NumPy for CPU-side validation and storage
+            try:
+                import cupy as cp
+                if isinstance(phase, cp.ndarray):
+                    phase_cpu = cp.asnumpy(phase)
+                else:
+                    phase_cpu = phase
+            except ImportError:
+                phase_cpu = phase
+
+            if np.any(phase_cpu >= self.bitresolution):
                 raise TypeError(
                     "Integer data must be within the bitdepth ({}-bit) of the SLM.".format(
                         self.bitdepth
@@ -544,10 +561,10 @@ class SLM(_Picklable, ABC):
                 )
 
             # Copy the pattern and unpad if necessary.
-            if phase.shape != self.shape:
-                np.copyto(self.display, toolbox.unpad(phase, self.shape))
+            if phase_cpu.shape != self.shape:
+                np.copyto(self.display, toolbox.unpad(phase_cpu, self.shape))
             else:
-                np.copyto(self.display, phase)
+                np.copyto(self.display, phase_cpu)
 
             # TODO: generalize from _phase2gray() to include _format_phase_hw()
             # Update the phase variable with the integer data that we displayed.
@@ -558,10 +575,20 @@ class SLM(_Picklable, ABC):
             # If float data was passed (or the None case).
             # Copy the pattern and unpad if necessary.
             if phase is not None:
+                # Convert CuPy arrays to NumPy for storage in self.phase
+                try:
+                    import cupy as cp
+                    if isinstance(phase, cp.ndarray):
+                        phase_cpu = cp.asnumpy(phase)
+                    else:
+                        phase_cpu = phase
+                except ImportError:
+                    phase_cpu = phase
+
                 if self.phase.shape != self.shape:
                     np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
                 else:
-                    np.copyto(self.phase, phase)
+                    np.copyto(self.phase, phase_cpu)
 
             # Add phase correction if requested.
             if phase_correct and ("phase" in self.source):

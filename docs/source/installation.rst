@@ -12,6 +12,12 @@ Install the stable version of |slmsuite|_ from `PyPI <https://pypi.org/project/s
 
     pip install slmsuite
 
+or if you are using `poetry <https://python-poetry.org>`:
+
+.. code-block:: console
+
+    poetry add slmsuite
+
 GitHub
 ------
 
@@ -20,6 +26,12 @@ Install the latest version of |slmsuite|_ from `GitHub <https://github.com/slmsu
 .. code-block:: console
 
     pip install git+https://github.com/slmsuite/slmsuite
+
+or if you are using `poetry <https://python-poetry.org>`:
+
+.. code-block:: console
+
+    poetry add git+https://github.com/slmsuite/slmsuite
 
 One can also clone |slmsuite|_ directly and add its directory to the Python path.
 *Remember to install the dependencies (next sections)*.

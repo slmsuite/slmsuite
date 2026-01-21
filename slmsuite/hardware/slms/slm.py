@@ -381,7 +381,7 @@ class SLM(_Picklable, ABC):
         """
         raise NotImplementedError()
 
-    @abstractmethod
+    # @abstractmethod
     def _format_phase_hw(self, phase):
         """
         Formats the phase data for hardware-specific requirements (e.g. converting phase to an

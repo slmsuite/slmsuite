@@ -11,7 +11,30 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dynamic = ["version", "dependencies", "description", "authors"]
+dynamic = ["version", "description", "authors"]
+dependencies = [
+    "numpy",
+    "scipy",
+    "opencv-python",
+    "matplotlib",
+    "h5py",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+ipython = [
+    "jupyter",
+    "line-profiler",
+    "snakeviz",
+    "imageio",
+    "pygifsicle",
+]
+cuda11 = [
+    "cupy-cuda11x",
+]
+display = [
+    "pyglet",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/slmsuite/slmsuite"

@@ -89,47 +89,47 @@ class _Window(__Window):
             print(e)
 
     # Event handlers to prevent window freezing and unexpected behaviors
-    def on_mouse_press(self, x, y, button, modifiers):
-        """Handle mouse press events. No-op to prevent interference with SLM display."""
-        print(f"[DEBUG] on_mouse_press called: ({x}, {y})")
-        pass
+    # def on_mouse_press(self, x, y, button, modifiers):
+    #     """Handle mouse press events. No-op to prevent interference with SLM display."""
+    #     print(f"[DEBUG] on_mouse_press called: ({x}, {y})")
+    #     pass
 
-    def on_mouse_release(self, x, y, button, modifiers):
-        """Handle mouse release events. No-op to prevent interference with SLM display."""
-        pass
+    # def on_mouse_release(self, x, y, button, modifiers):
+    #     """Handle mouse release events. No-op to prevent interference with SLM display."""
+    #     pass
 
-    def on_mouse_motion(self, x, y, dx, dy):
-        """Handle mouse motion events. No-op to prevent interference with SLM display."""
-        pass
+    # def on_mouse_motion(self, x, y, dx, dy):
+    #     """Handle mouse motion events. No-op to prevent interference with SLM display."""
+    #     pass
 
-    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        """Handle mouse drag events. No-op to prevent interference with SLM display."""
-        pass
+    # def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+    #     """Handle mouse drag events. No-op to prevent interference with SLM display."""
+    #     pass
 
-    def on_key_press(self, symbol, modifiers):
-        """Handle key press events. No-op to prevent interference with SLM display."""
-        pass
+    # def on_key_press(self, symbol, modifiers):
+    #     """Handle key press events. No-op to prevent interference with SLM display."""
+    #     pass
 
-    def on_key_release(self, symbol, modifiers):
-        """Handle key release events. No-op to prevent interference with SLM display."""
-        pass
+    # def on_key_release(self, symbol, modifiers):
+    #     """Handle key release events. No-op to prevent interference with SLM display."""
+    #     pass
 
-    def on_resize(self, width, height):
-        """Handle window resize. No-op as SLM dimensions are fixed."""
-        pass
+    # def on_resize(self, width, height):
+    #     """Handle window resize. No-op as SLM dimensions are fixed."""
+    #     pass
 
-    def on_expose(self):
-        """Handle window expose/redraw request from OS."""
-        pass
+    # def on_expose(self):
+    #     """Handle window expose/redraw request from OS."""
+    #     pass
 
-    def on_draw(self):
-        """
-        Handle window draw event.
+    # def on_draw(self):
+    #     """
+    #     Handle window draw event.
 
-        Override to prevent automatic redraws - we manually control rendering
-        via the render() method called from set_phase().
-        """
-        pass
+    #     Override to prevent automatic redraws - we manually control rendering
+    #     via the render() method called from set_phase().
+    #     """
+    #     pass
 
     def on_close(self):
         """Handle window close event."""
@@ -173,6 +173,7 @@ class _Window(__Window):
                 4,
                 gl.GL_TRIANGLE_STRIP,
                 self.batch,
+                # Vertex positions (x, y, z)
                 position=('i',
                     [
                         0,  shape[0], 0,
@@ -180,15 +181,17 @@ class _Window(__Window):
                         shape[1], shape[0], 0,
                         shape[1], 0, 0,
                     ]
-                ),  # Vertex positions (x, y)
+                ),  
+                # Texture coordinates (u, v, r); v selected to match matplotlib
+                # imshow convention (top-left origin)
                 tex_coords= ('f',
                     [
-                        0., 1., 0.,
                         0., 0., 0.,
-                        1., 1., 0.,
+                        0., 1., 0.,
                         1., 0., 0.,
+                        1., 1., 0.,
                     ]
-                )   # Texture coordinates (u, v, r)
+                )   
             )
 
             # Cleanup.

@@ -307,7 +307,7 @@ class PLM(ScreenMirrored):
         out = self.xp.swapaxes(out, -2, -3).reshape(new_shape_tuple)
 
         # Apply data flip if specified
-        flip_axes = [-2 + idx for idx, flip in enumerate(self.data_flip) if flip]
+        flip_axes = tuple(-2 + idx for idx, flip in enumerate(self.data_flip) if flip)
         if flip_axes:
             out = self.xp.flip(out, flip_axes)
 
@@ -352,8 +352,11 @@ class PLM(ScreenMirrored):
                 )
 
         # Convert phase from slmsuite convention to [0, 2π]
+        # TODO: can wrap into phase2gray
         # slmsuite uses bitresolution-scaled values, we need radians
-        phase = self._phase2gray(phase) * (2 * np.pi / self.bitresolution)
+        # phase = self._phase2gray(phase) * (2 * np.pi / self.bitresolution)
+        phase -= phase.min()
+        phase %= 2 * np.pi
 
         # Move to GPU if needed
         if self.gpu_available:

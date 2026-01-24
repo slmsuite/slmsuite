@@ -484,9 +484,9 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
 
     # Handle normalization.
     if normalize:
-        normalization = np_sum(images, axis=(1, 2), keepdims=False)
+        normalization = np_sum(images, axis=(1, 2), keepdims=False).reshape((img_count, 1, 1))
         reciprocal = np.reciprocal(
-            normalization, where=normalization != 0, out=np.zeros(img_count,)
+            normalization, where=normalization != 0, out=np.zeros((img_count,1,1))
         )
     else:
         reciprocal = 1

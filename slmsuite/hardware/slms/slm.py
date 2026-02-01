@@ -1021,6 +1021,67 @@ class SLM(_Picklable, ABC):
                 np.square(self.grid[0][extent_mask]) + np.square(self.grid[1][extent_mask])
             ))
 
+    def set_source_aperture(
+        self,
+        amplitude_center_pix=None,
+        amplitude_radius=None,
+        amplitude_extent=None,
+        amplitude_extent_radius=None,
+    ):
+        """
+        Sets source aperture parameters measured by :meth:`fit_source_amplitude()` and
+        takes appropriate follow-on actions like shifting the grid.
+
+        Parameters
+        ----------
+        amplitude_center_pix : (float, float) OR None
+            Pixel corresponding to the center of the source.
+            If provided, the grid is recentered on this pixel.
+        amplitude_radius : float OR None
+            The radial standard deviation of the amplitude distribution in normalized units.
+            For a Gaussian source, this is the :math:`1/e` amplitude radius
+            (:math:`1/e^2` power radius).
+        amplitude_extent : (float, float) OR None
+            The box radii of the smallest rectangle which covers the desired amplitude extent
+            in normalized units.
+        amplitude_extent_radius : float OR None
+            Scalar radius about the center that covers the desired amplitude extent
+            in normalized units.
+
+        Returns
+        -------
+        dict
+            :attr:`~slmsuite.hardware.slms.slm.SLM.source`.
+        """
+        # Handle center repositioning with grid shift
+        if amplitude_center_pix is not None:
+            amplitude_center_pix = np.array(amplitude_center_pix)
+
+            # Get current center
+            current_center = np.array(
+                [np.argmin(np.abs(self.grid[0][0,:])), np.argmin(np.abs(self.grid[1][:,0]))]
+            )
+
+            # Calculate shift and update grid
+            dcenter = current_center - amplitude_center_pix
+            self.grid[0] += dcenter[0] * self.pitch[0]
+            self.grid[1] += dcenter[1] * self.pitch[1]
+
+            # Store the new center
+            self.source["amplitude_center_pix"] = amplitude_center_pix
+
+        # Set the other parameters directly
+        if amplitude_radius is not None:
+            self.source["amplitude_radius"] = float(amplitude_radius)
+
+        if amplitude_extent is not None:
+            self.source["amplitude_extent"] = np.array(amplitude_extent)
+
+        if amplitude_extent_radius is not None:
+            self.source["amplitude_extent_radius"] = float(amplitude_extent_radius)
+
+        return self.source
+
     def get_source_radius(self):
         """
         Extracts the source radius in normalized units for functions like

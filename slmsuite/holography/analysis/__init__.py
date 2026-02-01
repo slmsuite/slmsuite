@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from functools import reduce
 from scipy.optimize import curve_fit, minimize
 from scipy.ndimage import binary_erosion
+
 import warnings
 try:
     import cupy as cp   # type: ignore
@@ -1052,7 +1053,12 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
 
 # Helpers for phase images.
 
-def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, **kwargs):
+def image_zernike_fit(images, grid,
+                      order=10,
+                      iterations=2,
+                      leastsquares=True,
+                      unwrap=True,
+                      **kwargs):
     """
     Fits sets of Zernike polynomials to a stack of ``images``, up to a desired ``order``.
     This is done in two steps:
@@ -1087,6 +1093,8 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
         Number of times to iterate the subtractive approach.
     leastsquares : bool
         Whether to do the least squares optimization step.
+    unwrap : bool
+        Whether to unwrap the phase images before fitting.
     **kwargs
         Passed to :meth:`~slmsuite.holography.toolbox.phase.zernike_sum()`.
     """
@@ -1094,6 +1102,16 @@ def image_zernike_fit(images, grid, order=10, iterations=2, leastsquares=True, *
     if images.ndim == 2:
         images = images.reshape((1, *images.shape))
     image_count = images.shape[0]
+    
+    # Unwrap
+    if unwrap:
+        # Adding temporary phase unwrapping solution for testing
+        try:
+            from skimage.restoration import unwrap_phase
+        except ImportError:
+            raise ImportError("Phase unwrapping requires scikit-image.")
+
+        images = [unwrap_phase(im) for im in images]
 
     # Generate Zernike terms and norms.
     order = int(order + 1)

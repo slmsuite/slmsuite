@@ -505,6 +505,7 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[self.sdk_mode]
         if self.sdk_mode == _SDK_MODE.HDMI:
+            sdk.Get_SLMTemp.restype = ctypes.c_double
             return float(sdk.Get_SLMTemp())
         elif self.sdk_mode == _SDK_MODE.PCIE_MODERN_3:
             sdk.Read_SLM_temperature.restype = ctypes.c_double
@@ -536,6 +537,7 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[self.sdk_mode]
         if self.sdk_mode == _SDK_MODE.HDMI:
+            sdk.Get_SLMVCom.restype = ctypes.c_double
             return float(sdk.Get_SLMVCom())
         elif self.sdk_mode in {
             _SDK_MODE.PCIE_MODERN_3,
@@ -543,7 +545,7 @@ class Meadowlark(SLM):
             _SDK_MODE.PCIE_MODERN_8,
         }:
             sdk.Get_cover_voltage.restype = ctypes.c_double
-            return float(sdk.Get_cover_voltage(self.slm_number))
+            return float(sdk.Get_cover_voltage(ctypes.c_int(self.slm_number)))
         else:
             raise NotImplementedError(
                 "Coverglass voltage reading not supported for this model."
@@ -553,6 +555,7 @@ class Meadowlark(SLM):
     def set_input_trigger(
         self,
         on : bool = False,
+        slm_number: Optional[int] = None,
     ):
         """
         Configure the SLM to wait for an external input trigger before writing an image.
@@ -566,7 +569,7 @@ class Meadowlark(SLM):
         slm_number : int OR None, optional
             Target SLM device index.
         """
-        slm_number = ctypes.c_uint(self.slm_number)
+        slm_number = ctypes.c_uint(slm_number if slm_number else self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
             raise NotImplementedError("HDMI SLMs do not support input triggering.")
         elif self.sdk_mode in {
@@ -590,6 +593,7 @@ class Meadowlark(SLM):
         self,
         on : bool = False,
         on_refresh : Optional[bool] = None,
+        slm_number: Optional[int] = None,
     ):
         """
         Configure the SLM to send an external output triggers synchronized with image
@@ -643,6 +647,7 @@ class Meadowlark(SLM):
             execute : bool = True,
             block : bool = True,
             timeout_s : float = 5.0,
+            slm_number: Optional[int] = None,
         ) -> None:
         """
         Hardware-specific implementation for Meadowlark SLM devices.
@@ -658,8 +663,12 @@ class Meadowlark(SLM):
         block : bool
             Whether to block the thread until the image is fully written.
             See :meth:`.SLM._set_phase_hw`.
+        timeout_s : float
+            Timeout for SLM trigger.
+        slm_number : int or None, optional
+            Target SLM device index.
         """
-        slm_number = ctypes.c_uint(self.slm_number)
+        slm_number = ctypes.c_uint(slm_number if slm_number else self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
             Meadowlark._slm_lib[self.sdk_mode].Write_image(
                 display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),

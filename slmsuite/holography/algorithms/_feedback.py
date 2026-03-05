@@ -181,8 +181,8 @@ class FeedbackHologram(Hologram):
         b1 = np.matmul(M1, -toolbox.format_2vectors(np.flip(np.squeeze(self.shape)) / 2))
 
         # Second transformation.
-        M2 = self.cameraslm.calibrations["fourier"]["M"]
-        b2 = self.cameraslm.calibrations["fourier"]["b"]
+        M2 = self.cameraslm.calibrations["fourier"]["M"].copy()
+        b2 = self.cameraslm.calibrations["fourier"]["b"].copy()
         if "a" in self.cameraslm.calibrations["fourier"]:
             b2 -= np.matmul(M2, self.cameraslm.calibrations["fourier"]["a"])
 

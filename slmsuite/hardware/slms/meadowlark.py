@@ -609,7 +609,7 @@ class Meadowlark(SLM):
             display: np.ndarray,
             execute : bool = True,
             block : bool = True,
-            timeout_s : float = 5.0, # TODO: check units
+            timeout_s : float = 5.0,
         ) -> None:
         """
         Hardware-specific implementation for Meadowlark SLM devices.
@@ -618,16 +618,13 @@ class Meadowlark(SLM):
 
         Parameters
         ----------
-        display
-            Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
         display : np.ndarray
-            Integer data to display on the SLM.
-        slm_number : int OR None, optional
-            Target SLM device index.
+            Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
         execute : bool
-            Whether to actually send the image to the SLM.
+            Whether to actually send the image to the SLM. See :meth:`.SLM._set_phase_hw`.
         block : bool
             Whether to block the thread until the image is fully written.
+            See :meth:`.SLM._set_phase_hw`.
         """
         slm_number = ctypes.c_uint(self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
@@ -639,8 +636,6 @@ class Meadowlark(SLM):
             self.sdk_mode == _SDK_MODE.PCIE_LEGACY
             or self.sdk_mode == _SDK_MODE.PCIE_MODERN
         ):
-            # FUTURE: implement triggered mode.
-            # Santec also has a triggered mode that is not currently implemented.
             wait_for_trigger = ctypes.c_bool(self._wait_for_trigger)
             # WARN: Do not change this, as doing so will loses the guarantee that
             #  all the pixels are synchronized to the same image (that is, the earliest
@@ -649,7 +644,7 @@ class Meadowlark(SLM):
             flip_immediate = ctypes.c_bool(False)
             output_pulse_image_flip = ctypes.c_bool(self._output_pulse_image_flip)
             output_pulse_image_refresh = ctypes.c_bool(self._output_pulse_image_refresh)
-            trigger_timeout = ctypes.c_uint(5000)   # TODO: replace with timeout_s
+            trigger_timeout = ctypes.c_uint(timeout_s * 1000.)
 
             if execute:
                 # Switch between the different supported cases for number of Write_image arguments:

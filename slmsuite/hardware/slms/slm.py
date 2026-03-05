@@ -370,7 +370,7 @@ class SLM(_Picklable, ABC):
         self.set_phase(phase, phase_correct, settle, **kwargs)
 
     @abstractmethod
-    def _set_phase_hw(self, display):
+    def _set_phase_hw(self, display, execute, block):
         """
         Low-level hardware interface to project integer data onto the SLM.
         When the user calls the :meth:`.SLM.set_phase` method of
@@ -385,14 +385,20 @@ class SLM(_Picklable, ABC):
         ----------
         display
             Integer data to display on the SLM.
+        execute : bool
+            Whether to actually send the image to the SLM.
+        block : bool
+            Whether to block the thread until the image is fully written.
         """
         raise NotImplementedError("SLM subclasses must implement _set_phase_hw().")
 
     def set_phase(
         self,
         phase,
-        phase_correct=True,
-        settle=False,
+        phase_correct: bool =True,
+        settle: bool = False,
+        execute: bool = True,
+        block : bool = False,
         **kwargs
     ):
         r"""
@@ -483,15 +489,17 @@ class SLM(_Picklable, ABC):
             Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]`` to ``phase``.
         settle : bool
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
+        execute : bool
+            Whether to actually send the image to the SLM.
+        block : bool
+            Some SLM subclasses support non-blocking writes that are triggered externally. 
+            This parameter will determine whether to block the thread until the image is 
+            fully written.
+            If ``execute=True`` and ``block=False``, the write is non-blocking.
+            If ``execute=False`` and ``block=True``, only the block is enforced and
+            no new data is written.    
         **kwargs
             Passed to the SLM in case the subclass needs to do something special.
-            For instance:
-
-            -  ``execute``/``block`` Some SLM subclasses support non-blocking writes
-               that are triggered externally.
-               If ``execute=True`` and ``block=False``, the write is non-blocking.
-               If ``execute=False`` and ``block=True``, only the block is enforced and
-               no new data is written.
 
         Returns
         -------
@@ -504,7 +512,7 @@ class SLM(_Picklable, ABC):
             If integer data is incompatible with the bitdepth or if the passed phase is
             otherwise incompatible (not a 2D array or smaller than the SLM shape, etc).
         """
-        if kwargs.get("execute", True):
+        if execute:
             # Helper variable to speed the case where phase is None.
             zero_phase = False
 
@@ -571,10 +579,10 @@ class SLM(_Picklable, ABC):
                     self.display = self._phase2gray(self.phase, out=self.display)
 
         # Write!
-        self._set_phase_hw(self.display, **kwargs)
+        self._set_phase_hw(self.display, execute = execute, block = block, **kwargs)
 
         # Optional delay.
-        if kwargs.get("execute", True) and settle:
+        if execute and settle:
             time.sleep(self.settle_time_s)
 
         return self.display

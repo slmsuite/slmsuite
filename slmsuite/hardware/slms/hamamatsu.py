@@ -152,7 +152,7 @@ class Hamamatsu(SLM):
             **kwargs
         )
 
-    def _set_phase_hw(self, display, slot_number=0):
+    def _set_phase_hw(self, display, execute, block, slot_number=0):
         r"""
         Hardware-specific implementation for Hamamatsu SLM devices.
 
@@ -162,6 +162,11 @@ class Hamamatsu(SLM):
         ----------
         display
             Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
+        execute : bool
+            Whether to actually send the image to the SLM. See :meth:`.SLM._set_phase_hw`.
+        block : bool
+            Whether to block the thread until the image is fully written.
+            See :meth:`.SLM._set_phase_hw`.
         slot_number : int
             Hardware-specific implementation. The number of the frame memory 
             slot where to write the pattern. The default value is 0.

@@ -205,7 +205,7 @@ class ScreenMirrored(SLM):
                 "design wavelength {} um".format(self.wav_um, self.wav_design_um)
             )
 
-    def _set_phase_hw(self, display):
+    def _set_phase_hw(self, display, execute, block):
         """
         Hardware-specific implementation to use SLM's virtual display.
 
@@ -215,6 +215,11 @@ class ScreenMirrored(SLM):
         ----------
         display
             Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
+        execute : bool
+            Whether to actually send the image to the SLM. See :meth:`.SLM._set_phase_hw`.
+        block : bool
+            Whether to block the thread until the image is fully written.
+            See :meth:`.SLM._set_phase_hw`.
         """
         # Write to buffer (.buffer points to the same data as .cbuffer).
         # Unfortunately, OpenGL2.0 needs the data copied three times (I think).

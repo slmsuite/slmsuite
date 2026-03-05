@@ -94,6 +94,8 @@ class Template(SLM):
     def _set_phase_hw(
             self,
             display,
+            execute,
+            block,
             # other keyword arguments if needed; these are passed directly from set_phase(**kwargs)
         ):
         """
@@ -105,6 +107,11 @@ class Template(SLM):
         ----------
         display
             Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
+        execute : bool
+            Whether to actually send the image to the SLM. See :meth:`.SLM._set_phase_hw`.
+        block : bool
+            Whether to block the thread until the image is fully written. 
+            See :meth:`.SLM._set_phase_hw`.
         """
         # TODO: Insert code here to write raw phase data to the SLM.
 

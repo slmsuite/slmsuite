@@ -29,20 +29,25 @@ from slmsuite.hardware.slms.slm import SLM
 #: str: Default location in which Meadowlark Optics software is installed
 _DEFAULT_MEADOWLARK_PATH = "C:\\Program Files\\Meadowlark Optics\\"
 
+from enum import IntEnum
+
 class _SDK_MODE(IntEnum):
     #: No connection
     NULL = 0
     #: HDMI connection
     HDMI = 1
     #: High-Speed PCIe connection
-    PCIE_MODERN = 2
-    #: High-Speed PCIe connection
-    PCIE_LEGACY = 3
+    PCIE_MODERN_3 = 2
+    PCIE_MODERN_6 = 3
+    PCIE_MODERN_8 = 4
+    PCIE_LEGACY = 5
 
 _SDK_MODE_NAMES = [
     "NULL",
     "HDMI",
-    "PCIe",
+    "PCIe (modern, 3)",
+    "PCIe (modern, 6)",
+    "PCIe (modern, 8)",
     "PCIe (legacy)",
 ]
 
@@ -50,10 +55,12 @@ _SDK_MODE_NAMES = [
 # arguments if the traces for creating the SDK and writing an image. The allowed
 # signatures (number of arguments) are defined here.
 _SLM_LIB_TRACES = {
-    _SDK_MODE.NULL : [],
-    _SDK_MODE.HDMI : [(0, 2), (1, 2)],
-    _SDK_MODE.PCIE_MODERN : [(2, 3), (2, 6)],
-    _SDK_MODE.PCIE_LEGACY : [(8, 8)],
+    _SDK_MODE.NULL: [],
+    _SDK_MODE.HDMI: [(0, 2), (1, 2)],
+    _SDK_MODE.PCIE_MODERN_3: [(2, 3)],
+    _SDK_MODE.PCIE_MODERN_6: [(2, 6)],
+    _SDK_MODE.PCIE_MODERN_8: [(2, 8)],
+    _SDK_MODE.PCIE_LEGACY: [(8, 8)],
 }
 
 class Meadowlark(SLM):
@@ -316,10 +323,12 @@ class Meadowlark(SLM):
         sdk = Meadowlark._slm_lib[sdk_mode]
         if sdk_mode == _SDK_MODE.HDMI:
             return "Meadowlark HDMI"
-        elif (
-            sdk_mode == _SDK_MODE.PCIE_LEGACY
-            or sdk_mode == _SDK_MODE.PCIE_MODERN
-        ):
+        elif sdk_mode in {
+            _SDK_MODE.PCIE_MODERN_3,
+            _SDK_MODE.PCIE_MODERN_6,
+            _SDK_MODE.PCIE_MODERN_8,
+            _SDK_MODE.PCIE_LEGACY,
+        }:
             serial = sdk.Read_Serial_Number(ctypes.c_int(slm_number))
             return "Failed to load board" if serial == -1 else serial
         else:
@@ -343,10 +352,12 @@ class Meadowlark(SLM):
         sdk = Meadowlark._slm_lib[sdk_mode]
         if sdk_mode == _SDK_MODE.HDMI:
             return sdk.Get_Width()
-        elif (
-            sdk_mode == _SDK_MODE.PCIE_LEGACY
-            or sdk_mode == _SDK_MODE.PCIE_MODERN
-        ):
+        elif sdk_mode in {
+            _SDK_MODE.PCIE_MODERN_3,
+            _SDK_MODE.PCIE_MODERN_6,
+            _SDK_MODE.PCIE_MODERN_8,
+            _SDK_MODE.PCIE_LEGACY,
+        }:
             return sdk.Get_image_width(ctypes.c_int(slm_number))
         else:
             raise NotImplementedError("Width retrieval not supported for this model")
@@ -369,10 +380,12 @@ class Meadowlark(SLM):
         sdk = Meadowlark._slm_lib[sdk_mode]
         if sdk_mode == _SDK_MODE.HDMI:
             return sdk.Get_Height()
-        elif (
-            sdk_mode == _SDK_MODE.PCIE_LEGACY
-            or sdk_mode == _SDK_MODE.PCIE_MODERN
-        ):
+        elif sdk_mode in {
+            _SDK_MODE.PCIE_MODERN_3,
+            _SDK_MODE.PCIE_MODERN_6,
+            _SDK_MODE.PCIE_MODERN_8,
+            _SDK_MODE.PCIE_LEGACY,
+        }:
             return sdk.Get_image_height(ctypes.c_int(slm_number))
         else:
             raise NotImplementedError("Height retrieval not supported for this model")
@@ -395,10 +408,12 @@ class Meadowlark(SLM):
         sdk = Meadowlark._slm_lib[sdk_mode]
         if sdk_mode == _SDK_MODE.HDMI:
             return sdk.Get_Depth()
-        elif (
-            sdk_mode == _SDK_MODE.PCIE_LEGACY
-            or sdk_mode == _SDK_MODE.PCIE_MODERN
-        ):
+        elif sdk_mode in {
+            _SDK_MODE.PCIE_MODERN_3,
+            _SDK_MODE.PCIE_MODERN_6,
+            _SDK_MODE.PCIE_MODERN_8,
+            _SDK_MODE.PCIE_LEGACY,
+        }:
             return sdk.Get_image_depth(ctypes.c_int(slm_number))
         else:
             raise NotImplementedError(
@@ -417,10 +432,12 @@ class Meadowlark(SLM):
         """
         sdk = Meadowlark._slm_lib[sdk_mode]
         try:
-            if (
-                sdk_mode == _SDK_MODE.PCIE_LEGACY
-                or sdk_mode == _SDK_MODE.PCIE_MODERN
-            ):
+            if sdk_mode in {
+                _SDK_MODE.PCIE_MODERN_3,
+                _SDK_MODE.PCIE_MODERN_6,
+                _SDK_MODE.PCIE_MODERN_8,
+                _SDK_MODE.PCIE_LEGACY,
+            }:
                 sdk.Get_pitch.restype = ctypes.c_double
                 pitch = sdk.Get_pitch(ctypes.c_int(slm_number))
                 return pitch, pitch
@@ -446,10 +463,12 @@ class Meadowlark(SLM):
         NotImplementedError
             If the error message retrieval is not supported for the SLM.
         """
-        if (
-            self.sdk_mode == _SDK_MODE.PCIE_LEGACY
-            or self.sdk_mode == _SDK_MODE.PCIE_MODERN
-        ):
+        if self.sdk_mode in {
+            _SDK_MODE.PCIE_MODERN_3,
+            _SDK_MODE.PCIE_MODERN_6,
+            _SDK_MODE.PCIE_MODERN_8,
+            _SDK_MODE.PCIE_LEGACY,
+        }:
             Meadowlark._slm_lib[self.sdk_mode].Get_last_error_message.restype = ctypes.c_char_p
             return Meadowlark._slm_lib[self.sdk_mode].Get_last_error_message().decode("utf-8")
         else:
@@ -487,7 +506,13 @@ class Meadowlark(SLM):
         sdk = Meadowlark._slm_lib[self.sdk_mode]
         if self.sdk_mode == _SDK_MODE.HDMI:
             return float(sdk.Get_SLMTemp())
-        elif self.sdk_mode == _SDK_MODE.PCIE_MODERN:
+        elif self.sdk_mode == _SDK_MODE.PCIE_MODERN_3:
+            sdk.Read_SLM_temperature.restype = ctypes.c_double
+            return float(sdk.Read_SLM_temperature(ctypes.c_int(self.slm_number)))
+        elif self.sdk_mode in {
+            _SDK_MODE.PCIE_MODERN_6,
+            _SDK_MODE.PCIE_MODERN_8,
+        }:
             sdk.Get_SLMTemp.restype = ctypes.c_double
             return float(sdk.Get_SLMTemp(ctypes.c_int(self.slm_number)))
         else:
@@ -512,7 +537,11 @@ class Meadowlark(SLM):
         sdk = Meadowlark._slm_lib[self.sdk_mode]
         if self.sdk_mode == _SDK_MODE.HDMI:
             return float(sdk.Get_SLMVCom())
-        elif self.sdk_mode == _SDK_MODE.PCIE_MODERN:
+        elif self.sdk_mode in {
+            _SDK_MODE.PCIE_MODERN_3,
+            _SDK_MODE.PCIE_MODERN_6,
+            _SDK_MODE.PCIE_MODERN_8,
+        }:
             sdk.Get_cover_voltage.restype = ctypes.c_double
             return float(sdk.Get_cover_voltage(self.slm_number))
         else:
@@ -540,11 +569,13 @@ class Meadowlark(SLM):
         slm_number = ctypes.c_uint(self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
             raise NotImplementedError("HDMI SLMs do not support input triggering.")
-        elif (
-            self.sdk_mode == _SDK_MODE.PCIE_LEGACY
-            or self.sdk_mode == _SDK_MODE.PCIE_MODERN
-        ):
-            if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
+        elif self.sdk_mode in {
+            _SDK_MODE.PCIE_MODERN_3,
+            _SDK_MODE.PCIE_MODERN_6,
+            _SDK_MODE.PCIE_MODERN_8,
+            _SDK_MODE.PCIE_LEGACY,
+        }:
+            if self.sdk_mode == _SDK_MODE.PCIE_MODERN_3:
                 Meadowlark._slm_lib[self.sdk_mode].SetWaitForTrigger(slm_number, ctypes.c_bool(on))
                 Meadowlark._slm_lib[self.sdk_mode].SetFlipImmediate(slm_number, ctypes.c_bool(False))
             else:
@@ -578,20 +609,22 @@ class Meadowlark(SLM):
         slm_number = ctypes.c_uint(self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
             raise NotImplementedError("HDMI SLMs do not support output triggering.")
-        elif (
-            self.sdk_mode == _SDK_MODE.PCIE_LEGACY
-            or self.sdk_mode == _SDK_MODE.PCIE_MODERN
-        ):
-            if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
+        elif self.sdk_mode in {
+            _SDK_MODE.PCIE_MODERN_3,
+            _SDK_MODE.PCIE_MODERN_6,
+            _SDK_MODE.PCIE_MODERN_8,
+            _SDK_MODE.PCIE_LEGACY,
+        }:
+            if self.sdk_mode == _SDK_MODE.PCIE_MODERN_3:
                 Meadowlark._slm_lib[self.sdk_mode].SetOutputPulse(slm_number, ctypes.c_bool(on))
-            elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 6:
+            elif self.sdk_mode == _SDK_MODE.PCIE_MODERN_6:
                 if on_refresh is not None:
                     warnings.warn(
                         "on_refresh argument is ignored for this SDK version.",
                         stacklevel=2,
                     )
                 # Handled with _output_pulse_image_flip in _set_phase_hw
-            elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 8:
+            elif self.sdk_mode == _SDK_MODE.PCIE_MODERN_8:
                 if on_refresh is not None:
                     self._output_pulse_image_refresh = on_refresh
                 # Handled with _output_pulse_image_flip in _set_phase_hw
@@ -632,10 +665,12 @@ class Meadowlark(SLM):
                 display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
                 ctypes.c_uint(self.bitdepth == 8),  # Is 8-bit
             )
-        elif (
-            self.sdk_mode == _SDK_MODE.PCIE_LEGACY
-            or self.sdk_mode == _SDK_MODE.PCIE_MODERN
-        ):
+        elif self.sdk_mode in {
+            _SDK_MODE.PCIE_MODERN_3,
+            _SDK_MODE.PCIE_MODERN_6,
+            _SDK_MODE.PCIE_MODERN_8,
+            _SDK_MODE.PCIE_LEGACY,
+        }:
             wait_for_trigger = ctypes.c_bool(self._wait_for_trigger)
             # WARN: Do not change this, as doing so will loses the guarantee that
             #  all the pixels are synchronized to the same image (that is, the earliest
@@ -644,17 +679,17 @@ class Meadowlark(SLM):
             flip_immediate = ctypes.c_bool(False)
             output_pulse_image_flip = ctypes.c_bool(self._output_pulse_image_flip)
             output_pulse_image_refresh = ctypes.c_bool(self._output_pulse_image_refresh)
-            trigger_timeout = ctypes.c_uint(timeout_s * 1000.)
+            trigger_timeout = ctypes.c_uint(int(timeout_s * 1000))
 
             if execute:
                 # Switch between the different supported cases for number of Write_image arguments:
-                if Meadowlark._slm_lib_trace[self.sdk_mode][1] == 3:
+                if self.sdk_mode == _SDK_MODE.PCIE_MODERN_3:
                     status = Meadowlark._slm_lib[self.sdk_mode].Write_image(
                         slm_number,
                         display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
                         trigger_timeout,
                     )
-                elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 6:
+                elif self.sdk_mode == _SDK_MODE.PCIE_MODERN_6:
                     status = Meadowlark._slm_lib[self.sdk_mode].Write_image(
                         slm_number,
                         display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
@@ -663,7 +698,7 @@ class Meadowlark(SLM):
                         output_pulse_image_flip,
                         trigger_timeout,
                     )
-                elif Meadowlark._slm_lib_trace[self.sdk_mode][1] == 8:
+                elif self.sdk_mode == _SDK_MODE.PCIE_MODERN_8:
                     status = Meadowlark._slm_lib[self.sdk_mode].Write_image(
                         slm_number,
                         display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
@@ -806,7 +841,11 @@ class Meadowlark(SLM):
                     raise RuntimeError("SDK call failed.")
 
                 Meadowlark._number_of_boards[mode] = number_of_boards.value
-            elif mode == _SDK_MODE.PCIE_MODERN:
+            elif mode in {
+                _SDK_MODE.PCIE_MODERN_3,
+                _SDK_MODE.PCIE_MODERN_6,
+                _SDK_MODE.PCIE_MODERN_8,
+            }:
                 number_of_boards = ctypes.c_uint(-1)
                 constructed_okay = ctypes.c_int(-1)
 
@@ -940,10 +979,12 @@ class Meadowlark(SLM):
         try:
             if self.sdk_mode == _SDK_MODE.HDMI:
                 Meadowlark._slm_lib[self.sdk_mode].Load_lut(lut_path)
-            elif (
-                self.sdk_mode == _SDK_MODE.PCIE_LEGACY
-                or self.sdk_mode == _SDK_MODE.PCIE_MODERN
-            ):
+            elif self.sdk_mode in {
+                _SDK_MODE.PCIE_MODERN_3,
+                _SDK_MODE.PCIE_MODERN_6,
+                _SDK_MODE.PCIE_MODERN_8,
+                _SDK_MODE.PCIE_LEGACY,
+            }:
                 success = Meadowlark._slm_lib[self.sdk_mode].Load_LUT_file(
                     ctypes.c_int(self.slm_number), lut_path.encode("utf-8")
                 )

@@ -207,20 +207,14 @@ class ScreenMirrored(SLM):
 
     def _set_phase_hw(self, display):
         """
-        Low-level hardware interface to project integer data onto the SLM.
-        When the user calls the :meth:`.SLM.set_phase` method of
-        :class:`.SLM`, the ``phase`` argument is error-checked and processed into
-        the integer array ``display`` that is passed to :meth:`_set_phase_hw()`.
-        When integer data is passed to :meth:`set_phase` instead of floating point, it
-        is passed directly to :meth:`_set_phase_hw()` as ``display``.
-        We call this parameter ``display`` to distinguish it from the (potentially)
-        floating point ``phase`` parameter of :meth:`set_phase`.
-        See :meth:`.SLM._set_phase_hw`.
+        Hardware-specific implementation to use SLM's virtual display.
+
+        See :meth:`SLM._set_phase_hw` for the base class documentation.
 
         Parameters
         ----------
         display
-            Integer data to display on the SLM.
+            Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
         """
         # Write to buffer (.buffer points to the same data as .cbuffer).
         # Unfortunately, OpenGL2.0 needs the data copied three times (I think).

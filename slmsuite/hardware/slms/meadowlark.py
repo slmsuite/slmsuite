@@ -612,10 +612,14 @@ class Meadowlark(SLM):
             timeout_s : float = 5.0, # TODO: check units
         ) -> None:
         """
-        See :meth:`.SLM._set_phase_hw`.
+        Hardware-specific implementation for Meadowlark SLM devices.
+
+        See :meth:`SLM._set_phase_hw` for the base class documentation.
 
         Parameters
         ----------
+        display
+            Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
         display : np.ndarray
             Integer data to display on the SLM.
         slm_number : int OR None, optional

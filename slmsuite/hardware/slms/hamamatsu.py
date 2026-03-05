@@ -154,23 +154,17 @@ class Hamamatsu(SLM):
 
     def _set_phase_hw(self, display, slot_number=0):
         r"""
-        Low-level hardware interface to project integer data onto the SLM.
-        When the user calls the :meth:`.SLM.set_phase` method of
-        :class:`.SLM`, the ``phase`` argument is error-checked and processed into
-        the integer array ``display`` that is passed to :meth:`_set_phase_hw()`.
-        When integer data is passed to :meth:`set_phase` instead of floating point, it
-        is passed directly to :meth:`_set_phase_hw()` as ``display``.
-        We call this parameter ``display`` to distinguish it from the (potentially)
-        floating point ``phase`` parameter of :meth:`set_phase`.
-        See :meth:`.SLM._set_phase_hw`.
+        Hardware-specific implementation for Hamamatsu SLM devices.
+
+        See :meth:`SLM._set_phase_hw` for the base class documentation.
 
         Parameters
         ----------
         display
-            Integer data to display on the SLM.
+            Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
         slot_number : int
-            The number of the frame memory slot where to write the pattern.
-            The default value is 0.
+            Hardware-specific implementation. The number of the frame memory 
+            slot where to write the pattern. The default value is 0.
             This can be passed as a ``**kwargs``argument to :meth:`set_phase()`;
             this variable may be renamed in a future slmsuite release to
             conform with eventual implementation of this feature in other SLMs.

@@ -15,7 +15,7 @@ class Template(SLM):
         self,
         bitdepth=8,         # TODO: Remove these arguments if the SLM SDK
         wav_um=1,           #       has some function to read them from the SLM.
-        pitch_um=(8,8),     #       Otherwise, the user must supply them as they are
+        pitch_um=(8,8),     #       Otherwise, the user must supply them as they
         **kwargs            #       are critical for transformations and calibrations.
     ):
         r"""

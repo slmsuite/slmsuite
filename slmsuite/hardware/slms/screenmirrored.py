@@ -1,17 +1,27 @@
 """
 Projects data onto the SLM's virtual display, using the :mod:`pyglet` library.
+
+Each :class:`ScreenMirrored` instance creates a fullscreen :mod:`pyglet` window
+on a dedicated background thread. This thread continuously dispatches OS events
+to prevent window freezing, while rendering commands are submitted from the main
+thread via a thread-safe queue.
 """
 import warnings
 import numpy as np
 
 from slmsuite.hardware.slms.slm import SLM
-from slmsuite.hardware._pyglet import _Window, get_pyglet_display
+from slmsuite.hardware._pyglet import _Window, _WindowManager, _WindowThread, get_pyglet_display
 
 try:
     import pyglet
 except ImportError:
     pyglet = None
     warnings.warn("pyglet not installed. Install to use ScreenMirrored SLMs.")
+
+try:
+    import cupy as cp
+except ImportError:
+    cp = None
 
 class ScreenMirrored(SLM):
     """
@@ -82,16 +92,16 @@ class ScreenMirrored(SLM):
     This feature is similar to the ``isImageLock`` flag in :mod:`slmpy`, but is implemented a bit
     closer to the hardware.
 
-    Event Handling
-    ~~~~~~~~~~~~~~
-    The :class:`ScreenMirrored` windows automatically handle OS events (mouse clicks,
-    keyboard input, window resizing) to prevent freezing when users interact with the
-    window. Event dispatching occurs automatically during :meth:`set_phase` calls, so
-    no manual event loop management is required.
+    Threading Model
+    ~~~~~~~~~~~~~~~
+    Each :class:`ScreenMirrored` window is created on its own dedicated background
+    thread via :class:`~slmsuite.hardware._pyglet._WindowThread`. This allows
+    the background threads to handle OS events and independent event
+    dispatch/vsync timing for multi-SLM support.
 
-    For interactive applications displaying static patterns for extended periods,
-    occasional :meth:`set_phase` calls (even with the same pattern) will keep the
-    window responsive.
+    This main thread communicates with those window threads via
+    :meth:`~slmsuite.hardware._pyglet._WindowThread.submit`, which blocks until
+    the command completes on the window thread.
 
     Note
     ~~~~
@@ -101,20 +111,10 @@ class ScreenMirrored(SLM):
 
     Attributes
     ----------
-    window : pyglet.window.Window
+    window : _Window
         Fullscreen window used to send information to the SLM.
     display_resolution : (int, int)
         Resolution of the mirrored display in pixels, as (width, height).
-    tex_shape_ratio : (int, int)
-        Ratio between the SLM shape and the (power-2-padded) texture stored in ``OpenGL``.
-    buffer : numpy.ndarray
-        Memory used to load data to the ``OpenGL`` memory. Of type ``np.uint8``.
-    cbuffer : pyglet.gl.GLubyte
-        Array of length ``prod(shape) * 4`` (4 bytes per RGBA).
-        Maps to the same memory as :attr:`buffer`.
-        Used to load data to the texture.
-    texture : pyglet.gl.GLuint
-        Identifier for the texture loaded into ``OpenGL`` memory.
     """
 
     def __init__(
@@ -129,6 +129,9 @@ class ScreenMirrored(SLM):
         ):
         """
         Initializes a :mod:`pyglet` window for displaying data to an SLM.
+
+        The window is created on a dedicated background thread to ensure
+        continuous event dispatch and prevent freezing.
 
         Caution
         ~~~~~~~
@@ -171,6 +174,8 @@ class ScreenMirrored(SLM):
 
         if verbose:
             print("Initializing pyglet... ", end="")
+
+        # Display/screen enumeration is read-only and thread-safe in pyglet 2.x.
         display = get_pyglet_display()
         screens = display.get_screens()
         if verbose:
@@ -197,9 +202,11 @@ class ScreenMirrored(SLM):
             print("Creating window... ", end="")
 
         screen = screens[display_number]
-        self.display_resolution = (screen.height, screen.width)
+        # Store as (width, height) to match SLM.__init__ convention.
+        self.display_resolution = (screen.width, screen.height)
 
-        # Use custom resolution if provided, else use display resolution
+        # Use custom resolution if provided, else use display resolution.
+        # resolution is (width, height) per SLM.__init__ convention.
         if resolution is not None:
             slm_shape = resolution
         else:
@@ -213,59 +220,75 @@ class ScreenMirrored(SLM):
             **kwargs
         )
 
-        self.window = _Window(None, screen, self.name)
-
+        # Create the window on a dedicated background thread.
+        # The _WindowThread handles window creation, OpenGL context setup,
+        # and continuous event dispatch on the same thread.
         try:
-            self.window._setup_context()
+            wm = _WindowManager.get_instance()
+            self._window_thread = wm.create_window(None, screen, self.name)
+            self.window = self._window_thread.window
         except Exception as e:
-            print("failure")
-            self.window.close()
-            raise e
+            if verbose:
+                print("Window creation failed")
+            raise
 
         if verbose:
-            print("success")
+            print("Window creation successful")
 
         # Warn the user if wav_um > wav_design_um
         if self.phase_scaling > 1:
             print(
-                "Warning: Wavelength {} um is inaccessible to this SLM with "
-                "design wavelength {} um".format(self.wav_um, self.wav_design_um)
+                f"Warning: Wavelength {self.wav_um} um is inaccessible to this SLM with "
+                f"design wavelength {self.wav_design_um} um"
             )
 
+    # TODO: incorporate optional blocking from PR #160
     def _set_phase_hw(self, data):
         """
-        Writes to screen. See :class:`.SLM`.
+        Writes phase data to the screen via the window's dedicated thread.
 
-        Optimized for GPU arrays:
-        - If data is CuPy array and pinned memory available: fast GPU→pinned→buffer transfer
-        - If data is CuPy array without pinned memory: standard GPU→CPU transfer
-        - If data is NumPy array: direct copy
+        The GPU→CPU transfer (if needed) happens on the WindowManager thread,
+        then the buffer copy and ``OpenGL`` render are submitted to the window
+        thread and the main thread blocks until rendering is complete.
+
+        Parameters
+        ----------
+        data : numpy.ndarray or cupy.ndarray
+            Display data (grayscale uint8) to write to the SLM.
+
+        Note
+        ~~~~
+        The :meth:`~slmsuite.hardware._pyglet._WindowThread.submit` call
+        blocks until ``flip()`` completes on the window thread, ensuring the
+        pattern is actually displayed before this method returns.
         """
-        # Ensure this window's OpenGL context is active
-        # Critical for multi-window setups to avoid rendering to wrong window
-        self.window.switch_to()
-
-        # Check if data is a CuPy array for optimized transfer
-        try:
-            import cupy as cp
-            is_gpu_array = isinstance(data, cp.ndarray)
-        except ImportError:
-            is_gpu_array = False
-
-        # GPU→CPU transfer
-        if is_gpu_array:
+        # GPU→CPU transfer happens on main thread (no OpenGL needed).
+        if cp is not None and isinstance(data, cp.ndarray):
             data = cp.asnumpy(data)
 
-        # Copy to RGB channels
-        self.window.buffer[:,:,0] = data
-        self.window.buffer[:,:,1] = data
-        self.window.buffer[:,:,2] = data
+        # Submit render to the window's dedicated thread and block until done.
+        # This ensures the phase pattern is displayed before returning.
+        future = self._window_thread.submit(self._render, self.window, data)
+        _WindowThread.wait(future)
 
-        self.window.render()
+    @staticmethod
+    def _render(window, data):
+        """Copy grayscale data to RGBA buffer and render on window thread."""
+        window.switch_to()
+        # 3x writes faster than single broadcast
+        # (buffer[:,:,:3] = data[:,:,np.newaxis])
+        window.buffer[:,:,0] = data # R
+        window.buffer[:,:,1] = data # G
+        window.buffer[:,:,2] = data # B
+        window.render()
 
     def close(self):
-        """Closes frame. See :class:`.SLM`."""
-        self.window.close()
+        """
+        Closes the SLM window and stops its background thread.
+
+        See :class:`.SLM`.
+        """
+        self._window_thread.close()
 
     @staticmethod
     def info(verbose=True):

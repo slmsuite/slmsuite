@@ -381,11 +381,12 @@ class SLM(_Picklable, ABC):
         """
         raise NotImplementedError()
 
-    # @abstractmethod
     def _format_phase_hw(self, phase):
         """
-        Formats the phase data for hardware-specific requirements (e.g. converting phase to an
-        electrode bitmap for :class:`.PLM`) prior to calling :meth:`_set_phase_hw`.
+        Formats the phase data for hardware-specific requirements prior to calling
+        :meth:`_set_phase_hw`. By default, performs grayscale conversion via
+        :meth:`_phase2gray`. Override in subclasses for custom formatting
+        (e.g. converting phase to an electrode bitmap for :class:`.texasinstruments.PLM`).
 
         Parameters
         ----------
@@ -397,7 +398,7 @@ class SLM(_Picklable, ABC):
         numpy.ndarray
             Formatted phase data for :meth:`_set_phase_hw`.
         """
-        raise NotImplementedError()
+        return self._phase2gray(phase, out=self.display)
 
     def set_phase(
         self,
@@ -510,14 +511,10 @@ class SLM(_Picklable, ABC):
             If integer data is incompatible with the bitdepth or if the passed phase is
             otherwise incompatible (not a 2D array or smaller than the SLM shape, etc).
         """
-        # Helper variable to speed the case where phase is None.
-        zero_phase = False
-
         # Parse phase.
         if phase is None:
             # Zero the phase pattern.
             self.phase.fill(0)
-            zero_phase = True
         else:
             # Make sure the array is an ndarray (NumPy or CuPy).
             # Allow CuPy arrays to pass through for GPU-accelerated processing.
@@ -566,7 +563,6 @@ class SLM(_Picklable, ABC):
             else:
                 np.copyto(self.display, phase_cpu)
 
-            # TODO: generalize from _phase2gray() to include _format_phase_hw()
             # Update the phase variable with the integer data that we displayed.
             self.phase = 2 * np.pi - self.display * (
                 2 * np.pi / self.phase_scaling / self.bitresolution
@@ -593,22 +589,9 @@ class SLM(_Picklable, ABC):
             # Add phase correction if requested.
             if phase_correct and ("phase" in self.source):
                 self.phase += self.source["phase"]
-                zero_phase = False
 
-            # Pass the data to self.display.
-            if zero_phase:
-                # If None was passed and phase_correct is False, then use a faster method.
-                self.display.fill(0)
-            else:
-                # Format the data for writing to the SLM.
-                if type(self)._format_phase_hw is not SLM._format_phase_hw:
-                    # If a hardware formatting function is implemented (e.g., for PLM to convert
-                    # phase to electrode bit settings), use that
-                    self.display = self._format_phase_hw(self.phase)
-                else:
-                    # Otherwise, assume grayscale conversion (i.e., turn the floats in phase space
-                    # into integer data for the SLM).
-                    self.display = self._phase2gray(self.phase, out=self.display)
+            # Format the data for writing to the SLM.
+            self.display = self._format_phase_hw(self.phase)
 
         # Write!
         self._set_phase_hw(self.display, **kwargs)
@@ -780,7 +763,7 @@ class SLM(_Picklable, ABC):
         self.display = data["display"]
         self.phase = data["phase"]
 
-        if not np.all(np.isclose(data["display"], self._phase2gray(data["phase"]))):
+        if not np.all(np.isclose(data["display"], self._format_phase_hw(data["phase"]))):
             warnings.warn("Integer data in 'display' does not match 'phase' for this SLM.")
 
         # Optional delay.

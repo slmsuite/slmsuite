@@ -57,6 +57,7 @@ import json
 import os
 import warnings
 import numpy as np
+from slmsuite.hardware._pyglet import _WindowThread
 from slmsuite.hardware.slms.screenmirrored import ScreenMirrored
 
 # Try to import CuPy for GPU acceleration
@@ -154,9 +155,14 @@ class PLM(ScreenMirrored):
         elec_shape = self._electrode_layout_raw.shape
         self.display_shape = (self.device_shape[0] * elec_shape[0], self.device_shape[1] * elec_shape[1])
 
-        # Update window shape and recreate buffers for electrode-mapped output
-        self.window.shape = self.display_shape
-        self.window._setup_context()
+        # Update window shape and recreate buffers for electrode-mapped output.
+        # Must run on the window thread to satisfy OpenGL context thread affinity.
+        def _reconfigure(window, shape):
+            window.shape = shape
+            window._setup_context()
+
+        future = self._window_thread.submit(_reconfigure, self.window, self.display_shape)
+        _WindowThread.wait(future)
 
         # Pre-compute phase buckets for quantization
         self._init_phase_buckets()

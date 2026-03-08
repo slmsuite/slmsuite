@@ -718,8 +718,7 @@ class Meadowlark(SLM):
                 if status != 1:
                     raise RuntimeError("ImageWriteComplete failed, trigger never received?")
         else:
-            # We should never end up here, but if for some reason we did... We would
-            # really want to know!!!
+# We should never end up here, but if for some reason we did... 
             raise RuntimeError("Failed to set phase on SLM due to unknown SDK mode")
 
     # Load library helpers

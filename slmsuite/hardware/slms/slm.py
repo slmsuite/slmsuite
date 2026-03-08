@@ -506,7 +506,7 @@ class SLM(_Picklable, ABC):
         execute : bool OR None
             Whether to actually send the image to the SLM.
             Most SLMs do not support this feature, and will error if ``execute`` is not ``None``.
-            Otherwise, ``None`` defaults to ``True``.
+            Otherwise, ``None`` must default to ``True``.
             Use case: if ``execute=False`` and ``block=True``,
             only the block is enforced and no new data is written.
         block : bool OR None
@@ -514,7 +514,7 @@ class SLM(_Picklable, ABC):
             This parameter will determine whether to block the thread until the image is
             fully written.
             Most SLMs do not support this feature, and will error if ``block`` is not ``None``.
-            Otherwise, ``None`` defaults to ``True``.
+            Otherwise, ``None`` must default to ``True``.
             Use case: if ``execute=True`` and ``block=False``, the write is non-blocking.
         **kwargs
             Passed to the SLM in case the subclass needs to do something special.
@@ -533,20 +533,22 @@ class SLM(_Picklable, ABC):
             otherwise incompatible (not a 2D array or smaller than the SLM shape, etc).
         """
         # Parse execute and block arguments.
-        if self._set_phase_hw_execute:
-            if execute is not None:
-                kwargs["execute"] = bool(execute)
+        if execute is None:
+            execute = True
         else:
-            if execute is not None:
+            if self._set_phase_hw_execute:
+                kwargs["execute"] = bool(execute)
+            else:
                 raise ValueError(
                     "This SLM does not support the execute argument in set_phase."
                 )
 
-        if self._set_phase_hw_block:
-            if block is not None:
-                kwargs["block"] = bool(block)
+        if block is None:
+            block = True
         else:
-            if block is not None:
+            if self._set_phase_hw_block:
+                kwargs["block"] = bool(block)
+            else:
                 raise ValueError(
                     "This SLM does not support the block argument in set_phase."
                 )

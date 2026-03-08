@@ -94,8 +94,8 @@ class Template(SLM):
     def _set_phase_hw(
             self,
             display,
-            execute: bool = True,    # TODO: Implement if supported.
-            block: bool = True,      # TODO: Implement if supported.
+            # execute: bool = True,    # TODO: Implement if supported.
+            # block: bool = True,      # TODO: Implement if supported.
             # Add other keyword arguments if needed;
             # these are passed directly from set_phase(**kwargs)
         ):

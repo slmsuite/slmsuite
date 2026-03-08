@@ -158,7 +158,7 @@ class Holoeye(SLM):
         error = self.slm_lib.window().close()
         self._handle_error(error)
 
-    def _set_phase_hw(self, display, execute, block):
+    def _set_phase_hw(self, display):
         """
         Hardware-specific implementation for Holoeye SLM devices.
 
@@ -168,11 +168,6 @@ class Holoeye(SLM):
         ----------
         display
             Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
-        execute : bool
-            Whether to actually send the image to the SLM. See :meth:`.SLM._set_phase_hw`.
-        block : bool
-            Whether to block the thread until the image is fully written.
-            See :meth:`.SLM._set_phase_hw`.
         """
         error = self.slm_lib.showPhaseData(display, phase_unit=256)
         self._handle_error(error)

@@ -1,8 +1,8 @@
 """
-**(Untested)** Hardware control for Hamamatsu SLMs in USB/Trigger mode;
-for DVI mode, use :class:`~slmsuite.hardware.slms.screenmirrored.ScreenMirrored`.
+**(Untested)** Hardware control for Hamamatsu SLMs in USB/Trigger mode.
 For DVI mode, reset the SLM to DVI mode externally and
-project information onto the appropriate screen.
+project information onto the appropriate screen using
+:class:`~slmsuite.hardware.slms.screenmirrored.ScreenMirrored`.
 A previous verions was tested with Hamamatsu LCOS-SLM X15213-02.
 
 Important
@@ -22,7 +22,7 @@ Consider loading these files via :meth:`.SLM.load_vendor_phase_correction()`
 
 Note
 ~~~~
-We does not currently support reading/writing data to the microSD card.
+Reading/writing data to a microSD card is currently unsupported.
 """
 import os
 import warnings
@@ -75,16 +75,6 @@ class Hamamatsu(SLM):
         For DVI mode, preset the SLM to DVI mode externally and use
         :class:`slmsuite.hardware.slms.screenmirrored.ScreenMirrored`.
 
-        Arguments
-        ---------
-        serial_number : str OR None
-            Serial number of the connected device.
-            If ``None``, the first connected device will be used.
-        wav_um : float
-            Wavelength of operation in microns. Defaults to 1 um.
-        pitch_um : (float, float)
-            Pixel pitch in microns. Defaults to 12.5 micron square pixels.
-
         Caution
         ~~~~~~~
         This interface currently supports connecting to only one device.
@@ -93,6 +83,16 @@ class Hamamatsu(SLM):
         ~~~~~~~
         The default values of ``resolution`` and ``pitch_um``
         are relative to the model LCOS-SLM X15213-02.
+
+        Parameters
+        ----------
+        serial_number : str OR None
+            Serial number of the connected device.
+            If ``None``, the first connected device will be used.
+        wav_um : float
+            Wavelength of operation in microns. Defaults to 1 um.
+        pitch_um : (float, float)
+            Pixel pitch in microns. Defaults to 12.5 micron square pixels.
         """
         # Search for one device.
         if verbose: print("Initializing Hamamatsu SDK...", end="")
@@ -152,7 +152,10 @@ class Hamamatsu(SLM):
             **kwargs
         )
 
-    def _set_phase_hw(self, display, execute, block, slot_number=0):
+        # Zero the display using the superclass `set_phase()` function.
+        self.set_phase(None)
+
+    def _set_phase_hw(self, display, slot_number=0):
         r"""
         Hardware-specific implementation for Hamamatsu SLM devices.
 
@@ -162,13 +165,8 @@ class Hamamatsu(SLM):
         ----------
         display
             Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
-        execute : bool
-            Whether to actually send the image to the SLM. See :meth:`.SLM._set_phase_hw`.
-        block : bool
-            Whether to block the thread until the image is fully written.
-            See :meth:`.SLM._set_phase_hw`.
         slot_number : int
-            Hardware-specific implementation. The number of the frame memory 
+            Hardware-specific implementation. The number of the frame memory
             slot where to write the pattern. The default value is 0.
             This can be passed as a ``**kwargs``argument to :meth:`set_phase()`;
             this variable may be renamed in a future slmsuite release to

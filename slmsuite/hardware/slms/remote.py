@@ -68,7 +68,7 @@ class RemoteSLM(_Client, SLM):
     def close(self):
         pass
 
-    def _set_phase_hw(self, display, execute, block):
+    def _set_phase_hw(self, display, **kwargs):
         """
         Hardware-specific implementation for remote SLM connection.
 
@@ -78,10 +78,5 @@ class RemoteSLM(_Client, SLM):
         ----------
         display
             Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
-        execute : bool
-            Whether to actually send the image to the SLM. See :meth:`.SLM._set_phase_hw`.
-        block : bool
-            Whether to block the thread until the image is fully written. 
-            See :meth:`.SLM._set_phase_hw`.
         """
-        self._com(command="_set_phase_hw", kwargs=dict(display=display, execute=execute, block=block))
+        self._com(command="_set_phase_hw", kwargs=dict(display=display, **kwargs))

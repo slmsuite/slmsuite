@@ -94,9 +94,10 @@ class Template(SLM):
     def _set_phase_hw(
             self,
             display,
-            execute,
-            block,
-            # other keyword arguments if needed; these are passed directly from set_phase(**kwargs)
+            execute: bool = True,    # TODO: Implement if supported.
+            block: bool = True,      # TODO: Implement if supported.
+            # Add other keyword arguments if needed;
+            # these are passed directly from set_phase(**kwargs)
         ):
         """
         Hardware-specific implementation.
@@ -108,35 +109,37 @@ class Template(SLM):
         display
             Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
         execute : bool
-            Whether to actually send the image to the SLM. See :meth:`.SLM._set_phase_hw`.
+            Whether to actually send the image to the SLM.
         block : bool
-            Whether to block the thread until the image is fully written. 
-            See :meth:`.SLM._set_phase_hw`.
+            Whether to block the thread until the image is fully written.
         """
         # TODO: Insert code here to write raw phase data to the SLM.
+        raise NotImplementedError()
 
-    def set_input_trigger(self, on : bool = False):
-        r"""
-        Configures the input trigger of the SLM, where an external electronic signal can
-        synchronize the time at which the SLM updates its display.
+    # Triggering (implement if supported):
 
-        Parameters
-        ----------
-        on : bool
-            Subclasses *must* support a boolean configuration argument, but can
-            also accept other datatypes or parameters as needed.
-        """
-        raise NotImplementedError("This SLM does not support input triggering.")
+    # def set_input_trigger(self, on : bool = False):
+    #     r"""
+    #     Configures the input trigger of the SLM, where an external electronic signal can
+    #     synchronize the time at which the SLM updates its display.
 
-    def set_output_trigger(self, on : bool = False):
-        r"""
-        Configures the output trigger of the SLM, where the SLM can send an electronic
-        signal upon updating its display.
+    #     Parameters
+    #     ----------
+    #     on : bool
+    #         Subclasses *must* support a boolean configuration argument, but can
+    #         also accept other datatypes or parameters as needed.
+    #     """
+    #     raise NotImplementedError("This SLM does not support input triggering.")
 
-        Parameters
-        ----------
-        on : bool
-            Subclasses *must* support a boolean configuration argument, but can
-            also accept other datatypes or parameters as needed.
-        """
-        raise NotImplementedError("This SLM does not support output triggering.")
+    # def set_output_trigger(self, on : bool = False):
+    #     r"""
+    #     Configures the output trigger of the SLM, where the SLM can send an electronic
+    #     signal upon updating its display.
+
+    #     Parameters
+    #     ----------
+    #     on : bool
+    #         Subclasses *must* support a boolean configuration argument, but can
+    #         also accept other datatypes or parameters as needed.
+    #     """
+    #     raise NotImplementedError("This SLM does not support output triggering.")

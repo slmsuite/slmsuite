@@ -9,14 +9,14 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import warnings
 from PIL import Image
-
+import inspect
 from abc import ABC, abstractmethod
 
 from slmsuite import __version__
 from slmsuite.hardware import _Picklable
 from slmsuite.holography import toolbox
 from slmsuite.misc import fitfunctions
-from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
+from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography import analysis
 from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
 
@@ -98,6 +98,10 @@ class SLM(_Picklable, ABC):
         Last displayed data in discrete SLM units (integers). This is the data
         that is actually displayed by the bit-limited hardware. If wavefront calibration
         (`phase_correct=True`) is used, this includes the calibration data.
+    settle : bool
+        Default behavior for the ``settle`` argument of :meth:`set_phase()`. Defaults to ``False``.
+    phase_correct : bool
+        Default behavior for the ``phase_correct`` argument of :meth:`set_phase()`. Defaults to ``True``.
     """
     _pickle = [
         "name",
@@ -201,6 +205,16 @@ class SLM(_Picklable, ABC):
         # Display caches for user reference.
         self.phase = np.zeros(self.shape)
         self.display = np.zeros(self.shape, dtype=self.dtype)
+
+        # Now inspect the _set_phase_hw() method to see if it supports the execute and
+        # block arguments. We need to do this in init because inspect is expensive.
+        self._set_phase_hw_args = inspect.signature(self._set_phase_hw).parameters.keys()
+        self._set_phase_hw_block = "block" in self._set_phase_hw_args
+        self._set_phase_hw_execute = "execute" in self._set_phase_hw_args
+
+        # Default settle and phase_correct behavior for set_phase.
+        self.phase_correct = True
+        self.settle = False
 
     @abstractmethod
     def close(self):
@@ -370,7 +384,7 @@ class SLM(_Picklable, ABC):
         self.set_phase(phase, phase_correct, settle, **kwargs)
 
     @abstractmethod
-    def _set_phase_hw(self, display, execute, block):
+    def _set_phase_hw(self, display):
         """
         Low-level hardware interface to project integer data onto the SLM.
         When the user calls the :meth:`.SLM.set_phase` method of
@@ -385,25 +399,22 @@ class SLM(_Picklable, ABC):
         ----------
         display
             Integer data to display on the SLM.
-        execute : bool
-            Whether to actually send the image to the SLM.
-        block : bool
-            Whether to block the thread until the image is fully written.
         """
         raise NotImplementedError("SLM subclasses must implement _set_phase_hw().")
 
     def set_phase(
         self,
         phase,
-        phase_correct: bool =True,
-        settle: bool = False,
-        execute: bool = True,
-        block : bool = False,
+        phase_correct: bool = None,
+        settle: bool = None,
+        execute: bool = None,
+        block: bool = None,
         **kwargs
     ):
         r"""
         Checks, cleans, and adds to data, then sends the data to the SLM and
-        potentially waits for settle. This method calls the SLM-specific private method
+        potentially waits for ``settle_time_s`` seconds.
+        This method calls the SLM-specific private method
         :meth:`_set_phase_hw()` which transfers the data to the SLM.
 
         Warning
@@ -485,21 +496,30 @@ class SLM(_Picklable, ABC):
             copy is modified to include how the data was wrapped. If the data was
             cropped, then the cropped data is stored, etc. If integer data was passed, the
             equivalent floating point phase is computed and stored in the attribute :attr:`phase`.
-        phase_correct : bool
-            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]`` to ``phase``.
-        settle : bool
+        phase_correct : bool OR None
+            Whether to add wavefront correction to the pattern. This correction is stored in
+            :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]``.
+            If ``None``, defaults to :attr:`phase_correct` (which defaults to ``True``).
+        settle : bool OR None
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
-        execute : bool
+            If ``None``, defaults to :attr:`settle` (which defaults to ``False``).
+        execute : bool OR None
             Whether to actually send the image to the SLM.
-        block : bool
-            Some SLM subclasses support non-blocking writes that are triggered externally. 
-            This parameter will determine whether to block the thread until the image is 
+            Most SLMs do not support this feature, and will error if ``execute`` is not ``None``.
+            Otherwise, ``None`` defaults to ``True``.
+            Use case: if ``execute=False`` and ``block=True``,
+            only the block is enforced and no new data is written.
+        block : bool OR None
+            Some SLM subclasses support non-blocking writes that are triggered externally.
+            This parameter will determine whether to block the thread until the image is
             fully written.
-            If ``execute=True`` and ``block=False``, the write is non-blocking.
-            If ``execute=False`` and ``block=True``, only the block is enforced and
-            no new data is written.    
+            Most SLMs do not support this feature, and will error if ``block`` is not ``None``.
+            Otherwise, ``None`` defaults to ``True``.
+            Use case: if ``execute=True`` and ``block=False``, the write is non-blocking.
         **kwargs
             Passed to the SLM in case the subclass needs to do something special.
+            For instance, some SLMs support a ``timeout`` parameter that
+            determines how long to wait for the SLM commands to execute before raising an error.
 
         Returns
         -------
@@ -512,6 +532,25 @@ class SLM(_Picklable, ABC):
             If integer data is incompatible with the bitdepth or if the passed phase is
             otherwise incompatible (not a 2D array or smaller than the SLM shape, etc).
         """
+        # Parse execute and block arguments.
+        if self._set_phase_hw_execute:
+            if execute is not None:
+                kwargs["execute"] = bool(execute)
+        else:
+            if execute is not None:
+                raise ValueError(
+                    "This SLM does not support the execute argument in set_phase."
+                )
+
+        if self._set_phase_hw_block:
+            if block is not None:
+                kwargs["block"] = bool(block)
+        else:
+            if block is not None:
+                raise ValueError(
+                    "This SLM does not support the block argument in set_phase."
+                )
+
         if execute:
             # Helper variable to speed the case where phase is None.
             zero_phase = False
@@ -566,6 +605,8 @@ class SLM(_Picklable, ABC):
                         np.copyto(self.phase, phase)
 
                 # Add phase correction if requested.
+                if phase_correct is None:
+                    phase_correct = self.phase_correct
                 if phase_correct and ("phase" in self.source):
                     self.phase += self.source["phase"]
                     zero_phase = False
@@ -579,9 +620,11 @@ class SLM(_Picklable, ABC):
                     self.display = self._phase2gray(self.phase, out=self.display)
 
         # Write!
-        self._set_phase_hw(self.display, execute = execute, block = block, **kwargs)
+        self._set_phase_hw(self.display, **kwargs)
 
         # Optional delay.
+        if settle is None:
+            settle = self.settle
         if execute and settle:
             time.sleep(self.settle_time_s)
 
@@ -668,6 +711,8 @@ class SLM(_Picklable, ABC):
 
         return out
 
+    # File saving methods
+
     def save_phase(self, path=".", name=None):
         """
         Saves :attr:`~slmsuite.hardware.slms.slm.SLM.phase` and
@@ -752,6 +797,36 @@ class SLM(_Picklable, ABC):
             time.sleep(self.settle_time_s)
 
         return file_path
+
+    # Triggering
+
+    def set_input_trigger(self, on : bool = False):
+        r"""
+        **(Not supported by this SLM.)**
+        Configures the input trigger of the SLM, where an external electronic signal can
+        synchronize the time at which the SLM updates its display.
+
+        Parameters
+        ----------
+        on : bool
+            Subclasses *must* support a boolean configuration argument, but can
+            also accept other datatypes or parameters as needed.
+        """
+        raise NotImplementedError("This SLM does not support input triggering.")
+
+    def set_output_trigger(self, on : bool = False):
+        r"""
+        **(Not supported by this SLM.)**
+        Configures the output trigger of the SLM, where the SLM can send an electronic
+        signal upon updating its display.
+
+        Parameters
+        ----------
+        on : bool
+            Subclasses *must* support a boolean configuration argument, but can
+            also accept other datatypes or parameters as needed.
+        """
+        raise NotImplementedError("This SLM does not support output triggering.")
 
     # Source and calibration methods
 

@@ -42,14 +42,14 @@ class _SDK_MODE(IntEnum):
     PCIE_MODERN_8 = 4
     PCIE_LEGACY = 5
 
-_SDK_MODE_NAMES = [
-    "NULL",
-    "HDMI",
-    "PCIe (modern, 3)",
-    "PCIe (modern, 6)",
-    "PCIe (modern, 8)",
-    "PCIe (legacy)",
-]
+_SDK_MODE_NAMES = {
+    _SDK_MODE.NULL: "NULL",
+    _SDK_MODE.HDMI: "HDMI",
+    _SDK_MODE.PCIE_MODERN_3: "PCIe (modern, 3)",
+    _SDK_MODE.PCIE_MODERN_6: "PCIe (modern, 6)",
+    _SDK_MODE.PCIE_MODERN_8: "PCIe (modern, 8)",
+    _SDK_MODE.PCIE_LEGACY: "PCIe (legacy)",
+}
 
 # To figure out which SDK is present, we parse the C header and determine the number of
 # arguments if the traces for creating the SDK and writing an image. The allowed
@@ -99,8 +99,8 @@ class Meadowlark(SLM):
         verbose : bool
             Whether to print extra information.
         slm_number : int
-            The board number of the SLM to connect to, in the case of PCIe SLMs.
-            Defaults to 1. Ignored for HDMI SLMs.
+            The board number of the SLM to connect to,
+            in the case of multiple PCIe SLMs. Defaults to 1. Ignored for HDMI SLMs.
         sdk_path : str
             Path of the Blink SDK installation folder.
 
@@ -555,7 +555,6 @@ class Meadowlark(SLM):
     def set_input_trigger(
         self,
         on : bool = False,
-        slm_number: Optional[int] = None,
     ):
         """
         Configure the SLM to wait for an external input trigger before writing an image.
@@ -566,10 +565,8 @@ class Meadowlark(SLM):
         ----------
         on : bool, optional
             If ``True``, enable waiting for an external input trigger before the image writes.
-        slm_number : int OR None, optional
-            Target SLM device index.
         """
-        slm_number = ctypes.c_uint(slm_number if slm_number else self.slm_number)
+        slm_number = ctypes.c_uint(self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
             raise NotImplementedError("HDMI SLMs do not support input triggering.")
         elif self.sdk_mode in {
@@ -593,7 +590,6 @@ class Meadowlark(SLM):
         self,
         on : bool = False,
         on_refresh : Optional[bool] = None,
-        slm_number: Optional[int] = None,
     ):
         """
         Configure the SLM to send an external output triggers synchronized with image
@@ -605,10 +601,9 @@ class Meadowlark(SLM):
         on : bool, optional
             If ``True``, an output trigger pulse is sent every time the image data changes.
         on_refresh : bool, optional
-            If ``True``, an output trigger pulse is sent at the refresh rate of the SLM.
+            If ``True``, an output trigger pulse is sent at the refresh rate of the SLM
+            (even if the image data does not change).
             Not supported for all SDK versions.
-        slm_number : int OR None, optional
-            Target SLM device index.
         """
         slm_number = ctypes.c_uint(self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
@@ -647,7 +642,6 @@ class Meadowlark(SLM):
             execute : bool = True,
             block : bool = True,
             timeout_s : float = 5.0,
-            slm_number: Optional[int] = None,
         ) -> None:
         """
         Hardware-specific implementation for Meadowlark SLM devices.
@@ -665,10 +659,8 @@ class Meadowlark(SLM):
             See :meth:`.SLM._set_phase_hw`.
         timeout_s : float
             Timeout for SLM trigger.
-        slm_number : int or None, optional
-            Target SLM device index.
         """
-        slm_number = ctypes.c_uint(slm_number if slm_number else self.slm_number)
+        slm_number = ctypes.c_uint(self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
             Meadowlark._slm_lib[self.sdk_mode].Write_image(
                 display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),

@@ -9,14 +9,14 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import warnings
 from PIL import Image
-
+import inspect
 from abc import ABC, abstractmethod
 
 from slmsuite import __version__
 from slmsuite.hardware import _Picklable
 from slmsuite.holography import toolbox
 from slmsuite.misc import fitfunctions
-from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
+from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography import analysis
 from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
 
@@ -98,6 +98,10 @@ class SLM(_Picklable, ABC):
         Last displayed data in discrete SLM units (integers). This is the data
         that is actually displayed by the bit-limited hardware. If wavefront calibration
         (`phase_correct=True`) is used, this includes the calibration data.
+    settle : bool
+        Default behavior for the ``settle`` argument of :meth:`set_phase()`. Defaults to ``False``.
+    phase_correct : bool
+        Default behavior for the ``phase_correct`` argument of :meth:`set_phase()`. Defaults to ``True``.
     """
     _pickle = [
         "name",
@@ -201,6 +205,16 @@ class SLM(_Picklable, ABC):
         # Display caches for user reference.
         self.phase = np.zeros(self.shape)
         self.display = np.zeros(self.shape, dtype=self.dtype)
+
+        # Now inspect the _set_phase_hw() method to see if it supports the execute and
+        # block arguments. We need to do this in init because inspect is expensive.
+        self._set_phase_hw_args = inspect.signature(self._set_phase_hw).parameters.keys()
+        self._set_phase_hw_block = "block" in self._set_phase_hw_args
+        self._set_phase_hw_execute = "execute" in self._set_phase_hw_args
+
+        # Default settle and phase_correct behavior for set_phase.
+        self.phase_correct = True
+        self.settle = False
 
     @abstractmethod
     def close(self):
@@ -370,28 +384,37 @@ class SLM(_Picklable, ABC):
         self.set_phase(phase, phase_correct, settle, **kwargs)
 
     @abstractmethod
-    def _set_phase_hw(self, phase):
+    def _set_phase_hw(self, display):
         """
-        Abstract method to communicate with the SLM. Subclasses **should** overwrite this.
-        :meth:`set_phase()` contains error checks and overhead, then calls :meth:`_set_phase_hw()`.
+        Low-level hardware interface to project integer data onto the SLM.
+        When the user calls the :meth:`.SLM.set_phase` method of
+        :class:`.SLM`, the ``phase`` argument is error-checked and processed into
+        the integer array ``display`` that is passed to :meth:`_set_phase_hw()`.
+        When integer data is passed to :meth:`set_phase` instead of floating point, it
+        is passed directly to :meth:`_set_phase_hw()` as ``display``.
+        We call this parameter ``display`` to distinguish it from the (potentially)
+        floating point ``phase`` parameter of :meth:`set_phase`.
 
         Parameters
         ----------
-        phase
-            See :meth:`set_phase`.
+        display
+            Integer data to display on the SLM.
         """
-        raise NotImplementedError()
+        raise NotImplementedError("SLM subclasses must implement _set_phase_hw().")
 
     def set_phase(
         self,
         phase,
-        phase_correct=True,
-        settle=False,
+        phase_correct: bool = None,
+        settle: bool = None,
+        execute: bool = None,
+        block: bool = None,
         **kwargs
     ):
         r"""
         Checks, cleans, and adds to data, then sends the data to the SLM and
-        potentially waits for settle. This method calls the SLM-specific private method
+        potentially waits for ``settle_time_s`` seconds.
+        This method calls the SLM-specific private method
         :meth:`_set_phase_hw()` which transfers the data to the SLM.
 
         Warning
@@ -473,12 +496,30 @@ class SLM(_Picklable, ABC):
             copy is modified to include how the data was wrapped. If the data was
             cropped, then the cropped data is stored, etc. If integer data was passed, the
             equivalent floating point phase is computed and stored in the attribute :attr:`phase`.
-        phase_correct : bool
-            Whether or not to add :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]`` to ``phase``.
-        settle : bool
+        phase_correct : bool OR None
+            Whether to add wavefront correction to the pattern. This correction is stored in
+            :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]``.
+            If ``None``, defaults to :attr:`phase_correct` (which defaults to ``True``).
+        settle : bool OR None
             Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
+            If ``None``, defaults to :attr:`settle` (which defaults to ``False``).
+        execute : bool OR None
+            Whether to actually send the image to the SLM.
+            Most SLMs do not support this feature, and will error if ``execute`` is not ``None``.
+            Otherwise, ``None`` must default to ``True``.
+            Use case: if ``execute=False`` and ``block=True``,
+            only the block is enforced and no new data is written.
+        block : bool OR None
+            Some SLM subclasses support non-blocking writes that are triggered externally.
+            This parameter will determine whether to block the thread until the image is
+            fully written.
+            Most SLMs do not support this feature, and will error if ``block`` is not ``None``.
+            Otherwise, ``None`` must default to ``True``.
+            Use case: if ``execute=True`` and ``block=False``, the write is non-blocking.
         **kwargs
             Passed to the SLM in case the subclass needs to do something special.
+            For instance, some SLMs support a ``timeout`` parameter that
+            determines how long to wait for the SLM commands to execute before raising an error.
 
         Returns
         -------
@@ -491,76 +532,102 @@ class SLM(_Picklable, ABC):
             If integer data is incompatible with the bitdepth or if the passed phase is
             otherwise incompatible (not a 2D array or smaller than the SLM shape, etc).
         """
-        # Helper variable to speed the case where phase is None.
-        zero_phase = False
-
-        # Parse phase.
-        if phase is None:
-            # Zero the phase pattern.
-            self.phase.fill(0)
-            zero_phase = True
+        # Parse execute and block arguments.
+        if execute is None:
+            execute = True
         else:
-            # Make sure the array is an ndarray.
-            phase = np.array(phase)
-
-        if hasattr(phase, "get_phase"):
-            # If we passed a hologram, grab the phase from there.
-            phase = phase.get_phase()
-
-        if phase is not None and np.issubdtype(phase.dtype, np.integer):
-            # Check the type.
-            if phase.dtype != self.display.dtype:
-                raise TypeError(
-                    "Unexpected integer type {}. Expected {}.".format(
-                        phase.dtype, self.display.dtype
-                    )
-                )
-
-            # If integer data was passed, check that we are not out of range.
-            if np.any(phase >= self.bitresolution):
-                raise TypeError(
-                    "Integer data must be within the bitdepth ({}-bit) of the SLM.".format(
-                        self.bitdepth
-                    )
-                )
-
-            # Copy the pattern and unpad if necessary.
-            if phase.shape != self.shape:
-                np.copyto(self.display, toolbox.unpad(phase, self.shape))
+            if self._set_phase_hw_execute:
+                kwargs["execute"] = bool(execute)
             else:
-                np.copyto(self.display, phase)
+                raise ValueError(
+                    "This SLM does not support the execute argument in set_phase."
+                )
 
-            # Update the phase variable with the integer data that we displayed.
-            self.phase = 2 * np.pi - self.display * (
-                2 * np.pi / self.phase_scaling / self.bitresolution
-            )
+        if block is None:
+            block = True
         else:
-            # If float data was passed (or the None case).
-            # Copy the pattern and unpad if necessary.
-            if phase is not None:
-                if self.phase.shape != self.shape:
-                    np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
+            if self._set_phase_hw_block:
+                kwargs["block"] = bool(block)
+            else:
+                raise ValueError(
+                    "This SLM does not support the block argument in set_phase."
+                )
+
+        if execute:
+            # Helper variable to speed the case where phase is None.
+            zero_phase = False
+
+            # Parse phase.
+            if phase is None:
+                # Zero the phase pattern.
+                self.phase.fill(0)
+                zero_phase = True
+            else:
+                # Make sure the array is an ndarray.
+                phase = np.array(phase)
+
+            if hasattr(phase, "get_phase"):
+                # If we passed a hologram, grab the phase from there.
+                phase = phase.get_phase()
+
+            if phase is not None and np.issubdtype(phase.dtype, np.integer):
+                # Check the type.
+                if phase.dtype != self.display.dtype:
+                    raise TypeError(
+                        "Unexpected integer type {}. Expected {}.".format(
+                            phase.dtype, self.display.dtype
+                        )
+                    )
+
+                # If integer data was passed, check that we are not out of range.
+                if np.any(phase >= self.bitresolution):
+                    raise TypeError(
+                        "Integer data must be within the bitdepth ({}-bit) of the SLM.".format(
+                            self.bitdepth
+                        )
+                    )
+
+                # Copy the pattern and unpad if necessary.
+                if phase.shape != self.shape:
+                    np.copyto(self.display, toolbox.unpad(phase, self.shape))
                 else:
-                    np.copyto(self.phase, phase)
+                    np.copyto(self.display, phase)
 
-            # Add phase correction if requested.
-            if phase_correct and ("phase" in self.source):
-                self.phase += self.source["phase"]
-                zero_phase = False
-
-            # Pass the data to self.display.
-            if zero_phase:
-                # If None was passed and phase_correct is False, then use a faster method.
-                self.display.fill(0)
+                # Update the phase variable with the integer data that we displayed.
+                self.phase = 2 * np.pi - self.display * (
+                    2 * np.pi / self.phase_scaling / self.bitresolution
+                )
             else:
-                # Turn the floats in phase space to integer data for the SLM.
-                self.display = self._phase2gray(self.phase, out=self.display)
+                # If float data was passed (or the None case).
+                # Copy the pattern and unpad if necessary.
+                if phase is not None:
+                    if self.phase.shape != self.shape:
+                        np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
+                    else:
+                        np.copyto(self.phase, phase)
+
+                # Add phase correction if requested.
+                if phase_correct is None:
+                    phase_correct = self.phase_correct
+                if phase_correct and ("phase" in self.source):
+                    self.phase += self.source["phase"]
+                    zero_phase = False
+
+                # Pass the data to self.display.
+                if zero_phase:
+                    # If None was passed and phase_correct is False, then use a faster method.
+                    self.display.fill(0)
+                else:
+                    # Turn the floats in phase space to integer data for the SLM.
+                    self.display = self._phase2gray(self.phase, out=self.display)
 
         # Write!
         self._set_phase_hw(self.display, **kwargs)
 
         # Optional delay.
-        if settle:
+        if settle is None:
+            settle = self.settle
+        if execute and settle:
             time.sleep(self.settle_time_s)
 
         return self.display
@@ -646,6 +713,8 @@ class SLM(_Picklable, ABC):
 
         return out
 
+    # File saving methods
+
     def save_phase(self, path=".", name=None):
         """
         Saves :attr:`~slmsuite.hardware.slms.slm.SLM.phase` and
@@ -730,6 +799,36 @@ class SLM(_Picklable, ABC):
             time.sleep(self.settle_time_s)
 
         return file_path
+
+    # Triggering
+
+    def set_input_trigger(self, on : bool = False):
+        r"""
+        **(Not supported by this SLM.)**
+        Configures the input trigger of the SLM, where an external electronic signal can
+        synchronize the time at which the SLM updates its display.
+
+        Parameters
+        ----------
+        on : bool
+            Subclasses *must* support a boolean configuration argument, but can
+            also accept other datatypes or parameters as needed.
+        """
+        raise NotImplementedError("This SLM does not support input triggering.")
+
+    def set_output_trigger(self, on : bool = False):
+        r"""
+        **(Not supported by this SLM.)**
+        Configures the output trigger of the SLM, where the SLM can send an electronic
+        signal upon updating its display.
+
+        Parameters
+        ----------
+        on : bool
+            Subclasses *must* support a boolean configuration argument, but can
+            also accept other datatypes or parameters as needed.
+        """
+        raise NotImplementedError("This SLM does not support output triggering.")
 
     # Source and calibration methods
 

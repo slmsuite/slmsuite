@@ -205,14 +205,23 @@ class ScreenMirrored(SLM):
                 "design wavelength {} um".format(self.wav_um, self.wav_design_um)
             )
 
-    def _set_phase_hw(self, data):
-        """Writes to screen. See :class:`.SLM`."""
+    def _set_phase_hw(self, display):
+        """
+        Hardware-specific implementation to use SLM's virtual display.
+
+        See :meth:`SLM._set_phase_hw` for the base class documentation.
+
+        Parameters
+        ----------
+        display
+            Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
+        """
         # Write to buffer (.buffer points to the same data as .cbuffer).
         # Unfortunately, OpenGL2.0 needs the data copied three times (I think).
         # FUTURE: For OpenGL3.0 and pyglet 2.0+, use the shader to minimize data transfer.
-        np.copyto(self.window.buffer[:,:,0], data)
-        np.copyto(self.window.buffer[:,:,1], data)
-        np.copyto(self.window.buffer[:,:,2], data)
+        np.copyto(self.window.buffer[:,:,0], display)
+        np.copyto(self.window.buffer[:,:,1], display)
+        np.copyto(self.window.buffer[:,:,2], display)
 
         self.window.render()
 

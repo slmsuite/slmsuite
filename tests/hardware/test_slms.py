@@ -40,36 +40,23 @@ def test_slm_test(slm):
     assert result is True
 
 
-class TestSLMEdgeCases:
+def test_slm_edge_cases(slm, subtests):
     """Test edge cases and error handling."""
-
-    def test_phase_wrong_shape(self, slm):
-        """Test handling of incorrect phase shape."""
+    with subtests.test("phase wrong shape"):
         wrong_phase = np.zeros((100, 100))
-
-        # Depending on implementation, this might resize or error
-        # For now, just test it doesn't crash catastrophically
         try:
             slm.set_phase(wrong_phase)
         except (ValueError, AssertionError):
-            pass  # Expected to fail
+            pass
 
-    def test_negative_phase(self, slm):
-        """Test handling of negative phase values."""
+    with subtests.test("negative phase wraps to valid gray"):
         phase = -np.ones(slm.shape) * np.pi
-
         gray = slm._phase2gray(phase)
-
-        # Should wrap to positive values
         assert np.all(gray >= 0)
         assert np.all(gray < slm.bitresolution)
 
-    def test_large_phase_values(self, slm):
-        """Test handling of phase values > 2π."""
+    with subtests.test("large phase wraps to valid gray"):
         phase = np.ones(slm.shape) * 10 * np.pi
-
         gray = slm._phase2gray(phase)
-
-        # Should wrap via modulo
         assert np.all(gray >= 0)
         assert np.all(gray < slm.bitresolution)

@@ -49,6 +49,7 @@
 
 # test output
 tests/output/
+*.coverage*
 
 # local
 keys.json

@@ -17,10 +17,10 @@ from functools import partial
 
 from slmsuite.hardware import _Picklable
 from slmsuite.holography import analysis
-from slmsuite.holography.toolbox import BLAZE_LABELS
+from slmsuite.holography.toolbox import BLAZE_LABELS, format_shape
 from slmsuite.holography.toolbox.phase import zernike
 from slmsuite.misc.fitfunctions import lorentzian
-from slmsuite.misc.math import REAL_TYPES
+from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 from slmsuite.holography.analysis import image_centroids, image_remove_field
 from slmsuite.holography.analysis.files import _gray2rgb
 
@@ -163,7 +163,7 @@ class Camera(_Picklable, ABC):
             Flips returned image up down.
             Used to determine :attr:`transform`.
         """
-        (width, height) = resolution
+        (width, height) = format_shape(resolution)
 
         # Set shape, depending upon transform.
         if rot in ("90", 1, "270", 3):
@@ -195,7 +195,11 @@ class Camera(_Picklable, ABC):
         self.name = str(name)
 
         # Set exposure information.
-        self.exposure_bounds_s = exposure_bounds_s
+        self.exposure_bounds_s = (
+            (np.min(exposure_bounds_s), np.max(exposure_bounds_s))
+            if exposure_bounds_s is not None else
+            None
+        )
 
         self.exposure_s = 1     # Default to 1s for Simulated cameras.
         self.exposure_s = self.get_exposure()
@@ -207,7 +211,7 @@ class Camera(_Picklable, ABC):
         # Frame averaging variables.
         self.averaging = self._parse_averaging(averaging, preserve_none=True)
         self.hdr = self._parse_hdr(hdr, preserve_none=True)
-        self._flush_iterations = 2  # Hidden variable
+        self._flush_iterations = 2  # Hidden variable: how many frames to capture for a flush.
 
         # Spatial dimensions.
         if pitch_um is not None and not (np.isscalar(pitch_um) and pitch_um <= 0):
@@ -970,7 +974,7 @@ class Camera(_Picklable, ABC):
         assert hasattr(self, 'dtype')
         assert self.bitresolution == 2**self.bitdepth
         assert len(self.shape) == 2
-        assert all(isinstance(dim, int) and dim > 0 for dim in self.shape)
+        assert all(isinstance(dim, INTEGER_TYPES) and dim > 0 for dim in self.shape)
 
         # Test transform function exists and is callable
         assert hasattr(self, 'transform')

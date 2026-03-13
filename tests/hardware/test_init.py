@@ -6,191 +6,163 @@ import tempfile
 import os
 import datetime
 from unittest.mock import patch
-import warnings
+
+import h5py
 
 from slmsuite.hardware import _Picklable
 from slmsuite import __version__
 
 
+class _TestPicklableClass(_Picklable):
+    """Concrete _Picklable used by most tests."""
+
+    _pickle = ["basic_attr", "name"]
+    _pickle_data = ["heavy_attr"]
+
+    def __init__(self):
+        self.basic_attr = 42
+        self.heavy_attr = [1, 2, 3, 4, 5]
+        self.name = "test_object"
+        self.unpickled_attr = "not_pickled"
+
+    def __str__(self):
+        return "TestPicklableClass"
+
+
 class TestPicklable:
-    """Test the _Picklable class functionality."""
+    """Tests for the _Picklable base class."""
 
-    def setup_method(self):
-        """Set up a test Picklable object for each test."""
-        class TestPicklableClass(_Picklable):
-            _pickle = ['basic_attr', 'name']
-            _pickle_data = ['heavy_attr']
+    @pytest.fixture(autouse=True)
+    def _obj(self):
+        self.obj = _TestPicklableClass()
 
-            def __init__(self):
-                self.basic_attr = 42
-                self.heavy_attr = [1, 2, 3, 4, 5]
-                self.name = "test_object"
-                self.unpickled_attr = "not_pickled"
+    def test_pickle_attributes(self, subtests):
+        """Test pickle output for different `attributes` values."""
+        with subtests.test("attributes=False keeps only _pickle"):
+            result = self.obj.pickle(attributes=False, metadata=False)
 
-            def __str__(self):
-                return "TestPicklableClass"
+            assert result["__class__"] == "TestPicklableClass"
+            assert result["basic_attr"] == 42
+            assert result["name"] == "test_object"
+            assert "heavy_attr" not in result
+            assert "unpickled_attr" not in result
 
-        self.test_obj = TestPicklableClass()
+        with subtests.test("attributes=True includes _pickle_data"):
+            result = self.obj.pickle(attributes=True, metadata=False)
 
-    def test_pickle_basic_attributes_only(self):
-        """Test pickling with attributes=False (basic only)."""
-        result = self.test_obj.pickle(attributes=False, metadata=False)
+            assert result["__class__"] == "TestPicklableClass"
+            assert result["basic_attr"] == 42
+            assert result["name"] == "test_object"
+            assert result["heavy_attr"] == [1, 2, 3, 4, 5]
+            assert "unpickled_attr" not in result
 
-        assert "__class__" in result
-        assert result["__class__"] == "TestPicklableClass"
-        assert "basic_attr" in result
-        assert result["basic_attr"] == 42
-        assert "name" in result
-        assert result["name"] == "test_object"
-        assert "heavy_attr" not in result
-        assert "unpickled_attr" not in result
+        with subtests.test("custom attribute list"):
+            result = self.obj.pickle(attributes=["basic_attr"], metadata=False)
 
-    def test_pickle_all_attributes(self):
-        """Test pickling with attributes=True (all)."""
-        result = self.test_obj.pickle(attributes=True, metadata=False)
+            assert result["__class__"] == "TestPicklableClass"
+            assert result["basic_attr"] == 42
+            assert "name" not in result
+            assert "heavy_attr" not in result
 
-        assert "__class__" in result
-        assert result["__class__"] == "TestPicklableClass"
-        assert "basic_attr" in result
-        assert result["basic_attr"] == 42
-        assert "name" in result
-        assert result["name"] == "test_object"
-        assert "heavy_attr" in result
-        assert result["heavy_attr"] == [1, 2, 3, 4, 5]
-        assert "unpickled_attr" not in result
+        with subtests.test("__str__ used as __class__"):
+            result = self.obj.pickle(attributes=False, metadata=False)
+            assert result["__class__"] == "TestPicklableClass"
 
-    def test_pickle_custom_attributes(self):
-        """Test pickling with custom attribute list."""
-        result = self.test_obj.pickle(attributes=['basic_attr'], metadata=False)
+    def test_pickle_metadata(self, subtests):
+        """Test pickle metadata and version info."""
+        with subtests.test("metadata fields present"):
+            with patch("datetime.datetime") as mock_dt:
+                mock_now = datetime.datetime(2023, 1, 1, 12, 0, 0)
+                mock_dt.now.return_value = mock_now
+                mock_dt.side_effect = lambda *a, **kw: datetime.datetime(*a, **kw)
 
-        assert "__class__" in result
-        assert result["__class__"] == "TestPicklableClass"
-        assert "basic_attr" in result
-        assert result["basic_attr"] == 42
-        assert "name" not in result
-        assert "heavy_attr" not in result
+                result = self.obj.pickle(attributes=False, metadata=True)
 
-    def test_pickle_with_metadata(self):
-        """Test pickling with metadata enabled."""
-        with patch('datetime.datetime') as mock_datetime:
-            mock_now = datetime.datetime(2023, 1, 1, 12, 0, 0)
-            mock_datetime.now.return_value = mock_now
-            mock_datetime.side_effect = lambda *args, **kw: datetime.datetime(*args, **kw)
+                assert result["__version__"] == __version__
+                assert result["__time__"] == str(mock_now)
+                assert result["__timestamp__"] == mock_now.timestamp()
 
-            result = self.test_obj.pickle(attributes=False, metadata=True)
+                meta = result["__meta__"]
+                assert "__class__" in meta
+                assert "basic_attr" in meta
+                assert "name" in meta
 
-            assert "__version__" in result
-            assert result["__version__"] == __version__
-            assert "__time__" in result
-            assert result["__time__"] == str(mock_now)
-            assert "__timestamp__" in result
-            assert result["__timestamp__"] == mock_now.timestamp()
-            assert "__meta__" in result
+    def test_pickle_edge_cases(self, subtests):
+        """Test warnings, nested objects, and empty _pickle lists."""
+        with subtests.test("missing attribute warns"):
+            with pytest.warns(
+                UserWarning, match="Expected attribute 'nonexistent' not present"
+            ):
+                result = self.obj.pickle(attributes=["nonexistent"], metadata=False)
+            assert "__class__" in result
 
-            meta = result["__meta__"]
-            assert "__class__" in meta
-            assert "basic_attr" in meta
-            assert "name" in meta
+        with subtests.test("nested Picklable is recursively pickled"):
 
-    def test_pickle_missing_attribute_warning(self):
-        """Test that warning is issued for missing attributes."""
-        with pytest.warns(UserWarning, match="Expected attribute 'nonexistent' not present"):
-            result = self.test_obj.pickle(attributes=['nonexistent'], metadata=False)
+            class _Nested(_Picklable):
+                _pickle = ["nested_value"]
 
-        # Should still contain class info
-        assert "__class__" in result
+                def __init__(self):
+                    self.nested_value = "nested"
 
-    def test_pickle_recursive_picklable_attributes(self):
-        """Test pickling with nested Picklable objects."""
-        class NestedPicklable(_Picklable):
-            _pickle = ['nested_value']
+                def __str__(self):
+                    return "NestedPicklable"
 
-            def __init__(self):
-                self.nested_value = "nested"
+            self.obj.nested_obj = _Nested()
+            result = self.obj.pickle(attributes=["nested_obj"], metadata=False)
 
-            def __str__(self):
-                return "NestedPicklable"
+            nested = result["nested_obj"]
+            assert nested["__class__"] == "NestedPicklable"
+            assert nested["nested_value"] == "nested"
 
-        self.test_obj.nested_obj = NestedPicklable()
+        with subtests.test("empty _pickle lists yield only __class__"):
 
-        result = self.test_obj.pickle(attributes=['nested_obj'], metadata=False)
+            class _Empty(_Picklable):
+                _pickle = []
+                _pickle_data = []
 
-        assert "nested_obj" in result
-        nested_result = result["nested_obj"]
-        assert "__class__" in nested_result
-        assert nested_result["__class__"] == "NestedPicklable"
-        assert "nested_value" in nested_result
-        assert nested_result["nested_value"] == "nested"
+                def __init__(self):
+                    self.some_attr = "value"
 
-    def test_save_method(self):
-        """Test the save method functionality."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Test save with default name
-            saved_path = self.test_obj.save(path=temp_dir)
+                def __str__(self):
+                    return "EmptyPicklable"
 
-            assert os.path.exists(saved_path)
-            assert saved_path.endswith('.h5')
-            assert 'test_object-pickle' in saved_path
+            result = _Empty().pickle(attributes=True, metadata=False)
+            assert "__class__" in result
+            assert "some_attr" not in result
 
-            # Test save with custom name
-            custom_path = self.test_obj.save(path=temp_dir, name="custom_name")
+    def test_save(self, subtests):
+        """Test save method: default name, custom name, kwargs, and missing name."""
+        with subtests.test("default name from .name attribute"):
+            with tempfile.TemporaryDirectory() as d:
+                path = self.obj.save(path=d)
+                assert os.path.exists(path)
+                assert path.endswith(".h5")
+                assert "test_object-pickle" in path
 
-            assert os.path.exists(custom_path)
-            assert 'custom_name' in custom_path
+        with subtests.test("custom name"):
+            with tempfile.TemporaryDirectory() as d:
+                path = self.obj.save(path=d, name="custom_name")
+                assert os.path.exists(path)
+                assert "custom_name" in path
 
-    def test_save_method_with_kwargs(self):
-        """Test save method passes kwargs to pickle."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Save with attributes=True to include heavy data
-            saved_path = self.test_obj.save(path=temp_dir, attributes=True)
+        with subtests.test("kwargs forwarded to pickle"):
+            with tempfile.TemporaryDirectory() as d:
+                path = self.obj.save(path=d, attributes=True)
+                with h5py.File(path, "r") as f:
+                    assert "__meta__" in f
+                    assert "heavy_attr" in f["__meta__"]
 
-            assert os.path.exists(saved_path)
+        with subtests.test("no name attribute raises AttributeError"):
 
-            # Load and verify heavy data was saved
-            import h5py
-            with h5py.File(saved_path, 'r') as f:
-                assert '__meta__' in f
-                meta_group = f['__meta__']
-                assert 'heavy_attr' in meta_group
+            class _NoName(_Picklable):
+                _pickle = ["value"]
 
-    def test_save_without_name_attribute(self):
-        """Test save method when object has no name attribute."""
-        class NoNamePicklable(_Picklable):
-            _pickle = ['value']
+                def __init__(self):
+                    self.value = 123
 
-            def __init__(self):
-                self.value = 123
+                def __str__(self):
+                    return "NoNamePicklable"
 
-            def __str__(self):
-                return "NoNamePicklable"
-
-        obj_without_name = NoNamePicklable()
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Should raise AttributeError when trying to access name
-            with pytest.raises(AttributeError):
-                obj_without_name.save(path=temp_dir)
-
-    def test_pickle_edge_cases(self):
-        """Test various edge cases for pickle method."""
-        # Test with empty _pickle lists
-        class EmptyPicklable(_Picklable):
-            _pickle = []
-            _pickle_data = []
-
-            def __init__(self):
-                self.some_attr = "value"
-
-            def __str__(self):
-                return "EmptyPicklable"
-
-        empty_obj = EmptyPicklable()
-        result = empty_obj.pickle(attributes=True, metadata=False)
-
-        assert "__class__" in result
-        assert "some_attr" not in result  # Not in _pickle lists
-
-    def test_str_method_integration(self):
-        """Test that __str__ method is properly used in pickle."""
-        result = self.test_obj.pickle(attributes=False, metadata=False)
-        assert result["__class__"] == "TestPicklableClass"
+            with tempfile.TemporaryDirectory() as d:
+                with pytest.raises(AttributeError):
+                    _NoName().save(path=d)

@@ -9,10 +9,10 @@ from slmsuite.holography.toolbox.phase import zernike
 
 # TODO: camera fixture vs. SimulatedCamera cleanup (use camera wherever possible)
 
-def test_camera_init(slm):
+def test_camera_init(slm_small):
     """Test basic SimulatedCamera construction."""
     cam = SimulatedCamera(
-        slm=slm,
+        slm=slm_small,
         resolution=(512, 512),
         pitch_um=(5.5, 5.5),
         bitdepth=8
@@ -25,13 +25,13 @@ def test_camera_init(slm):
 
     # Verify (height, width) shape convention.
     height, width = 480, 640
-    cam = SimulatedCamera(slm=slm, resolution=(width, height))
+    cam = SimulatedCamera(slm=slm_small, resolution=(width, height))
 
     assert cam.shape[0] == height
     assert cam.shape[1] == width
 
     # Test default camera parameters.
-    cam = SimulatedCamera(slm=slm, resolution=(256, 256))
+    cam = SimulatedCamera(slm=slm_small, resolution=(256, 256))
 
     assert cam.exposure_s is not None
     assert cam.averaging is None or isinstance(cam.averaging, int)
@@ -40,47 +40,39 @@ def test_camera_init(slm):
 
     cam.close()  # Cleanup
 
-def test_camera_test(camera):
+
+def test_camera_test(camera, camera_small):
     """Test that the camera's self-test method works."""
     # The test method should return True on success
     result = camera.test()
     assert result is True
 
+    result = camera_small.test()
+    assert result is True
 
-def test_camera_autoexposure(slm):
+
+def test_camera_autoexposure(camera_small):
     """Test exposure control works."""
-    cam = SimulatedCamera(
-        slm=slm,
-        resolution=(512, 512),
-        pitch_um=(5.5, 5.5),
-        bitdepth=8
-    )
+    camera_small.set_exposure(0.01)
+    result1 = camera_small.autoexposure(verbose=True)
 
-    cam.set_exposure(0.01)
-    result1 = cam.autoexposure(verbose=True)
-
-    cam.set_exposure(1)
-    result2 = cam.autoexposure(verbose=True)
+    camera_small.set_exposure(1)
+    result2 = camera_small.autoexposure(verbose=True)
 
     assert pytest.approx(result1, rel=0.1) == result2
 
-def test_camera_autofocus(slm):
-    cam = SimulatedCamera(
-        slm=slm,
-        resolution=(512, 512),
-        pitch_um=(5.5, 5.5),
-        bitdepth=8
-    )
 
+def test_camera_autofocus(camera_small, slm_small):
+    slm = slm_small
     slm.set_source_analytic()
 
-    fs = FourierSLM(cam, slm)
-    fs.fourier_calibrate(array_pitch=40, verbose=False)
+    fs = FourierSLM(camera_small, slm)
+    fs.fourier_calibrate(array_pitch=10, verbose=False)
 
     defocus_zernike = 1
     slm.source['phase_sim'] = zernike(slm, 4, -defocus_zernike, use_mask=False)
 
-    defocus_opt = cam.autofocus(
+    defocus_opt = camera_small.autofocus(
         set_z=slm,
         verbose=True
     )

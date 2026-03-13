@@ -58,6 +58,33 @@ pytest -m "not slow"   # Skip slow tests
 - `test_logger`: Automatic per-test logger (autouse=True, optional parameter)
 - `mpl_test`: Matplotlib fixture with automatic cleanup
 
+**Test Style**:
+
+*Subtests over many small tests.* Group related test cases for a single function/feature into **one test function using `pytest-subtests`** (the `subtests` fixture). This keeps the test suite organized while still reporting each subtest failure independently. Do **not** create separate `test_foo_case_a`, `test_foo_case_b`, … functions when they all exercise the same unit — combine them. The `pytest-subtests` package is a required dev dependency (`pip install pytest-subtests`).
+
+*Loop when reasonable.* When several subtests share the same assertion logic (e.g. identity, roundtrip, symmetry, input-format acceptance), use a `for` loop over the varying parameter instead of writing each case out individually:
+
+```python
+def test_convert_vector(slm, subtests):
+    vec = np.array([[0.1], [-0.2]])
+
+    for unit in all_roundtrip_units:
+        with subtests.test(f"roundtrip {unit}"):
+            kw = knm_kw if unit == "knm" else (hw if unit in slm_units else {})
+            rt = convert_vector(
+                convert_vector(vec, "norm", unit, **kw), unit, "norm", **kw
+            )
+            np.testing.assert_allclose(rt, vec)
+```
+
+*Test function order matches source order.* Within a test file, order test functions to mirror the order of the functions they test in the source module.
+
+*No dashed separator lines.* Do not use long `# ----------` comment dividers or `# -- label ----` inline separators. The subtest string is the label; extra comments are only for non-obvious setup or math.
+
+*Real fixtures over mocks.* Use the real `slm`, `camera`, etc. conftest fixtures rather than `MagicMock`. Class-based test organization (`TestFoo`) for class-based source code; flat functions with subtests for module-level functions.
+
+*Minimal comments.* Subtest strings should be self-describing. Only add inline comments when they explain non-obvious setup, math, or expected values that aren't clear from the assertion itself.
+
 **Test Markers**:
 - `@pytest.mark.gpu`: Tests requiring CuPy/CUDA
 - `@pytest.mark.slow`: Long-running tests (>5 seconds)

@@ -20,7 +20,7 @@ Automatic Features:
 import pytest
 import numpy as np
 import tempfile
-import os
+import sys, os
 import json
 import importlib
 import logging
@@ -29,22 +29,24 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from datetime import datetime
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Globals
+
+_TEST_RUN_OUTPUT_DIR = None
+
+
+def get_test_run_output_dir():
+    """Helper function to get current test run output directory."""
+    return _TEST_RUN_OUTPUT_DIR
+
+
 try:
     import cupy as cp
     HAS_CUPY = True
 except ImportError:
     cp = np
     HAS_CUPY = False
-
-from slmsuite.hardware.cameras.simulated import SimulatedCamera
-from slmsuite.hardware.slms.simulated import SimulatedSLM
-
-# Global variable to store current test run output directory
-_TEST_RUN_OUTPUT_DIR = None
-
-def get_test_run_output_dir():
-    """Helper function to get current test run output directory."""
-    return _TEST_RUN_OUTPUT_DIR
 
 
 @pytest.fixture(scope="session")
@@ -82,6 +84,15 @@ def random_seed():
     print(f"\nRandom seed for this session: {seed}")
 
     return seed
+
+
+# Fixtures for SLM and Camera instances, with dynamic configuration via environment variables.
+
+from slmsuite.hardware.cameras.simulated import SimulatedCamera
+from slmsuite.hardware.slms.simulated import SimulatedSLM
+from slmsuite.hardware.cameraslms import FourierSLM
+
+_TEST_SMALL_RESOLUTION = (128, 128)
 
 
 def _get_class_from_string(class_path):
@@ -128,7 +139,7 @@ def slm_kwargs():
     Return keyword arguments for SLM instantiation.
 
     By default returns arguments for SimulatedSLM. Can be overridden via:
-    SLMSUITE_TEST_SLM_ARGS='{"monitor_id": 1, "bitdepth": 8}'
+    SLMSUITE_TEST_SLM_ARGS='{"bitdepth": 12}'
 
     Returns
     -------
@@ -152,18 +163,32 @@ def slm_kwargs():
 def slm(slm_class, slm_kwargs):
     """
     Fixture providing an SLM instance for testing.
-
-    By default returns SimulatedSLM, but can be configured to return any SLM subclass
-    via environment variables SLMSUITE_TEST_SLM_CLASS and SLMSUITE_TEST_SLM_ARGS.
     """
     slm_instance = slm_class(**slm_kwargs)
     yield slm_instance
+
     # Cleanup
-    if hasattr(slm_instance, 'close'):
-        try:
-            slm_instance.close()
-        except:
-            pass
+    try:
+        slm_instance.close()
+    except:
+        pass
+
+
+@pytest.fixture
+def slm_small(slm_kwargs):
+    """
+    Fixture providing an SLM instance for testing.
+    """
+    kwargs = slm_kwargs.copy()
+    kwargs['resolution'] = _TEST_SMALL_RESOLUTION
+    slm_instance = SimulatedSLM(**kwargs)
+    yield slm_instance
+
+    # Cleanup
+    try:
+        slm_instance.close()
+    except:
+        pass
 
 
 @pytest.fixture
@@ -226,75 +251,61 @@ def camera(camera_class, camera_kwargs):
     """
     cam = camera_class(**camera_kwargs)
     yield cam
+
     # Cleanup
-    if hasattr(cam, 'close'):
-        try:
-            cam.close()
-        except:
-            pass
+    try:
+        cam.close()
+    except:
+        pass
+
 
 @pytest.fixture
-def temp_dir():
-    """Fixture providing a temporary directory for test files."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield tmpdir
-
-@pytest.fixture
-def random_phase():
-    """Fixture providing random phase pattern for testing."""
-    return np.random.rand(256, 256) * 2 * np.pi
-
-@pytest.fixture
-def random_amplitude():
-    """Fixture providing random amplitude pattern for testing."""
-    return np.random.rand(256, 256)
-
-
-@pytest.fixture(autouse=True)
-def test_logger(request):
+def camera_small(slm_small, camera_kwargs):
     """
-    Provides a test-specific logger with proper naming.
-
-    This fixture is automatically used for every test (autouse=True).
-    Tests can access the logger via request.node.test_logger if needed.
-
-    Logger name format: {module}.{class}.{function}
-    Example: test_algorithms.TestHologram.test_gs_converges
+    Fixture providing a Camera instance for testing.
     """
-    # Build logger name from test node
-    parts = []
-    if request.module:
-        module_name = request.module.__name__.split('.')[-1]
-        parts.append(module_name)
-    if request.cls:
-        parts.append(request.cls.__name__)
-    if request.function:
-        parts.append(request.function.__name__)
+    kwargs = camera_kwargs.copy()
+    kwargs["resolution"] = _TEST_SMALL_RESOLUTION
+    kwargs["slm"] = slm_small
+    cam = SimulatedCamera(**kwargs)
+    yield cam
 
-    logger_name = ".".join(parts)
-    logger = logging.getLogger(logger_name)
-
-    # Store logger in request for access by tests if needed
-    request.node.test_logger = logger
-
-    # Log test start
-    logger.info("=== START ===")
-
-    yield logger
-
-    # Log test result
-    if hasattr(request.node, 'rep_call'):
-        outcome = request.node.rep_call.outcome
-        logger.info(f"=== {outcome.upper()} ===")
+    # Cleanup
+    try:
+        cam.close()
+    except:
+        pass
 
 
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    """Hook to capture test results for logging."""
-    outcome = yield
-    rep = outcome.get_result()
-    setattr(item, f"rep_{rep.when}", rep)
+@pytest.fixture
+def fourierslm(camera, slm):
+    """
+    Fixture providing a FourierSLM instance for testing.
+    """
+    fs = FourierSLM(camera, slm)
+    yield fs
 
+    # Cleanup
+    try:
+        fs.close()
+    except:
+        pass
+
+@pytest.fixture
+def fourierslm_small(camera_small, slm_small):
+    """
+    Fixture providing a FourierSLM instance for testing.
+    """
+    fs = FourierSLM(camera_small, slm_small)
+    yield fs
+
+    # Cleanup
+    try:
+        fs.close()
+    except:
+        pass
+
+# Matplotlib configuration (saving of plots)
 
 @pytest.fixture(scope="session", autouse=True)
 def configure_matplotlib_for_testing(request):
@@ -422,6 +433,60 @@ def pytest_addoption(parser):
         dest="save_plots",
         help="Disable saving matplotlib plots"
     )
+
+# Logging and final configuration
+
+@pytest.fixture
+def temp_dir():
+    """Fixture providing a temporary directory for test files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield tmpdir
+
+
+@pytest.fixture(autouse=True)
+def test_logger(request):
+    """
+    Provides a test-specific logger with proper naming.
+
+    This fixture is automatically used for every test (autouse=True).
+    Tests can access the logger via request.node.test_logger if needed.
+
+    Logger name format: {module}.{class}.{function}
+    Example: test_algorithms.TestHologram.test_gs_converges
+    """
+    # Build logger name from test node
+    parts = []
+    if request.module:
+        module_name = request.module.__name__.split('.')[-1]
+        parts.append(module_name)
+    if request.cls:
+        parts.append(request.cls.__name__)
+    if request.function:
+        parts.append(request.function.__name__)
+
+    logger_name = ".".join(parts)
+    logger = logging.getLogger(logger_name)
+
+    # Store logger in request for access by tests if needed
+    request.node.test_logger = logger
+
+    # Log test start
+    logger.info("=== START ===")
+
+    yield logger
+
+    # Log test result
+    if hasattr(request.node, 'rep_call'):
+        outcome = request.node.rep_call.outcome
+        logger.info(f"=== {outcome.upper()} ===")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Hook to capture test results for logging."""
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, f"rep_{rep.when}", rep)
 
 
 def pytest_configure(config):

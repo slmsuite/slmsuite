@@ -28,17 +28,21 @@ logger = logging.getLogger(__name__)
 class TestHologram:
     """Tests for Hologram class."""
 
-    def test_hologram_construction(self, random_phase, random_amplitude):
+    def test_hologram_construction(self):
         """Test the primitives for hologram formation."""
-        random_amplitude += 1e-2  # Avoid zero amplitude
-
         slm_shape = (256, 256)
         shape = (512, 512)
+
+        random_phase = np.random.uniform(0, 2 * np.pi, slm_shape).astype(np.float32)
+        random_amplitude = np.random.uniform(0, 1, slm_shape).astype(np.float32) + 1e-2
+
         target = np.zeros(shape, dtype=np.float32)
-        hologram = Hologram(target=target,
-                            slm_shape=slm_shape,
-                            phase=random_phase,
-                            amp=random_amplitude)
+        hologram = Hologram(
+            target=target,
+            slm_shape=slm_shape,
+            phase=random_phase,
+            amp=random_amplitude
+        )
 
         # Check shape conventions
         assert hologram.slm_shape == slm_shape

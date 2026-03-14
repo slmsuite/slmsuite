@@ -8,9 +8,15 @@ Refer to the PySpin documentation (included with installation) for
 details on alternative approaches using the full Spinnaker API.
 
 """
-import warnings
 
-from .camera import Camera
+from __future__ import annotations
+
+import warnings
+from typing import List, Tuple, Optional
+import threading
+import queue
+
+import numpy as np  # noqa: F401 (used by PySpin.GetNDArray())
 
 try:
     import PySpin
@@ -20,7 +26,7 @@ except ImportError:
 
 class FLIR(Camera):
     """
-    FLIR camera.
+    FLIR camera subclass for interfacing with :mod:`PySpin` and the Spinnaker SDK.
 
     Attributes
     ----------
@@ -32,7 +38,8 @@ class FLIR(Camera):
         List of available cameras for cleanup.
     """
 
-    sdk = None
+    # Class variable pointing to a singleton Spinnaker System object.
+    sdk: Optional["PySpin.System"] = None
 
     ### Initialization and termination ###
     def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
@@ -55,7 +62,10 @@ class FLIR(Camera):
             See :meth:`.Camera.__init__` for permissible options.
         """
         if PySpin is None:
-            raise ImportError("PySpin not installed. Install to use FLIR cameras.")
+            raise ImportError(
+                "PySpin not installed. Install FLIR Spinnaker SDK and its Python "
+                "bindings to use FLIR cameras."
+            )
 
         # Initialize SDK singleton if needed
         if FLIR.sdk is None:

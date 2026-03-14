@@ -27,6 +27,11 @@ class ScreenMirrored(SLM):
     """
     Wraps a :mod:`pyglet` window for displaying data to an SLM.
 
+    .. warning::
+        Version `2.1.9` of `pyglet` introduced a bug that leaves the SLM display
+        zeroed even after phase data has been applied. Please use version `2.1.8` or earlier
+        until this is resolved in a future release.
+
     Important
     ~~~~~~~~~
     Many SLM manufacturers provide an SDK for interfacing with their devices.
@@ -243,9 +248,10 @@ class ScreenMirrored(SLM):
             )
 
     # TODO: incorporate optional blocking from PR #160
-    def _set_phase_hw(self, data):
+    def _set_phase_hw(self, display):
         """
-        Writes phase data to the screen via the window's dedicated thread.
+        Writes phase data from `display` to the screen via the window's
+        dedicated thread.
 
         The GPU→CPU transfer (if needed) happens on the WindowManager thread,
         then the buffer copy and ``OpenGL`` render are submitted to the window
@@ -253,8 +259,8 @@ class ScreenMirrored(SLM):
 
         Parameters
         ----------
-        data : numpy.ndarray or cupy.ndarray
-            Display data (grayscale uint8) to write to the SLM.
+        display : numpy.ndarray or cupy.ndarray
+            Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
 
         Note
         ~~~~
@@ -263,23 +269,23 @@ class ScreenMirrored(SLM):
         pattern is actually displayed before this method returns.
         """
         # GPU→CPU transfer happens on main thread (no OpenGL needed).
-        if cp is not None and isinstance(data, cp.ndarray):
-            data = cp.asnumpy(data)
+        if cp is not None and isinstance(display, cp.ndarray):
+            display = cp.asnumpy(display)
 
         # Submit render to the window's dedicated thread and block until done.
         # This ensures the phase pattern is displayed before returning.
-        future = self._window_thread.submit(self._render, self.window, data)
+        future = self._window_thread.submit(self._render, self.window, display)
         _WindowThread.wait(future)
 
     @staticmethod
-    def _render(window, data):
+    def _render(window, display):
         """Copy grayscale data to RGBA buffer and render on window thread."""
         window.switch_to()
         # 3x writes faster than single broadcast
-        # (buffer[:,:,:3] = data[:,:,np.newaxis])
-        window.buffer[:,:,0] = data # R
-        window.buffer[:,:,1] = data # G
-        window.buffer[:,:,2] = data # B
+        # (buffer[:,:,:3] = display[:,:,np.newaxis])
+        window.buffer[:,:,0] = display # R
+        window.buffer[:,:,1] = display # G
+        window.buffer[:,:,2] = display # B
         window.render()
 
     def close(self):

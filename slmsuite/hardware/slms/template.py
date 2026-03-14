@@ -14,9 +14,9 @@ class Template(SLM):
     def __init__(
         self,
         bitdepth=8,         # TODO: Remove these arguments if the SLM SDK
-        wav_um=1,           #       has some function to read them in.
-        pitch_um=(8,8),     #       Otherwise, the user must supply.
-        **kwargs
+        wav_um=1,           #       has some function to read them from the SLM.
+        pitch_um=(8,8),     #       Otherwise, the user must supply them as they
+        **kwargs            #       are critical for transformations and calibrations.
     ):
         r"""
         Initialize SLM and attributes.
@@ -91,20 +91,36 @@ class Template(SLM):
         serial_list = get_serial_list()     # TODO: Fill in proper function.
         return serial_list
 
-    def _set_phase_hw(self, phase):
+    def _set_phase_hw(
+            self,
+            display,
+            # execute: bool = True,    # TODO: Implement if supported.
+            # block: bool = True,      # TODO: Implement if supported.
+            # Add other keyword arguments if needed;
+            # these are passed directly from set_phase(**kwargs)
+        ):
         """
-        Low-level hardware interface to set_phase ``phase`` data onto the SLM.
-        When the user calls the :meth:`.SLM.write` method of
-        :class:`.SLM`, ``phase`` is error checked before calling
-        :meth:`_set_phase_hw()`. See :meth:`.SLM._set_phase_hw` for further detail.
+        Hardware-specific implementation.
+
+        See :meth:`SLM._set_phase_hw` for the base class documentation.
+
+        Parameters
+        ----------
+        display
+            Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
+        execute : bool
+            Whether to actually send the image to the SLM.
+        block : bool
+            Whether to block the thread until the image is fully written.
         """
         # TODO: Insert code here to write raw phase data to the SLM.
+        raise NotImplementedError()
 
     # def _format_phase_hw(self, phase):
     #     """
     #     Optional override to format phase data for the SLM. The base class default
     #     performs grayscale conversion via :meth:`._phase2gray`. Only override if
-    #     your SLM requires custom formatting (e.g. electrode bitmaps).
+    #     your SLM requires custom formatting (e.g. electrode bitmaps with a PLM).
     #     See :meth:`.SLM._format_phase_hw` for further detail.
     #
     #     Parameters
@@ -118,3 +134,31 @@ class Template(SLM):
     #         Processed bitmap data for the SLM device.
     #     """
     #     # TODO (If required for SLM): Insert code here to convert phase data to SLM data.
+
+    # Triggering (implement if supported):
+
+    # def set_input_trigger(self, on : bool = False):
+    #     r"""
+    #     Configures the input trigger of the SLM, where an external electronic signal can
+    #     synchronize the time at which the SLM updates its display.
+
+    #     Parameters
+    #     ----------
+    #     on : bool
+    #         Subclasses *must* support a boolean configuration argument, but can
+    #         also accept other datatypes or parameters as needed.
+    #     """
+    #     raise NotImplementedError("This SLM does not support input triggering.")
+
+    # def set_output_trigger(self, on : bool = False):
+    #     r"""
+    #     Configures the output trigger of the SLM, where the SLM can send an electronic
+    #     signal upon updating its display.
+
+    #     Parameters
+    #     ----------
+    #     on : bool
+    #         Subclasses *must* support a boolean configuration argument, but can
+    #         also accept other datatypes or parameters as needed.
+    #     """
+    #     raise NotImplementedError("This SLM does not support output triggering.")

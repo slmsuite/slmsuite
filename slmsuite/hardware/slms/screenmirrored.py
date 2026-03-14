@@ -247,35 +247,35 @@ class ScreenMirrored(SLM):
                 f"design wavelength {self.wav_design_um} um"
             )
 
-    # TODO: incorporate optional blocking from PR #160
-    def _set_phase_hw(self, display):
+    def _set_phase_hw(self, display, execute=True, block=True):
         """
         Writes phase data from `display` to the screen via the window's
         dedicated thread.
 
-        The GPU→CPU transfer (if needed) happens on the WindowManager thread,
+        The GPU→CPU transfer (if needed) happens on the main thread,
         then the buffer copy and ``OpenGL`` render are submitted to the window
-        thread and the main thread blocks until rendering is complete.
+        thread. By default the main thread blocks until rendering is complete.
 
         Parameters
         ----------
         display : numpy.ndarray or cupy.ndarray
             Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
-
-        Note
-        ~~~~
-        The :meth:`~slmsuite.hardware._pyglet._WindowThread.submit` call
-        blocks until ``flip()`` completes on the window thread, ensuring the
-        pattern is actually displayed before this method returns.
+        execute : bool
+            Whether to actually send the image to the SLM. See :meth:`.SLM._set_phase_hw`.
+        block : bool
+            Whether to block the thread until the image is fully rendered.
+            See :meth:`.SLM._set_phase_hw`.
         """
         # GPU→CPU transfer happens on main thread (no OpenGL needed).
         if cp is not None and isinstance(display, cp.ndarray):
             display = cp.asnumpy(display)
 
-        # Submit render to the window's dedicated thread and block until done.
-        # This ensures the phase pattern is displayed before returning.
-        future = self._window_thread.submit(self._render, self.window, display)
-        _WindowThread.wait(future)
+        # Submit render to the window's dedicated thread.
+        if execute:
+            future = self._window_thread.submit(self._render, self.window,
+                                                display)
+            if block:
+                _WindowThread.wait(future)
 
     @staticmethod
     def _render(window, display):

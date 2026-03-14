@@ -10,16 +10,9 @@ evaluation module (EVM) that drives the PLM. This automates the setup normally d
 through TI's DLPC900 GUI software. For further information, refer to the
 `DLPC900 Programmer's Guide <https://www.ti.com/lit/ug/dlpu018j/dlpu018j.pdf>`_.
 
-Key Features
-------------
-- **GPU Acceleration**: Automatic CuPy detection for 5-20x speedup
-- **CPU Fallback**: Seamless NumPy fallback when GPU unavailable
-- **Optimized Pipeline**: Minimal memory allocations and data transfers
-- **USB Configuration**: Automated DLPC900 EVM setup via :class:`DLPC900`
-
 Device Database
 ---------------
-Device specifications are stored in ``texas_instruments.json`` in the same directory.
+Device specifications are stored in ``texas_instruments.yaml`` in the same directory.
 Available devices can be queried with :meth:`get_device_list()`.
 
 Example
@@ -41,12 +34,10 @@ Example
 Attributes
 ----------
 device_config : dict
-    Device configuration loaded from texas_instruments.json
-phase_buckets : ndarray
-    Pre-computed phase quantization boundaries
+    Device configuration loaded from texas_instruments.yaml
 """
 
-import json
+import yaml
 import os
 import time
 import warnings
@@ -73,7 +64,8 @@ except ImportError:
     HID_AVAILABLE = False
 
 # PLM Constants
-DEVICE_DB_PATH = os.path.join(os.path.dirname(__file__), "texas_instruments.json")
+LUT_SIZE = 1 << 16 # Size of quantization LUT (64 KB for 2^16 entries)
+DEVICE_DB_PATH = os.path.join(os.path.dirname(__file__), "texas_instruments.yaml")
 DLPC900_VENDOR_ID = 0x0451
 DLPC900_PRODUCT_ID = 0xC900
 DLPC900_EXPOSURE_US = 694
@@ -123,7 +115,7 @@ class PLM(ScreenMirrored):
     Parameters
     ----------
     device_name : str
-        Device identifier from texas_instruments.json (e.g., ``"p47"``, ``"p67"``)
+        Device identifier from texas_instruments.yaml (e.g., ``"p47"``, ``"p67"``)
     display_number : int
         Monitor number for display.
     verbose : bool, optional
@@ -149,9 +141,7 @@ class PLM(ScreenMirrored):
     Attributes
     ----------
     device_config : dict
-        Device configuration from texas_instruments.json.
-    phase_buckets : ndarray
-        Pre-computed quantization boundaries.
+        Device configuration from texas_instruments.yaml.
     dlpc900 : DLPC900 or None
         USB interface to DLPC900 EVM, if configured.
     electrode_layout : ndarray
@@ -172,6 +162,7 @@ class PLM(ScreenMirrored):
         pixel_mode=None,
         usb_vendor_id=None,
         usb_product_id=None,
+        gpu=None,
         **kwargs
     ):
         self.dlpc900 = None
@@ -180,8 +171,18 @@ class PLM(ScreenMirrored):
         # Load device configuration from JSON
         self.device_config = self.load_device_config(device_name)
 
+        # Determine compute backend
+        if gpu is None:
+            self.xp = cp  # cp is already np if cupy unavailable
+        elif gpu:
+            if cp is np:
+                raise ImportError("gpu=True requested but cupy is not installed")
+            self.xp = cp
+        else:
+            self.xp = np
+
         if verbose:
-            backend = "GPU (CuPy)" if cp != np else "CPU (NumPy)"
+            backend = "GPU (CuPy)" if self.xp is not np else "CPU (NumPy)"
             print(f"PLM using {backend} backend")
 
         # Extract device parameters
@@ -229,18 +230,22 @@ class PLM(ScreenMirrored):
         if configure_usb:
             self._usb_post_configure(video_input, pixel_mode, verbose)
 
-        # Pre-compute phase buckets for quantization
-        self._init_phase_buckets()
+        # Pre-compute quantization LUT
+        self._init_quantize_lut()
 
-        # Convert device arrays to GPU if needed
-        self.memory_lut = cp.array(self.device_config["memory_lut"], dtype=cp.uint8)
-        self.electrode_layout = cp.array(self._electrode_layout_raw, dtype=cp.uint8)
+        # Convert device arrays to backend (GPU or CPU)
+        self.memory_lut = self.xp.array(self.device_config["memory_lut"], dtype=np.uint8)
+        self.electrode_layout = self.xp.array(self._electrode_layout_raw, dtype=np.uint8)
         self.data_flip = tuple(self.device_config["data_flip"])
+
+        # Re-initialize self.display with the electrode-expanded shape so that
+        # _format_phase_hw can write in-place (avoiding per-frame allocations).
+        self.display = self.xp.zeros(self.display_shape, dtype=self.dtype)
 
     @staticmethod
     def load_device_config(device_name):
         """
-        Load device configuration from texas_instruments.json.
+        Load device configuration from texas_instruments.yaml.
 
         Parameters
         ----------
@@ -258,7 +263,7 @@ class PLM(ScreenMirrored):
             If device not found in database
         """
         with open(DEVICE_DB_PATH, 'r') as f:
-            device_db = json.load(f)
+            device_db = yaml.safe_load(f)
 
         if device_name not in device_db:
             available = list(device_db.keys())
@@ -280,6 +285,7 @@ class PLM(ScreenMirrored):
         from slmsuite.hardware.slms.screenmirrored import ScreenMirrored
 
         dlpc = self.dlpc900
+        # dlpc.reset()
 
         if verbose:
             fw = dlpc.get_firmware_version()
@@ -388,53 +394,60 @@ class PLM(ScreenMirrored):
             self.dlpc900 = None
         super().close()
 
-    def _init_phase_buckets(self):
+    def _init_quantize_lut(self):
         """
-        Pre-compute phase quantization boundaries.
+        Pre-compute a quantization lookup table (LUT) that maps discretized
+        phase values directly to phase state indices.
 
-        Creates bucket boundaries for digitizing continuous phase values
-        into discrete phase states based on device displacement ratios.
+        Replaces per-frame float modulo and ``searchsorted`` or ``digitize``
+        with a single array index at runtime. The LUT has 2^16 entries (64 KB),
+        built once from the device's non-uniform displacement ratios.
         """
+
         displacement_ratios = np.array(self.device_config["displacement_ratios"])
-        phase_range = (0, 2 * np.pi)
 
         # Scale displacement ratios to (bitresolution - 1) / bitresolution
-        # This maps the full range to one less than available states
         ratio_scale = (self.bitresolution - 1) / self.bitresolution
 
-        # Map displacement ratios to phase values
-        phase_disp = phase_range[0] + displacement_ratios * ratio_scale * (phase_range[1] - phase_range[0])
-        phase_disp = np.concatenate([phase_disp, [phase_range[1]]])
+        # Map displacement ratios to phase values in [0, 2pi)
+        phase_disp = displacement_ratios * ratio_scale * (2 * np.pi)
+        phase_disp = np.concatenate([phase_disp, [2 * np.pi]])
 
-        # Create bucket boundaries (average of adjacent phase levels)
-        self.phase_buckets = (phase_disp[:-1] + phase_disp[1:]) / 2
+        # Bucket boundaries (midpoints between adjacent phase levels)
+        phase_buckets = (phase_disp[:-1] + phase_disp[1:]) / 2
 
-        # Convert to GPU array if using CuPy
-        self.phase_buckets = cp.array(self.phase_buckets)
+        # Build LUT: map each of the uniformly-spaced phase values to a state
+        self._phase_to_lut = np.float64(LUT_SIZE / (2 * np.pi))
+        grid = np.arange(LUT_SIZE, dtype=np.float64) * (2 * np.pi / LUT_SIZE)
+        lut = np.searchsorted(phase_buckets, grid, side='right')
+        lut = (lut & (self.bitresolution - 1)).astype(np.uint8)
+        self._quantize_lut = self.xp.asarray(lut)
 
     def _quantize(self, phase_map):
         """
-        Quantize continuous phase values to discrete phase states.
+        Quantize continuous phase values to discrete phase states via LUT.
+
+        Converts float phase to a uint16 grid index (implicitly wrapping
+        mod 2pi), then indexes into the pre-computed LUT.
 
         Parameters
         ----------
         phase_map : ndarray
-            Phase data
+            Phase data in any range (wrapping is handled by integer cast).
 
         Returns
         -------
         ndarray (uint8)
-            Quantized phase state indices [0, bitresolution)
+            Quantized phase state indices [0, bitresolution).
         """
-        # Ensure array is on the correct device
-        phase_map = cp.asarray(phase_map)
+        xp = self.xp
+        phase_map = xp.asarray(phase_map)
 
-        # Optimized quantization using searchsorted (faster than digitize)
-        # searchsorted is optimized for sorted arrays and can be faster on GPU
-        phase_state_idx = cp.searchsorted(self.phase_buckets, phase_map, side='right')
-        phase_state_idx = phase_state_idx % self.bitresolution
+        # Multiply into [0, 65536) per 2pi, cast to int32, mask to uint16 range.
+        # The int32 -> & 0xFFFF gives well-defined wrapping for any input range.
+        lut_idx = (phase_map * self._phase_to_lut).astype(xp.int32) & 0xFFFF
 
-        return phase_state_idx.astype(cp.uint8)
+        return self._quantize_lut[lut_idx]
 
     def _electrode_map(self, phase_state_idx):
         """
@@ -455,6 +468,8 @@ class PLM(ScreenMirrored):
             Binary electrode pattern with expanded dimensions based on
             electrode_layout shape
         """
+        xp = self.xp
+
         # Look up memory values for each phase state
         memory = self.memory_lut[phase_state_idx]
 
@@ -462,20 +477,19 @@ class PLM(ScreenMirrored):
         # memory[..., None, None] adds 2 dims: (..., rows, cols, 1, 1)
         # electrode_layout has shape (elec_rows, elec_cols)
         # Result has shape (..., rows, cols, elec_rows, elec_cols)
-        out = cp.right_shift(
+        out = xp.right_shift(
             memory[..., None, None],
-            self.electrode_layout
-        ).astype(cp.uint8) & 1
+            self.electrode_layout) & 1
 
         # Rearrange axes and reshape to interleave electrode bits
         elec_h, elec_w = self.electrode_layout.shape
         new_shape = memory.shape[:-2] + (memory.shape[-2] * elec_h, memory.shape[-1] * elec_w)
-        out = cp.swapaxes(out, -2, -3).reshape(new_shape)
+        out = xp.swapaxes(out, -2, -3).reshape(new_shape)
 
         # Apply data flip if specified
         flip_axes = tuple(-2 + idx for idx, flip in enumerate(self.data_flip) if flip)
         if flip_axes:
-            out = cp.flip(out, flip_axes)
+            out = xp.flip(out, flip_axes)
 
         return out
 
@@ -490,7 +504,8 @@ class PLM(ScreenMirrored):
         Parameters
         ----------
         phase : numpy.ndarray or cupy.ndarray
-            Phase data in range [0, 2π]
+            Phase data in any range (wrapping to [0, 2π) is handled internally
+            by :meth:`_quantize`).
         replicate_bits : bool, optional
             Multiply final bitplane by 255 to display same CGH for full frame.
             Defaults to True.
@@ -501,43 +516,45 @@ class PLM(ScreenMirrored):
         -------
         numpy.ndarray or cupy.ndarray (uint8)
             Electrode-mapped bitmap ready for display.
-            Returns GPU array if GPU is available, otherwise CPU array.
+            Returns GPU array if ``gpu`` backend is active, otherwise CPU array.
 
         Raises
         ------
         ValueError
             If enforce_shape=True and phase shape doesn't match device
         """
+        xp = self.xp
+
         # Shape validation
         if enforce_shape:
-            expected_shape = tuple(self.device_config["shape"])
+            expected_shape = self.device_shape
             if len(phase.shape) < 2 or phase.shape[-2:] != expected_shape:
                 raise ValueError(
                     f"Phase map shape {phase.shape} does not match "
                     f"device shape {expected_shape}"
                 )
 
-        # Convert phase from slmsuite convention to [0, 2π]
-        # TODO: can wrap into phase2gray
-        # slmsuite uses bitresolution-scaled values, we need radians
-        # phase = self._phase2gray(phase) * (2 * np.pi / self.bitresolution)
-        phase -= phase.min()
-        phase %= 2 * np.pi
+        # Coerce input to match backend (e.g. numpy→cupy if gpu=True)
+        phase = xp.asarray(phase)
 
-        # Quantize phase to discrete states (xp.asarray handles device transfer)
+        # Ensure self.display is on the same backend as phase (mirrors _phase2gray logic).
+        if xp is cp and not isinstance(self.display, cp.ndarray):
+            self.display = cp.zeros(self.display_shape, dtype=self.dtype)
+
+        # Quantize phase to discrete states (handles [0, 2π) wrapping internally)
         phase_state_idx = self._quantize(phase)
 
         # Map to electrode pattern
-        out = self._electrode_map(phase_state_idx)
+        result = self._electrode_map(phase_state_idx)
 
-        # Replicate bits for full frame display
+        # Write into self.display in-place to avoid per-frame allocations
+        # (mirrors how _phase2gray writes to self.display in slm.py).
         if replicate_bits:
-            out *= 255
+            xp.multiply(result, 255, out=self.display, casting="unsafe")
+        else:
+            xp.copyto(self.display, result, casting="unsafe")
 
-        # Keep data on GPU - ScreenMirrored._set_phase_hw() will transfer to CPU
-        # only when needed for display. This avoids unnecessary GPU→CPU→GPU transfers
-        # and allows GPU processing pipelines to stay on GPU.
-        return out
+        return self.display
 
     @staticmethod
     def bitpack(bitmaps):
@@ -563,11 +580,9 @@ class PLM(ScreenMirrored):
         ValueError
             If number of bitmaps is not 8 or 24
         """
-        # Determine if using GPU (check if any input is a CuPy array)
-        use_gpu = cp != np and any(
-            isinstance(bm, cp.ndarray) for bm in bitmaps
-        )
-        xp = cp if use_gpu else np
+        # Determine backend from input arrays
+        from slmsuite.hardware.slms.slm import _xp
+        xp = _xp(bitmaps[0]) if bitmaps else np
 
         # Ensure all bitmaps are on same device
         bitmaps = [xp.asarray(bm) for bm in bitmaps]
@@ -595,8 +610,8 @@ class PLM(ScreenMirrored):
                 f"Bitpack requires 8 or 24 bitmaps, got {len(bitmaps)}"
             )
 
-        # Convert back to NumPy if needed
-        if use_gpu:
+        # Convert back to NumPy if input was on GPU
+        if xp is not np:
             result = np.asarray(result)
 
         return result
@@ -609,10 +624,10 @@ class PLM(ScreenMirrored):
         Returns
         -------
         list of str
-            Device identifiers available in texas_instruments.json
+            Device identifiers available in texas_instruments.yaml
         """
         with open(DEVICE_DB_PATH, 'r') as f:
-            device_db = json.load(f)
+            device_db = yaml.safe_load(f)
 
         return list(device_db.keys())
 

@@ -879,6 +879,7 @@ class _WindowManager:
 
     def __init__(self):
         self._threads = []
+        self._threads_lock = threading.Lock()
         atexit.register(self.shutdown)
 
     def create_window(self, shape, screen, caption):
@@ -905,7 +906,8 @@ class _WindowManager:
             If the window thread fails to start.
         """
         wt = _WindowThread(shape, screen, caption, manager=self)
-        self._threads.append(wt)
+        with self._threads_lock:
+            self._threads.append(wt)
         return wt
 
     def remove_thread(self, wt):
@@ -917,10 +919,11 @@ class _WindowManager:
         wt : _WindowThread
             The thread to remove.
         """
-        try:
-            self._threads.remove(wt)
-        except ValueError:
-            pass
+        with self._threads_lock:
+            try:
+                self._threads.remove(wt)
+            except ValueError:
+                pass
 
     def shutdown(self):
         """
@@ -929,9 +932,10 @@ class _WindowManager:
         Called automatically via :func:`atexit`. Closes all windows and
         joins all threads.
         """
-        for wt in list(self._threads):
+        with self._threads_lock:
+            threads_copy = list(self._threads)
+        for wt in threads_copy:
             try:
                 wt.close()
-                self._threads.remove(wt)
             except Exception:
                 pass

@@ -553,6 +553,11 @@ class SLM(_Picklable, ABC):
             ``None``. Otherwise, ``None`` must default to ``True``. Use case:
             if ``execute=False`` and ``block=True``, only the block is enforced
             and no new data is written.
+
+            Important
+            ~~~~~~~~~
+            New phase/display data is always
+            calculated regardless of the value of ``execute``.
         block : bool OR None
             Some SLM subclasses support non-blocking writes that are triggered
             externally. This parameter will determine whether to block the

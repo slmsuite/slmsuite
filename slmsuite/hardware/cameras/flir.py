@@ -215,7 +215,8 @@ class FLIR(Camera):
                 pass
             del self.camera_list
 
-        del self.cam
+        if hasattr(self, 'cam'):
+            del self.cam
 
     @staticmethod
     def info(verbose=True):
@@ -546,22 +547,25 @@ class FLIR(Camera):
                 except PySpin.SpinnakerException as ex:
                     raise RuntimeError(f"Failed to restart acquisition after WOI change: {ex}")
 
-    def _get_image_hw(self, timeout_s):
+    def _get_image_hw(self, timeout_s = 1.0):
         """
         See :meth:`.Camera._get_image_hw`.
 
-        Uses software trigger to capture each frame.
+        If the camera is in software trigger mode, executes a software trigger
+        before capturing. Otherwise, waits for an externally triggered frame.
 
         Parameters
         ----------
         timeout_s : float
             Timeout in seconds.
         """
-        try:
-            # Execute software trigger
-            self.cam.TriggerSoftware.Execute()
 
-            # Get triggered image
+        try:
+            # Only fire software trigger if in software trigger mode.
+            if self.cam.TriggerSource.GetValue() == PySpin.TriggerSource_Software:
+                self.cam.TriggerSoftware.Execute()
+
+            # Get image (software-triggered or externally triggered).
             frame = self.cam.GetNextImage(int(timeout_s * 1e3))
 
             # Check if image is incomplete

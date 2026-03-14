@@ -116,6 +116,25 @@ class Template(SLM):
         # TODO: Insert code here to write raw phase data to the SLM.
         raise NotImplementedError()
 
+    # def _format_phase_hw(self, phase):
+    #     """
+    #     Optional override to format phase data for the SLM. The base class default
+    #     performs grayscale conversion via :meth:`._phase2gray`. Only override if
+    #     your SLM requires custom formatting (e.g. electrode bitmaps with a PLM).
+    #     See :meth:`.SLM._format_phase_hw` for further detail.
+    #
+    #     Parameters
+    #     ----------
+    #     phase : numpy.ndarray
+    #         Array containing phase data.
+    #
+    #     Returns
+    #     -------
+    #     numpy.ndarray
+    #         Processed bitmap data for the SLM device.
+    #     """
+    #     # TODO (If required for SLM): Insert code here to convert phase data to SLM data.
+
     # Triggering (implement if supported):
 
     # def set_input_trigger(self, on : bool = False):

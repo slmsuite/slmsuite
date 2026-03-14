@@ -5,6 +5,10 @@ Abstract functionality for SLMs.
 import time
 import os
 import numpy as np
+try:
+    import cupy as cp
+except ImportError:
+    cp = np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import warnings
@@ -19,6 +23,13 @@ from slmsuite.misc import fitfunctions
 from slmsuite.misc.math import REAL_TYPES
 from slmsuite.holography import analysis
 from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
+
+
+def _xp(array):
+    """Return cupy if array is a cupy ndarray, else numpy."""
+    if cp is not np and isinstance(array, cp.ndarray):
+        return cp
+    return np
 
 
 class SLM(_Picklable, ABC):
@@ -86,7 +97,7 @@ class SLM(_Picklable, ABC):
             :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate`.
             Also see :meth:`set_source_analytic()` to set without wavefront calibration.
 
-        For a :class:`.SimulatedSLM()`, ``"amplitude_sim"`` and ``"phase_sim"`` keywords
+        For a :class:`.SimulatedSLM`, ``"amplitude_sim"`` and ``"phase_sim"`` keywords
         store the true source properties (defined by the user) used to simulate the SLM's
         far-field.
 
@@ -402,6 +413,25 @@ class SLM(_Picklable, ABC):
         """
         raise NotImplementedError("SLM subclasses must implement _set_phase_hw().")
 
+    def _format_phase_hw(self, phase):
+        """
+        Formats the phase data for hardware-specific requirements prior to calling
+        :meth:`_set_phase_hw`. By default, performs grayscale conversion via
+        :meth:`_phase2gray`. Override in subclasses for custom formatting
+        (e.g. converting phase to an electrode bitmap for :class:`.texasinstruments.PLM`).
+
+        Parameters
+        ----------
+        phase : numpy.ndarray
+             See :meth:`set_phase`.
+
+        Returns
+        -------
+        numpy.ndarray
+            Formatted phase data for :meth:`_set_phase_hw`.
+        """
+        return self._phase2gray(phase, out=self.display)
+
     def set_phase(
         self,
         phase,
@@ -413,64 +443,74 @@ class SLM(_Picklable, ABC):
     ):
         r"""
         Checks, cleans, and adds to data, then sends the data to the SLM and
-        potentially waits for ``settle_time_s`` seconds.
-        This method calls the SLM-specific private method
-        :meth:`_set_phase_hw()` which transfers the data to the SLM.
+        potentially waits for ``settle_time_s`` seconds. This method calls the
+        SLM-specific private method :meth:`_format_phase_hw()` (if implemented)
+        to format the phase data before calling :meth:`_set_phase_hw()` which
+        transfers the data to the SLM.
 
         Warning
         ~~~~~~~
         Subclasses implementing vendor-specific software *should not* overwrite this
-        method. Subclasses *should* overwrite :meth:`_set_phase_hw()` instead.
+        method. Subclasses *should* overwrite :meth:`_set_phase_hw()` (and
+        :meth:`_format_phase_hw()` if required) instead.
 
         Caution
         ~~~~~~~
-        The sign on ``phase`` is flipped before converting to integer data. This is to
-        convert between
-        the 'increasing value ==> increasing voltage (= decreasing phase delay)' convention in most SLMs and
-        :mod:`slmsuite`'s 'increasing value ==> increasing phase delay' convention.
-        As a result, zero phase will appear entirely white (255 for an 8-bit SLM), and increasing phase
-        will darken the displayed pattern.
-        If integer data is passed, this data is displayed directly and the sign is *not* flipped.
+        The sign on ``phase`` is flipped before converting to integer data.
+        This is to convert between the 'increasing value ==> increasing voltage
+        (= decreasing phase delay)' convention in most SLMs and
+        :mod:`slmsuite`'s 'increasing value ==> increasing phase delay'
+        convention. As a result, zero phase will appear entirely white (255 for
+        an 8-bit SLM), and increasing phase will darken the displayed pattern.
+        If integer data is passed, this data is displayed directly and the sign
+        is *not* flipped.
 
         Important
         ~~~~~~~~~
-        The user does not need to wrap (e.g. :mod:`numpy.mod(data, 2*numpy.pi)`) the passed phase data,
-        unless they are pre-caching data for speed (see below).
-        :meth:`.set_phase()` uses optimized routines to wrap the phase (see the
-        private method :meth:`_phase2gray()`).
-        Which routine is used depends on :attr:`phase_scaling`:
+        The user does not need to wrap (e.g. :mod:`numpy.mod(data,
+        2*numpy.pi)`) the passed phase data, unless they are pre-caching data
+        for speed (see below). :meth:`.set_phase()` uses optimized routines to
+        wrap the phase (see the private method :meth:`_phase2gray()`). Which
+        routine is used depends on :attr:`phase_scaling`:
 
         -  :attr:`phase_scaling` is one.
-            Fast bitwise integer modulo is used. Much faster than the other routines which
-            depend on :meth:`numpy.mod()`.
+            Fast bitwise integer modulo is used. Much faster than the other
+            routines which depend on :meth:`numpy.mod()`.
 
         -  :attr:`phase_scaling` is less than one.
-            In this case, the SLM has **more phase tuning range** than necessary.
-            If the data is within the SLM range ``[0, 2*pi/phase_scaling]``, then the data is passed directly.
-            Otherwise, the data is wrapped by :math:`2\pi` using the very slow :meth:`numpy.mod()`.
-            Try to avoid this in applications where speed is important.
+            In this case, the SLM has **more phase tuning range** than
+            necessary. If the data is within the SLM range ``[0,
+            2*pi/phase_scaling]``, then the data is passed directly. Otherwise,
+            the data is wrapped by :math:`2\pi` using the very slow
+            :meth:`numpy.mod()`. Try to avoid this in applications where speed
+            is important.
 
         -  :attr:`phase_scaling` is more than one.
-            In this case, the SLM has **less phase tuning range** than necessary.
-            Processed the same way as the :attr:`phase_scaling` is less than one case, with the
-            important exception that phases (after wrapping) between ``2*pi/phase_scaling`` and
-            ``2*pi`` are set to zero. For instance, a sawtooth blaze would be truncated at the tips.
+            In this case, the SLM has **less phase tuning range** than
+            necessary. Processed the same way as the :attr:`phase_scaling` is
+            less than one case, with the important exception that phases (after
+            wrapping) between ``2*pi/phase_scaling`` and ``2*pi`` are set to
+            zero. For instance, a sawtooth blaze would be truncated at the
+            tips.
 
         Caution
         ~~~~~~~
-        After scale conversion, data is ``floor()`` ed to integers with ``np.copyto``, rather than
-        rounded to the nearest integer (``np.rint()`` equivalent). While this is
-        irrelevant for the average user, it may be significant in some cases.
-        If this behavior is undesired consider either: :meth:`set_phase()` integer data
-        directly or modifying the behavior of the private method :meth:`_phase2gray()` in
-        a pull request. We have not been able to find an example of ``np.copyto``
-        producing undesired behavior, but will change this if such behavior is found.
+        After scale conversion, data is ``floor()`` ed to integers with
+        ``np.copyto``, rather than rounded to the nearest integer
+        (``np.rint()`` equivalent). While this is irrelevant for the average
+        user, it may be significant in some cases. If this behavior is
+        undesired consider either: :meth:`set_phase()` integer data directly or
+        modifying the behavior of the private method :meth:`_phase2gray()` in a
+        pull request. We have not been able to find an example of ``np.copyto``
+        producing undesired behavior, but will change this if such behavior is
+        found.
 
         Parameters
         ----------
-        phase : numpy.ndarray OR slmsuite.holography.algorithms.Hologram OR None
-            Phase data to display in units of :math:`2\pi`,
-            unless the passed data is of integer type and the data is applied directly.
+        phase : numpy.ndarray OR cupy.cparray OR
+                slmsuite.holography.algorithms.Hologram OR None
+        Phase data to display in units of :math:`2\pi`, unless the passed
+        data is of integer type and the data is applied directly.
 
             -  If ``None`` is passed to :meth:`.set_phase()`, data is zeroed.
             -  If a :class:`~slmsuite.holography.algorithms.Hologram` is passed,
@@ -490,47 +530,59 @@ class SLM(_Picklable, ABC):
                10-bit SLM). Integer data with type different from :attr:`display` leads
                to a TypeError.
 
-            Usually, an **exact** stored copy of the data passed by the user under
-            ``phase`` is stored in the attribute :attr:`phase`.
-            However, in cases where :attr:`phase_scaling` not one, this
-            copy is modified to include how the data was wrapped. If the data was
-            cropped, then the cropped data is stored, etc. If integer data was passed, the
-            equivalent floating point phase is computed and stored in the attribute :attr:`phase`.
+            Usually, an **exact** stored copy of the data passed by the user
+            under ``phase`` is stored in the attribute :attr:`phase`. However,
+            in cases where :attr:`phase_scaling` not one, this copy is modified
+            to include how the data was wrapped. If the data was cropped, then
+            the cropped data is stored, etc. If integer data was passed, the
+            equivalent floating point phase is computed and stored in the
+            attribute :attr:`phase`.
         phase_correct : bool OR None
-            Whether to add wavefront correction to the pattern. This correction is stored in
-            :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]``.
-            If ``None``, defaults to :attr:`phase_correct` (which defaults to ``True``).
+            Whether to add wavefront correction to the pattern. This correction
+            is stored in
+            :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]``. If
+            ``None``, defaults to :attr:`phase_correct` (which defaults to
+            ``True``).
         settle : bool OR None
-            Whether to sleep for :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`.
-            If ``None``, defaults to :attr:`settle` (which defaults to ``False``).
+            Whether to sleep for
+            :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`. If ``None``,
+            defaults to :attr:`settle` (which defaults to ``False``).
         execute : bool OR None
-            Whether to actually send the image to the SLM.
-            Most SLMs do not support this feature, and will error if ``execute`` is not ``None``.
-            Otherwise, ``None`` must default to ``True``.
-            Use case: if ``execute=False`` and ``block=True``,
-            only the block is enforced and no new data is written.
+            Whether to actually send the image to the SLM. Most SLMs do not
+            support this feature, and will error if ``execute`` is not
+            ``None``. Otherwise, ``None`` must default to ``True``. Use case:
+            if ``execute=False`` and ``block=True``, only the block is enforced
+            and no new data is written.
+
+            Important
+            ~~~~~~~~~
+            New phase/display data is always
+            calculated regardless of the value of ``execute``.
         block : bool OR None
-            Some SLM subclasses support non-blocking writes that are triggered externally.
-            This parameter will determine whether to block the thread until the image is
-            fully written.
-            Most SLMs do not support this feature, and will error if ``block`` is not ``None``.
-            Otherwise, ``None`` must default to ``True``.
-            Use case: if ``execute=True`` and ``block=False``, the write is non-blocking.
+            Some SLM subclasses support non-blocking writes that are triggered
+            externally. This parameter will determine whether to block the
+            thread until the image is fully written. Most SLMs do not support
+            this feature, and will error if ``block`` is not ``None``.
+            Otherwise, ``None`` must default to ``True``. Use case: if
+            ``execute=True`` and ``block=False``, the write is non-blocking.
         **kwargs
-            Passed to the SLM in case the subclass needs to do something special.
-            For instance, some SLMs support a ``timeout`` parameter that
-            determines how long to wait for the SLM commands to execute before raising an error.
+            Passed to the SLM in case the subclass needs to do something
+            special. For instance, some SLMs support a ``timeout`` parameter
+            that determines how long to wait for the SLM commands to execute
+            before raising an error.
 
         Returns
         -------
         numpy.ndarray
-           :attr:`~slmsuite.hardware.slms.slm.SLM.display`, the integer data sent to the SLM.
+           :attr:`~slmsuite.hardware.slms.slm.SLM.display`, the integer data
+           sent to the SLM.
 
         Raises
         ------
         TypeError
-            If integer data is incompatible with the bitdepth or if the passed phase is
-            otherwise incompatible (not a 2D array or smaller than the SLM shape, etc).
+            If integer data is incompatible with the bitdepth or if the passed
+            phase is otherwise incompatible (not a 2D array or smaller than the
+            SLM shape, etc).
         """
         # Parse execute and block arguments.
         if execute is None:
@@ -553,76 +605,76 @@ class SLM(_Picklable, ABC):
                     "This SLM does not support the block argument in set_phase."
                 )
 
-        if execute:
-            # Helper variable to speed the case where phase is None.
-            zero_phase = False
+        # Parse phase.
+        if hasattr(phase, "get_phase"):
+            # If we passed a hologram, grab the phase from there.
+            phase = phase.get_phase()
 
-            # Parse phase.
-            if phase is None:
-                # Zero the phase pattern.
-                self.phase.fill(0)
-                zero_phase = True
-            else:
-                # Make sure the array is an ndarray.
-                phase = np.array(phase)
+        if phase is None:
+            # Zero the phase pattern.
+            self.phase.fill(0)
+            xp = _xp(self.phase)
+        else:
+            # Make sure the array is an ndarray (cupy or numpy).
+            xp = _xp(phase)
+            phase = xp.asarray(phase)
 
-            if hasattr(phase, "get_phase"):
-                # If we passed a hologram, grab the phase from there.
-                phase = phase.get_phase()
+            # Promote self.phase and self.display to GPU if input is cupy.
+            if xp is cp:
+                if not isinstance(self.phase, cp.ndarray):
+                    self.phase = cp.zeros(self.shape)
+                if not isinstance(self.display, cp.ndarray):
+                    self.display = cp.zeros(self.shape, dtype=self.dtype)
 
-            if phase is not None and np.issubdtype(phase.dtype, np.integer):
-                # Check the type.
-                if phase.dtype != self.display.dtype:
-                    raise TypeError(
-                        "Unexpected integer type {}. Expected {}.".format(
-                            phase.dtype, self.display.dtype
-                        )
+        if phase is not None and np.issubdtype(phase.dtype, np.integer):
+            # Check the type.
+            if phase.dtype != self.display.dtype:
+                raise TypeError(
+                    "Unexpected integer type {}. Expected {}.".format(
+                        phase.dtype, self.display.dtype
                     )
-
-                # If integer data was passed, check that we are not out of range.
-                if np.any(phase >= self.bitresolution):
-                    raise TypeError(
-                        "Integer data must be within the bitdepth ({}-bit) of the SLM.".format(
-                            self.bitdepth
-                        )
-                    )
-
-                # Copy the pattern and unpad if necessary.
-                if phase.shape != self.shape:
-                    np.copyto(self.display, toolbox.unpad(phase, self.shape))
-                else:
-                    np.copyto(self.display, phase)
-
-                # Update the phase variable with the integer data that we displayed.
-                self.phase = 2 * np.pi - self.display * (
-                    2 * np.pi / self.phase_scaling / self.bitresolution
                 )
+
+            # If integer data was passed, check that we are not out of range.
+            if xp.any(phase >= self.bitresolution):
+                raise TypeError(
+                    "Integer data must be within the bitdepth ({}-bit) of the SLM.".format(
+                        self.bitdepth
+                    )
+                )
+
+            # Copy the pattern and unpad if necessary.
+            if phase.shape != self.shape:
+                xp.copyto(self.display, toolbox.unpad(phase, self.shape))
             else:
-                # If float data was passed (or the None case).
-                # Copy the pattern and unpad if necessary.
-                if phase is not None:
-                    if self.phase.shape != self.shape:
-                        np.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
-                    else:
-                        np.copyto(self.phase, phase)
+                xp.copyto(self.display, phase)
 
-                # Add phase correction if requested.
-                if phase_correct is None:
-                    phase_correct = self.phase_correct
-                if phase_correct and ("phase" in self.source):
-                    self.phase += self.source["phase"]
-                    zero_phase = False
-
-                # Pass the data to self.display.
-                if zero_phase:
-                    # If None was passed and phase_correct is False, then use a faster method.
-                    self.display.fill(0)
+            # Update the phase variable with the integer data that we displayed.
+            self.phase = 2 * np.pi - self.display * (
+                2 * np.pi / self.phase_scaling / self.bitresolution
+            )
+        else:
+            # If float data was passed (or the None case).
+            # Copy the pattern and unpad if necessary.
+            if phase is not None:
+                if self.phase.shape != self.shape:
+                    xp.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
                 else:
-                    # Turn the floats in phase space to integer data for the SLM.
-                    self.display = self._phase2gray(self.phase, out=self.display)
+                    xp.copyto(self.phase, phase)
+
+            # Add phase correction if requested.
+            if phase_correct is None:
+                phase_correct = self.phase_correct
+            if phase_correct and ("phase" in self.source):
+                self.phase += xp.asarray(self.source["phase"])
+
+            # Pass the data to self.display.
+            # Turn the floats in phase space to integer data for the SLM.
+            self.display = self._format_phase_hw(self.phase)
 
         # Write!
-        self._set_phase_hw(self.display, **kwargs)
+        if execute:
+            self._set_phase_hw(self.display, **kwargs)
 
         # Optional delay.
         if settle is None:
@@ -637,12 +689,13 @@ class SLM(_Picklable, ABC):
         Helper function to convert an array of phases (units of :math:`2\pi`) to an array of
         :attr:`~slmsuite.hardware.slms.slm.SLM.bitresolution` -scaled and -cropped integers.
         This is used by :meth:`set_phase()`. See special cases described in :meth:`set_phase()`.
+        Supports both :mod:`numpy` and :mod:`cupy` arrays for GPU acceleration.
 
         Parameters
         ----------
-        phase : numpy.ndarray
+        phase : numpy.ndarray or cupy.ndarray
             Array of phases in radians.
-        out : numpy.ndarray
+        out : numpy.ndarray or cupy.ndarray
             Array to store integer values scaled to SLM voltage, i.e. for in-place
             operations.
             If ``None``, an appropriate array will be allocated.
@@ -651,8 +704,13 @@ class SLM(_Picklable, ABC):
         -------
         out
         """
+        xp = _xp(phase)
+
         if out is None:
-            out = np.zeros(self.shape, dtype=self.display.dtype)
+            out = xp.zeros(self.shape, dtype=self.dtype)
+        elif xp is cp and not isinstance(out, cp.ndarray):
+            out = cp.zeros(self.shape, dtype=self.dtype)
+            self.display = out
 
         if self.phase_scaling == 1:
             # Prepare the 2pi -> integer conversion factor and convert.
@@ -661,14 +719,14 @@ class SLM(_Picklable, ABC):
 
             # There is some randomness involved in casting positive floats to integers.
             # Avoid this by going all negative.
-            maximum = np.amax(phase)
+            maximum = xp.amax(phase)
             if maximum >= 0:
-                toshift = self.bitresolution * 2 * np.ceil(maximum / self.bitresolution)
+                toshift = self.bitresolution * 2 * float(xp.ceil(maximum / self.bitresolution))
                 phase -= toshift
 
-            # Copy and case the data to the output (usually self.display)
-            np.rint(phase, out=phase)
-            np.copyto(out, phase, casting="unsafe")
+            # Copy and cast the data to the output (usually self.display)
+            xp.rint(phase, out=phase)
+            xp.copyto(out, phase, casting="unsafe")
 
             # Restore phase (usually self.phase) as these operations are in-place.
             phase *= 1 / factor
@@ -676,26 +734,29 @@ class SLM(_Picklable, ABC):
             # Shift by one so that phase=0 --> display=max. That way, phase will be more continuous.
             out -= 1
 
-            # This part (along with the choice of type), implements modulo much faster than np.mod().
-            if self.bitresolution != 8 and self.bitresolution != 16:
+            # This part (along with the choice of type), implements modulo much faster than xp.mod().
+            if self.bitresolution & (self.bitresolution - 1) == 0:
                 active_bits_mask = int(self.bitresolution - 1)
-                np.bitwise_and(out, active_bits_mask, out=out)
+                xp.bitwise_and(out, active_bits_mask, out=out)
+            else:
+                # Slow backup using xp.mod().
+                xp.mod(out, self.bitresolution, out=out)
         else:
             # phase_scaling is not included in the scaling.
             factor = -(self.bitresolution * self.phase_scaling / 2 / np.pi)
             phase *= factor
 
             # Only if necessary, modulo the phase to remain within SLM bounds.
-            if np.amin(phase) <= -self.bitresolution or np.amax(phase) > 0:
+            if xp.amin(phase) <= -self.bitresolution or xp.amax(phase) > 0:
                 # Minus 1 is to conform with the in-bound case.
                 phase -= 1
-                # np.mod is the slowest step. It could maybe be faster if phase is converted to
+                # xp.mod is the slowest step. It could maybe be faster if phase is converted to
                 # an integer beforehand, but there is an amount of risk for overflow.
                 # For instance, a standard double can represent numbers far larger than
                 # even a 64 bit integer. If this optimization is implemented, take care to
                 # generate checks for the conversion to long integer / etc before the final
                 # conversion to dtype of uint8 or uint16.
-                np.mod(phase, self.bitresolution * self.phase_scaling, out=phase)
+                xp.mod(phase, self.bitresolution * self.phase_scaling, out=phase)
                 phase += self.bitresolution * (1 - self.phase_scaling)
 
                 # Set values still out of range to zero.
@@ -705,8 +766,8 @@ class SLM(_Picklable, ABC):
                 # Go from negative to positive.
                 phase += self.bitresolution - 1
 
-            # Copy and case the data to the output (usually self.display)
-            np.copyto(out, phase, casting="unsafe")
+            # Copy and cast the data to the output (usually self.display)
+            xp.copyto(out, phase, casting="unsafe")
 
             # Restore phase (though we do not unmodulo)
             phase *= 1 / factor
@@ -791,7 +852,7 @@ class SLM(_Picklable, ABC):
         self.display = data["display"]
         self.phase = data["phase"]
 
-        if not np.all(np.isclose(data["display"], self._phase2gray(data["phase"]))):
+        if not np.all(np.isclose(data["display"], self._format_phase_hw(data["phase"]))):
             warnings.warn("Integer data in 'display' does not match 'phase' for this SLM.")
 
         # Optional delay.
@@ -1061,6 +1122,67 @@ class SLM(_Picklable, ABC):
             self.source["amplitude_extent_radius"] = np.sqrt(np.amax(
                 np.square(self.grid[0][extent_mask]) + np.square(self.grid[1][extent_mask])
             ))
+
+    def set_source_aperture(
+        self,
+        amplitude_center_pix=None,
+        amplitude_radius=None,
+        amplitude_extent=None,
+        amplitude_extent_radius=None,
+    ):
+        """
+        Sets source aperture parameters measured by :meth:`fit_source_amplitude()` and
+        takes appropriate follow-on actions like shifting the grid.
+
+        Parameters
+        ----------
+        amplitude_center_pix : (float, float) OR None
+            Pixel corresponding to the center of the source.
+            If provided, the grid is recentered on this pixel.
+        amplitude_radius : float OR None
+            The radial standard deviation of the amplitude distribution in normalized units.
+            For a Gaussian source, this is the :math:`1/e` amplitude radius
+            (:math:`1/e^2` power radius).
+        amplitude_extent : (float, float) OR None
+            The box radii of the smallest rectangle which covers the desired amplitude extent
+            in normalized units.
+        amplitude_extent_radius : float OR None
+            Scalar radius about the center that covers the desired amplitude extent
+            in normalized units.
+
+        Returns
+        -------
+        dict
+            :attr:`~slmsuite.hardware.slms.slm.SLM.source`.
+        """
+        # Handle center repositioning with grid shift
+        if amplitude_center_pix is not None:
+            amplitude_center_pix = np.array(amplitude_center_pix)
+
+            # Get current center
+            current_center = np.array(
+                [np.argmin(np.abs(self.grid[0][0,:])), np.argmin(np.abs(self.grid[1][:,0]))]
+            )
+
+            # Calculate shift and update grid
+            dcenter = current_center - amplitude_center_pix
+            self.grid[0] += dcenter[0] * self.pitch[0]
+            self.grid[1] += dcenter[1] * self.pitch[1]
+
+            # Store the new center
+            self.source["amplitude_center_pix"] = amplitude_center_pix
+
+        # Set the other parameters directly
+        if amplitude_radius is not None:
+            self.source["amplitude_radius"] = float(amplitude_radius)
+
+        if amplitude_extent is not None:
+            self.source["amplitude_extent"] = np.array(amplitude_extent)
+
+        if amplitude_extent_radius is not None:
+            self.source["amplitude_extent_radius"] = float(amplitude_extent_radius)
+
+        return self.source
 
     def get_source_radius(self):
         """

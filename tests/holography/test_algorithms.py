@@ -132,7 +132,7 @@ class TestHologram:
 
     @pytest.mark.gpu
     @pytest.mark.parametrize("method", ["GS", "WGS-Leonardo", "WGS-Kim", "WGS-Nogrette"])
-    def test_gs_speed_gpu(self, random_seed, method, benchmark):
+    def test_gs_speed_gpu(self, random_seed, method, benchmark, has_cupy):
         """GPU speed benchmark for GS algorithms (no stats overhead)."""
         import cupy as cp
         target = cp.zeros((1024, 1024))

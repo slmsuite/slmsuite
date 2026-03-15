@@ -23,7 +23,7 @@ def fourierslm_calibrated(fourierslm):
 
 
 class TestFourierSLM:
-    """Tests for every public method on FourierSLM."""
+    """Tests for public methods on FourierSLM."""
 
     def test_init(self, slm, camera, subtests):
         """Test FourierSLM.__init__."""

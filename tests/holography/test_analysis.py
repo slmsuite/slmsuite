@@ -1133,7 +1133,7 @@ def test_helpers(subtests):
 
 
 @pytest.mark.gpu
-def test_take_gpu(benchmark):
+def test_take_gpu(benchmark, has_cupy):
     """GPU variant of take() using cupy arrays."""
     import cupy as cp
 

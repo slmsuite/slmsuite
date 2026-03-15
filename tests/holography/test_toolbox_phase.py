@@ -1085,7 +1085,7 @@ def test_zernike_pyramid_plot(normalized_grid, subtests):
 
 
 @pytest.mark.gpu
-def test_zernike_sum_gpu(benchmark):
+def test_zernike_sum_gpu(benchmark, has_cupy):
     """GPU variant of zernike_sum() using cupy arrays and CUDA kernels."""
     import cupy as cp
 

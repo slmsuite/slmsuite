@@ -4,21 +4,25 @@ Unit tests for FourierSLM class.
 import pytest
 import numpy as np
 import os
+import logging
+import matplotlib.pyplot as plt
 
 from slmsuite.hardware.cameraslms import FourierSLM
 from slmsuite.hardware.cameras.simulated import SimulatedCamera
 from slmsuite.hardware.slms.simulated import SimulatedSLM
+from slmsuite.holography.toolbox.phase import blaze, zernike_sum
 
 @pytest.fixture
 def fourierslm(slm, camera):
     """Fixture providing a FourierSLM instance."""
+    camera.set_exposure(0.1)  # Don't overexpose the fourier calibration.
     return FourierSLM(camera, slm, mag=1.0)
 
 
 @pytest.fixture
 def fourierslm_calibrated(fourierslm):
     """FourierSLM with a completed Fourier calibration."""
-    fourierslm.fourier_calibrate(array_pitch=40, array_shape=10, plot=False)
+    fourierslm.fourier_calibrate(array_pitch=30, array_shape=10, plot=True)
     return fourierslm
 
 
@@ -58,7 +62,7 @@ class TestFourierSLM:
 
         with subtests.test("basic calibration stores M and b"):
             fourierslm.fourier_calibrate(
-                array_pitch=40, array_shape=5, plot=False,
+                array_pitch=35, array_shape=5, plot=True,
             )
             cal = fourierslm.calibrations["fourier"]
             assert "M" in cal and "b" in cal
@@ -77,20 +81,20 @@ class TestFourierSLM:
 
         with subtests.test("second calibration overwrites"):
             fourierslm.fourier_calibrate(
-                array_pitch=35, array_shape=5, plot=False,
+                array_pitch=30, array_shape=5, plot=True,
             )
             # Just confirm it didn't error and key still exists
             assert "fourier" in fourierslm.calibrations
 
         with subtests.test("scalar array_shape and array_pitch"):
             fourierslm.fourier_calibrate(
-                array_pitch=40, array_shape=5, plot=False,
+                array_pitch=35, array_shape=5, plot=False,
             )
             assert fourierslm.calibrations["fourier"]["M"].shape == (2, 2)
 
         with subtests.test("list array_shape and array_pitch"):
             fourierslm.fourier_calibrate(
-                array_pitch=[40, 40], array_shape=[5, 5], plot=False,
+                array_pitch=[35, 35], array_shape=[5, 5], plot=False,
             )
             assert fourierslm.calibrations["fourier"]["M"].shape == (2, 2)
 
@@ -101,15 +105,24 @@ class TestFourierSLM:
                 )
 
     @pytest.mark.slow
-    def test_fourier_calibrate_large_array(self, fourierslm, subtests):
+    def test_fourier_calibrate_large_array(self, fourierslm, fourierslm_calibrated, subtests):
         """Test fourier_calibrate with a larger grid for better statistics."""
 
         with subtests.test("10x10 grid calibrates"):
             fourierslm.fourier_calibrate(
-                array_pitch=30, array_shape=10, plot=False,
+                array_pitch=30, array_shape=10, plot=True,
             )
+            plt.show()
             M = fourierslm.calibrations["fourier"]["M"]
             assert abs(np.linalg.det(M)) > 1e-10
+
+        with subtests.test("calibration matches smaller grid"):
+            M_large = fourierslm.calibrations["fourier"]["M"]
+            b_large = fourierslm.calibrations["fourier"]["b"]
+            M_small = fourierslm_calibrated.calibrations["fourier"]["M"]
+            b_small = fourierslm_calibrated.calibrations["fourier"]["b"]
+            assert np.allclose(M_large, M_small, rtol=0.1, atol=0.1)
+            assert np.allclose(b_large, b_small, rtol=0.1, atol=0.1)
 
     def test_fourier_calibrate_analytic(self, fourierslm, subtests):
         """Test FourierSLM.fourier_calibrate_analytic."""
@@ -121,7 +134,7 @@ class TestFourierSLM:
             # Note: fourier_calibrate_analytic with arbitrary M calls set_affine
             # on SimulatedCamera, which may fail for small M values.
             # Use M values consistent with the simulated optical system.
-            fourierslm.fourier_calibrate(array_pitch=40, array_shape=5, plot=False)
+            fourierslm.fourier_calibrate(array_pitch=35, array_shape=5, plot=False)
             real_M = fourierslm.calibrations["fourier"]["M"]
             real_b = fourierslm.calibrations["fourier"]["b"]
             fourierslm.fourier_calibrate_analytic(real_M, real_b)
@@ -143,7 +156,7 @@ class TestFourierSLM:
 
         with subtests.test("returns a hologram with spot data"):
             hologram = fourierslm_calibrated.fourier_grid_project(
-                array_shape=3, array_pitch=30,
+                array_shape=3, array_pitch=35,
             )
             assert hologram is not None
             assert hasattr(hologram, "spot_kxy_rounded")
@@ -337,9 +350,11 @@ class TestFourierSLM:
         with subtests.test("default call"):
             phase = np.random.rand(*fourierslm.slm.shape) * 2 * np.pi
             axs = fourierslm.plot(phase=phase)
+            plt.show()
             assert axs is not None
             assert len(axs) == 2
 
+    @pytest.mark.slow
     def test_wavefront_calibrate(self, fourierslm_calibrated, subtests):
         """Test FourierSLM.wavefront_calibrate — the wavefront calibration
         dispatcher.  This is essential for crisp holography.
@@ -348,48 +363,112 @@ class TestFourierSLM:
         implementations based on the *method* argument.
         """
 
-        with subtests.test("default method is superpixel"):
-            # Run with a single calibration point and small superpixels
-            # phase_steps=None skips phase measurement (fastest path)
-            result = fourierslm_calibrated.wavefront_calibrate(
-                calibration_points=fourierslm_calibrated.kxyslm_to_ijcam([0, 0]),
-                superpixel_size=fourierslm_calibrated.slm.shape[0] // 4,
-                plot=-1,
-                phase_steps=None,
-            )
-            assert result is not None
-            assert "wavefront_superpixel" in fourierslm_calibrated.calibrations
-
         with subtests.test("bad method raises"):
             with pytest.raises(ValueError, match="not recognized"):
                 fourierslm_calibrated.wavefront_calibrate(method="bogus")
 
+    @pytest.mark.slow
     def test_wavefront_calibrate_superpixel(self, fourierslm_calibrated, subtests):
         """Test FourierSLM.wavefront_calibrate_superpixel with various settings."""
 
-        cal_point = fourierslm_calibrated.kxyslm_to_ijcam([0, 0])
-        sp_size = fourierslm_calibrated.slm.shape[0] // 4
+        cal_point = [150, 150]
+        sp_size = fourierslm_calibrated.slm.shape[0] // 6
 
-        with subtests.test("amplitude-only (phase_steps=None)"):
-            result = fourierslm_calibrated.wavefront_calibrate_superpixel(
-                calibration_points=cal_point,
-                superpixel_size=sp_size,
-                phase_steps=None,
-                plot=-1,
+        with subtests.test(f"add aberration to slm"):
+            phase_abberation = zernike_sum(
+                fourierslm_calibrated.slm,
+                indices=(3, 4, 5, 7, 8),
+                weights=(1, -2, 3, 1, 1),
+                aperture=None,
+                use_mask=False
             )
-            assert isinstance(result, dict)
-            assert "power" in result
-            cal = fourierslm_calibrated.calibrations["wavefront_superpixel"]
-            assert "superpixel_size" in cal
+            fourierslm_calibrated.slm.set_source_analytic(
+                phase_offset=phase_abberation,
+                sim=True
+            )
+            fourierslm_calibrated.slm.plot_source(sim=True)
 
-        with subtests.test("one-shot phase (phase_steps=1)"):
-            result = fourierslm_calibrated.wavefront_calibrate_superpixel(
-                calibration_points=cal_point,
-                superpixel_size=sp_size,
-                phase_steps=1,
-                plot=-1,
-            )
-            assert "phase" in result
+        with subtests.test(f"direct blaze to calibration point"):
+            kxy = fourierslm_calibrated.ijcam_to_kxyslm(cal_point)
+            fourierslm_calibrated.slm.set_phase(blaze(fourierslm_calibrated.slm, vector=kxy))
+            img = fourierslm_calibrated.cam.get_image()
+
+            fourierslm_calibrated.plot(image=img, title="Blazed spot at calibration point")
+            plt.show()
+
+            assert img[140:160, 140:160].mean() > img.mean(), "Blazed spot should be brighter than background"
+
+        for phase_steps, name in [(None, "amplitude-only"), (1, "one-shot phase"), (5, "many-shot phase")]:
+            fourierslm_calibrated.slm.source["phase"] = None    # Clear any old calibration.
+
+            # FUTURE: test for warnings if underexposed.
+            # fourierslm_calibrated.cam.set_exposure(0.01)
+
+            # with subtests.test(f"test low-exposure {name} (phase_steps={phase_steps})"):
+            #     result = fourierslm_calibrated.wavefront_calibrate_superpixel(
+            #         calibration_points=cal_point,
+            #         superpixel_size=sp_size,
+            #         phase_steps=phase_steps,
+            #         plot=True,
+            #         test_index=-2,
+            #     )
+
+            fourierslm_calibrated.cam.set_exposure(.1)
+
+            # FUTURE: benchmark the calibration tick?
+            with subtests.test(f"test {name} (phase_steps={phase_steps})"):
+                result = fourierslm_calibrated.wavefront_calibrate_superpixel(
+                    calibration_points=cal_point,
+                    superpixel_size=sp_size,
+                    phase_steps=phase_steps,
+                    plot=True,
+                    test_index=-2,
+                )
+
+            with subtests.test(f"calibrate {name} (phase_steps={phase_steps})"):
+                result = fourierslm_calibrated.wavefront_calibrate_superpixel(
+                    calibration_points=cal_point,
+                    superpixel_size=sp_size,
+                    phase_steps=phase_steps,
+                )
+                assert isinstance(result, dict)
+                assert "power" in result
+                cal = fourierslm_calibrated.calibrations["wavefront_superpixel"]
+                assert "superpixel_size" in cal
+
+            with subtests.test(f"process {name} (phase_steps={phase_steps})"):
+                fourierslm_calibrated.wavefront_calibration_superpixel_process(
+                    plot=True,
+                    smooth=False,
+                )
+                plt.show()
+
+            with subtests.test(f"process smooth {name} (phase_steps={phase_steps})"):
+                fourierslm_calibrated.wavefront_calibration_superpixel_process(
+                    plot=True,
+                    smooth=True,
+                )
+                plt.show()
+
+            # Verifying phase calibration is difficult with low resolution, but
+            # amplitude is decent.
+            with subtests.test(f"check amplitude {name} (phase_steps={phase_steps})"):
+                fourierslm_calibrated.slm.plot_source(sim=False)
+                fourierslm_calibrated.slm.plot_source(sim=True)
+
+                # Subtract the calibrated amplitude from the simulated amplitude
+                amp = fourierslm_calibrated.slm.source["amplitude"]
+                amp_sim = fourierslm_calibrated.slm.source["amplitude_sim"]
+
+                amp_diff = np.abs(amp - amp_sim)
+                plt.imshow(amp_diff)
+                plt.title("Amplitude difference")
+                plt.colorbar()
+                plt.show()
+                amp_diff_norm = np.sum(amp_diff) / np.sum(amp_sim)
+                logger = logging.getLogger("conftest")
+                logger.info(f"Normalized amplitude difference {name}: {amp_diff_norm:.2f}")
+                assert amp_diff_norm < .5, f"Calibrated amplitude should be close to simulated amplitude ({amp_diff_norm:.2f} off)"
 
         with subtests.test("requires Fourier calibration"):
             fs_bare = FourierSLM(
@@ -407,6 +486,7 @@ class TestFourierSLM:
             assert "scheduling" in cal
             assert "slm_supershape" in cal
 
+    @pytest.mark.slow
     def test_wavefront_calibrate_zernike(self, fourierslm_calibrated, subtests):
         """Test FourierSLM.wavefront_calibrate_zernike."""
 
@@ -475,7 +555,7 @@ class TestFourierSLM:
         fs = FourierSLM(camera, slm)
 
         with subtests.test("calibrate"):
-            fs.fourier_calibrate(array_pitch=40, array_shape=5, plot=False)
+            fs.fourier_calibrate(array_pitch=35, array_shape=5, plot=False)
             assert "fourier" in fs.calibrations
 
         with subtests.test("save"):

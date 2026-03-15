@@ -80,6 +80,7 @@ docs = [
     "sphinx-autodoc-typehints",
 ]
 test = [
+    "imageio",
     "pytest",
     "pytest-benchmark",
     "pytest-subtests",

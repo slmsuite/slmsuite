@@ -87,7 +87,7 @@ class TestCamera:
             with pytest.raises(ValueError, match="set_z must be"):
                 camera.autofocus(set_z="not_callable")
 
-    def test_plot(self, camera, mpl_test, subtests):
+    def test_plot(self, camera, subtests):
         """Camera plot method produces an axes."""
         import matplotlib.pyplot as plt
 

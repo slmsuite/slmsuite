@@ -81,6 +81,7 @@ docs = [
 ]
 test = [
     "pytest",
+    "pytest-benchmark",
     "pytest-subtests",
     "pytest-notebook",
     "nbformat",

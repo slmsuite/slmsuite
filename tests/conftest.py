@@ -515,6 +515,10 @@ def pytest_configure(config):
     log_file = output_dir / "pytest.log"
     config.option.log_file = str(log_file)
 
+    # Save benchmark results to the output directory
+    config.option.benchmark_storage = str(output_dir)
+    config.option.benchmark_autosave = True
+
     # Configure logging: suppress all external packages to WARNING level
     # Only allow INFO and above from slmsuite package
     logging.captureWarnings(True)

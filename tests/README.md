@@ -379,11 +379,46 @@ cd tests/output && ls -t | tail -n +6 | xargs rm -rf
 rm -rf tests/output/
 ```
 
+## Benchmarking
+
+Performance benchmarks use [pytest-benchmark](https://pytest-benchmark.readthedocs.io/).
+Tests that accept the `benchmark` fixture automatically get timed with warmup, multiple rounds,
+and statistical reporting. Results are printed as a table after the test run.
+
+**Benchmarked functions:**
+
+| Function | Test file | GPU variant? |
+|---|---|---|
+| `Hologram.optimize()` (GS/WGS) | `test_algorithms.py` | Yes |
+| `SLM._phase2gray()` | `test_slms.py` | No |
+| `SLM.set_phase()` | `test_slms.py` | No |
+| `analysis.take()` | `test_analysis.py` | Yes |
+| `analysis.image_moment()` | `test_analysis.py` | No |
+| `analysis.image_fit()` | `test_analysis.py` | No |
+| `phase.blaze()` | `test_toolbox_phase.py` | No |
+| `phase.lens()` | `test_toolbox_phase.py` | No |
+| `phase.zernike_sum()` | `test_toolbox_phase.py` | Yes |
+| `toolbox.imprint()` | `test_toolbox.py` | No |
+
+```bash
+# Run everything including benchmarks
+pytest
+
+# Disable benchmark timing (tests still run, just not timed)
+pytest --benchmark-disable
+
+# Run only benchmarked tests
+pytest --benchmark-only
+
+# Compare against a saved baseline
+pytest --benchmark-compare
+```
+
 ## TODOs
 
 - [ ] Integration tests for SpotHologram optimization
 - [ ] CPU/GPU parametrization for all algorithm tests
-- [ ] Performance benchmarking tests
+- [x] Performance benchmarking tests
 - [ ] Coverage reporting (pytest-cov)
 - [ ] Hardware detection and optional hardware tests
 - [ ] Test data fixtures for common calibration scenarios

@@ -59,6 +59,7 @@ class TestHologram:
         logger.info(f'GS Convergence Test Point: {test_point}')
         target[test_point] = 1
         hologram = Hologram(target=target)
+
         hologram.optimize(method=method, maxiter=20, verbose=False, stat_groups=["computational"])
 
         # Check that output matches the expected grating
@@ -94,6 +95,7 @@ class TestHologram:
             logger.info(f'Adding GS test point at: {test_point}')
             target[test_point] = 1
         hologram = Hologram(target=target)
+
         hologram.optimize(method=method, maxiter=20, verbose=False, stat_groups=["computational"])
         stats = hologram.stats["stats"]["computational"]
         hologram.plot_stats()
@@ -115,3 +117,30 @@ class TestHologram:
         # Check that error decreases
         if method != "GS": # Basic GS may have non-monotonic error
             assert stats["std_err"][-1] <= stats["std_err"][1]
+
+    @pytest.mark.parametrize("method", ["GS", "WGS-Leonardo", "WGS-Kim", "WGS-Nogrette"])
+    def test_gs_speed(self, random_seed, method, benchmark):
+        """CPU speed benchmark for GS algorithms (no stats overhead)."""
+        target = np.zeros((1024, 1024))
+
+        rng = np.random.default_rng(random_seed)
+        for i in range(20):
+            test_point = (rng.integers(0, 1024), rng.integers(0, 1024))
+            target[test_point] = 1
+        hologram = Hologram(target=target)
+        benchmark(hologram.optimize, method=method, maxiter=20, verbose=False, stat_groups=[])
+
+    @pytest.mark.gpu
+    @pytest.mark.parametrize("method", ["GS", "WGS-Leonardo", "WGS-Kim", "WGS-Nogrette"])
+    def test_gs_speed_gpu(self, random_seed, method, benchmark):
+        """GPU speed benchmark for GS algorithms (no stats overhead)."""
+        if not HAS_CUPY:
+            pytest.skip("CuPy not available")
+        target = cp.zeros((1024, 1024))
+
+        rng = np.random.default_rng(random_seed)
+        for i in range(20):
+            test_point = (rng.integers(0, 1024), rng.integers(0, 1024))
+            target[test_point] = 1
+        hologram = Hologram(target=target)
+        benchmark(hologram.optimize, method=method, maxiter=20, verbose=False, stat_groups=[])

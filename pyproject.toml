@@ -58,7 +58,7 @@ cameras = [
 images = [
     "imageio",
     "pygifsicle",
-    "pyav",
+    "av",
 ]
 jupyter = [
     "jupyter",
@@ -109,3 +109,7 @@ include = ["slmsuite*"]
 
 [tool.setuptools.package-data]
 slmsuite = ["holography/toolbox/cuda.cu"]
+
+[tool.uv]
+# pyqt5-qt5 >= 5.15.3 dropped Windows wheels; cap to last working version.
+constraint-dependencies = ["pyqt5-qt5<=5.15.2"]

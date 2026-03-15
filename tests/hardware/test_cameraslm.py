@@ -62,7 +62,7 @@ class TestFourierSLM:
 
         with subtests.test("basic calibration stores M and b"):
             fourierslm.fourier_calibrate(
-                array_pitch=40, array_shape=5, plot=True,
+                array_pitch=35, array_shape=5, plot=True,
             )
             cal = fourierslm.calibrations["fourier"]
             assert "M" in cal and "b" in cal
@@ -81,20 +81,20 @@ class TestFourierSLM:
 
         with subtests.test("second calibration overwrites"):
             fourierslm.fourier_calibrate(
-                array_pitch=35, array_shape=5, plot=True,
+                array_pitch=30, array_shape=5, plot=True,
             )
             # Just confirm it didn't error and key still exists
             assert "fourier" in fourierslm.calibrations
 
         with subtests.test("scalar array_shape and array_pitch"):
             fourierslm.fourier_calibrate(
-                array_pitch=40, array_shape=5, plot=False,
+                array_pitch=35, array_shape=5, plot=False,
             )
             assert fourierslm.calibrations["fourier"]["M"].shape == (2, 2)
 
         with subtests.test("list array_shape and array_pitch"):
             fourierslm.fourier_calibrate(
-                array_pitch=[40, 40], array_shape=[5, 5], plot=False,
+                array_pitch=[35, 35], array_shape=[5, 5], plot=False,
             )
             assert fourierslm.calibrations["fourier"]["M"].shape == (2, 2)
 
@@ -134,7 +134,7 @@ class TestFourierSLM:
             # Note: fourier_calibrate_analytic with arbitrary M calls set_affine
             # on SimulatedCamera, which may fail for small M values.
             # Use M values consistent with the simulated optical system.
-            fourierslm.fourier_calibrate(array_pitch=40, array_shape=5, plot=False)
+            fourierslm.fourier_calibrate(array_pitch=35, array_shape=5, plot=False)
             real_M = fourierslm.calibrations["fourier"]["M"]
             real_b = fourierslm.calibrations["fourier"]["b"]
             fourierslm.fourier_calibrate_analytic(real_M, real_b)
@@ -156,7 +156,7 @@ class TestFourierSLM:
 
         with subtests.test("returns a hologram with spot data"):
             hologram = fourierslm_calibrated.fourier_grid_project(
-                array_shape=3, array_pitch=30,
+                array_shape=3, array_pitch=35,
             )
             assert hologram is not None
             assert hasattr(hologram, "spot_kxy_rounded")
@@ -555,7 +555,7 @@ class TestFourierSLM:
         fs = FourierSLM(camera, slm)
 
         with subtests.test("calibrate"):
-            fs.fourier_calibrate(array_pitch=40, array_shape=5, plot=False)
+            fs.fourier_calibrate(array_pitch=35, array_shape=5, plot=False)
             assert "fourier" in fs.calibrations
 
         with subtests.test("save"):

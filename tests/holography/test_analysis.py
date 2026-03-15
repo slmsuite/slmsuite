@@ -5,6 +5,7 @@ import warnings
 
 import pytest
 import numpy as np
+
 from slmsuite.holography import analysis
 from slmsuite.holography.analysis.fitfunctions import gaussian2d
 

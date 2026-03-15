@@ -25,35 +25,12 @@ pytest tests/holography/test_algorithms.py::TestHologram::test_gs_converges
 
 ## Test Structure
 
-The test directory structure mirrors the package structure:
+The test directory structure mirrors s `slmsuite/`:
 
-```
-tests/
-├── conftest.py              # Shared fixtures and configuration
-├── README.md                # This file
-├── pytest.ini               # Pytest configuration (in parent directory)
-├── test_examples.py         # Example notebook testing
-├── hardware/                # Hardware module tests
-│   ├── test_init.py         # _Picklable base class (save/load, HDF5)
-│   ├── test_slms.py         # SLM base class and SimulatedSLM
-│   ├── test_cameras.py      # Camera base class and SimulatedCamera
-│   └── test_cameraslm.py    # FourierSLM integration (calibration, workflows)
-├── holography/              # Holography module tests
-│   ├── test_algorithms.py   # Hologram optimization (GS, WGS variants)
-│   ├── test_analysis.py     # Image analysis (centroids, moments, fitting)
-│   ├── test_files.py        # HDF5 and image file I/O
-│   ├── test_toolbox.py      # Vector conversions, imprint, utilities
-│   └── test_toolbox_phase.py # Phase patterns (blaze, lens, Zernike, etc)
-└── misc/                    # Misc utilities tests
-    └── test_misc.py         # Math functions, fit functions
-```
-
-This structure mirrors `slmsuite/`:
 - `tests/hardware/` → `slmsuite/hardware/`
 - `tests/holography/` → `slmsuite/holography/`
 - `tests/misc/` → `slmsuite/misc/`
-
-## Test Philosophy
+- etc
 
 ### No Hardware Required by Default
 All tests use simulated hardware (SimulatedCamera, SimulatedSLM) and synthetic data. This allows:
@@ -61,34 +38,11 @@ All tests use simulated hardware (SimulatedCamera, SimulatedSLM) and synthetic d
 - Development without physical hardware
 - Consistent test results across environments
 
-### Test Categories
-
-All tests are designed to run without physical hardware using simulated devices:
-
-#### Hardware Tests (`tests/hardware/`)
-- **Picklable tests** (`test_init.py`): `_Picklable` base class, HDF5 save/load, metadata
-- **SLM tests** (`test_slms.py`): SLM base class, phase setting, source fitting, PSF
-- **Camera tests** (`test_cameras.py`): Camera base class, autoexposure, autofocus
-- **CameraSLM tests** (`test_cameraslm.py`): FourierSLM calibration, coordinate transforms, full workflows
-
-#### Holography Tests (`tests/holography/`)
-- **Algorithm tests** (`test_algorithms.py`): Hologram optimization (GS, WGS variants), convergence
-- **Analysis tests** (`test_analysis.py`): Centroids, moments, variances, fitting, Zernike, affine transforms
-- **File I/O tests** (`test_files.py`): HDF5 roundtrip, image loading/saving, path utilities
-- **Toolbox tests** (`test_toolbox.py`): Vector conversions, imprint, Lloyd's algorithm, formatting
-- **Phase toolbox tests** (`test_toolbox_phase.py`): Blaze, lens, Zernike, vortex, Laguerre-Gauss, Hermite-Gauss
-
-#### Misc Tests (`tests/misc/`)
-- **Math and fit functions** (`test_misc.py`): Utility functions, 1D/2D fitting (Gaussian, Lorentzian, etc.)
-
-#### Example Tests (`tests/`)
-- **Notebook tests** (`test_examples.py`): Runs example Jupyter notebooks end-to-end (marked `@pytest.mark.slow`)
-
-#### Test Characteristics
+### Characteristics
 - **Fast**: Most tests complete in <1 second (mark long tests with `@pytest.mark.slow`)
 - **Isolated**: Each test is independent and doesn't require external state
-- **No hardware by default**: Use SimulatedCamera/SimulatedSLM
-- **Hardware-ready**: All fixtures support real hardware via environment variables
+- **No hardware?**: Defaults to SimulatedCamera/SimulatedSLM
+- **Hardware-ready**: Some fixtures support real hardware via environment variables
 
 ## Fixtures
 
@@ -260,8 +214,9 @@ class TestFeatureName:
 
 ### Testing Best Practices
 
-1. **Use descriptive test names**: `test_gs_improves_efficiency` not `test_gs_1`
-2. **Test one thing**: Each test should verify a single behavior
+1. **Usually one testing function per package function**: `blaze` is mirrored
+   `test_blaze`.
+2. **Use subtests**: Each test function can have multiple `subtests` which each test one aspect of the function. This allows grouping related assertions while keeping test functions focused.
 3. **Use fixtures**: Avoid code duplication with shared fixtures
 4. **Test edge cases**: Empty arrays, zero values, NaN, extreme sizes
 5. **Use pytest.approx()**: For floating-point comparisons

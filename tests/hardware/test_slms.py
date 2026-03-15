@@ -1,12 +1,5 @@
 """
 Unit tests for SLM base class.
-
-Most SLM functionality is validated by ``SLM.test()``, which exercises
-core properties, ``_phase2gray``, ``set_phase``, source methods, file I/O,
-``info()``, PSF helpers, and vendor phase correction error handling.
-
-Tests here call ``.test()`` and then add targeted subtests for edge cases
-or behaviour that ``.test()`` does not cover.
 """
 import os
 import tempfile

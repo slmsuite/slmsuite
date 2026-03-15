@@ -3,7 +3,7 @@ Unit tests for slmsuite.holography.toolbox.phase module.
 """
 import pytest
 import numpy as np
-from unittest.mock import patch
+
 from slmsuite.holography.toolbox import phase
 from slmsuite.holography.toolbox.phase import (
     _parse_focal_length,

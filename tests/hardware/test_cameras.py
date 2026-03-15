@@ -1,8 +1,6 @@
 """
 Unit tests for Camera base class using SimulatedCamera.
 """
-import warnings
-
 import pytest
 import numpy as np
 

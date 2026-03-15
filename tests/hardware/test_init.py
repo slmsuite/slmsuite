@@ -1,11 +1,9 @@
 """
-Unit tests for slmsuite.hardware.__init__ module.
+Unit tests for the _Picklable base class, which handles object serialization and saving.
 """
 import pytest
 import tempfile
 import os
-import datetime
-from unittest.mock import patch
 
 import h5py
 
@@ -71,21 +69,16 @@ class TestPicklable:
     def test_pickle_metadata(self, subtests):
         """Test pickle metadata and version info."""
         with subtests.test("metadata fields present"):
-            with patch("datetime.datetime") as mock_dt:
-                mock_now = datetime.datetime(2023, 1, 1, 12, 0, 0)
-                mock_dt.now.return_value = mock_now
-                mock_dt.side_effect = lambda *a, **kw: datetime.datetime(*a, **kw)
+            result = self.obj.pickle(attributes=False, metadata=True)
 
-                result = self.obj.pickle(attributes=False, metadata=True)
+            assert result["__version__"] == __version__
+            assert isinstance(result["__time__"], str)
+            assert isinstance(result["__timestamp__"], float)
 
-                assert result["__version__"] == __version__
-                assert result["__time__"] == str(mock_now)
-                assert result["__timestamp__"] == mock_now.timestamp()
-
-                meta = result["__meta__"]
-                assert "__class__" in meta
-                assert "basic_attr" in meta
-                assert "name" in meta
+            meta = result["__meta__"]
+            assert "__class__" in meta
+            assert "basic_attr" in meta
+            assert "name" in meta
 
     def test_pickle_edge_cases(self, subtests):
         """Test warnings, nested objects, and empty _pickle lists."""

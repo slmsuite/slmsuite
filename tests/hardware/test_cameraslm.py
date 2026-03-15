@@ -1,8 +1,5 @@
 """
-Unit tests for FourierSLM class from slmsuite.hardware.cameraslms.
-
-Each test method corresponds to a public method on FourierSLM.
-Related cases are grouped using pytest-subtests.
+Unit tests for FourierSLM class.
 """
 import pytest
 import numpy as np

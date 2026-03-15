@@ -3,11 +3,9 @@ Unit tests for slmsuite.misc modules.
 """
 import pytest
 import numpy as np
-from slmsuite.misc.math import iseven, INTEGER_TYPES, FLOAT_TYPES, REAL_TYPES, SCALAR_TYPES
-from slmsuite.misc.fitfunctions import (
-    linear, parabola, hyperbola, cos, lorentzian,
-    gaussian, gaussian2d, tophat2d, sinc2d
-)
+
+from slmsuite.misc.math import *
+from slmsuite.misc.fitfunctions import *
 
 
 # Test misc.math functions

@@ -3,23 +3,13 @@ Unit tests for slmsuite.holography.algorithms module.
 """
 import pytest
 import numpy as np
-import random
 import logging
 import copy
 
-try:
-    import cupy as cp
-    HAS_CUPY = True
-except ImportError:
-    cp = np
-    HAS_CUPY = False
-
 from slmsuite.holography.algorithms import *
 from slmsuite.hardware.slms.simulated import SimulatedSLM
-from slmsuite.hardware.cameras.simulated import SimulatedCamera
 from slmsuite.holography.toolbox import convert_vector, format_vectors
 from slmsuite.holography.toolbox.phase import blaze
-from slmsuite.hardware.cameraslms import FourierSLM
 import matplotlib.pyplot as plt
 
 # Module-level logger for test output

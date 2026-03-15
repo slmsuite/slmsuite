@@ -1276,7 +1276,7 @@ class SLM(_Picklable, ABC):
         try:
             import pytest
         except ImportError:
-            print("Warning: pytest not available for enhanced testing")
+            print("Warning: pytest not available for error handling")
             pytest = None
 
         # Test 1: Core properties and attributes
@@ -1389,7 +1389,6 @@ class SLM(_Picklable, ABC):
             # Test error handling for out-of-range integer data
             # This is only valid when the dtype resolution is larger than the
             # bitresolution
-
             bad_int_data = np.full(self.shape, self.bitresolution + 1, dtype=self.dtype)
 
             if bad_int_data[0, 0] != 1:

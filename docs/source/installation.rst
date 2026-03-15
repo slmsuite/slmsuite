@@ -42,11 +42,19 @@ dependencies and thus are installed automatically if PyPI (``pip``) is used to i
 - `h5py <https://www.h5py.org/>`_
 - `tqdm <https://github.com/tqdm/tqdm>`_
 
-One can also install these dependencies directly.
+One can also install these dependencies directly by calling the following inside
+the package directory.
 
 .. code-block:: console
 
-    pip install -r requirements.txt
+    pip install -e .
+
+Omiting the ``-e`` flag will install the package in non-editable mode, which will
+install the package from the current directory in addition to the dependencies.
+
+.. code-block:: console
+
+    pip install .
 
 Hardware Dependencies
 ---------------------
@@ -54,18 +62,18 @@ Hardware Dependencies
 The following python packages are *optional* acceleration or hardware requirements, which
 the user can install selectively.
 
-- GPU
+- GPU ``pip install -e .[gpu]``
     - `cupy <https://cupy.dev/>`_, highly recommended for GPU-accelerated holography.
       Sometimes, installation is made complicated by a pre-installed version of CUDA.
       You can find the CUDA version with ``nvcc --version`` in a terminal, and then
       install an installation of :mod:`cupy` specific to CUDA version ``YY`` with
       ``pip install cupy-cudaYYx``.
-- Gradients
+- Gradients ``pip install -e .[torch]``
     - `pytorch <https://pytorch.org/>`_, required for conjugate gradient hologram
       optimization, either in GPU or CPU mode. Uses :mod:`cupy` - :mod:`torch`
       `interoperability <https://docs.cupy.dev/en/stable/user_guide/interoperability.html#pytorch>`_
       to pass data between modules without copying overhead, even on the GPU.
-- Cameras
+- Cameras ``pip install .[cameras]``
     - `instrumental-lib <https://github.com/mabuchilab/Instrumental>`_
     - `pylablib <https://github.com/AlexShkarin/pyLabLib>`_
     - `pymmcore <https://github.com/micro-manager/pymmcore>`_
@@ -76,10 +84,10 @@ the user can install selectively.
     - `thorlabs_tsi_sdk <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ (non-PyPI)
     - `VmbPy <https://github.com/alliedvision/VmbPy>`_ (non-PyPI)
     - Other cameras are loaded directly via .dll.
-- SLMs
+- SLMs ``pip install -e .[slms]``
     - `pyglet <https://pyglet.org/>`_
     - Other SLMs are loaded directly via .dll.
-- Image saving
+- Image saving ``pip install -e .[images]``
     - For most images and videos, `imageio <https://imageio.readthedocs.io/en/stable/>`_
     - Many video formats additionally require `pyav <https://pypi.org/project/av/>`_
     - For .gif optimization, `pygifsicle <https://pypi.org/project/pygifsicle/>`_
@@ -96,13 +104,13 @@ features like |autoreload|_ or |matplotlibs|_.
 - `jupyter <https://jupyter.org>`_
 
 If Jupyter is not used, the default :mod:`matplotlib` plots will block further
-execution, so the user should avoid plotting with ``plot=False`` flags on functions.
+execution, so the user should avoid plotting by using ``plot=False`` flags on functions.
 
 Use the following to install recommended jupyter-related packages.
 
 .. code-block:: console
 
-    pip install -r requirements_ipython.txt
+    pip install -e .[jupyter]
 
 
 .. |slmsuite| replace:: :mod:`slmsuite`

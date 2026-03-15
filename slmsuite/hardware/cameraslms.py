@@ -1277,6 +1277,8 @@ class FourierSLM(CameraSLM):
         if not "fourier" in self.calibrations:
             raise RuntimeError("Fourier calibration must exist to be used.")
 
+        self._check_fourier_calibration_stale()
+
         kxy = format_vectors(kxy, handle_dimension="pass")
 
         # Apply the xy transformation.
@@ -1339,6 +1341,8 @@ class FourierSLM(CameraSLM):
         if not "fourier" in self.calibrations:
             raise RuntimeError("Fourier calibration must exist to be used.")
 
+        self._check_fourier_calibration_stale()
+
         ij = format_vectors(ij, handle_dimension="pass")
 
         # Apply the xy transformation.
@@ -1352,6 +1356,29 @@ class FourierSLM(CameraSLM):
             return np.vstack((kxy, self._ijcam_to_kxyslm_depth(ij[[2], :])))
         else:
             return kxy
+
+    def _check_fourier_calibration_stale(self):
+        """
+        Checks if the wavefront calibration is newer than the Fourier calibration.
+
+        Warns if this is true. Does nothing if either calibration is not present or
+        if another error occurs.
+        """
+        try:
+            if "wavefront_superpixel" in self.calibrations and "fourier" in self.calibrations:
+                if (
+                    self.calibrations["wavefront_superpixel"]["__timestamp__"] >
+                    self.calibrations["fourier"]["__timestamp__"]
+                ):
+                    warnings.warn(
+                        f"The wavefront calibration is newer "
+                        f"({self.calibrations['wavefront_superpixel']['__time__']}) "
+                        f"than the Fourier calibration "
+                        f"({self.calibrations['fourier']['__time__']}). "
+                        "The Fourier calibration may be stale."
+                    )
+        except:
+            pass
 
     def get_farfield_spot_size(self, slm_size=None, basis="kxy"):
         """
@@ -1471,6 +1498,12 @@ class FourierSLM(CameraSLM):
         the superpixel :meth:`wavefront_calibrate_superpixel`
         and Zernike :meth:`wavefront_calibrate_zernike`
         implementations of wavefront calibration.
+
+        Important
+        ~~~~~~~~~
+        Wavefront calibration will generally shift spot centers slightly, making a
+        previous Fourier calibration "stale". It is recommended to perform Fourier
+        calibration after wavefront calibration.
         """
         if method is None:
             method = "superpixel"

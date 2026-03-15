@@ -170,7 +170,7 @@ def slm(slm_class, slm_kwargs):
     # Cleanup
     try:
         slm_instance.close()
-    except:
+    except Exception:
         pass
 
 
@@ -187,7 +187,7 @@ def slm_small(slm_kwargs):
     # Cleanup
     try:
         slm_instance.close()
-    except:
+    except Exception:
         pass
 
 
@@ -255,7 +255,7 @@ def camera(camera_class, camera_kwargs):
     # Cleanup
     try:
         cam.close()
-    except:
+    except Exception:
         pass
 
 
@@ -273,7 +273,7 @@ def camera_small(slm_small, camera_kwargs):
     # Cleanup
     try:
         cam.close()
-    except:
+    except Exception:
         pass
 
 
@@ -288,7 +288,7 @@ def fourierslm(camera, slm):
     # Cleanup
     try:
         fs.close()
-    except:
+    except Exception:
         pass
 
 @pytest.fixture
@@ -302,7 +302,7 @@ def fourierslm_small(camera_small, slm_small):
     # Cleanup
     try:
         fs.close()
-    except:
+    except Exception:
         pass
 
 # Matplotlib configuration (saving of plots)
@@ -487,6 +487,15 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
     setattr(item, f"rep_{rep.when}", rep)
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip GPU-marked tests when CuPy is not available."""
+    if not HAS_CUPY:
+        skip_gpu = pytest.mark.skip(reason="CuPy not available")
+        for item in items:
+            if "gpu" in item.keywords:
+                item.add_marker(skip_gpu)
 
 
 def pytest_configure(config):

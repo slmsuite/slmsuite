@@ -1,5 +1,6 @@
 import os
 import importlib.util
+import warnings
 
 import pytest
 from pytest_notebook.nb_regression import NBRegressionFixture, NBRegressionError
@@ -69,6 +70,6 @@ def test_examples(subtests):
                     with open(nb_path3, "w", encoding="utf8") as f:
                         nbformat.write(result.nb_final, f)
                 except NBRegressionError as e:  # Ignore notebook diff errors (output changes).
-                    pass
+                    warnings.warn(f"Notebook regression diff: {e}")
                 except Exception as e:
-                    raise e
+                    raise

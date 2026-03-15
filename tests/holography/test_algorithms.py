@@ -134,8 +134,7 @@ class TestHologram:
     @pytest.mark.parametrize("method", ["GS", "WGS-Leonardo", "WGS-Kim", "WGS-Nogrette"])
     def test_gs_speed_gpu(self, random_seed, method, benchmark):
         """GPU speed benchmark for GS algorithms (no stats overhead)."""
-        if not HAS_CUPY:
-            pytest.skip("CuPy not available")
+        import cupy as cp
         target = cp.zeros((1024, 1024))
 
         rng = np.random.default_rng(random_seed)

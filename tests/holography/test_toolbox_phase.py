@@ -1087,10 +1087,7 @@ def test_zernike_pyramid_plot(normalized_grid, subtests):
 @pytest.mark.gpu
 def test_zernike_sum_gpu(benchmark):
     """GPU variant of zernike_sum() using cupy arrays and CUDA kernels."""
-    try:
-        import cupy as cp
-    except ImportError:
-        pytest.skip("CuPy not available")
+    import cupy as cp
 
     x = cp.linspace(-1, 1, 256)
     grid = cp.meshgrid(x, x)

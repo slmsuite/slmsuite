@@ -558,7 +558,7 @@ def test_image_zernike_fit(subtests):
             assert zernike_coeffs.shape == (expected_coeffs, 1)
             assert np.any(np.abs(zernike_coeffs[:, 0]) > 0.01)
         except Exception as e:
-            print(f"Zernike fit failed (expected for testing): {e}")
+            pytest.skip(f"Zernike fit raised {type(e).__name__}: {e}")
 
     with subtests.test("2D input"):
         phase_2d = 0.2 * X_small
@@ -1135,10 +1135,7 @@ def test_helpers(subtests):
 @pytest.mark.gpu
 def test_take_gpu(benchmark):
     """GPU variant of take() using cupy arrays."""
-    try:
-        import cupy as cp
-    except ImportError:
-        pytest.skip("CuPy not available")
+    import cupy as cp
 
     rng = np.random.default_rng(42)
     image = cp.array(rng.random((512, 512)).astype(np.float32))

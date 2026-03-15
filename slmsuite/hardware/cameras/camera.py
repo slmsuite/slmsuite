@@ -12,7 +12,6 @@ from scipy.ndimage import zoom
 import PIL
 import io
 from abc import ABC, abstractmethod
-from functools import partial
 
 from slmsuite.hardware import _Picklable
 from slmsuite.holography import analysis
@@ -822,7 +821,7 @@ class Camera(_Picklable, ABC):
             The scale of the returned image is the same as the original exposure.
         """
         (exposures, exposure_power) = self._parse_hdr(exposures)
-        overexposure_threshold = self.bitresolution/2,
+        overexposure_threshold = self.bitresolution / 2
         if self.averaging is not None:
             overexposure_threshold *= self.averaging
 

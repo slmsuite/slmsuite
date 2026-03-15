@@ -301,7 +301,9 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
                 warnings.warn("shape or slm is required for unit 'knm'")
                 shape = (np.nan, np.nan)
             else:
-                shape = slm.shape
+                shape = np.array(slm.shape, dtype=float)
+        else:
+            shape = np.array(format_shape(shape), dtype=float)
 
         shape = format_2vectors(np.flip(np.squeeze(shape)))
 
@@ -491,7 +493,10 @@ def window_slice(window, shape=None, centered=False, circular=False):
     slice_ : (slice, slice) OR (array_like, array_like) OR (array_like)
         The slice for the window.
     """
-    # (v.x, w, v.y, h) format
+    if shape is not None:
+        shape = format_shape(shape)
+
+    # Case 1: (v.x, w, v.y, h) format
     if len(window) == 4:
         # Prepare helper vars
         xi = int(window[0] - ((window[1] - 2) / 2 if centered else 0))
@@ -523,7 +528,7 @@ def window_slice(window, shape=None, centered=False, circular=False):
             return window_slice((y_grid[mask_grid], x_grid[mask_grid]), shape=shape)
         else:  # Otherwise, return square slices in the python style.
             slice_ = (slice(yi, yf), slice(xi, xf))
-    # (y_ind, x_ind) format
+    # Case 2: (y_ind, x_ind) format
     elif len(window) == 2:
         # Prepare the lists
         y_ind = np.ravel(window[0])
@@ -532,7 +537,7 @@ def window_slice(window, shape=None, centered=False, circular=False):
             x_ind = np.clip(x_ind, 0, shape[1] - 1)
             y_ind = np.clip(y_ind, 0, shape[0] - 1)
         slice_ = (y_ind, x_ind)
-    # Boolean numpy array.
+    # Case 3: Boolean numpy array.
     elif np.ndim(window) == 2:
         slice_ = window
     else:
@@ -1144,7 +1149,7 @@ def smallest_distance(vectors, metric="chebyshev"):
         Defaults to ``"chebyshev"`` which corresponds to
         :meth:`scipy.spatial.distance.chebyshev()`.
         The :math:`\mathcal{O}(N\log(N))` divide and conquer algorithm is only
-        compatible with string inputs. allowed by :meth:`scipy.spatial.distance.pdist`.
+        compatible with string inputs allowed by :meth:`scipy.spatial.distance.pdist`.
         Function arguments will fallback to the brute force approach.
 
     Returns
@@ -1394,8 +1399,8 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
     """
     if (
         isinstance(grid, (list, tuple))
-        and isinstance(grid[0], (int))
-        and isinstance(grid[1], (int))
+        and isinstance(grid[0], INTEGER_TYPES)
+        and isinstance(grid[1], INTEGER_TYPES)
     ):
         shape = grid
     else:
@@ -1431,8 +1436,7 @@ def assign_vectors(vectors, assignment_options):
     Note
     ~~~~
     An :math:`\mathcal{O}(N^2)` brute force approach is currently implemented,
-    though it is vectorized.
-    This could be sped up significantly.
+    though it is vectorized. This could be sped up significantly.
 
     Parameters
     ----------
@@ -1582,7 +1586,36 @@ def transform_grid(grid, transform=None, shift=None, direction="fwd"):
             )
 
 
-# Padding functions.
+# Shape and padding functions.
+
+
+def format_shape(shape, expected_dimension=2):
+    """
+    Helper function to format a shape tuple.
+
+    Parameters
+    ----------
+    shape : (int, int) OR tuple of int
+        The shape to format.
+    expected_dimension : int OR None
+        The expected number of dimensions. Ignored if ``None``.
+
+    Returns
+    -------
+    tuple
+        The formatted shape.
+    """
+    shape = tuple(np.squeeze(shape))
+
+    if expected_dimension is not None:
+        if len(shape) != expected_dimension:
+            raise ValueError(f"Expected shape with {expected_dimension} dimensions, got {len(shape)}")
+
+    for dim in shape:
+        if not isinstance(dim, INTEGER_TYPES) or dim <= 0:
+            raise ValueError(f"Expected positive integer dimensions, got {shape}")
+
+    return tuple([int(d) for d in shape])
 
 
 def pad(matrix, shape):
@@ -1605,6 +1638,8 @@ def pad(matrix, shape):
     """
     if shape is None:
         return matrix
+
+    shape = format_shape(shape)
 
     deltashape = (
         (shape[0] - matrix.shape[0]) / 2.0,
@@ -1635,7 +1670,8 @@ def unpad(matrix, shape):
     Parameters
     ----------
     matrix : numpy.ndarray OR (int, int)
-        Data to unpad. If this is a shape in :mod:`numpy` ``(h, w)`` form,
+        Data to unpad, if this is a matrix.
+        If this is a shape in :mod:`numpy` ``(h, w)`` form,
         returns the four slicing integers used to unpad that shape ``[pad_b:pad_t, pad_l:pad_r]``.
     shape : (int, int) OR None
         The desired shape of the ``matrix`` in :mod:`numpy` ``(h, w)`` form.
@@ -1650,8 +1686,8 @@ def unpad(matrix, shape):
     mshape = np.shape(matrix)
     return_args = False
     if len(mshape) == 1 or np.prod(mshape) == 2:
-        # Assume a shape was provided.
-        mshape = np.squeeze(matrix)
+        # Assume a shape was provided instead of a matrix.
+        mshape = format_shape(matrix)
         return_args = True
 
     if shape is None:
@@ -1659,6 +1695,8 @@ def unpad(matrix, shape):
             return (0, mshape[0], 0, mshape[1])
         else:
             return matrix
+
+    shape = format_shape(shape)
 
     deltashape = ((shape[0] - mshape[0]) / 2.0, (shape[1] - mshape[1]) / 2.0)
 

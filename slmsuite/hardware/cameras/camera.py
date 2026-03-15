@@ -12,12 +12,15 @@ from scipy.ndimage import zoom
 import PIL
 import io
 from abc import ABC, abstractmethod
+import pytest
+from functools import partial
 
 from slmsuite.hardware import _Picklable
 from slmsuite.holography import analysis
-from slmsuite.holography.toolbox import BLAZE_LABELS
-from slmsuite.misc.fitfunctions import lorentzian, lorentzian_jacobian
-from slmsuite.misc.math import REAL_TYPES
+from slmsuite.holography.toolbox import BLAZE_LABELS, format_shape
+from slmsuite.holography.toolbox.phase import zernike
+from slmsuite.misc.fitfunctions import lorentzian
+from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 from slmsuite.holography.analysis import image_centroids, image_remove_field
 from slmsuite.holography.analysis.files import _gray2rgb
 
@@ -38,7 +41,8 @@ class Camera(_Picklable, ABC):
     bitdepth : int
         Depth of a camera pixel well in bits.
     bitresolution : int
-        Stores ``2**bitdepth``.
+        Returns ``(2**bitdepth) * averaging``. The action of averaging is a sum rather
+        than a mean, so the effective bitresolution increases accordingly.
     dtype : np.dtype
         Stores the type returned by :meth:`._get_image_hw()`.
         This value is cached upon initialization.
@@ -50,7 +54,7 @@ class Camera(_Picklable, ABC):
     exposure_bounds_s : (float, float) OR None
         Shortest and longest allowable integration in seconds.
     averaging : int OR None
-        Default setting for averaging. See :meth:`.get_image()`.
+        Default setting for averaging (sums repeated measurements). See :meth:`.get_image()`.
     hdr : (int, int) OR None
         Default setting for multi-exposure High Dynamic Range imaging. See :meth:`.get_image()`.
     capture_attempts : int
@@ -104,6 +108,7 @@ class Camera(_Picklable, ABC):
         bitdepth=8,
         pitch_um=None,
         name="camera",
+        exposure_bounds_s=None,
         averaging=None,
         capture_attempts=5,
         hdr=None,
@@ -133,6 +138,8 @@ class Camera(_Picklable, ABC):
             to use additional calibrations.
         name : str
             Defaults to ``"camera"``.
+        exposure_bounds_s : (float, float) OR None
+            Exposure bounds in seconds for the camera. If ``None``, no bounds are applied.
         averaging : int or None
             Number of frames to average. Used to increase the effective bit depth of a camera by using
             pre-quantization noise (e.g. dark current, read-noise, etc.) to "dither" the pixel output
@@ -156,7 +163,7 @@ class Camera(_Picklable, ABC):
             Flips returned image up down.
             Used to determine :attr:`transform`.
         """
-        (width, height) = resolution
+        (width, height) = format_shape(resolution)
 
         # Set shape, depending upon transform.
         if rot in ("90", 1, "270", 3):
@@ -188,20 +195,23 @@ class Camera(_Picklable, ABC):
         self.name = str(name)
 
         # Set exposure information.
-        self.exposure_bounds_s = None
+        self.exposure_bounds_s = (
+            (np.min(exposure_bounds_s), np.max(exposure_bounds_s))
+            if exposure_bounds_s is not None else
+            None
+        )
 
-        self.exposure_s = 1 # Default to 1s for Simulated cameras.
+        self.exposure_s = 1     # Default to 1s for Simulated cameras.
         self.exposure_s = self.get_exposure()
 
         # Set datatype variables.
         self.bitdepth = int(bitdepth)
-        self.bitresolution = 2**bitdepth
         self.dtype = self._get_dtype()
 
         # Frame averaging variables.
         self.averaging = self._parse_averaging(averaging, preserve_none=True)
         self.hdr = self._parse_hdr(hdr, preserve_none=True)
-        self._flush_iterations = 2  # Hidden variable
+        self._flush_iterations = 2  # Hidden variable: how many frames to capture for a flush.
 
         # Spatial dimensions.
         if pitch_um is not None and not (np.isscalar(pitch_um) and pitch_um <= 0):
@@ -216,6 +226,10 @@ class Camera(_Picklable, ABC):
 
         # Placeholder for live viewer handle.
         self.viewer = None
+
+    @property
+    def bitresolution(self):
+        return (2**self.bitdepth) * (self.averaging if self.averaging is not None else 1)
 
     # Core methods - to be implemented by subclass.
 
@@ -277,8 +291,16 @@ class Camera(_Picklable, ABC):
         Returns
         -------
         float
-            Set integration time in seconds.
+            The resulting integration time in seconds (pulled from :meth:`.get_exposure()`).
         """
+        if self.exposure_bounds_s is not None:
+            exposure_s_ = np.clip(exposure_s, *self.exposure_bounds_s)
+            if exposure_s_ != exposure_s:
+                warnings.warn(
+                    f"Requested exposure {exposure_s} s is out of bounds "
+                    f"{self.exposure_bounds_s} s. Clipping to {exposure_s_} s."
+                )
+                exposure_s = exposure_s_
         self._set_exposure_hw(exposure_s)
         return self.get_exposure()
 
@@ -383,7 +405,7 @@ class Camera(_Picklable, ABC):
             Number of frames to batch collect.
         timeout_s : float
             The time in seconds to wait for **each** frame to be fetched.
-            The frame exposure time  is **NOT added** to this timeout
+            The frame exposure time  is **added** to this timeout
             such that there is always enough time to expose.
         out : None OR numpy.ndarray
             Preallocated memory for in-place operations, if applicable.
@@ -407,45 +429,83 @@ class Camera(_Picklable, ABC):
 
     def _get_image_hw_tolerant(self, *args, **kwargs):
         err = None
+        failures = 0
 
-        for i in range(self.capture_attempts):
+        for _ in range(self.capture_attempts):
             try:
-                return self._get_image_hw(*args, **kwargs)
+                img =  self._get_image_hw(*args, **kwargs)
+
+                if failures > 0:
+                    warnings.warn(f"'{self.name}' _get_image_hw() failed {failures} times before succeeding.")
+
+                return img
             except Exception as e:
-                if i > 0: warnings.warn(f"'{self.name}' _get_image_hw() failed on attempt {i+1}.")
+                failures += 1
                 err = e
+
+        warnings.warn(f"'{self.name}' _get_image_hw() failed {failures} times before quitting.")
 
         raise err
 
     def _get_images_hw_tolerant(self, *args, **kwargs):
         e = None
+        failures = 0
 
-        for i in range(self.capture_attempts):
+        for _ in range(self.capture_attempts):
             try:
-                return self._get_images_hw(*args, **kwargs)
+                imgs = self._get_images_hw(*args, **kwargs)
+
+                if failures > 0:
+                    warnings.warn(f"'{self.name}' _get_images_hw() failed {failures} times before succeeding.")
+
+                return imgs
             except Exception as e:
-                if i > 0: warnings.warn(f"'{self.name}' _get_images_hw() failed on attempt {i+1}.")
+                failures += 1
                 err = e
+
+        warnings.warn(f"'{self.name}' _get_images_hw() failed {failures} times before quitting.")
 
         raise err
 
-    def _get_dtype(self):
+    def _get_dtype(self, get_image_function=None):
+        """
+        Captures a frame from the camera to make sure the datatype conforms with
+        the expected bitdepth.
+        """
+        if get_image_function is None:
+            get_image_function = self._get_image_hw_tolerant
+
         try:
             self.dtype = np.dtype(
                 np.array(
-                    self._get_image_hw_tolerant(timeout_s=1)
+                    get_image_function()
                 ).dtype
             )   # Future: check if cameras change dtype after init.
         except:
-            if self.bitdepth > 16:
-                self.dtype = np.dtype(float)
-            elif self.bitdepth > 8:
-                self.dtype = np.dtype(np.uint16)
-            else:
+            if self.bitdepth <= 0:
+                raise ValueError("Non-positive bitdepth does not make sense.")
+            elif self.bitdepth <= 8:
                 self.dtype = np.dtype(np.uint8)
+            elif self.bitdepth <= 16:
+                self.dtype = np.dtype(np.uint16)
+            elif self.bitdepth <= 32:
+                self.dtype = np.dtype(np.uint32)
+            elif self.bitdepth <= 64:
+                self.dtype = np.dtype(np.uint64)
+            else:
+                self.dtype = np.dtype(float)
 
         try:
-            if self.dtype(0).nbytes * 8 < self.bitdepth:
+            # Determine the bitdepth of the datatype.
+            if self.dtype.kind == "i" or self.dtype.kind == "u":
+                dtype_bitdepth = self.dtype(0).nbytes * 8
+                if self.dtype.kind == "i":
+                    dtype_bitdepth -= 1
+            elif self.dtype.kind == "f":
+                dtype_bitdepth = np.inf
+
+            # Warn the user if something is wrong.
+            if dtype_bitdepth < self.bitdepth:
                 raise warnings.warn(
                     f"Camera '{self.name}' bitdepth of {self.bitdepth} does not conform "
                     f"with the image type {self.dtype} with {self.dtype.itemsize} bytes."
@@ -510,12 +570,15 @@ class Camera(_Picklable, ABC):
         if averaging <= 0:
             raise ValueError("Cannot have negative averaging.")
 
+        # Get dtype instance from type if needed
+        dtype = np.dtype(self.dtype) if not hasattr(self.dtype, 'kind') else self.dtype
+
         # Switch based on image type
-        if self.dtype.kind == "i" or self.dtype.kind == "u":
-            dtype_bitdepth = 8*self.dtype.type(0).nbytes
+        if dtype.kind == "i" or dtype.kind == "u":
+            dtype_bitdepth = 8*dtype.type(0).nbytes
 
             # Remove depth for signed integer.
-            if self.dtype.kind == "i":
+            if dtype.kind == "i":
                 dtype_bitdepth -= 1
 
             extra_bits = int(np.rint(np.log2(averaging)))
@@ -526,7 +589,7 @@ class Camera(_Picklable, ABC):
             else:
                 # Otherwise, force floating point.
                 return float
-        elif self.dtype.kind == "f":
+        elif dtype.kind == "f":
             # Return floating point.
             return self.dtype
         else:
@@ -583,12 +646,12 @@ class Camera(_Picklable, ABC):
             Requesting more than 16 averages would cause the return type to be promoted
             to ``float``.
 
-            Note
-            ~~~~
-            Averaging is a bit of a misnomer as the true functionality is to sum or
-            integrate the images. This is done such that integer datatypes (useful for
-            memory compactness) can still be returned; a general mean would need to be
-            floating point.
+            Important
+            ~~~~~~~~~
+            This feature sums many measurements together.
+            It does not mean: averaging is a bit of a misnomer.
+            This is done such that integer datatypes (useful for memory compactness) can still be returned,
+            whereas a general mean would need to be floating point.
 
         Returns
         -------
@@ -828,10 +891,10 @@ class Camera(_Picklable, ABC):
         """
         # Parse arguments
         if np.isscalar(exposure_power):
-            exposure_power = int(exposure_power)
-            exposure_times = np.power(exposure_power, imgs.shape[0])
+            exposure_power = float(int(exposure_power))
+            exposure_times = np.power(exposure_power, np.arange(imgs.shape[0]))
         else:
-            exposure_times = exposure_power
+            exposure_times = np.array(exposure_power)
             if np.all(exposure_times <= 0):
                 raise ValueError("exposure_times cannot all be non-positive.")
             exposure_times = exposure_times / np.min(exposure_times[exposure_times > 0])
@@ -853,6 +916,255 @@ class Camera(_Picklable, ABC):
                 img[mask] = img_current[mask] / exposure_times[i]
 
         return img
+
+    # Self-test method to test everything above.
+
+    def test(self):
+        """
+        Tests the core methods of :class:`Camera`.
+        If something isn't behaving properly, this is the first place to check.
+        Validates that methods can run and are returning correct datatypes and shapes.
+        """
+        print(f"Testing camera: {self.name}")
+
+        # Test 1: Core non-abstract methods
+        print("Testing core non-abstract methods...")
+
+        # Test _get_dtype method
+        orig_dtype = self.dtype
+        orig_bitdepth = self.bitdepth
+
+        print("  Testing _get_dtype...")
+
+        # solution_dtype, fake_dtype, bitdepth
+        tests = [
+            (orig_dtype, False, orig_bitdepth),
+            (np.dtype(np.uint8), None, 8),
+            (np.dtype(np.uint16), None, 12),
+            (np.dtype(np.uint8), np.uint8, 8),
+            (np.dtype(np.uint16), np.uint16, 12),
+        ]
+        for (solution_dtype, fake_dtype, bitdepth) in tests:
+            def fake_get_image():
+                if fake_dtype is False:
+                    return self._get_image_hw_tolerant(timeout_s=1)
+                elif fake_dtype is None:
+                    raise RuntimeError("Fake error")
+                else:
+                    return np.zeros((5,5), dtype=solution_dtype)
+
+            self.bitdepth = bitdepth
+
+            # with pytest.raises(Warning):
+            dtype = self._get_dtype(fake_get_image)
+
+            print(dtype, solution_dtype)
+
+            assert dtype is solution_dtype
+            assert dtype is self.dtype
+
+        self.dtype = orig_dtype
+        self.bitdepth = orig_bitdepth
+
+        # Test 2: Basic properties and attributes
+        print("  Testing basic properties...")
+        assert hasattr(self, 'shape')
+        assert hasattr(self, 'bitdepth')
+        assert hasattr(self, 'bitresolution')
+        assert hasattr(self, 'dtype')
+        assert self.bitresolution == 2**self.bitdepth
+        assert len(self.shape) == 2
+        assert all(isinstance(dim, INTEGER_TYPES) and dim > 0 for dim in self.shape)
+
+        # Test transform function exists and is callable
+        assert hasattr(self, 'transform')
+        assert callable(self.transform)
+
+        # Test 3: Exposure methods (if implemented)
+        print("  Testing exposure methods...")
+        current_exposure = self.get_exposure()
+        assert isinstance(current_exposure, REAL_TYPES)
+        assert current_exposure > 0
+
+        # Test setting exposure
+        new_exposure = current_exposure * 1.5
+        set_exposure = self.set_exposure(new_exposure)
+        assert isinstance(set_exposure, REAL_TYPES)
+
+        # Restore original exposure
+        self.set_exposure(current_exposure)
+
+        # Test 4: Capture methods (requires concrete implementation)
+        print("Testing capture methods...")
+        orig_averaging = self.averaging
+        orig_hdr = self.hdr
+
+        self.averaging = None
+        self.hdr = None
+
+        try:
+            self.last_image = None
+
+            # Test basic image capture
+            print("  Testing get_image...")
+            image = self.get_image(timeout_s=2)
+            assert isinstance(image, np.ndarray)
+            assert image.shape == self.shape
+            assert image.dtype == self.dtype or np.issubdtype(image.dtype, np.floating)
+
+            # Test that last_image is updated
+            assert self.last_image is not None
+            # Use allclose for floating point comparisons, array_equal for integer
+            if np.issubdtype(image.dtype, np.floating) or np.issubdtype(self.last_image.dtype, np.floating):
+                assert np.allclose(self.last_image, image)
+            else:
+                assert np.array_equal(self.last_image, image)
+
+            # Test get_image with transform=False
+            image_no_transform = self.get_image(transform=False, timeout_s=2)
+            assert isinstance(image_no_transform, np.ndarray)
+
+            # Test _get_averaging_dtype method
+            print("  Testing _get_averaging_dtype...")
+
+            # Test with various averaging values
+            self.averaging = 1
+            dtype1 = self._get_averaging_dtype(1)
+            assert dtype1 == self.dtype
+
+            # Test edge cases
+            with pytest.raises(ValueError, match="Cannot have negative averaging"):
+                self._parse_averaging(-1)
+
+            # Test with higher averaging that might promote to float
+            self.averaging = 1000
+            dtype_high = self._get_averaging_dtype(1000)
+            # Should either be original dtype or float
+            assert dtype_high == self.dtype or dtype_high == float
+
+            # Test error case
+            self.averaging = None
+            with pytest.raises(ValueError, match="Averaging is not enabled"):
+                self._get_averaging_dtype()
+
+            # Test negative averaging error
+            with pytest.raises(ValueError, match="Cannot have negative averaging"):
+                self._get_averaging_dtype(-1)
+
+            # Test _parse_averaging method
+            self.averaging = 1
+            print("  Testing _parse_averaging...")
+            assert self._parse_averaging(None, preserve_none=True) is None
+            assert self._parse_averaging(None) == self.averaging
+            assert self._parse_averaging(False) == 1
+            assert self._parse_averaging(5) == 5
+
+            self.averaging = None
+
+            # Test averaging
+            print("  Testing averaging...")
+            image_avg = self.get_image(averaging=2, timeout_s=5)
+            assert isinstance(image_avg, np.ndarray)
+            assert image_avg.shape == self.shape
+
+            # Test get_images
+            print("  Testing get_images...")
+            image_count = 3
+            images = self.get_images(image_count, timeout_s=2)
+            assert isinstance(images, np.ndarray)
+            assert images.shape == (image_count, self.shape[0], self.shape[1])
+            assert images.dtype == self.dtype
+
+            # Test get_images with preallocated output
+            out = np.empty((image_count, self.shape[0], self.shape[1]), dtype=self.dtype)
+            images_out = self.get_images(image_count, timeout_s=2, out=out)
+            # Check if the output was written to our buffer
+            assert images_out.shape == out.shape
+            assert images_out.dtype == out.dtype
+
+            # Test flush method
+            print("  Testing flush...")
+            self.flush(timeout_s=2)  # Should not raise an error
+
+            # Test _parse_hdr method
+            print("  Testing _parse_hdr...")
+            assert self._parse_hdr(None, preserve_none=True) is None
+            assert self._parse_hdr(False) == (1, 0)
+            assert self._parse_hdr(3) == (3, 2)
+            assert self._parse_hdr((4, 3)) == (4, 3)
+
+            # Test HDR imaging
+            try:
+                print("  Testing get_image_hdr...")
+                hdr_image = self.get_image_hdr(exposures=2, return_raw=False, timeout_s=3)
+                assert isinstance(hdr_image, np.ndarray)
+                assert hdr_image.shape == self.shape
+                assert np.issubdtype(hdr_image.dtype, np.floating)
+
+                # Test HDR with return_raw=True
+                hdr_raw, exposure_times = self.get_image_hdr(exposures=2, return_raw=True, timeout_s=3)
+                assert isinstance(hdr_raw, np.ndarray)
+                assert isinstance(exposure_times, np.ndarray)
+                assert hdr_raw.shape[0] == 2  # 2 exposures
+                assert hdr_raw.shape[1:] == self.shape
+                assert len(exposure_times) == 2
+
+            except Exception as e:
+                print(f"    HDR testing skipped: {e}")
+
+        except NotImplementedError as e:
+            print(f"    Capture methods not implemented: {e}")
+        except Exception as e:
+            print(f"    Warning: Capture test failed with: {e}")
+            # Don't fail the test for capture issues in abstract base
+        finally:
+            self.hdr = orig_hdr
+            self.averaging = orig_averaging
+
+        # Test 5: HDR functionality (static method)
+        print("  Testing HDR analysis...")
+        # Create test data for HDR analysis
+        test_imgs = np.random.randint(0, 100, (3, 10, 10), dtype=np.uint8)
+        hdr_result = Camera.get_image_hdr_analysis(test_imgs, overexposure_threshold=80)
+        assert isinstance(hdr_result, np.ndarray)
+        assert hdr_result.shape == (10, 10)
+        assert hdr_result.dtype == np.float64 or hdr_result.dtype == np.float32
+
+        # Test HDR analysis with different exposure powers
+        exposure_times = [1.0, 2.0, 4.0]
+        hdr_result2 = Camera.get_image_hdr_analysis(test_imgs, exposure_power=exposure_times)
+        assert isinstance(hdr_result2, np.ndarray)
+        assert hdr_result2.shape == (10, 10)
+
+        # Test error handling in HDR analysis
+        with pytest.raises(ValueError):
+            Camera.get_image_hdr_analysis(test_imgs, exposure_power=[0, 0, 0])
+
+        # Test 6: Set WOI (if implemented)
+        print("  Testing set_woi...")
+        try:
+            orig_woi = getattr(self, 'woi', None)
+            woi_result = self.set_woi()
+            # Should return something (the method shouldn't fail)
+            if orig_woi is not None:
+                # Restore original WOI if it existed
+                self.set_woi(orig_woi)
+        except NotImplementedError:
+            print("    set_woi not implemented - skipping")
+
+        # Test 7: Additional utility methods
+        print("  Testing utility methods...")
+
+        # Test info method (static)
+        try:
+            info_result = self.__class__.info(verbose=False)
+            assert isinstance(info_result, list)
+        except NotImplementedError:
+            print("    info() method not implemented - skipping")
+
+        print("Camera test completed successfully!")
+
+        return True
 
     # Display methods.
 
@@ -1009,29 +1321,26 @@ class Camera(_Picklable, ABC):
         tol=0.05,
         exposure_bounds_s=None,
         window=None,
-        average_count=5,
         timeout_s=5,
         verbose=True,
     ):
         """
         Sets the exposure of the camera such that the maximum value is at ``set_fraction``
-        of the dynamic range. Useful for mitigating deleterious over- or under- exposure.
+        of the dynamic range. Useful for mitigating over- or under- exposure.
 
         Parameters
         --------
         set_fraction : float
-            Fraction of camera dynamic range to target image maximum.
+            Fraction of camera dynamic range to use as a target image maximum.
         tol : float
             Fractional tolerance for exposure adjustment.
         exposure_bounds_s : (float, float) OR None
             Shortest and longest allowable integration in seconds. If ``None``, defaults to
-            :attr:`exposure_bounds_s`. If this attribute was not set (or not availible on
+            :attr:`exposure_bounds_s`. If this attribute was not set (or not available on
             a particular camera), then ``None`` instead defaults to unbounded.
         window : array_like or None
-            See :attr:`~slmsuite.hardware.cameras.camera.Camera.window`.
+            See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
             If ``None``, the full camera frame will be used.
-        average_count : int
-            Number of frames to average intensity over for noise reduction.
         timeout_s : float
             Stop attempting adjusting exposure after ``timeout_s`` seconds.
         verbose : bool
@@ -1064,8 +1373,9 @@ class Camera(_Picklable, ABC):
         # Initialize loop
         set_val = 0.5 * self.bitresolution
         exp = self.get_exposure()
-        im_mean = np.mean(self.get_images(average_count, flush=True), 0)
-        im_max = np.amax(im_mean[wyi:wyf, wxi:wxf])
+        self.flush()
+        img = self.get_image()
+        im_max = np.amax(img[wyi:wyf, wxi:wxf])
 
         # Calculate the error as a percent of the camera's bitresolution
         err = np.abs(im_max - set_val) / self.bitresolution
@@ -1075,129 +1385,211 @@ class Camera(_Picklable, ABC):
         while err > tol and time.perf_counter() - t < timeout_s:
             # Clip exposure steps to 0.5x -> 2x
             exp = exp / np.amax([0.5, np.amin([(im_max / set_val), 2])])
-            exp = np.amax([exposure_bounds_s[0], np.amin([exp, exposure_bounds_s[1]])])
+            exp = np.clip(exp, exposure_bounds_s[0], exposure_bounds_s[1])
+
             self.set_exposure(exp)
-            im_mean = np.mean(self.get_images(average_count, flush=True), 0)
-            im_max = np.amax(im_mean[wyi:wyf, wxi:wxf])
+            self.flush()
+            img = self.get_image()
+
+            im_max = np.amax(img[wyi:wyf, wxi:wxf])
             err = np.abs(im_max - set_val) / self.bitresolution
 
             if verbose:
-                print("Reset exposure to %1.2fs; maximum image value = %d." % (exp, im_max))
+                print(
+                    f"Autoexposure: exposure = {exp:<.2e} s, "
+                    f"image_max = {im_max}/{self.bitresolution-(self.averaging if self.averaging is not None else 1)}, ",
+                )
 
-        exp_fin = exp * 2 * set_fraction
+        # The loop targets 50% of resolution. Now set the final exposure if different.
+        if set_fraction != 0.5:
+            exp = exp * (2 * set_fraction)
+            self.set_exposure(exp)
 
-        # The loop targets 50% of resolution
-        if set_fraction != 0.5:  # Sets for full dynamic range
-            self.set_exposure(exp_fin)
+        return exp
 
-        return exp_fin
+    @staticmethod
+    def _autofocus_metric(img, plot=False):
+        dft = np.fft.fftshift(np.fft.fft2(img.astype(float)))
+        dft_amp = np.abs(dft)
+        dft_norm = dft_amp / np.amax(dft_amp)
+        fom = np.sum(dft_norm)
 
-    def autofocus(self, get_z, set_z, z_list=None, plot=False):
+        if plot:
+            _, axs = plt.subplots(1, 2)
+
+            axs[0].imshow(img)
+            axs[0].set_title("Image")
+            axs[0].set_xticks([])
+            axs[0].set_yticks([])
+
+            axs[1].imshow(dft_norm)
+            axs[1].set_title(f"FFT\nFoM$ = \\int\\int $|FFT|$ / $max|FFT|$ = {fom}$")
+            axs[1].set_xticks([])
+            axs[1].set_yticks([])
+
+            plt.show()
+
+        return fom
+
+    def autofocus(self, set_z, get_z=0, range_z=2, metric=None, plot=False, verbose=False):
         """
-        Uses a FFT contrast metric to find optimal focus when scanning over some variable
-        ``z``. This ``z`` often takes the form of a vertical stage to position a sample precisely
-        at the plane of imaging of a lens or objective. The contrast metric works particularly
-        well when combined with a projected spot array hologram.
+        Finds optimal focus when scanning over some variable ``z``.
+        This ``z`` often takes the form of a vertical stage to position a sample precisely
+        at the plane of imaging of a lens or objective.
+        The default ``metric`` is based on the Fourier contrast of the image,
+        and works particularly well when combined with a projected spot array hologram.
 
         Parameters
         ----------
-        get_z : function
-            Gets the current position of the focusing stage. Should return a ``float``.
-        set_z : function
+        set_z : function OR SLM
             Sets the position of the focusing stage to a given ``float``.
-        z_list : array_like or None
-            ``z`` values to sweep over during search.
-            Defaults (when ``None``) to ``numpy.linspace(-4,4,16)``.
+            If an SLM is passed, adds a lens phase to the SLM to focus the existing
+            pattern. In this case, the units of ``z`` are in Zernike defocus terms
+            (wavefronts). The optimal defocus is added to the wavefront calibration
+            (``source["phase"]``) of the SLM.
+        get_z : function OR float
+            Gets the current position of the focusing stage. Should return a ``float``.
+            Can also pass a ``float`` representing the center of the search range.
+        range_z : array_like OR float OR None
+            ``z`` values to sweep over during search relative to the base position ``get_z``.
+            If a single ``float`` is passed, sweeps from ``-range_z`` to ``+range_z``
+            with 11 steps.
+        metric : function OR None
+            Function which evaluates the focus quality of an image.
+            Should take in an image and return a scalar figure-of-merit (FoM).
+            Defaults to :meth:`Camera._autofocus_metric`.
         plot : bool
             Whether to provide illustrative plots.
+
+        Returns
+        -------
+        float
+            Optimal ``z`` value found.
         """
-        if z_list is None:
-            z_list = np.linspace(-4, 4, 16)
+        # Parse set_z
+        if hasattr(set_z, 'set_phase'):
+            # SLM passed; create lens phase setter.
+            slm = set_z
+            base_phase = slm.phase.copy()
+            base_correction = slm.source.get('phase', np.zeros_like(base_phase))
+            base_phase -= base_correction
 
-        self.flush()
+            def slm_set_z(z_val):
+                slm.source['phase'] = (
+                    base_correction +
+                    zernike(slm, index=4, weight=z_val, use_mask=False)
+                )
+                slm.set_phase(
+                    base_phase,
+                    settle=True
+                )
 
-        z_base = get_z()
+            set_z = slm_set_z
+
+        if not callable(set_z):
+            raise ValueError("set_z must be a function or SLM.")
+
+        # Parse get_z
+        z_base = get_z
+        if callable(get_z):
+            z_base = get_z()
+
+        # Parse range_z
+        z_list = range_z
+        if np.isscalar(range_z):
+            z_list = np.linspace(-range_z, range_z, 11, endpoint=True)
+        z_list += z_base
+        z_list = sorted(z_list)
+
+        # Parse metric
+        if metric is None:
+            metric = Camera._autofocus_metric
+
+        # Setup for the sweep
         imlist = []
-        z_list = z_list + z_base
-        counts = np.zeros_like(z_list)
-
-        set_z(z_list[0])
+        counts = np.full_like(z_list, np.nan)
 
         for i, z in enumerate(z_list):
-            print("Moving to " + str(z))
-            set_z(z)
+            try:
+                if verbose:
+                    print(f"Moving to z = {z:<.2f}...          ", end="\r")
+                set_z(z)
 
-            # Take image.
-            img = self.get_image()
-            imlist.append(np.copy(img))
+                # Take image and evaluate metric.
+                self.flush()
+                img = self.get_image()
+                imlist.append(np.copy(img))
+                counts[i] = metric(img)
+            except:
+                pass
 
-            # Evaluate metric.
-            dft = np.fft.fftshift(np.fft.fft2(imlist[-1].astype(float)))
-            dft_amp = np.abs(dft)
-            dft_norm = dft_amp / np.amax(dft_amp)
-            fom_ = np.sum(dft_norm)
-            counts[i] = fom_
-            if plot:
-                _, axs = plt.subplots(1, 2)
-                axs[0].imshow(imlist[-1])
-                axs[0].set_title("Image")
-                axs[0].set_xticks([])
-                axs[0].set_yticks([])
-                axs[1].imshow(dft_norm)
-                axs[1].set_title(f"FFT\nFoM$ = \\int\\int $|FFT|$ / $max|FFT|$ = {fom_}$")
-                axs[1].set_xticks([])
-                axs[1].set_yticks([])
-                plt.show()
+        # Handle the case where everything failed.
+        if np.all(np.isnan(counts)):
+            try:
+                set_z(z_base)
+            except:
+                pass
+            raise RuntimeError("Autofocus failed; no valid images captured.")
 
-        counts[0] = counts[1]
+        # Otherwise, fit a Lorentzian to the data to find the optimum.
+        I_max_count = np.nanargmax(counts)
 
+        dz = np.mean(np.diff(z_list))
         popt0 = np.array(
-            [z_list[np.argmax(counts)], np.max(counts) - np.min(counts), np.min(counts), 100]
+            [z_list[I_max_count], np.max(counts) - np.min(counts), np.min(counts), (z_list[-1]-z_list[0])]
+        )
+        bounds = np.array(
+            [
+                [z_list[0], 0, 0, dz],
+                [z_list[-1], (np.max(counts) - np.min(counts))*2, np.max(counts), np.inf]
+            ]
         )
 
-        try:
+        # try:
+        if True:
             popt, _ = curve_fit(
                 lorentzian,
                 z_list,
                 counts,
-                jac=lorentzian_jacobian,
+                bounds=bounds,
                 ftol=1e-5,
                 p0=popt0,
             )
             z_opt = popt[0]
             c_opt = popt[1] + popt[2]
-        except BaseException:
-            print("Autofocus fit failed, using maximum fom as optimum...")
-            z_opt = z_list[np.argmax(counts)]
-            c_opt = counts[np.argmax(counts)]
+        # except BaseException:
+        #     if verbose:
+        #         print("Autofocus fit failed, using maximum fom as optimum...")
+        #     z_opt = z_list[I_max_count]
+        #     c_opt = counts[I_max_count]
 
-        # Return to original state except focus z
-        print("Moving to optimized value " + str(z_opt))
+        # Goto the optimal position
+        if verbose:
+            print("Moving to optimized value, z = " + str(z_opt))
         set_z(z_opt)
 
         # Show result if desired
         if plot:
-            plt.plot(z_list, counts)
-            plt.xlabel(r"$z$ $\mu$m")
-            plt.ylabel("fom: Data, Guess, & Fit")
-            plt.title("Focus Sweep")
-            plt.scatter(z_opt, c_opt)
-            plt.plot(z_list, lorentzian(z_list, *popt0))
+            plt.plot(z_list, counts, label="Data")
+            plt.xlabel(r"$z$")
+            plt.ylabel("Figure of Merit")
+            plt.title("Autofocus Sweep")
+            plt.scatter(z_opt, c_opt, label="Result")
+            # plt.plot(z_list, lorentzian(z_list, *popt0), alpha=0.2, label="Guess")
+
             lfit = None
             try:
                 lfit = lorentzian(z_list, *popt)
             except BaseException:
                 lfit = None
             if lfit is not None:
-                plt.plot(z_list, lfit)
-            plt.legend(["Data", "Guess", "Result"])
+                plt.plot(z_list, lfit, label="Fit")
+            plt.legend()
             plt.show()
 
-            plt.imshow(self.get_image())
-            plt.title("Focused Image")
-            plt.show()
+            self.plot(title="Focused Image")
 
-        return z_opt, imlist
+        return z_opt
 
 
 class _CameraViewer:

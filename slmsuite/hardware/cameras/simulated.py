@@ -104,6 +104,7 @@ class SimulatedCamera(Camera):
         elif any([r != s for r, s in zip(resolution, slm.shape[::-1])]):
             self._interpolate = True
 
+        # dtype and other parameters are set here in init.
         super().__init__(resolution, pitch_um=pitch_um, **kwargs)
 
         # Digital gain emulates exposure
@@ -121,7 +122,7 @@ class SimulatedCamera(Camera):
         # Defaults to alignment with the SLM grid.
         self.set_affine(M, b)
 
-    def close():
+    def close(self):
         pass
 
     def set_affine(self, M=None, b=None, **kwargs):
@@ -194,6 +195,7 @@ class SimulatedCamera(Camera):
                 )
 
         phase = -self._slm.display.astype(float) * (2 * np.pi / self._slm.bitresolution)
+        # TODO: suppress power of 2 warning
         self._hologram = Hologram(
             self.shape_padded,
             amp=self._slm.source["amplitude_sim"],
@@ -321,7 +323,7 @@ class SimulatedCamera(Camera):
 
         return M, b
 
-    def flush(self):
+    def flush(self, timeout_s=1):
         """
         See :meth:`.Camera.flush`.
         """
@@ -334,25 +336,6 @@ class SimulatedCamera(Camera):
     def _set_exposure_hw(self, exposure_s):
         """See :meth:`.Camera._set_exposure_hw`."""
         self.exposure_s = exposure_s
-
-    def _get_dtype(self):
-        """Spoof the datatype because we don't have an image to return"""
-        if self.bitdepth <= 0:
-            raise ValueError("Non-positive bitdepth does not make sense.")
-        elif self.bitdepth <= 8:
-            return np.uint8
-        elif self.bitdepth <= 16:
-            return np.uint16
-        elif self.bitdepth <= 32:
-            return np.uint32
-        elif self.bitdepth <= 64:
-            return np.uint64
-        elif self.bitdepth <= 128:
-            return np.uint128
-        elif self.bitdepth <= 256:
-            return np.uint256
-        else:
-            raise ValueError(f"Numpy cannot encode bitdepth {self.bitdepth}.")
 
     def _get_image_hw(self, timeout_s):
         """

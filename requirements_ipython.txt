@@ -3,3 +3,5 @@ line-profiler
 snakeviz
 imageio
 pygifsicle
+pytest
+pytest_subtests

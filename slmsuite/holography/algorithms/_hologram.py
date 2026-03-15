@@ -807,6 +807,22 @@ class Hologram(_HologramStats):
                 return self.phase.get() + np.pi
             else:
                 return self.phase + np.pi
+            
+    def get_amp(self):
+        """
+        Collects the current nearfield amplitude regardless of np/cp configuration.
+
+        Returns
+        -------
+        numpy.ndarray
+            Nearfield amplitude.
+        """
+        if cp.isscalar(self.amp):
+            return self.amp
+        elif cp != np:
+            return self.amp.get()
+        else:
+            return self.amp
 
     def set_weights(self, new_weights):
         r"""
@@ -940,7 +956,7 @@ class Hologram(_HologramStats):
         if hasattr(self, "img_knm"):
             self.img_knm = None
 
-    def remove_vortices(self, plot=False):
+    def _remove_vortices(self, plot=False):
         """
         Removes the computed phase vortices in the farfield where the target amplitude is positive.
         Useful for smoothing out the pattern and reducing speckle.

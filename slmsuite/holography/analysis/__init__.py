@@ -196,7 +196,7 @@ def take(
             take_plot(xp.reshape(result, (vectors.shape[1], size[1], size[0])), separate_axes=True)
 
         if integrate:  # Sum over the integration axis.
-            return xp.squeeze(xp.sum(result.astype(float), axis=-1))
+            return xp.squeeze(xp.sum(result.astype(float), axis=-1))    # TODO: remove squeeze?
         else:  # Reshape the integration axis.
             return xp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
@@ -856,7 +856,7 @@ def image_ellipticity_angle(variances):
 
     Parameters
     ----------
-    moment2 : numpy.ndarray
+    variances : numpy.ndarray
         The output of :meth:`image_variances()`. Shape ``(3, image_count)``.
 
     Returns
@@ -1239,7 +1239,8 @@ def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
     phase_image : array_like
         Image to remove vortices upon.
     mask : array_like OR None
-        Boolean mask to remove within. This is advisable for large images.
+        Removes vortices whose coordinates are inside this mask.
+        The full phase image is changed, even outside the mask.
     return_vortices_negative : bool
         If ``False``, the original image is modified in-place with vortices removed
         inside the mask and returned.
@@ -1265,13 +1266,8 @@ def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
     else:
         canvas = phase
 
-
-    if mask is None:
-        for x, y, w in zip(coordinates[1], coordinates[0], weights):
-            canvas -= w * xp.arctan2(grid[0] - x, grid[1] - y)
-    else:
-        for x, y, w in zip(coordinates[1], coordinates[0], weights):
-            canvas[mask] -= w * xp.arctan2(grid[0][mask] - x, grid[1][mask] - y)
+    for x, y, w in zip(coordinates[1], coordinates[0], weights):
+        canvas -= w * xp.arctan2(grid[0] - x, grid[1] - y)
 
     return canvas
 

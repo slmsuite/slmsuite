@@ -25,35 +25,45 @@ dependencies = [
     "tqdm",
 ]
 
-# GPU acceleration (CuPy): "pip install slmsuite[gpu]" installs cupy-cuda13x.
-# For other CUDA versions, install the matching package manually instead
-# (see https://docs.cupy.dev/en/stable/install.html):
+# GPU acceleration (CuPy): ``pip install slmsuite[gpu]`` installs cupy-cuda13x.
+# Sometimes, installation is made complicated by a pre-installed version of CUDA.
+# You can find the CUDA version with ``nvcc --version`` in a terminal, and then
+# install an installation of :mod:`cupy` specific to CUDA version ``YY`` with
+# ``pip install cupy-cudaYYx``(see https://docs.cupy.dev/en/stable/install.html).
+# For example:
 #   pip install cupy-cuda12x   # CUDA 12.x
 #   pip install cupy            # Build from source (any CUDA version)
 #
 # Some hardware drivers require vendor-specific SDKs that are not available on
-# PyPI. Download the SDK installer from the vendor, locate the .whl file it
-# ships, and install with:  pip install /path/to/package.whl
+# PyPI. Download the SDK installer from the vendor and follow the installation
+# instructions. This might involve installing a wheel .whl or building from source.
 #
 #   PySpin           — FLIR/Teledyne Spinnaker SDK
 #   thorlabs_tsi_sdk — Thorlabs ThorCam SDK
 #   vmbpy            — Allied Vision Vimba X SDK
 #   vimba            — Allied Vision Vimba SDK (legacy)
-#   holoeye-slm-detect — Holoeye SLM Display SDK
 
 [project.optional-dependencies]
 gpu = ["cupy-cuda13x"]
 torch = ["torch"]
-display = ["pyglet"]
+slms = [
+    "pyglet",
+]
 cameras = [
+    "pylablib",
     "pymmcore",
     "pypylon",
     "instrumental-lib",
 ]
+images = [
+    "imageio",
+    "pygifsicle",
+    "pyav",
+]
 jupyter = [
     "jupyter",
     "ipywidgets",
-    "imageio",
+    "slmsuite[images]",
 ]
 docs = [
     "nbsphinx",
@@ -81,9 +91,10 @@ dev = [
     "slmsuite[jupyter]",
     "slmsuite[docs]",
     "slmsuite[gpu]",
+    "slmsuite[slms]",
+    "slmsuite[cameras]",
     "line-profiler",
     "snakeviz",
-    "pygifsicle",
 ]
 
 [project.urls]

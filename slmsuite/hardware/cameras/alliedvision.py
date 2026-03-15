@@ -50,7 +50,7 @@ class AlliedVision(Camera):
         Object to talk with the desired camera.
 
     Caution
-    ~~~~~~~~
+    ~~~~~~~
     The AlliedVision SDK :mod:`vmbpy` includes protections to maintain camera connectivity:
     specifically, the SDK :class:`vmbpy.VmbSystem` and cameras :class:`vmbpy.Camera` are designed
     to be used in concert with ``with`` statements. Unfortunately, this does not mesh with the
@@ -68,6 +68,13 @@ class AlliedVision(Camera):
     def __init__(self, serial="", pitch_um=None, verbose=True, **kwargs):
         """
         Initialize camera and attributes.
+
+        Caution
+        ~~~~~~~
+        AlliedVision cameras sometimes have different attribute names depending on the
+        model. This constructor tries to set some default properties, but if they fail, it will print
+        warning and continue. The user will need to configure the :mod:`vmbpy` handle
+        directly in this case, or in the case where the default configuration is not desired.
 
         Parameters
         ----------
@@ -124,25 +131,46 @@ class AlliedVision(Camera):
         if verbose:
             print("success")
 
+        # Try to set some default properties, with warnings if they fail.
         try:
             self.cam.BinningHorizontal.set(1)
             self.cam.BinningVertical.set(1)
         except:
-            pass  # Some cameras do not have the option to set binning.
+            print("Warning: failed to set binning to 1.")
 
-        self.cam.GainAuto.set("Off")
+        try:
+            self.cam.GainAuto.set("Off")
+        except:
+            print("Warning: failed to turn autogain off.")
 
-        self.cam.ExposureAuto.set("Off")
-        self.cam.ExposureMode.set("Timed")
+        try:
+            self.cam.ExposureAuto.set("Off")
+            self.cam.ExposureMode.set("Timed")
+        except:
+            print("Warning: failed to set exposure mode to timed.")
 
-        self.cam.AcquisitionMode.set("SingleFrame")
 
-        # Future: triggered instead of SingleFrame.
-        self.cam.TriggerSelector.set("AcquisitionStart")
-        self.cam.TriggerMode.set("Off")
-        self.cam.TriggerActivation.set("RisingEdge")
-        self.cam.TriggerSource.set("Software")
+        try:
+            self.cam.AcquisitionMode.set("SingleFrame")
 
+            # Future: triggered instead of SingleFrame.
+            self.cam.TriggerSelector.set("AcquisitionStart")
+            self.cam.TriggerMode.set("Off")
+            self.cam.TriggerActivation.set("RisingEdge")
+            self.cam.TriggerSource.set("Software")
+        except:
+            print("Warning: failed to set acquisition and trigger configuration.")
+
+        # Cache whether the camera has ExposureTimeAbs or ExposureTime, for use
+        # in the get/set exposure methods.
+        if hasattr(self.cam, "ExposureTime"):
+            self._exposure_time_has_abs = False
+        elif hasattr(self.cam, "ExposureTimeAbs"):
+            self._exposure_time_has_abs = True
+        else:
+            self._exposure_time_has_abs = None
+
+        # Populate the rest of the class.
         super().__init__(
             (self.cam.SensorWidth.get(), self.cam.SensorHeight.get()),
             bitdepth=int(self.cam.PixelSize.get()),
@@ -285,11 +313,21 @@ class AlliedVision(Camera):
 
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""
-        return float(self.cam.ExposureTime.get()) / 1e6
+        if self._exposure_time_has_abs is True:
+            return float(self.cam.ExposureTimeAbs.get()) / 1e6
+        elif self._exposure_time_has_abs is False:
+            return float(self.cam.ExposureTime.get()) / 1e6
+        else:
+            raise RuntimeError("Camera does not have ExposureTime or ExposureTimeAbs property.")
 
     def _set_exposure_hw(self, exposure_s):
         """See :meth:`.Camera._set_exposure_hw`."""
-        self.cam.ExposureTime.set(float(exposure_s * 1e6))
+        if self._exposure_time_has_abs is True:
+            self.cam.ExposureTimeAbs.set(float(exposure_s * 1e6))
+        elif self._exposure_time_has_abs is False:
+            self.cam.ExposureTime.set(float(exposure_s * 1e6))
+        else:
+            raise RuntimeError("Camera does not have ExposureTime or ExposureTimeAbs property.")
 
     def _set_woi(self, woi):
         """
@@ -300,7 +338,7 @@ class AlliedVision(Camera):
         woi : list, None
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        # Set the width and height to very small values 
+        # Set the width and height to very small values
         # such that setting the offsets will not error.
         self.cam.Height.set(8)
         self.cam.Width.set(8)
@@ -329,7 +367,7 @@ class AlliedVision(Camera):
             woi = self.woi if self.woi is not None else maxwoi
             self._set_woi(woi)
             raise e
-            
+
 
     def _get_image_hw(self, timeout_s):
         """See :meth:`.Camera._get_image_hw`."""

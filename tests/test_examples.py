@@ -16,6 +16,7 @@ _spec.loader.exec_module(_examples_mod)
 download_example_notebooks = _examples_mod.download_example_notebooks
 get_sphinx_examples = _examples_mod.get_sphinx_examples
 
+# FUTURE: add a fixture to test notebooks with or without cupy.
 @pytest.mark.slow
 def test_examples(subtests):
 
@@ -30,7 +31,9 @@ def test_examples(subtests):
     notebooks = get_sphinx_examples()
 
     # Prepare the testing framework.
-    fixture = NBRegressionFixture()
+    fixture = NBRegressionFixture(
+        exec_timeout=600,  # Set a longer timeout for notebook execution (default is 120)
+    )
 
     for nb_name in notebooks:
         # The expected location of the notebook.

@@ -856,7 +856,7 @@ def image_ellipticity_angle(variances):
 
     Parameters
     ----------
-    moment2 : numpy.ndarray
+    variances : numpy.ndarray
         The output of :meth:`image_variances()`. Shape ``(3, image_count)``.
 
     Returns

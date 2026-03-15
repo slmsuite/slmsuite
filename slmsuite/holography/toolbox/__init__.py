@@ -1399,8 +1399,8 @@ def lloyds_points(grid, n_points, iterations=10, plot=False):
     """
     if (
         isinstance(grid, (list, tuple))
-        and isinstance(grid[0], (int))
-        and isinstance(grid[1], (int))
+        and isinstance(grid[0], INTEGER_TYPES)
+        and isinstance(grid[1], INTEGER_TYPES)
     ):
         shape = grid
     else:
@@ -1615,7 +1615,7 @@ def format_shape(shape, expected_dimension=2):
         if not isinstance(dim, INTEGER_TYPES) or dim <= 0:
             raise ValueError(f"Expected positive integer dimensions, got {shape}")
 
-    return shape
+    return tuple([int(d) for d in shape])
 
 
 def pad(matrix, shape):

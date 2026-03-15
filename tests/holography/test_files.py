@@ -4,13 +4,15 @@ Unit tests for slmsuite.holography.analysis.files module.
 import pytest
 import tempfile
 import os
+import warnings
 import h5py
 import numpy as np
 from unittest.mock import patch, mock_open
 
 from slmsuite.holography.analysis.files import (
     _max_numeric_id, generate_path, latest_path,
-    load_h5, save_h5, read_h5, write_h5, _load_image
+    load_h5, save_h5, read_h5, write_h5, _load_image,
+    _gray2rgb, save_image,
 )
 
 
@@ -226,6 +228,20 @@ def test_save_and_load_h5(subtests):
             finally:
                 os.unlink(tmp.name)
 
+    with subtests.test("non-ValueError re-raised"):
+        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
+            try:
+
+                class BadObj:
+                    def __array__(self, *args, **kwargs):
+                        raise TypeError("cannot convert")
+
+                with pytest.raises(TypeError, match="cannot convert"):
+                    save_h5(tmp.name, {"bad": BadObj()})
+            finally:
+                if os.path.exists(tmp.name):
+                    os.unlink(tmp.name)
+
 
 def test_load_image(subtests):
     """Test _load_image for error handling, basic loading, inversion, and rotation."""
@@ -254,3 +270,232 @@ def test_load_image(subtests):
             with patch("scipy.ndimage.rotate", return_value=mock_image) as mock_rot:
                 _load_image("test.png", (100, 100), angle=45)
                 mock_rot.assert_called_once_with(mock_image, 45)
+
+    with subtests.test("target_shape zoom"):
+        mock_image = np.ones((100, 100), dtype=np.uint8) * 50
+        with patch("cv2.imread", return_value=mock_image):
+            result = _load_image("test.png", (200, 200), target_shape=(50, 50))
+            assert result.shape == (200, 200)
+
+    import cv2
+
+    with subtests.test("real image end-to-end"):
+        with tempfile.TemporaryDirectory() as d:
+            img_path = os.path.join(d, "test.png")
+            img = np.zeros((80, 80), dtype=np.uint8)
+            img[20:60, 20:60] = 200
+            cv2.imwrite(img_path, img)
+            dummy = np.zeros((120, 120))
+            with patch("slmsuite.holography.analysis.files.pad", return_value=dummy):
+                result = _load_image(img_path, (120, 120))
+                assert result.shape == (120, 120)
+
+    with subtests.test("real image with target_shape"):
+        with tempfile.TemporaryDirectory() as d:
+            img_path = os.path.join(d, "test2.png")
+            img = np.zeros((100, 100), dtype=np.uint8)
+            img[10:90, 10:90] = 180
+            cv2.imwrite(img_path, img)
+            dummy = np.zeros((200, 200))
+            with patch("slmsuite.holography.analysis.files.pad", return_value=dummy):
+                result = _load_image(img_path, (200, 200), target_shape=(50, 50))
+                assert result.shape == (200, 200)
+
+    with subtests.test("real bright image inverted"):
+        with tempfile.TemporaryDirectory() as d:
+            img_path = os.path.join(d, "bright.png")
+            img = np.ones((80, 80), dtype=np.uint8) * 220
+            cv2.imwrite(img_path, img)
+            dummy = np.zeros((100, 100))
+            with patch("slmsuite.holography.analysis.files.pad", return_value=dummy):
+                result = _load_image(img_path, (100, 100))
+                assert result.shape == (100, 100)
+
+
+def test_gray2rgb(subtests):
+    """Test _gray2rgb for various inputs, cmaps, lut, normalization, NaN, borders."""
+    with subtests.test("2D input reshaped to 3D"):
+        img = np.ones((10, 10), dtype=np.uint8) * 100
+        result = _gray2rgb(img)
+        assert result.ndim == 3
+        assert result.shape[0] == 1
+
+    with subtests.test("already RGBA passthrough"):
+        img = np.ones((2, 10, 10, 4), dtype=np.uint8) * 100
+        result = _gray2rgb(img)
+        np.testing.assert_array_equal(result, img)
+
+    with subtests.test("already RGB passthrough"):
+        img = np.ones((2, 10, 10, 3), dtype=np.uint8) * 100
+        result = _gray2rgb(img)
+        np.testing.assert_array_equal(result, img)
+
+    with subtests.test(">3D invalid shape raises RuntimeError"):
+        img = np.ones((2, 3, 10, 10, 1), dtype=np.uint8)
+        with pytest.raises(RuntimeError, match="could not be parsed"):
+            _gray2rgb(img)
+
+    with subtests.test("cmap=False grayscale"):
+        img = np.ones((1, 10, 10), dtype=np.uint8) * 128
+        result = _gray2rgb(img, cmap=False)
+        assert result.dtype == np.uint8
+
+    with subtests.test("cmap=True uses default colormap"):
+        img = np.ones((1, 10, 10), dtype=np.uint8) * 50
+        img[0, 5, 5] = 200
+        result = _gray2rgb(img, cmap=True)
+        assert result.shape[-1] == 4  # RGBA
+
+    with subtests.test("cmap='default' treated as True"):
+        img = np.array([[[0, 50], [100, 200]]], dtype=np.uint8)
+        result = _gray2rgb(img, cmap="default")
+        assert result.shape[-1] == 4
+
+    with subtests.test("cmap='grayscale' treated as False"):
+        img = np.array([[[0, 50], [100, 200]]], dtype=np.uint8)
+        result = _gray2rgb(img, cmap="grayscale")
+        assert result.dtype == np.uint8
+
+    with subtests.test("cmap string name"):
+        img = np.array([[[0, 50], [100, 200]]], dtype=np.uint8)
+        result = _gray2rgb(img, cmap="viridis")
+        assert result.shape[-1] == 4
+
+    with subtests.test("float image with normalize"):
+        img = np.random.rand(1, 10, 10).astype(np.float64)
+        result = _gray2rgb(img, cmap="viridis", normalize=True)
+        assert result.dtype == np.uint8
+
+    with subtests.test("float image without normalize"):
+        img = np.random.rand(1, 10, 10).astype(np.float64) * 0.5
+        result = _gray2rgb(img, cmap="viridis", normalize=False)
+        assert result.dtype == np.uint8
+
+    with subtests.test("integer image with lut"):
+        img = np.array([[[0, 50], [100, 200]]], dtype=np.uint8)
+        result = _gray2rgb(img, cmap="viridis", lut=100)
+        assert result.shape[-1] == 4
+
+    with subtests.test("float image with lut=None uses default"):
+        img = np.random.rand(1, 10, 10).astype(np.float64)
+        result = _gray2rgb(img, cmap=False)
+        assert result.dtype == np.uint8
+
+    with subtests.test("integer image lut=None uses nanmax"):
+        img = np.array([[[0, 50], [100, 200]]], dtype=np.uint8)
+        result = _gray2rgb(img, cmap="viridis")
+        assert result.dtype == np.uint8
+
+    with subtests.test("NaN handling sets transparent"):
+        img = np.ones((1, 10, 10), dtype=np.float64) * 0.5
+        img[0, 3, 3] = np.nan
+        result = _gray2rgb(img, cmap="viridis")
+        assert result[0, 3, 3, 3] == 0  # alpha channel zero for NaN
+
+    with subtests.test("border scalar"):
+        img = np.ones((1, 10, 10), dtype=np.uint8) * 100
+        result = _gray2rgb(img, cmap="viridis", border=255)
+        assert result[0, 0, 0, 0] == 255
+        assert result[0, -1, 0, 0] == 255
+        assert result[0, 0, -1, 0] == 255
+
+    with subtests.test("border list"):
+        img = np.ones((1, 10, 10), dtype=np.uint8) * 100
+        result = _gray2rgb(img, cmap="viridis", border=[255, 128])
+        assert result[0, 0, 0, 0] == 255
+        assert result[0, 0, 0, 1] == 128
+
+    with subtests.test("grayscale cmap=False lut > 256 clamped"):
+        img = np.array([[[0, 50], [100, 200]]], dtype=np.uint8)
+        result = _gray2rgb(img, cmap=False, lut=300)
+        assert result.dtype == np.uint8
+
+    with subtests.test("colormap object with N attribute (ListedColormap)"):
+        import matplotlib.pyplot as plt
+        cm = plt.get_cmap("viridis", 64)
+        img = np.array([[[0, 10], [20, 63]]], dtype=np.uint8)
+        result = _gray2rgb(img, cmap=cm, lut=64)
+        assert result.shape[-1] == 4
+
+    with subtests.test("colormap without .colors (mock)"):
+
+        class NoColorsCmap:
+            """Colormap-like object with N but no colors attr."""
+            N = 10
+
+            def __call__(self, x):
+                x = np.asarray(x, dtype=float)
+                rgba = np.zeros((*x.shape, 4))
+                rgba[..., 0] = x / max(self.N, 1)
+                rgba[..., 3] = 1.0
+                return rgba
+
+        cm = NoColorsCmap()
+        img = np.array([[[0, 2], [4, 9]]], dtype=np.int32)
+        result = _gray2rgb(img, cmap=cm, lut=10)
+        assert result.shape[-1] == 4
+
+
+def test_save_image(subtests):
+    """Test save_image for single images, stacks, and various options."""
+    with subtests.test("single grayscale png"):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "test.png")
+            img = np.random.randint(0, 255, (10, 10), dtype=np.uint8)
+            save_image(path, img)
+            assert os.path.exists(path)
+
+    with subtests.test("single image with colormap"):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "test_cmap.png")
+            img = np.random.randint(0, 255, (10, 10), dtype=np.uint8)
+            save_image(path, img, cmap="viridis")
+            assert os.path.exists(path)
+
+    with subtests.test("stack saved as gif"):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "test.gif")
+            imgs = np.random.randint(0, 255, (3, 10, 10), dtype=np.uint8)
+            save_image(path, imgs)
+            assert os.path.exists(path)
+
+    with subtests.test("gif triggers pygifsicle warning"):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "test.gif")
+            imgs = np.random.randint(0, 255, (3, 10, 10), dtype=np.uint8)
+            with patch(
+                "slmsuite.holography.analysis.files.warnings.warn"
+            ) as mock_warn:
+                with patch.dict("sys.modules", {"pygifsicle": None}):
+                    save_image(path, imgs)
+            # pygifsicle not installed → either warns or succeeds silently
+
+    with subtests.test("float image"):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "test_float.png")
+            img = np.random.rand(10, 10).astype(np.float64)
+            save_image(path, img, cmap="viridis")
+            assert os.path.exists(path)
+
+    with subtests.test("normalize=False with float"):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "test_nonorm.png")
+            img = np.random.rand(10, 10).astype(np.float64) * 0.5
+            save_image(path, img, cmap="viridis", normalize=False)
+            assert os.path.exists(path)
+
+    with subtests.test("border parameter"):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "test_border.png")
+            img = np.random.randint(0, 255, (10, 10), dtype=np.uint8)
+            save_image(path, img, cmap="viridis", border=255)
+            assert os.path.exists(path)
+
+    with subtests.test("imageio not available raises ValueError"):
+        import sys
+        img = np.random.randint(0, 255, (10, 10), dtype=np.uint8)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "test.png")
+            with patch.dict(sys.modules, {"imageio": None}):
+                with pytest.raises(ValueError, match="imageio is required"):
+                    save_image(path, img)

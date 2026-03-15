@@ -3,7 +3,20 @@ Unit tests for slmsuite.holography.toolbox.phase module.
 """
 import pytest
 import numpy as np
+from unittest.mock import patch
 from slmsuite.holography.toolbox import phase
+from slmsuite.holography.toolbox.phase import (
+    _parse_focal_length,
+    _zernike_indices_parse,
+    _cantor_pairing,
+    _inverse_cantor_pairing,
+    _parse_out,
+    _determine_source_radius,
+    _zernike_build_order,
+    _zernike_build_indices,
+    _zernike_coefficients,
+    _zernike_populate_basis_map,
+)
 
 
 @pytest.fixture
@@ -126,6 +139,35 @@ def test_binary(simple_grid, normalized_grid, subtests):
         assert np.std(phase_thin) > 0
         assert np.std(phase_thick) > 0
 
+    with subtests.test("zero vector, no shift returns b"):
+        result = phase.binary(simple_grid, vector=(0, 0), a=np.pi, b=0)
+        assert np.allclose(result, 0)
+
+    with subtests.test("zero vector with shift beyond duty returns a"):
+        result = phase.binary(simple_grid, vector=(0, 0), a=np.pi, b=0,
+                              shift=np.pi, duty_cycle=0.25)
+        assert np.allclose(result, np.pi)
+
+    with subtests.test("zero vector with small shift returns b"):
+        result = phase.binary(simple_grid, vector=(0, 0), a=np.pi, b=0,
+                              shift=0.1, duty_cycle=0.5)
+        assert np.allclose(result, 0)
+
+    with subtests.test("x-only vector uses single-axis path"):
+        result = phase.binary(simple_grid, vector=(0.1, 0), a=np.pi, b=0)
+        unique = np.unique(np.round(result, 6))
+        assert len(unique) == 2
+
+    with subtests.test("y-only vector uses single-axis path"):
+        result = phase.binary(simple_grid, vector=(0, 0.1), a=np.pi, b=0)
+        unique = np.unique(np.round(result, 6))
+        assert len(unique) == 2
+
+    with subtests.test("pixel-period mode (vector > 1)"):
+        result = phase.binary(simple_grid, vector=(10, 0), a=np.pi, b=0)
+        assert result.shape == simple_grid[0].shape
+        assert np.std(result) > 0
+
 
 def test_lens(simple_grid, subtests):
     """Test lens() phase pattern generation."""
@@ -154,6 +196,17 @@ def test_lens(simple_grid, subtests):
         phase_pos_neg = phase.lens(simple_grid, f=(10, -10))
         assert np.all(np.abs(phase_pos_neg) <= phase_pos - phase_neg + 1e-10)
 
+    with subtests.test("y-only cylindrical lens"):
+        result = phase.lens(simple_grid, f=(np.inf, 100))
+        assert not np.allclose(result[:, 50], result[0, 50])
+        expected = (np.pi / 100) * np.square(simple_grid[1])
+        assert np.allclose(result, expected)
+
+    with subtests.test("scalar focal length"):
+        result = phase.lens(simple_grid, f=50)
+        expected = (np.pi / 50) * (np.square(simple_grid[0]) + np.square(simple_grid[1]))
+        assert np.allclose(result, expected)
+
 
 def test_axicon(simple_grid, normalized_grid, subtests):
     """Test axicon() phase pattern generation."""
@@ -169,6 +222,25 @@ def test_axicon(simple_grid, normalized_grid, subtests):
         r_center = r[center-50:center+50, center-50:center+50]
         result_center = result[center-50:center+50, center-50:center+50]
         assert result_center.shape == r_center.shape
+
+    with subtests.test("y-only axicon (x-axis infinite)"):
+        result = phase.axicon(simple_grid, f=(np.inf, 100), w=5.0)
+        assert result.shape == simple_grid[0].shape
+        assert np.all(np.isfinite(result))
+        angle = 5.0 / 100 / 2
+        expected = (2 * np.pi * angle) * np.abs(simple_grid[1])
+        assert np.allclose(result, expected)
+
+    with subtests.test("x-only axicon (y-axis infinite)"):
+        result = phase.axicon(simple_grid, f=(100, np.inf), w=5.0)
+        angle = 5.0 / 100 / 2
+        expected = (2 * np.pi * angle) * np.abs(simple_grid[0])
+        assert np.allclose(result, expected)
+
+    with subtests.test("both finite gives sqrt form"):
+        result = phase.axicon(simple_grid, f=(100, 200), w=5.0)
+        assert result.shape == simple_grid[0].shape
+        assert np.all(result >= 0)
 
 
 def test_zernike(normalized_grid, subtests):
@@ -199,23 +271,6 @@ def test_zernike(normalized_grid, subtests):
         z_normal = phase.zernike(normalized_grid, index=5, weight=1.0)
         z_scaled = phase.zernike(normalized_grid, index=5, weight=2.0)
         np.testing.assert_array_almost_equal(z_scaled, 2 * z_normal)
-
-    with subtests.test("index conversion scalar"):
-        result = phase.zernike_convert_index(3, from_index="ansi", to_index="radial")
-        assert result.shape == (1, 2)
-        assert isinstance(result[0,0], (int, np.integer))
-
-    with subtests.test("index conversion list"):
-        result = phase.zernike_convert_index([3,4,5], from_index="ansi", to_index="radial")
-        assert result.shape == (3, 2)
-        assert isinstance(result[0,0], (int, np.integer))
-
-    with subtests.test("zernike_sum produces valid array"):
-        indices = [0, 1, 2]
-        weights = [1, 0.5, 0.3]
-        result = phase.zernike_sum(normalized_grid, indices, weights)
-        assert result.shape == normalized_grid[0].shape
-        assert np.all(np.isfinite(result))
 
 
 def test_quadrants(simple_grid):
@@ -299,6 +354,44 @@ def test_zernike_aperture(normalized_grid, subtests):
         with pytest.raises(ValueError):
             phase.zernike_aperture(normalized_grid, aperture="invalid")
 
+    with subtests.test("None aperture defaults to cropped for grids"):
+        x_scale, y_scale = phase.zernike_aperture(normalized_grid, aperture=None)
+        x_s2, y_s2 = phase.zernike_aperture(normalized_grid, aperture="cropped")
+        assert x_scale == pytest.approx(x_s2)
+        assert y_scale == pytest.approx(y_s2)
+
+    with subtests.test("SLM-like object with get_source_zernike_scaling"):
+        class FakeSLM:
+            def __init__(self, grid):
+                self.x_grid, self.y_grid = grid
+            def get_source_zernike_scaling(self):
+                return (0.01, 0.02)
+        fake = FakeSLM(normalized_grid)
+        fake.x_grid = normalized_grid[0]
+        fake.y_grid = normalized_grid[1]
+        x_scale, y_scale = phase.zernike_aperture(fake, aperture=None)
+        assert x_scale == 0.01
+        assert y_scale == 0.02
+
+    with subtests.test("CameraSLM-like object delegates to slm"):
+        class FakeCameraSLM:
+            def __init__(self, grid):
+                self.x_grid, self.y_grid = grid
+                self.slm = type('FakeSLM', (), {
+                    'get_source_zernike_scaling': lambda self_: (0.03, 0.04),
+                    'x_grid': grid[0],
+                    'y_grid': grid[1],
+                })()
+                self.cam = True
+        fake = FakeCameraSLM(normalized_grid)
+        x_scale, y_scale = phase.zernike_aperture(fake, aperture=None)
+        assert x_scale == 0.03
+        assert y_scale == 0.04
+
+    with subtests.test("unrecognized type raises ValueError"):
+        with pytest.raises(ValueError, match="not recognized"):
+            phase.zernike_aperture(normalized_grid, aperture=object())
+
 
 def test_zernike_get_string(subtests):
     """Test zernike_get_string() LaTeX representations."""
@@ -326,6 +419,18 @@ def test_zernike_get_string(subtests):
         assert "x^2" not in s_dx
         assert "x" in s_dx  # Should still contain x^1 term
 
+    with subtests.test("derivative zeroes out constant term"):
+        s = phase.zernike_get_string(0, derivative=(1, 0))
+        assert s == "0"
+
+    with subtests.test("second derivative"):
+        s = phase.zernike_get_string(4, derivative=(2, 0))
+        assert "x" not in s
+
+    with subtests.test("higher order index"):
+        s = phase.zernike_get_string(10)
+        assert len(s) > 0
+
 
 def test_zernike_convert_index(subtests):
     """Test zernike_convert_index() roundtrip conversions."""
@@ -352,6 +457,63 @@ def test_zernike_convert_index(subtests):
     with subtests.test("invalid index raises ValueError"):
         with pytest.raises(ValueError):
             phase.zernike_convert_index([0], from_index="bogus", to_index="ansi")
+
+    with subtests.test("scalar index"):
+        result = phase.zernike_convert_index(3, from_index="ansi", to_index="radial")
+        assert result.shape == (1, 2)
+        assert isinstance(result[0, 0], (int, np.integer))
+
+    with subtests.test("list of indices"):
+        result = phase.zernike_convert_index([3, 4, 5], from_index="ansi", to_index="radial")
+        assert result.shape == (3, 2)
+        assert isinstance(result[0, 0], (int, np.integer))
+
+    with subtests.test("ansi -> noll roundtrip via radial"):
+        indices_ansi = np.arange(10)
+        noll = phase.zernike_convert_index(indices_ansi, "ansi", "noll")
+        assert noll.ravel()[0] == 1
+        assert len(noll.ravel()) == 10
+
+    with subtests.test("ansi -> wyant conversion"):
+        wyant = phase.zernike_convert_index([0, 1, 2, 3, 4], "ansi", "wyant")
+        assert wyant.ravel()[0] == 0
+
+    with subtests.test("radial -> fringe conversion"):
+        radial = np.array([[0, 0], [1, -1], [1, 1], [2, 0], [2, -2]])
+        fringe = phase.zernike_convert_index(radial, "radial", "fringe")
+        assert fringe.ravel()[0] == 1
+
+    with subtests.test("radial -> noll"):
+        radial = np.array([[0, 0], [1, -1], [1, 1], [2, -2]])
+        noll = phase.zernike_convert_index(radial, "radial", "noll")
+        assert noll.ravel()[0] == 1
+
+    with subtests.test("radial -> wyant"):
+        radial = np.array([[0, 0], [1, -1], [1, 1]])
+        wyant = phase.zernike_convert_index(radial, "radial", "wyant")
+        assert len(wyant.ravel()) == 3
+
+    with subtests.test("radial -> ansi"):
+        radial = np.array([[0, 0], [1, -1], [1, 1], [2, 0]])
+        ansi = phase.zernike_convert_index(radial, "radial", "ansi")
+        np.testing.assert_array_equal(ansi.ravel(), [0, 1, 2, 4])
+
+    with subtests.test("invalid to_index raises ValueError"):
+        with pytest.raises(ValueError):
+            phase.zernike_convert_index([0], "ansi", "bogus")
+
+    with subtests.test("noll from_index raises NotImplementedError"):
+        with pytest.raises(NotImplementedError):
+            phase.zernike_convert_index([1], "noll", "ansi")
+
+    with subtests.test("wyant from_index raises NotImplementedError"):
+        with pytest.raises(NotImplementedError):
+            phase.zernike_convert_index([0], "wyant", "ansi")
+
+    with subtests.test("same index is identity"):
+        indices = np.arange(5)
+        result = phase.zernike_convert_index(indices, "ansi", "ansi")
+        np.testing.assert_array_equal(result.ravel(), indices)
 
 
 def test_zernike_sum(normalized_grid, subtests):
@@ -407,6 +569,56 @@ def test_zernike_sum(normalized_grid, subtests):
         # result should share memory with out
         assert np.shares_memory(result, out)
 
+    with subtests.test("produces valid array"):
+        indices = [0, 1, 2]
+        weights = [1, 0.5, 0.3]
+        result = phase.zernike_sum(normalized_grid, indices, weights)
+        assert result.shape == normalized_grid[0].shape
+        assert np.all(np.isfinite(result))
+
+    with subtests.test("scalar index and scalar weight"):
+        result = phase.zernike_sum(normalized_grid, indices=4, weights=1.0)
+        assert result.shape == normalized_grid[0].shape
+
+    with subtests.test("use_mask=nan gives nan outside"):
+        result = phase.zernike_sum(
+            normalized_grid, indices=[4], weights=[1],
+            use_mask=np.nan, aperture="circular"
+        )
+        assert np.any(np.isnan(result))
+
+    with subtests.test("derivative length != 2 raises"):
+        with pytest.raises(ValueError, match="Expected derivative"):
+            phase.zernike_sum(normalized_grid, [0], [1], derivative=(1,))
+
+    with subtests.test("weights 3D raises"):
+        with pytest.raises(ValueError, match="1D or 2D"):
+            phase.zernike_sum(normalized_grid, [0, 1, 2], np.ones((3, 2, 2)))
+
+    with subtests.test("mismatched weights raises"):
+        with pytest.raises(ValueError, match="common dimension"):
+            phase.zernike_sum(normalized_grid, [0, 1], [1.0, 2.0, 3.0])
+
+    with subtests.test("indices=None defaults by D"):
+        result = phase.zernike_sum(normalized_grid, indices=None, weights=[1, 1])
+        assert result.shape == normalized_grid[0].shape
+
+    with subtests.test("second derivative d^2/dx^2 of Z4"):
+        result = phase.zernike_sum(
+            normalized_grid, indices=[4], weights=[1],
+            use_mask=False, derivative=(2, 0)
+        )
+        assert result.shape == normalized_grid[0].shape
+        assert np.std(result) < 1e-8
+        assert np.mean(result) != 0
+
+    with subtests.test("mixed derivative d/dxdy of Z3"):
+        result = phase.zernike_sum(
+            normalized_grid, indices=[3], weights=[1],
+            use_mask=False, derivative=(1, 1)
+        )
+        assert np.std(result) < 1e-8
+
 
 def test_polynomial(simple_grid, subtests):
     """Test polynomial() monomial summation."""
@@ -449,6 +661,65 @@ def test_polynomial(simple_grid, subtests):
         expected_1 = 2.0 * simple_grid[0] + 4.0 * simple_grid[1]
         assert np.allclose(result[1], expected_1)
 
+    with subtests.test("1D cantor terms"):
+        result = phase.polynomial(simple_grid, weights=[1.0, 1.0], terms=np.array([1, 2]))
+        result = result.squeeze()
+        expected = simple_grid[0] + simple_grid[1]
+        assert np.allclose(result, expected)
+
+    with subtests.test("pathing=False disables optimization"):
+        terms = np.array([[2, 0], [0, 2]])
+        result = phase.polynomial(simple_grid, weights=[1.0, 1.0],
+                                  terms=terms, pathing=False)
+        result = result.squeeze()
+        expected = simple_grid[0]**2 + simple_grid[1]**2
+        assert np.allclose(result, expected)
+
+    with subtests.test("bad terms shape raises"):
+        with pytest.raises(ValueError, match="Terms must be"):
+            phase.polynomial(simple_grid, weights=[1.0],
+                            terms=np.array([[1, 0, 0]]))
+
+    with subtests.test("mismatched weights 1D raises"):
+        with pytest.raises(ValueError, match="common dimension"):
+            phase.polynomial(simple_grid, weights=[1.0, 2.0, 3.0],
+                            terms=np.array([[1, 0], [0, 1]]))
+
+    with subtests.test("mismatched weights 2D raises"):
+        with pytest.raises(ValueError, match="common dimension"):
+            phase.polynomial(simple_grid, weights=np.ones((3, 1)),
+                            terms=np.array([[1, 0], [0, 1]]))
+
+    with subtests.test("3D weights raises"):
+        with pytest.raises(ValueError, match="1D or 2D"):
+            phase.polynomial(simple_grid, weights=np.ones((2, 1, 1)),
+                            terms=np.array([[1, 0], [0, 1]]))
+
+    with subtests.test("vortex waveplate term (-1, 0)"):
+        terms = np.array([[-1, 0]])
+        result = phase.polynomial(simple_grid, weights=[1.0], terms=terms)
+        result = result.squeeze()
+        expected = np.arctan2(simple_grid[1], simple_grid[0])
+        assert np.allclose(result, expected)
+
+    with subtests.test("unrecognized negative term raises"):
+        terms = np.array([[-2, 0]])
+        with pytest.raises(ValueError, match="Unrecognized terms"):
+            phase.polynomial(simple_grid, weights=[1.0], terms=terms)
+
+    with subtests.test("path reset on non-monotonic terms"):
+        terms = np.array([[2, 0], [0, 2], [1, 0]])
+        result = phase.polynomial(simple_grid, weights=[1.0, 1.0, 1.0], terms=terms)
+        result = result.squeeze()
+        expected = simple_grid[0]**2 + simple_grid[1]**2 + simple_grid[0]
+        assert np.allclose(result, expected)
+
+    with subtests.test("out parameter reuses memory"):
+        terms = np.array([[1, 0]])
+        out = np.zeros((1, *simple_grid[0].shape), dtype=simple_grid[0].dtype)
+        result = phase.polynomial(simple_grid, weights=[1.0], terms=terms, out=out)
+        assert np.shares_memory(result, out)
+
 
 def test_laguerre_gaussian(simple_grid, subtests):
     """Test laguerre_gaussian() structured light generation."""
@@ -488,6 +759,15 @@ def test_laguerre_gaussian(simple_grid, subtests):
         result_custom = phase.laguerre_gaussian(simple_grid, l=1, p=1, w=2.0)
         # Different w should give different patterns
         assert not np.allclose(result_default, result_custom)
+
+    with subtests.test("w=None uses default"):
+        result = phase.laguerre_gaussian(simple_grid, l=1, p=1, w=None)
+        assert result.shape == simple_grid[0].shape
+        assert np.all(np.isfinite(result))
+
+    with subtests.test("p=0 l=0 w=None gives scalar zero"):
+        result = phase.laguerre_gaussian(simple_grid, l=0, p=0, w=None)
+        assert np.allclose(result, 0)
 
 
 def test_hermite_gaussian(simple_grid, subtests):
@@ -531,11 +811,37 @@ def test_hermite_gaussian(simple_grid, subtests):
         result_custom = phase.hermite_gaussian(wide_grid, n=2, m=0, w=3.0)
         assert not np.allclose(result_default, result_custom)
 
+    with subtests.test("w=None uses default"):
+        result = phase.hermite_gaussian(simple_grid, n=1, m=1, w=None)
+        assert result.shape == simple_grid[0].shape
 
-def test_ince_gaussian_not_implemented(simple_grid):
-    """Test that ince_gaussian() raises NotImplementedError."""
-    with pytest.raises(NotImplementedError):
-        phase.ince_gaussian(simple_grid, p=2, m=1)
+    with subtests.test("n=2, m=2 produces multi-region pattern"):
+        result = phase.hermite_gaussian(simple_grid, n=2, m=2, w=None)
+        unique = np.unique(result)
+        assert len(unique) == 2
+
+
+def test_ince_gaussian(simple_grid, subtests):
+    """Test ince_gaussian() parameter validation and NotImplementedError."""
+    with subtests.test("valid parameters raises NotImplementedError"):
+        with pytest.raises(NotImplementedError):
+            phase.ince_gaussian(simple_grid, p=2, m=1)
+
+    with subtests.test("even parity invalid raises ValueError"):
+        with pytest.raises(ValueError, match="invalid Ince"):
+            phase.ince_gaussian(simple_grid, p=2, m=5, parity=1)
+
+    with subtests.test("odd parity invalid raises ValueError"):
+        with pytest.raises(ValueError, match="invalid Ince"):
+            phase.ince_gaussian(simple_grid, p=2, m=0, parity=-1)
+
+    with subtests.test("valid even parity (p=3, m=2) raises NotImplementedError"):
+        with pytest.raises(NotImplementedError):
+            phase.ince_gaussian(simple_grid, p=3, m=2, parity=1)
+
+    with subtests.test("valid odd parity (p=3, m=1) raises NotImplementedError"):
+        with pytest.raises(NotImplementedError):
+            phase.ince_gaussian(simple_grid, p=3, m=1, parity=-1)
 
 
 def test_matheui_gaussian_not_implemented(simple_grid):
@@ -549,3 +855,219 @@ def test_airy_not_implemented(simple_grid):
     with pytest.raises((NotImplementedError, UnboundLocalError)):
         phase.airy(simple_grid)
 
+
+def test_parse_focal_length(subtests):
+    """Test _parse_focal_length() input handling."""
+    with subtests.test("scalar returns pair"):
+        result = _parse_focal_length(10.0)
+        assert len(result) == 2
+        assert result[0] == result[1] == 10.0
+
+    with subtests.test("pair passes through"):
+        result = _parse_focal_length([5.0, 10.0])
+        assert result[0] == 5.0
+        assert result[1] == 10.0
+
+    with subtests.test("wrong size raises ValueError"):
+        with pytest.raises(ValueError, match="Expected two terms"):
+            _parse_focal_length([1, 2, 3])
+
+    with subtests.test("zero focal length raises ValueError"):
+        with pytest.raises(ValueError, match="focal length of zero"):
+            _parse_focal_length([0, 10])
+
+    with subtests.test("both zero raises ValueError"):
+        with pytest.raises(ValueError, match="focal length of zero"):
+            _parse_focal_length(0.0)
+
+
+def test_zernike_indices_parse(subtests):
+    """Test _zernike_indices_parse() branch coverage (L910-940)."""
+    with subtests.test("D=2 gives [2,1]"):
+        result = _zernike_indices_parse(indices=None, D=2)
+        np.testing.assert_array_equal(result, [2, 1])
+
+    with subtests.test("D=3 gives [2,1,4]"):
+        result = _zernike_indices_parse(indices=None, D=3)
+        np.testing.assert_array_equal(result, [2, 1, 4])
+
+    with subtests.test("D=4 gives [2,1,4,3]"):
+        result = _zernike_indices_parse(indices=None, D=4)
+        np.testing.assert_array_equal(result, [2, 1, 4, 3])
+
+    with subtests.test("D=6 gives extended basis"):
+        result = _zernike_indices_parse(indices=None, D=6)
+        assert len(result) == 6
+        np.testing.assert_array_equal(result[:4], [2, 1, 4, 3])
+
+    with subtests.test("scalar indices, D=None"):
+        result = _zernike_indices_parse(indices=3, D=None)
+        assert len(result) == 3
+
+    with subtests.test("scalar indices with matching D"):
+        result = _zernike_indices_parse(indices=4, D=4)
+        assert len(result) == 4
+
+    with subtests.test("scalar indices with mismatched D raises"):
+        with pytest.raises(ValueError):
+            _zernike_indices_parse(indices=3, D=5)
+
+    with subtests.test("None indices, None D raises"):
+        with pytest.raises(ValueError, match="Either dimension"):
+            _zernike_indices_parse(indices=None, D=None)
+
+    with subtests.test("explicit indices pass through"):
+        result = _zernike_indices_parse(indices=[5, 6, 7], D=3)
+        np.testing.assert_array_equal(result, [5, 6, 7])
+
+    with subtests.test("smaller_okay allows D < len(indices)"):
+        result = _zernike_indices_parse(indices=5, D=3, smaller_okay=True)
+        assert len(result) >= 3
+
+    with subtests.test("smaller_okay=False with D mismatch raises"):
+        with pytest.raises(ValueError):
+            _zernike_indices_parse(indices=[1, 2, 3], D=5, smaller_okay=False)
+
+
+def test_cantor_pairing(subtests):
+    """Test _cantor_pairing and _inverse_cantor_pairing roundtrip."""
+    with subtests.test("roundtrip"):
+        xy = np.array([[0, 0], [1, 0], [0, 1], [2, 3], [5, 5]])
+        z = _cantor_pairing(xy)
+        recovered = _inverse_cantor_pairing(z)
+        np.testing.assert_array_equal(recovered, xy)
+
+    with subtests.test("known values"):
+        assert _cantor_pairing([[0, 0]]) == 0
+        assert _cantor_pairing([[1, 0]]) == 1
+        assert _cantor_pairing([[0, 1]]) == 2
+
+    with subtests.test("inverse with negative index"):
+        result = _inverse_cantor_pairing(np.array([-1, 0, 1]))
+        assert result[0, 0] == -1
+        assert result[0, 1] == 0
+
+    with subtests.test("inverse non-1D raises"):
+        with pytest.raises(ValueError):
+            _inverse_cantor_pairing(np.array([[1, 2]]))
+
+
+def test_parse_out(subtests):
+    """Test _parse_out() helper."""
+    x = np.zeros((10, 10), dtype=np.float64)
+
+    with subtests.test("None allocates new array"):
+        out = _parse_out(x, None, stack=1)
+        assert out.shape == (1, 10, 10)
+        assert out.dtype == x.dtype
+
+    with subtests.test("None with stack>1"):
+        out = _parse_out(x, None, stack=3)
+        assert out.shape == (3, 10, 10)
+
+    with subtests.test("provided out reshapes"):
+        buf = np.zeros(200, dtype=np.float64)
+        out = _parse_out(x, buf, stack=2)
+        assert out.shape == (2, 10, 10)
+
+    with subtests.test("wrong size raises"):
+        with pytest.raises(ValueError, match="same size"):
+            _parse_out(x, np.zeros(50, dtype=np.float64), stack=1)
+
+    with subtests.test("wrong dtype raises"):
+        with pytest.raises(ValueError, match="same type"):
+            _parse_out(x, np.zeros((1, 10, 10), dtype=np.float32), stack=1)
+
+
+def test_determine_source_radius(simple_grid, subtests):
+    """Test _determine_source_radius() branches (L1815, 1817)."""
+    with subtests.test("w provided passes through"):
+        assert _determine_source_radius(simple_grid, w=5.0) == 5.0
+
+    with subtests.test("w=None from grid"):
+        w = _determine_source_radius(simple_grid, w=None)
+        assert w == pytest.approx(np.min([np.amax(simple_grid[0]),
+                                           np.amax(simple_grid[1])]) / 4)
+
+    with subtests.test("SLM-like with get_source_radius"):
+        class FakeSLM:
+            x_grid = simple_grid[0]
+            y_grid = simple_grid[1]
+            def get_source_radius(self):
+                return 42.0
+        assert _determine_source_radius(FakeSLM(), w=None) == 42.0
+
+    with subtests.test("CameraSLM-like delegates to slm"):
+        class FakeCameraSLM:
+            x_grid = simple_grid[0]
+            y_grid = simple_grid[1]
+            slm = type('FakeSLM', (), {
+                'get_source_radius': lambda self: 99.0,
+                'x_grid': simple_grid[0],
+                'y_grid': simple_grid[1],
+            })()
+            cam = True
+        assert _determine_source_radius(FakeCameraSLM(), w=None) == 99.0
+
+
+def test_zernike_build_and_coefficients(subtests):
+    """Test _zernike_build_order, _zernike_build_indices, _zernike_coefficients."""
+    with subtests.test("build_order populates cache"):
+        _zernike_build_order(3)
+        # After build_order(3), indices up to (3+1)*(3+2)//2 = 10 should be cached
+        for i in range(10):
+            coeffs = _zernike_coefficients(i)
+            assert isinstance(coeffs, dict)
+
+    with subtests.test("build_indices for specific set"):
+        _zernike_build_indices([0, 5, 10])
+        for i in [0, 5, 10]:
+            assert isinstance(_zernike_coefficients(i), dict)
+
+    with subtests.test("coefficient for piston is {(0,0): 1}"):
+        coeffs = _zernike_coefficients(0)
+        assert (0, 0) in coeffs
+        assert coeffs[(0, 0)] == 1
+
+
+def test_zernike_populate_basis_map(subtests):
+    """Test _zernike_populate_basis_map()."""
+    with subtests.test("small indices produce valid maps"):
+        indices = np.array([0, 1, 2, 4])
+        c_md, i_md, pxy_m = _zernike_populate_basis_map(indices)
+        assert c_md.dtype == np.float32
+        assert i_md.dtype == np.int32
+        assert pxy_m.dtype == np.int32
+
+    with subtests.test("two indices"):
+        c_md, i_md, pxy_m = _zernike_populate_basis_map(np.array([0, 1]))
+        assert c_md.shape[1] == 2  # Two Zernikes
+
+
+def test_zernike_pyramid_plot(normalized_grid, subtests):
+    """Test zernike_pyramid_plot() (L1189-1264)."""
+    with subtests.test("order=2 runs without error"):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(6, 6))
+        phase.zernike_pyramid_plot(normalized_grid, order=2, use_mask=False)
+        plt.close("all")
+
+    with subtests.test("noborder and nan mask"):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(6, 6))
+        phase.zernike_pyramid_plot(normalized_grid, order=1, noborder=True,
+                                    use_mask=np.nan)
+        plt.close("all")
+
+    with subtests.test("noborder with use_mask=False"):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(6, 6))
+        phase.zernike_pyramid_plot(normalized_grid, order=1, noborder=True,
+                                    use_mask=False)
+        plt.close("all")

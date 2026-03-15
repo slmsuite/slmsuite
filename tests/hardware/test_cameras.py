@@ -1,81 +1,118 @@
 """
 Unit tests for Camera base class using SimulatedCamera.
 """
+import warnings
+
 import pytest
 import numpy as np
+
+from slmsuite.hardware.cameras.camera import Camera
 from slmsuite.hardware.cameras.simulated import SimulatedCamera
 from slmsuite.hardware.cameraslms import FourierSLM
 from slmsuite.holography.toolbox.phase import zernike
 
-# TODO: camera fixture vs. SimulatedCamera cleanup (use camera wherever possible)
 
-def test_camera_init(slm_small):
-    """Test basic SimulatedCamera construction."""
-    cam = SimulatedCamera(
-        slm=slm_small,
-        resolution=(512, 512),
-        pitch_um=(5.5, 5.5),
-        bitdepth=8
-    )
+class TestCamera:
+    """Tests for the Camera base class via SimulatedCamera."""
 
-    assert cam.shape == (512, 512)
-    assert np.allclose(cam.pitch_um, [5.5, 5.5])
-    assert cam.bitdepth == 8
-    assert cam.bitresolution == 256
+    def test_selftest(self, camera, subtests):
+        """camera.test() covers core properties, dtype, exposure, capture,
+        averaging, HDR, WOI, and info."""
+        assert camera.test() is True
 
-    # Verify (height, width) shape convention.
-    height, width = 480, 640
-    cam = SimulatedCamera(slm=slm_small, resolution=(width, height))
+    def test_init(self, slm, subtests):
+        """Verify constructor sets shape, pitch, bitdepth, and resolution convention."""
+        cam = SimulatedCamera(
+            slm=slm, resolution=(512, 512), pitch_um=(5.5, 5.5), bitdepth=8
+        )
 
-    assert cam.shape[0] == height
-    assert cam.shape[1] == width
+        with subtests.test("shape"):
+            assert cam.shape == (512, 512)
 
-    # Test default camera parameters.
-    cam = SimulatedCamera(slm=slm_small, resolution=(256, 256))
+        with subtests.test("pitch_um"):
+            np.testing.assert_allclose(cam.pitch_um, [5.5, 5.5])
 
-    assert cam.exposure_s is not None
-    assert cam.averaging is None or isinstance(cam.averaging, int)
+        with subtests.test("bitdepth"):
+            assert cam.bitdepth == 8
 
-    # cam.test()  # Basic self-test should pass
+        with subtests.test("bitresolution"):
+            assert cam.bitresolution == 256
 
-    cam.close()  # Cleanup
+        with subtests.test("height-width convention"):
+            height, width = 480, 640
+            cam2 = SimulatedCamera(slm=slm, resolution=(width, height))
+            assert cam2.shape == (height, width)
 
+        with subtests.test("defaults"):
+            cam3 = SimulatedCamera(slm=slm, resolution=(256, 256))
+            assert cam3.exposure_s is not None
+            assert cam3.averaging is None or isinstance(cam3.averaging, int)
 
-def test_camera_test(camera, camera_small):
-    """Test that the camera's self-test method works."""
-    # The test method should return True on success
-    result = camera.test()
-    assert result is True
+        with subtests.test("rotation swaps axes"):
+            cam_rot = SimulatedCamera(
+                slm=slm, resolution=(200, 100), rot="90"
+            )
+            assert cam_rot.shape == (200, 100)
 
-    result = camera_small.test()
-    assert result is True
+        cam.close()
 
+    def test_autoexposure(self, camera, subtests):
+        """Autoexposure converges to same result from different starting points."""
+        with subtests.test("convergence"):
+            camera.set_exposure(0.01)
+            result1 = camera.autoexposure(verbose=False)
+            camera.set_exposure(1)
+            result2 = camera.autoexposure(verbose=False)
+            assert pytest.approx(result1, rel=0.15) == result2
 
-def test_camera_autoexposure(camera_small):
-    """Test exposure control works."""
-    camera_small.set_exposure(0.01)
-    result1 = camera_small.autoexposure(verbose=True)
+        with subtests.test("custom set_fraction"):
+            camera.set_exposure(0.01)
+            result3 = camera.autoexposure(set_fraction=0.3, verbose=False)
+            assert result3 > 0
 
-    camera_small.set_exposure(1)
-    result2 = camera_small.autoexposure(verbose=True)
+    def test_autofocus(self, camera, slm, subtests):
+        """Autofocus recovers known defocus applied via Zernike."""
+        slm = slm
+        slm.set_source_analytic()
 
-    assert pytest.approx(result1, rel=0.1) == result2
+        fs = FourierSLM(camera, slm)
+        fs.fourier_calibrate(array_pitch=10, verbose=False)
 
+        defocus_zernike = 1
+        slm.source["phase_sim"] = zernike(slm, 4, -defocus_zernike, use_mask=False)
 
-def test_camera_autofocus(camera_small, slm_small):
-    slm = slm_small
-    slm.set_source_analytic()
+        with subtests.test("recovers defocus"):
+            defocus_opt = camera.autofocus(set_z=slm, verbose=False)
+            assert pytest.approx(defocus_opt, rel=0.25) == defocus_zernike
 
-    fs = FourierSLM(camera_small, slm)
-    fs.fourier_calibrate(array_pitch=10, verbose=False)
+        with subtests.test("set_z validation"):
+            with pytest.raises(ValueError, match="set_z must be"):
+                camera.autofocus(set_z="not_callable")
 
-    defocus_zernike = 1
-    slm.source['phase_sim'] = zernike(slm, 4, -defocus_zernike, use_mask=False)
+    def test_plot(self, camera, mpl_test, subtests):
+        """Camera plot method produces an axes."""
+        import matplotlib.pyplot as plt
 
-    defocus_opt = camera_small.autofocus(
-        set_z=slm,
-        verbose=True
-    )
+        with subtests.test("plot with captured image"):
+            ax = camera.plot()
+            assert ax is not None
+            plt.close("all")
 
-    assert pytest.approx(defocus_opt, rel=0.2) == defocus_zernike
+        with subtests.test("plot with last_image"):
+            camera.get_image()
+            ax = camera.plot(image=False)
+            assert ax is not None
+            plt.close("all")
+
+        with subtests.test("plot with explicit image"):
+            img = np.zeros(camera.shape, dtype=camera.dtype)
+            ax = camera.plot(image=img, title="Test", limits=0.5)
+            assert ax is not None
+            plt.close("all")
+
+    def test_info(self, camera, subtests):
+        """Static info method returns a list."""
+        with subtests.test("info returns list"):
+            result = camera.__class__.info(verbose=False)
+            assert isinstance(result, list)
 

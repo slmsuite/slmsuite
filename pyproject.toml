@@ -85,6 +85,7 @@ test = [
     "pytest-subtests",
     "pytest-notebook",
     "nbformat",
+    "imageio",
 ]
 dev = [
     "slmsuite[test]",

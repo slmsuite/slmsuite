@@ -1,10 +1,13 @@
 import os
 import importlib.util
-import warnings
+import logging
 
 import pytest
-from pytest_notebook.nb_regression import NBRegressionFixture, NBRegressionError
+from pytest_notebook.execution import execute_notebook
 import nbformat
+
+# Suppress verbose debug logging from notebook execution (kernel messages, etc.).
+logging.getLogger("pytest_notebook").setLevel(logging.WARNING)
 
 # Load docs/source/examples.py by file path (it's not an installed package).
 _examples_module_path = os.path.join(
@@ -31,48 +34,30 @@ def test_examples(subtests):
     # Get the list of example notebooks.
     notebooks = get_sphinx_examples()
 
-    # Prepare the testing framework.
-    fixture = NBRegressionFixture(
-        exec_timeout=600,  # Set a longer timeout for notebook execution (default is 120)
-    )
-
     for nb_name in notebooks:
-        # The expected location of the notebook.
         nb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", nb_name + ".ipynb")
-
-        # We're also going to create a cleaned version of the notebook that removes
-        # cells with the "slmsuite_experimental" metadata.
-        nb_path2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", nb_name + "_clean.ipynb")
-        nb_path3 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", nb_name + "_run.ipynb")
-
+        nb_path_run = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", nb_name + "_run.ipynb")
 
         with subtests.test(f"testing {nb_name}"):
-            # Check that the notebook file exists.
             assert os.path.isfile(nb_path), "Notebook not found."
 
-            # Do surgery on the notebook to remove cells that contain
-            # the "slmsuite_experimental" metadata, which is used to mark cells
-            # that contain hardware that cannot be run in the testing environment.
-            nb = None
             with open(nb_path, "r", encoding="utf8") as f:
                 nb = nbformat.read(f, as_version=4)
 
-            if nb is None:
-                raise RuntimeError("Failed to read notebook.")
-            else:
-                nb.cells = [cell for cell in nb.cells if "slmsuite_experimental" not in cell.metadata.keys()]
-                with open(nb_path2, "w", encoding="utf8") as f:
-                    nbformat.write(nb, f)
+            # Remove cells marked as requiring hardware not available in CI.
+            nb.cells = [cell for cell in nb.cells if "slmsuite_experimental" not in cell.metadata]
 
-                # Now run pytest on the notebook.
-                try:
-                    result = fixture.check(nb_path2)
+            # Execute the notebook.
+            exec_result = execute_notebook(
+                nb,
+                cwd=os.path.dirname(nb_path),
+                timeout=1200,
+            )
 
-                    # Save the final notebook with outputs for inspection
-                    # (this doesn't seem to be working?).
-                    with open(nb_path3, "w", encoding="utf8") as f:
-                        nbformat.write(result.nb_final, f)
-                except NBRegressionError as e:  # Ignore notebook diff errors (output changes).
-                    warnings.warn(f"Notebook regression diff: {e}")
-                except Exception as e:
-                    raise
+            # Always save the executed notebook for inspection.
+            with open(nb_path_run, "w", encoding="utf8") as f:
+                nbformat.write(exec_result.notebook, f)
+
+            # Fail the subtest if a cell raised an error.
+            if exec_result.exec_error is not None:
+                raise exec_result.exec_error

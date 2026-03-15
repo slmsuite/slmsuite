@@ -585,7 +585,7 @@ def window_extent(window, padding_frac=0, padding_pix=0):
             raise ValueError("Unrecognized format for `window`.")
 
         # Add padding if desired.
-        padding_ = int(np.floor(np.diff(limit) * padding_frac) + padding_pix)
+        padding_ = int((np.floor(np.diff(limit) * padding_frac) + padding_pix).item())
         limit += np.array([-padding_, padding_])
 
         # Clip the padding to shape.

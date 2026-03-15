@@ -4,15 +4,96 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slmsuite"
+description = "Package for high-performance spatial light modulator (SLM) control and holography."
 readme = "README_PYPI.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "slmsuite developers", email = "qp-slm@mit.edu" },
+]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dynamic = ["version", "dependencies", "description", "authors"]
+dynamic = ["version"]
+dependencies = [
+    "numpy",
+    "scipy",
+    "opencv-python",
+    "matplotlib",
+    "h5py",
+    "tqdm",
+]
+
+# GPU acceleration (CuPy): "pip install slmsuite[gpu]" installs cupy-cuda13x.
+# For other CUDA versions, install the matching package manually instead
+# (see https://docs.cupy.dev/en/stable/install.html):
+#   pip install cupy-cuda12x   # CUDA 12.x
+#   pip install cupy            # Build from source (any CUDA version)
+#
+# Some hardware drivers require vendor-specific SDKs that are not available on
+# PyPI. Download the SDK installer from the vendor, locate the .whl file it
+# ships, and install with:  pip install /path/to/package.whl
+#
+#   PySpin           — FLIR/Teledyne Spinnaker SDK
+#   thorlabs_tsi_sdk — Thorlabs ThorCam SDK
+#   vmbpy            — Allied Vision Vimba X SDK
+#   vimba            — Allied Vision Vimba SDK (legacy)
+#   holoeye-slm-detect — Holoeye SLM Display SDK
+
+[project.optional-dependencies]
+gpu = ["cupy-cuda13x"]
+torch = ["torch"]
+display = ["pyglet"]
+cameras = [
+    "pymmcore",
+    "pypylon",
+    "instrumental-lib",
+]
+jupyter = [
+    "jupyter",
+    "ipywidgets",
+    "imageio",
+]
+docs = [
+    "nbsphinx",
+    "IPython",
+    "docutils",
+    "sphinx",
+    "sphinx_copybutton",
+    "sphinx_last_updated_by_git",
+    "sphinx_rtd_theme",
+    "requests",
+    "pandoc",
+    "pydata-sphinx-theme",
+    "sphinx_design",
+    "sphinx-autodoc-typehints",
+]
+test = [
+    "pytest",
+    "pytest-subtests",
+    "pytest-notebook",
+    "nbformat",
+]
+dev = [
+    "slmsuite[test]",
+    "slmsuite[jupyter]",
+    "slmsuite[docs]",
+    "slmsuite[gpu]",
+    "line-profiler",
+    "snakeviz",
+    "pygifsicle",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/slmsuite/slmsuite"
 "Documentation" = "https://slmsuite.readthedocs.io/en/latest/"
+
+[tool.setuptools.dynamic]
+version = { attr = "slmsuite.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["slmsuite*"]
+
+[tool.setuptools.package-data]
+slmsuite = ["holography/toolbox/cuda.cu"]

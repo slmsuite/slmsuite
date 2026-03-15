@@ -1777,6 +1777,10 @@ class FourierSLM(CameraSLM):
         if np.isscalar(calibration_points):
             pitch = np.sqrt(np.prod(self.cam.shape) / calibration_points)
             calibration_points = self.wavefront_calibration_points(pitch, plot=True)
+            # wavefront_calibration_points returns "ij"; convert to "zernike" basis.
+            calibration_points = convert_vector(
+                calibration_points, from_units="ij", to_units="zernike", hardware=self
+            )
 
         calibration_points = format_vectors(np.copy(calibration_points), handle_dimension="pass")
         zernike_indices = _zernike_indices_parse(zernike_indices, calibration_points.shape[0], smaller_okay=True)

@@ -125,7 +125,8 @@ def take(
         size = int(size)
         size = (size, size)
     else:
-        size = (int(size[0]), int(size[1]))
+        s = np.asarray(size).ravel()
+        size = (int(s[0]), int(s[1]))
 
     vectors = np.floor(format_2vectors(vectors)).astype(int)
 
@@ -614,7 +615,7 @@ def image_normalize(images, nansum=False, remove_field=False):
     normalization = image_normalization(images, nansum=nansum)
 
     if single_image:
-        normalization = float(normalization)
+        normalization = float(normalization.item())
         if normalization == 0:
             return np.zeros_like(images)
         else:
@@ -1943,7 +1944,7 @@ def blob_array_detect(
             # Plot a red rectangle to show the extents of the zoom region
             rect = plt.Rectangle(
                 (float(xl[0]), float(yl[0])),
-                float(np.diff(xl)), float(np.diff(yl)),
+                float(np.diff(xl).item()), float(np.diff(yl).item()),
                 ec="r", fc="none"
             )
             axs[0].add_patch(rect)
@@ -2250,7 +2251,7 @@ def blob_array_detect(
         # Plot a red rectangle to show the extents of the zoom region
         rect = plt.Rectangle(
             (float(xl[0]), float(yl[0])),
-            float(np.diff(xl)), float(np.diff(yl)),
+            float(np.diff(xl).item()), float(np.diff(yl).item()),
             ec="r", fc="none"
         )
         axs[0].add_patch(rect)

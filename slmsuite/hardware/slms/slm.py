@@ -281,7 +281,7 @@ class SLM(_Picklable, ABC):
         # (this should be made into a toolbox method to supplement pad, unpad)
         file_shape_error = np.sign(np.array(phase_correction.shape) - np.array(self.shape))
 
-        if np.abs(np.diff(file_shape_error)) > 1:
+        if np.any(np.abs(np.diff(file_shape_error)) > 1):
             raise ValueError(
                 "Note sure how to pad or unpad correction shape {} to SLM shape {}.".format(
                     phase_correction.shape, self.shape
@@ -892,7 +892,7 @@ class SLM(_Picklable, ABC):
             scaling = (1,1)
         # Fractions of the display
         elif units == "frac":
-            scaling = [g.ptp() for g in self.grid]
+            scaling = [g.max() - g.min() for g in self.grid]
         # Physical units
         else:
             if units in toolbox.LENGTH_FACTORS.keys():

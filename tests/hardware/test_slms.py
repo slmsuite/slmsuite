@@ -134,13 +134,13 @@ class TestSLM:
 
         with subtests.test("load_phase with no file raises FileNotFoundError"):
             orig_cwd = os.getcwd()
-            try:
-                with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory() as d:
+                try:
                     os.chdir(d)
                     with pytest.raises(FileNotFoundError):
                         slm.load_phase(None)
-            finally:
-                os.chdir(orig_cwd)
+                finally:
+                    os.chdir(orig_cwd)
 
     def test_set_source_analytic(self, slm, subtests):
         """set_source_analytic with various unit systems."""

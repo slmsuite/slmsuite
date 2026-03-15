@@ -21,7 +21,7 @@ def fourierslm(slm, camera):
 @pytest.fixture
 def fourierslm_calibrated(fourierslm):
     """FourierSLM with a completed Fourier calibration."""
-    fourierslm.fourier_calibrate(array_pitch=40, array_shape=5, plot=False)
+    fourierslm.fourier_calibrate(array_pitch=40, array_shape=10, plot=False)
     return fourierslm
 
 
@@ -413,18 +413,16 @@ class TestFourierSLM:
     def test_wavefront_calibrate_zernike(self, fourierslm_calibrated, subtests):
         """Test FourierSLM.wavefront_calibrate_zernike."""
 
-        # Build a small set of calibration points (in ij space) safely within
-        # the camera field of view.  wavefront_calibrate_zernike accepts ij-space
-        # arrays of shape (2, N).
-        cam_shape = np.array(fourierslm_calibrated.cam.shape[::-1], dtype=float)
-        center = cam_shape / 2
-        offset = cam_shape * 0.15
-        cal_pts = np.array([
-            [center[0] - offset[0], center[0] + offset[0],
-             center[0] - offset[0], center[0] + offset[0]],
-            [center[1] - offset[1], center[1] - offset[1],
-             center[1] + offset[1], center[1] + offset[1]],
-        ])
+        # wavefront_calibrate_zernike passes calibration_points to
+        # CompressedSpotHologram with basis=zernike_indices, so points must be
+        # in the zernike basis (radians), not ij pixels.  Generate ij-space
+        # points with wavefront_calibration_points(), then convert to zernike.
+        from slmsuite.holography.toolbox import convert_vector
+        ij_pts = fourierslm_calibrated.wavefront_calibration_points(pitch=120)
+        cal_pts = convert_vector(
+            ij_pts, from_units="ij", to_units="zernike",
+            hardware=fourierslm_calibrated
+        )
 
         with subtests.test("perturbation=0 projects spots only"):
             fourierslm_calibrated.wavefront_calibrate_zernike(

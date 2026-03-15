@@ -1,3 +1,0 @@
-include slmsuite/holography/toolbox/cuda.cu
-include README.md
-include requirements.txt

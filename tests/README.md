@@ -32,15 +32,20 @@ tests/
 ├── conftest.py              # Shared fixtures and configuration
 ├── README.md                # This file
 ├── pytest.ini               # Pytest configuration (in parent directory)
+├── test_examples.py         # Example notebook testing
 ├── hardware/                # Hardware module tests
-│   ├── test_camera.py       # Camera base class and implementations
-│   └── test_slm.py          # SLM base class and implementations
+│   ├── test_init.py         # _Picklable base class (save/load, HDF5)
+│   ├── test_slms.py         # SLM base class and SimulatedSLM
+│   ├── test_cameras.py      # Camera base class and SimulatedCamera
+│   └── test_cameraslm.py    # FourierSLM integration (calibration, workflows)
 ├── holography/              # Holography module tests
-│   ├── test_algorithms.py   # Hologram optimization (GS, WGS, feedback)
-│   ├── test_analysis.py     # Image analysis and statistics
-│   └── test_toolbox.py      # Phase patterns (blaze, Zernike, etc)
+│   ├── test_algorithms.py   # Hologram optimization (GS, WGS variants)
+│   ├── test_analysis.py     # Image analysis (centroids, moments, fitting)
+│   ├── test_files.py        # HDF5 and image file I/O
+│   ├── test_toolbox.py      # Vector conversions, imprint, utilities
+│   └── test_toolbox_phase.py # Phase patterns (blaze, lens, Zernike, etc)
 └── misc/                    # Misc utilities tests
-    └── test_misc.py         # Math functions, fit functions, I/O
+    └── test_misc.py         # Math functions, fit functions
 ```
 
 This structure mirrors `slmsuite/`:
@@ -61,16 +66,23 @@ All tests use simulated hardware (SimulatedCamera, SimulatedSLM) and synthetic d
 All tests are designed to run without physical hardware using simulated devices:
 
 #### Hardware Tests (`tests/hardware/`)
-- **Camera tests** (`test_camera.py`): Camera base class interface, image acquisition, exposure control
-- **SLM tests** (`test_slm.py`): SLM base class interface, phase display, calibration
+- **Picklable tests** (`test_init.py`): `_Picklable` base class, HDF5 save/load, metadata
+- **SLM tests** (`test_slms.py`): SLM base class, phase setting, source fitting, PSF
+- **Camera tests** (`test_cameras.py`): Camera base class, autoexposure, autofocus
+- **CameraSLM tests** (`test_cameraslm.py`): FourierSLM calibration, coordinate transforms, full workflows
 
 #### Holography Tests (`tests/holography/`)
-- **Algorithm tests** (`test_algorithms.py`): Hologram optimization (GS, WGS variants), feedback methods, convergence
-- **Toolbox tests** (`test_toolbox.py`): Phase pattern generation (blaze, sinusoid, binary, lens, Zernike)
-- **Analysis tests** (`test_analysis.py`): Image analysis (centroids, moments, variances, fitting)
+- **Algorithm tests** (`test_algorithms.py`): Hologram optimization (GS, WGS variants), convergence
+- **Analysis tests** (`test_analysis.py`): Centroids, moments, variances, fitting, Zernike, affine transforms
+- **File I/O tests** (`test_files.py`): HDF5 roundtrip, image loading/saving, path utilities
+- **Toolbox tests** (`test_toolbox.py`): Vector conversions, imprint, Lloyd's algorithm, formatting
+- **Phase toolbox tests** (`test_toolbox_phase.py`): Blaze, lens, Zernike, vortex, Laguerre-Gauss, Hermite-Gauss
 
 #### Misc Tests (`tests/misc/`)
 - **Math and fit functions** (`test_misc.py`): Utility functions, 1D/2D fitting (Gaussian, Lorentzian, etc.)
+
+#### Example Tests (`tests/`)
+- **Notebook tests** (`test_examples.py`): Runs example Jupyter notebooks end-to-end (marked `@pytest.mark.slow`)
 
 #### Test Characteristics
 - **Fast**: Most tests complete in <1 second (mark long tests with `@pytest.mark.slow`)
@@ -84,6 +96,18 @@ All tests are designed to run without physical hardware using simulated devices:
 
 The test fixtures are designed to work with **any** SLM or Camera subclass, not just simulated hardware.
 
+#### Session Fixtures
+
+```python
+@pytest.fixture(scope="session")
+def random_seed():
+    """Generate and set a random seed for the session (logged for reproducibility)."""
+
+@pytest.fixture(scope="session")
+def has_cupy():
+    """Check if CuPy is available for GPU tests."""
+```
+
 #### Hardware Fixtures
 
 ```python
@@ -91,37 +115,49 @@ The test fixtures are designed to work with **any** SLM or Camera subclass, not 
 def slm():
     """
     Provides an SLM instance for testing.
-
     By default: SimulatedSLM (1920x1080, 8-bit, 780nm)
-
-    Can be configured via environment variables:
-        SLMSUITE_TEST_SLM_CLASS=slmsuite.hardware.slms.thorlabs.ThorlabsSLM
-        SLMSUITE_TEST_SLM_ARGS='{"monitor_id": 1, "bitdepth": 8}'
+    Override via SLMSUITE_TEST_SLM_CLASS / SLMSUITE_TEST_SLM_ARGS env vars.
     """
 
 @pytest.fixture
-def camera(slm):
+def slm_small():
+    """Small-resolution SLM (128x128) for faster tests."""
+
+@pytest.fixture
+def camera():
     """
     Provides a Camera instance for testing.
-
     By default: SimulatedCamera (512x512, 8-bit)
-
-    Can be configured via environment variables:
-        SLMSUITE_TEST_CAMERA_CLASS=slmsuite.hardware.cameras.thorlabs.ThorlabsCamera
-        SLMSUITE_TEST_CAMERA_ARGS='{"serial": "12345", "bitdepth": 8}'
+    Override via SLMSUITE_TEST_CAMERA_CLASS / SLMSUITE_TEST_CAMERA_ARGS env vars.
     """
 
 @pytest.fixture
+def camera_small():
+    """Small-resolution Camera (128x128) for faster tests."""
+
+@pytest.fixture
+def fourierslm():
+    """Provides a FourierSLM (camera + SLM) instance for testing."""
+
+@pytest.fixture
+def fourierslm_small():
+    """Small-resolution FourierSLM (128x128) for faster tests."""
+```
+
+#### Utility Fixtures
+
+```python
+@pytest.fixture
 def temp_dir():
-    """Provides a temporary directory for test file I/O"""
+    """Provides a temporary directory for test file I/O."""
 
 @pytest.fixture
-def random_phase():
-    """Provides a 256x256 random phase pattern"""
+def mpl_test():
+    """Per-test matplotlib fixture with automatic figure cleanup."""
 
-@pytest.fixture
-def random_amplitude():
-    """Provides a 256x256 random amplitude pattern"""
+@pytest.fixture(autouse=True)
+def test_logger():
+    """Per-test logger (auto-applied). Logger name: {module}.{class}.{function}."""
 ```
 
 ### Using Fixtures
@@ -198,20 +234,7 @@ pytest -m "not gpu and not slow"
 
 ## Test Results
 
-Current status: **93 passed / 144 total (65% pass rate)**
-
-### Passing Test Categories:
-- ✅ Fit functions (1D and 2D)
-- ✅ Phase toolbox (blaze, sinusoid, binary, lens, axicon)
-- ✅ Hologram construction and basic optimization
-- ✅ SLM base class (MockSLM implementation)
-- ✅ Image normalization and analysis basics
-
-### Known Issues:
-- Some Hologram.optimize() tests need return value adjustments
-- Camera tests need SimulatedCamera signature updates
-- Some phase toolbox function signatures differ from tests (quadrants, bahtinov)
-- Zernike index conversion uses different naming convention
+All tests are passing across all modules (hardware, holography, misc, examples).
 
 ## Writing New Tests
 
@@ -403,8 +426,6 @@ rm -rf tests/output/
 
 ## TODOs
 
-- [ ] Integration tests for CameraSLM workflows
-- [ ] Integration tests for FourierSLM calibration
 - [ ] Integration tests for SpotHologram optimization
 - [ ] CPU/GPU parametrization for all algorithm tests
 - [ ] Performance benchmarking tests

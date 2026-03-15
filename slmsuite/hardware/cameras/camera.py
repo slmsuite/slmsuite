@@ -12,7 +12,6 @@ from scipy.ndimage import zoom
 import PIL
 import io
 from abc import ABC, abstractmethod
-import pytest
 from functools import partial
 
 from slmsuite.hardware import _Picklable
@@ -925,6 +924,13 @@ class Camera(_Picklable, ABC):
         If something isn't behaving properly, this is the first place to check.
         Validates that methods can run and are returning correct datatypes and shapes.
         """
+        # Import pytest here to avoid making it a hard dependency
+        try:
+            import pytest
+        except ImportError:
+            print("Warning: pytest not available for enhanced testing")
+            pytest = None
+
         print(f"Testing camera: {self.name}")
 
         # Test 1: Core non-abstract methods

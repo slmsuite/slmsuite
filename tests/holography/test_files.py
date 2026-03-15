@@ -2,12 +2,26 @@
 Unit tests for slmsuite.holography.analysis.files module.
 """
 import pytest
+import sys
 import tempfile
+import time
 import os
 import warnings
 import h5py
 import numpy as np
 from unittest.mock import patch, mock_open
+
+
+def _safe_unlink(path, retries=5, delay=0.1):
+    """Remove a file, retrying on PermissionError (Windows h5py file lock)."""
+    for i in range(retries):
+        try:
+            os.unlink(path)
+            return
+        except PermissionError:
+            if i == retries - 1:
+                raise
+            time.sleep(delay)
 
 from slmsuite.holography.analysis.files import (
     _max_numeric_id, generate_path, latest_path,
@@ -115,132 +129,139 @@ def test_latest_path(subtests):
             assert result == os.path.join(d, "test_00005")
 
 
+def _make_tmp_h5():
+    """Create a closed temporary .h5 file and return its path."""
+    tmp = tempfile.NamedTemporaryFile(suffix=".h5", delete=False)
+    tmp.close()
+    return tmp.name
+
+
 def test_save_and_load_h5(subtests):
     """Test HDF5 save/load roundtrip for various data types and options."""
     with subtests.test("simple data types"):
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-            try:
-                data = {
-                    "integer": 42,
-                    "float": 3.14,
-                    "string": "hello",
-                    "array": np.array([1, 2, 3, 4, 5]),
-                    "none_value": None,
-                }
-                save_h5(tmp.name, data)
-                loaded = load_h5(tmp.name)
+        path = _make_tmp_h5()
+        try:
+            data = {
+                "integer": 42,
+                "float": 3.14,
+                "string": "hello",
+                "array": np.array([1, 2, 3, 4, 5]),
+                "none_value": None,
+            }
+            save_h5(path, data)
+            loaded = load_h5(path)
 
-                assert loaded["integer"] == 42
-                assert loaded["float"] == pytest.approx(3.14)
-                assert loaded["string"] == "hello"
-                np.testing.assert_array_equal(loaded["array"], [1, 2, 3, 4, 5])
-                assert loaded["none_value"] == False  # None becomes False
-            finally:
-                os.unlink(tmp.name)
+            assert loaded["integer"] == 42
+            assert loaded["float"] == pytest.approx(3.14)
+            assert loaded["string"] == "hello"
+            np.testing.assert_array_equal(loaded["array"], [1, 2, 3, 4, 5])
+            assert loaded["none_value"] == False  # None becomes False
+        finally:
+            _safe_unlink(path)
 
     with subtests.test("nested dictionaries"):
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-            try:
-                data = {
-                    "level1": {
-                        "level2": {
-                            "value": 123,
-                            "array": np.array([[1, 2], [3, 4]]),
-                        },
-                        "simple": "test",
+        path = _make_tmp_h5()
+        try:
+            data = {
+                "level1": {
+                    "level2": {
+                        "value": 123,
+                        "array": np.array([[1, 2], [3, 4]]),
                     },
-                    "top_level": 456,
-                }
-                save_h5(tmp.name, data)
-                loaded = load_h5(tmp.name)
+                    "simple": "test",
+                },
+                "top_level": 456,
+            }
+            save_h5(path, data)
+            loaded = load_h5(path)
 
-                assert loaded["level1"]["level2"]["value"] == 123
-                np.testing.assert_array_equal(
-                    loaded["level1"]["level2"]["array"], [[1, 2], [3, 4]]
-                )
-                assert loaded["level1"]["simple"] == "test"
-                assert loaded["top_level"] == 456
-            finally:
-                os.unlink(tmp.name)
+            assert loaded["level1"]["level2"]["value"] == 123
+            np.testing.assert_array_equal(
+                loaded["level1"]["level2"]["array"], [[1, 2], [3, 4]]
+            )
+            assert loaded["level1"]["simple"] == "test"
+            assert loaded["top_level"] == 456
+        finally:
+            _safe_unlink(path)
 
     with subtests.test("string arrays"):
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-            try:
-                data = {
-                    "string_array": np.array(["hello", "world", "test"]),
-                    "single_string": "test_string",
-                }
-                save_h5(tmp.name, data)
-                loaded = load_h5(tmp.name)
+        path = _make_tmp_h5()
+        try:
+            data = {
+                "string_array": np.array(["hello", "world", "test"]),
+                "single_string": "test_string",
+            }
+            save_h5(path, data)
+            loaded = load_h5(path)
 
-                np.testing.assert_array_equal(
-                    loaded["string_array"], ["hello", "world", "test"]
-                )
-                assert loaded["single_string"] == "test_string"
-            finally:
-                os.unlink(tmp.name)
+            np.testing.assert_array_equal(
+                loaded["string_array"], ["hello", "world", "test"]
+            )
+            assert loaded["single_string"] == "test_string"
+        finally:
+            _safe_unlink(path)
 
     with subtests.test("staggered arrays raise ValueError"):
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-            try:
-                data = {"staggered": [[1, 2], [3, 4, 5]]}
-                with pytest.raises(ValueError, match="staggered arrays"):
-                    save_h5(tmp.name, data)
-            finally:
-                if os.path.exists(tmp.name):
-                    os.unlink(tmp.name)
+        path = _make_tmp_h5()
+        try:
+            data = {"staggered": [[1, 2], [3, 4, 5]]}
+            with pytest.raises(ValueError, match="staggered arrays"):
+                save_h5(path, data)
+        finally:
+            if os.path.exists(path):
+                _safe_unlink(path)
 
     with subtests.test("decode_bytes=True vs False"):
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-            try:
-                with h5py.File(tmp.name, "w") as f:
-                    f["string_data"] = b"hello"
-                    f["byte_array"] = np.array([b"hello", b"world"])
+        path = _make_tmp_h5()
+        try:
+            with h5py.File(path, "w") as f:
+                f["string_data"] = b"hello"
+                f["byte_array"] = np.array([b"hello", b"world"])
 
-                loaded = load_h5(tmp.name, decode_bytes=True)
-                assert loaded["string_data"] == "hello"
-                np.testing.assert_array_equal(
-                    loaded["byte_array"], ["hello", "world"]
-                )
+            loaded = load_h5(path, decode_bytes=True)
+            assert loaded["string_data"] == "hello"
+            np.testing.assert_array_equal(
+                loaded["byte_array"], ["hello", "world"]
+            )
 
-                loaded = load_h5(tmp.name, decode_bytes=False)
-                assert loaded["string_data"] == b"hello"
-                assert isinstance(loaded["byte_array"][0], bytes)
-            finally:
-                os.unlink(tmp.name)
+            loaded = load_h5(path, decode_bytes=False)
+            assert loaded["string_data"] == b"hello"
+            assert isinstance(loaded["byte_array"][0], bytes)
+        finally:
+            _safe_unlink(path)
 
     with subtests.test("backwards-compat aliases read_h5/write_h5"):
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-            try:
-                write_h5(tmp.name, {"test": 123})
-                loaded = read_h5(tmp.name)
-                assert loaded["test"] == 123
-            finally:
-                os.unlink(tmp.name)
+        path = _make_tmp_h5()
+        try:
+            write_h5(path, {"test": 123})
+            loaded = read_h5(path)
+            assert loaded["test"] == 123
+        finally:
+            _safe_unlink(path)
 
     with subtests.test("mode parameter"):
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-            try:
-                save_h5(tmp.name, {"first": 123}, mode="w")
-                save_h5(tmp.name, {"second": 456}, mode="w")
-                loaded = load_h5(tmp.name)
-                assert "second" in loaded
-            finally:
-                os.unlink(tmp.name)
+        path = _make_tmp_h5()
+        try:
+            save_h5(path, {"first": 123}, mode="w")
+            save_h5(path, {"second": 456}, mode="w")
+            loaded = load_h5(path)
+            assert "second" in loaded
+        finally:
+            _safe_unlink(path)
 
     with subtests.test("non-ValueError re-raised"):
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp:
-            try:
+        path = _make_tmp_h5()
+        try:
 
-                class BadObj:
-                    def __array__(self, *args, **kwargs):
-                        raise TypeError("cannot convert")
+            class BadObj:
+                def __array__(self, *args, **kwargs):
+                    raise TypeError("cannot convert")
 
-                with pytest.raises(TypeError, match="cannot convert"):
-                    save_h5(tmp.name, {"bad": BadObj()})
-            finally:
-                if os.path.exists(tmp.name):
-                    os.unlink(tmp.name)
+            with pytest.raises(TypeError, match="cannot convert"):
+                save_h5(path, {"bad": BadObj()})
+        finally:
+            if os.path.exists(path):
+                _safe_unlink(path)
 
 
 def test_load_image(subtests):

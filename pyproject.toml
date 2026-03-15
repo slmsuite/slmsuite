@@ -80,6 +80,9 @@ docs = [
     "sphinx-autodoc-typehints",
 ]
 test = [
+    "slmsuite[gpu]",
+    "slmsuite[slms]",
+    "slmsuite[images]",
     "pytest",
     "pytest-benchmark",
     "pytest-subtests",

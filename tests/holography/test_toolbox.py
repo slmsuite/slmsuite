@@ -215,7 +215,7 @@ def test_convert_vector(slm, subtests):
         np.testing.assert_allclose(result, np.array([[0.1], [-0.2]]))
 
 
-def test_imprint(slm, subtests):
+def test_imprint(slm, subtests, benchmark):
     """Comprehensive tests for imprint."""
     H, W = 40, 60
     x = np.arange(W, dtype=float)
@@ -225,6 +225,15 @@ def test_imprint(slm, subtests):
     # (x, w, y, h) — upper-left (10,5), size 20×15
     win = [10, 20, 5, 15]
     sl = (slice(5, 20), slice(10, 30))
+
+    with subtests.test("benchmark"):
+        bench_H, bench_W = 512, 512
+        bench_x = np.arange(bench_W, dtype=float)
+        bench_y = np.arange(bench_H, dtype=float)
+        bench_grid = np.meshgrid(bench_x, bench_y)
+        bench_mat = np.zeros((bench_H, bench_W))
+        bench_win = [50, 400, 50, 400]
+        benchmark(imprint, bench_mat, bench_win, phase.blaze, grid=bench_grid, vector=(0.1, 0.05))
 
     with subtests.test("float replace"):
         mat = np.zeros((H, W))

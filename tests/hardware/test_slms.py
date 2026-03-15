@@ -66,8 +66,12 @@ class TestSLM:
             assert s.bitresolution == 1024
             s.close()
 
-    def test_phase2gray(self, slm, subtests):
+    def test_phase2gray(self, slm, subtests, benchmark):
         """Edge cases for _phase2gray not covered by .test()."""
+        with subtests.test("benchmark"):
+            phase = np.random.uniform(0, 2 * np.pi, slm.shape).astype(np.float32)
+            benchmark(slm._phase2gray, phase)
+
         with subtests.test("negative phase wraps to valid gray"):
             phase = -np.ones(slm.shape) * np.pi
             gray = slm._phase2gray(phase)
@@ -89,8 +93,12 @@ class TestSLM:
             assert np.all(gray >= 0) and np.all(gray < s.bitresolution)
             s.close()
 
-    def test_set_phase(self, slm, subtests):
+    def test_set_phase(self, slm, subtests, benchmark):
         """set_phase edge cases beyond what .test() exercises."""
+        with subtests.test("benchmark"):
+            phase = np.random.uniform(0, 2 * np.pi, slm.shape).astype(np.float32)
+            benchmark(slm.set_phase, phase, phase_correct=False)
+
         with subtests.test("None zeros phase and display"):
             slm.set_phase(None, phase_correct=False)
             assert np.all(slm.phase == 0)

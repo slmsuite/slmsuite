@@ -65,8 +65,13 @@ def test_image_centroids(subtests):
         assert centroids[1, 0] == pytest.approx(0, abs=1)
 
 
-def test_image_moments(subtests):
+def test_image_moments(subtests, benchmark):
     """Test image_moment() moment calculation."""
+    with subtests.test("benchmark"):
+        image = np.random.rand(128, 128).astype(np.float32)
+        image = image[np.newaxis, :, :]
+        benchmark(analysis.image_moment, image, moment=(1, 0))
+
     with subtests.test("zeroth moment unnormalized equals total intensity"):
         image = np.ones((50, 50)) * 0.5
         image = image[np.newaxis, :, :]
@@ -379,12 +384,17 @@ def test_image_relative_strehl(subtests):
         assert strehl > 0.5
 
 
-def test_image_fit(subtests):
+def test_image_fit(subtests, benchmark):
     """Test image_fit() Gaussian fitting."""
     x = np.linspace(-10, 10, 50)
     y = np.linspace(-10, 10, 50)
     X, Y = np.meshgrid(x, y)
     grid = (X, Y)
+
+    with subtests.test("benchmark"):
+        image = gaussian2d((X, Y), x0=0, y0=0, a=10, c=1, wx=3, wy=3)
+        image = image[np.newaxis, :, :]
+        benchmark(analysis.image_fit, image, grid=grid, function=gaussian2d, plot=False)
 
     with subtests.test("basic Gaussian fit with grid"):
         image = gaussian2d((X, Y), x0=2, y0=-1, a=10, c=1, wx=2, wy=2)
@@ -576,8 +586,14 @@ def test_image_zernike_fit(subtests):
             print(f"leastsquares fit error (may be expected): {e}")
 
 
-def test_take(subtests):
+def test_take(subtests, benchmark):
     """Test take(), take_tile(), take_plot(), and _take_parse_shape()."""
+    with subtests.test("benchmark"):
+        rng = np.random.default_rng(42)
+        image = rng.random((512, 512)).astype(np.float32)
+        vectors = np.stack([rng.integers(20, 492, 50), rng.integers(20, 492, 50)])
+        benchmark(analysis.take, image, vectors=vectors, size=20, centered=True)
+
     with subtests.test("single region extraction"):
         image = np.random.rand(100, 100)
         result = analysis.take(image, vectors=[50, 50], size=10, centered=True)
@@ -1113,3 +1129,19 @@ def test_helpers(subtests):
         assert grid_y[0, 0] == 0
         assert grid_x[0, -1] == 2
         assert grid_y[-1, 0] == 2
+
+
+@pytest.mark.gpu
+def test_take_gpu(benchmark):
+    """GPU variant of take() using cupy arrays."""
+    try:
+        import cupy as cp
+    except ImportError:
+        pytest.skip("CuPy not available")
+
+    rng = np.random.default_rng(42)
+    image = cp.array(rng.random((512, 512)).astype(np.float32))
+    vectors = np.stack([rng.integers(20, 492, 50), rng.integers(20, 492, 50)])
+
+    result = benchmark(analysis.take, image, vectors=vectors, size=20, centered=True, xp=cp)
+    assert result.shape == (50, 20, 20)

@@ -37,8 +37,11 @@ def normalized_grid():
     return (X, Y)
 
 
-def test_blaze(simple_grid, subtests):
+def test_blaze(simple_grid, subtests, benchmark):
     """Test blaze() phase pattern generation."""
+    with subtests.test("benchmark"):
+        benchmark(phase.blaze, simple_grid, vector=(0.1, 0.05))
+
     with subtests.test("zero vector returns zeros"):
         result = phase.blaze(simple_grid, vector=(0, 0))
         assert result.shape == simple_grid[0].shape
@@ -169,8 +172,11 @@ def test_binary(simple_grid, normalized_grid, subtests):
         assert np.std(result) > 0
 
 
-def test_lens(simple_grid, subtests):
+def test_lens(simple_grid, subtests, benchmark):
     """Test lens() phase pattern generation."""
+    with subtests.test("benchmark"):
+        benchmark(phase.lens, simple_grid, f=(1000, 1000))
+
     with subtests.test("infinite focal length gives zeros"):
         result = phase.lens(simple_grid, f=(np.inf, np.inf))
         assert np.allclose(result, 0)
@@ -516,8 +522,13 @@ def test_zernike_convert_index(subtests):
         np.testing.assert_array_equal(result.ravel(), indices)
 
 
-def test_zernike_sum(normalized_grid, subtests):
+def test_zernike_sum(normalized_grid, subtests, benchmark):
     """Test zernike_sum() advanced features."""
+    with subtests.test("benchmark"):
+        rng = np.random.default_rng(42)
+        coeffs = rng.normal(0, 0.1, 10)
+        benchmark(phase.zernike_sum, normalized_grid, indices=list(range(len(coeffs))), weights=coeffs)
+
     with subtests.test("use_mask='return' gives boolean mask"):
         mask = phase.zernike_sum(
             normalized_grid, indices=[0], weights=[1], use_mask="return"
@@ -1071,3 +1082,23 @@ def test_zernike_pyramid_plot(normalized_grid, subtests):
         phase.zernike_pyramid_plot(normalized_grid, order=1, noborder=True,
                                     use_mask=False)
         plt.close("all")
+
+
+@pytest.mark.gpu
+def test_zernike_sum_gpu(benchmark):
+    """GPU variant of zernike_sum() using cupy arrays and CUDA kernels."""
+    try:
+        import cupy as cp
+    except ImportError:
+        pytest.skip("CuPy not available")
+
+    x = cp.linspace(-1, 1, 256)
+    grid = cp.meshgrid(x, x)
+    rng = np.random.default_rng(42)
+    coeffs = rng.normal(0, 0.1, 10)
+
+    def run():
+        phase.zernike_sum(grid, indices=list(range(len(coeffs))), weights=coeffs)
+
+    result = benchmark(run)
+    assert grid[0].shape == (256, 256)

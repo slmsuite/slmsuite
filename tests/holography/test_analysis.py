@@ -1133,11 +1133,11 @@ def test_helpers(subtests):
 
 
 @pytest.mark.gpu
-def test_take_gpu(benchmark):
+def test_take_gpu(benchmark, has_cupy):
     """GPU variant of take() using cupy arrays."""
-    try:
+    if has_cupy:
         import cupy as cp
-    except ImportError:
+    else:
         pytest.skip("CuPy not available")
 
     rng = np.random.default_rng(42)

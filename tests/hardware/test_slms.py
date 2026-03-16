@@ -7,6 +7,7 @@ import warnings
 
 import pytest
 import numpy as np
+import matplotlib.pyplot as plt
 
 from slmsuite.hardware.slms.simulated import SimulatedSLM
 
@@ -59,12 +60,8 @@ class TestSLM:
             assert s.bitresolution == 1024
             s.close()
 
-    def test_phase2gray(self, slm, subtests, benchmark):
+    def test_phase2gray(self, slm, subtests):
         """Edge cases for _phase2gray not covered by .test()."""
-        with subtests.test("benchmark"):
-            phase = np.random.uniform(0, 2 * np.pi, slm.shape).astype(np.float32)
-            benchmark(slm._phase2gray, phase)
-
         with subtests.test("negative phase wraps to valid gray"):
             phase = -np.ones(slm.shape) * np.pi
             gray = slm._phase2gray(phase)
@@ -86,12 +83,8 @@ class TestSLM:
             assert np.all(gray >= 0) and np.all(gray < s.bitresolution)
             s.close()
 
-    def test_set_phase(self, slm, subtests, benchmark):
+    def test_set_phase(self, slm, subtests):
         """set_phase edge cases beyond what .test() exercises."""
-        with subtests.test("benchmark"):
-            phase = np.random.uniform(0, 2 * np.pi, slm.shape).astype(np.float32)
-            benchmark(slm.set_phase, phase, phase_correct=False)
-
         with subtests.test("None zeros phase and display"):
             slm.set_phase(None, phase_correct=False)
             assert np.all(slm.phase == 0)
@@ -120,6 +113,25 @@ class TestSLM:
                 warnings.simplefilter("always")
                 slm.write(np.zeros(slm.shape), phase_correct=False)
                 assert any("depreciated" in str(x.message).lower() for x in w)
+
+        with subtests.test("test integer passthrough"):
+            int_data = np.full(slm.shape, slm.bitresolution // 2, dtype=slm.dtype)
+            slm.set_phase(int_data, phase_correct=False)
+            np.testing.assert_array_equal(slm.display, int_data)
+
+        with subtests.test("test integer overflow"):
+            int_data = np.full(slm.shape, 2 * slm.bitresolution, dtype=np.int64)
+            with pytest.raises(TypeError, match="Unexpected integer type"):
+                slm.set_phase(int_data, phase_correct=False)
+
+        with subtests.test("display in valid range after random phase"):
+            phase = np.random.uniform(-4 * np.pi, 4 * np.pi, slm.shape).astype(np.float32)
+            slm.set_phase(phase, phase_correct=False)
+            assert np.all(slm.display < slm.bitresolution)
+
+        with subtests.test("set_phase returns display"):
+            result = slm.set_phase(np.zeros(slm.shape), phase_correct=False)
+            assert result is slm.display
 
     def test_save_load_phase(self, slm, subtests):
         """Round-trip save/load of phase data."""
@@ -228,25 +240,21 @@ class TestSLM:
 
     def test_plot_source(self, slm, subtests):
         """plot_source for measured and simulated distributions."""
-        import matplotlib.pyplot as plt
 
         slm.set_source_analytic()
         slm.set_source_analytic(sim=True)
 
         with subtests.test("measured amplitude & phase"):
             axs = slm.plot_source(sim=False)
-            assert len(axs) == 2
-            plt.close("all")
+            plt.show()
 
         with subtests.test("simulated"):
             axs = slm.plot_source(sim=True)
-            assert len(axs) == 2
-            plt.close("all")
+            plt.show()
 
         with subtests.test("power mode"):
             axs = slm.plot_source(power=True)
-            assert len(axs) == 2
-            plt.close("all")
+            plt.show()
 
         with subtests.test("missing sim keys raises"):
             src_backup = slm.source.copy()

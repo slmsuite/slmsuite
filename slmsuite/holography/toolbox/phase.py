@@ -203,7 +203,8 @@ def binary(
         Value at the other extreme of the binary grating.
         Defaults to zero, in which case ``a`` is the amplitude.
     :param duty_cycle:
-        Ratio of the period unto which the grating is ``a`` instead of ``b``.
+        The grating value is ``a`` for ``duty_cycle * period``.
+        Then the grating value is ``b`` for ``(1 - duty_cycle) * period``.
     :return:
         The phase for this function.
     """
@@ -290,8 +291,6 @@ def _quadrants(
             grid=grid,
             vector=vector,      # Passed to function=grating
         )
-
-        # TODO: check that there isn't any border artifact?
 
     return canvas
 

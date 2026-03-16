@@ -276,13 +276,13 @@ def camera_small(slm_small, camera_kwargs):
     except Exception:
         pass
 
-
 @pytest.fixture
 def fourierslm(camera, slm):
     """
     Fixture providing a FourierSLM instance for testing.
     """
-    fs = FourierSLM(camera, slm)
+    camera.set_exposure(0.1)  # Don't overexpose the fourier calibration.
+    fs = FourierSLM(camera, slm, mag=1.0)
     yield fs
 
     # Cleanup
@@ -292,18 +292,11 @@ def fourierslm(camera, slm):
         pass
 
 @pytest.fixture
-def fourierslm_small(camera_small, slm_small):
-    """
-    Fixture providing a FourierSLM instance for testing.
-    """
-    fs = FourierSLM(camera_small, slm_small)
-    yield fs
+def fourierslm_calibrated(fourierslm):
+    """FourierSLM with a completed Fourier calibration."""
+    fourierslm.fourier_calibrate(array_pitch=30, array_shape=10, plot=True)
+    return fourierslm
 
-    # Cleanup
-    try:
-        fs.close()
-    except Exception:
-        pass
 
 # Matplotlib configuration (saving of plots)
 

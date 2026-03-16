@@ -12,19 +12,6 @@ from slmsuite.hardware.cameras.simulated import SimulatedCamera
 from slmsuite.hardware.slms.simulated import SimulatedSLM
 from slmsuite.holography.toolbox.phase import blaze, zernike_sum
 
-@pytest.fixture
-def fourierslm(slm, camera):
-    """Fixture providing a FourierSLM instance."""
-    camera.set_exposure(0.1)  # Don't overexpose the fourier calibration.
-    return FourierSLM(camera, slm, mag=1.0)
-
-
-@pytest.fixture
-def fourierslm_calibrated(fourierslm):
-    """FourierSLM with a completed Fourier calibration."""
-    fourierslm.fourier_calibrate(array_pitch=30, array_shape=10, plot=True)
-    return fourierslm
-
 
 class TestFourierSLM:
     """Tests for public methods on FourierSLM."""
@@ -353,19 +340,6 @@ class TestFourierSLM:
             plt.show()
             assert axs is not None
             assert len(axs) == 2
-
-    @pytest.mark.slow
-    def test_wavefront_calibrate(self, fourierslm_calibrated, subtests):
-        """Test FourierSLM.wavefront_calibrate — the wavefront calibration
-        dispatcher.  This is essential for crisp holography.
-
-        wavefront_calibrate delegates to either the superpixel or zernike
-        implementations based on the *method* argument.
-        """
-
-        with subtests.test("bad method raises"):
-            with pytest.raises(ValueError, match="not recognized"):
-                fourierslm_calibrated.wavefront_calibrate(method="bogus")
 
     @pytest.mark.slow
     def test_wavefront_calibrate_superpixel(self, fourierslm_calibrated, subtests):

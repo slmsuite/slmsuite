@@ -256,7 +256,7 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
     if from_units in CAMERA_UNITS or to_units in CAMERA_UNITS:
         if cameraslm is None or not "fourier" in cameraslm.calibrations:
             warnings.warn(
-                f"CameraSLM must be passed as slm= for conversion '{from_units}' to '{to_units}'"
+                f"CameraSLM must be passed as slm for conversion '{from_units}' to '{to_units}'"
             )
             return np.full_like(vector_parsed, np.nan)
 

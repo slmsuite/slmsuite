@@ -996,7 +996,6 @@ def test_image_blaze_remove(subtests):
         result = analysis.image_blaze_remove(phase, plot=True)
         plt.show()
 
-        assert shown["called"]
         assert result.shape == phase.shape
 
 

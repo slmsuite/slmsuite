@@ -646,8 +646,7 @@ class Camera(_Picklable, ABC):
 
             Important
             ~~~~~~~~~
-            This feature sums many measurements together.
-            It does not mean: averaging is a bit of a misnomer.
+            This feature sums many measurements together, thereby averaging without floating point operations.
             This is done such that integer datatypes (useful for memory compactness) can still be returned,
             whereas a general mean would need to be floating point.
 

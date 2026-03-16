@@ -159,6 +159,13 @@ class PLM(ScreenMirrored):
             Override USB product ID for DLPC900.
         gpu : bool or None, optional
             Whether to use GPU acceleration via :mod:`cupy`.
+            When ``gpu=True`` (or ``None`` with :mod:`cupy` installed), all
+            internal buffers and LUTs are stored on the GPU. Any :mod:`numpy`
+            array subsequently passed to :meth:`set_phase` will be transferred
+            to the GPU on every call. Avoid mixing :mod:`numpy` and
+            :mod:`cupy` inputs when ``gpu=True`` — pass :mod:`cupy` arrays
+            consistently to avoid repeated CPU→GPU transfers that can
+            significantly reduce throughput.
         **kwargs
             Additional arguments for :class:`ScreenMirrored`.
         """

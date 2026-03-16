@@ -619,6 +619,11 @@ class SLM(_Picklable, ABC):
             xp = _xp(phase)
             phase = xp.asarray(phase)
 
+            # If internal structures are already on GPU but input is numpy, upgrade the input.
+            if cp is not np and xp is np and isinstance(self.phase, cp.ndarray):
+                xp = cp
+                phase = cp.asarray(phase)
+
             # Promote self.phase and self.display to GPU if input is cupy.
             if xp is cp:
                 if not isinstance(self.phase, cp.ndarray):
@@ -657,8 +662,8 @@ class SLM(_Picklable, ABC):
             # If float data was passed (or the None case).
             # Copy the pattern and unpad if necessary.
             if phase is not None:
-                if self.phase.shape != self.shape:
-                    xp.copyto(self.phase, toolbox.unpad(self.phase, self.shape))
+                if phase.shape != self.shape:
+                    xp.copyto(self.phase, toolbox.unpad(phase, self.shape))
                 else:
                     xp.copyto(self.phase, phase)
 

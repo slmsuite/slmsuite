@@ -1,5 +1,5 @@
 """
-**(Untested)** Hardware control for MindVision cameras via :mod:`mvsdk`.
+Hardware control for MindVision cameras via :mod:`mvsdk`.
 This requires the :mod:`mvsdk` library and python header to be copied
 into the local directory and added to path.
 These files can be downloaded from `MindVision's download page

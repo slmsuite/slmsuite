@@ -1,5 +1,0 @@
-jupyter
-line-profiler
-snakeviz
-imageio
-pygifsicle

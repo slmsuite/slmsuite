@@ -1277,6 +1277,8 @@ class FourierSLM(CameraSLM):
         if not "fourier" in self.calibrations:
             raise RuntimeError("Fourier calibration must exist to be used.")
 
+        self._check_fourier_calibration_stale()
+
         kxy = format_vectors(kxy, handle_dimension="pass")
 
         # Apply the xy transformation.
@@ -1339,6 +1341,8 @@ class FourierSLM(CameraSLM):
         if not "fourier" in self.calibrations:
             raise RuntimeError("Fourier calibration must exist to be used.")
 
+        self._check_fourier_calibration_stale()
+
         ij = format_vectors(ij, handle_dimension="pass")
 
         # Apply the xy transformation.
@@ -1352,6 +1356,29 @@ class FourierSLM(CameraSLM):
             return np.vstack((kxy, self._ijcam_to_kxyslm_depth(ij[[2], :])))
         else:
             return kxy
+
+    def _check_fourier_calibration_stale(self):
+        """
+        Checks if the wavefront calibration is newer than the Fourier calibration.
+
+        Warns if this is true. Does nothing if either calibration is not present or
+        if another error occurs.
+        """
+        try:
+            if "wavefront_superpixel" in self.calibrations and "fourier" in self.calibrations:
+                if (
+                    self.calibrations["wavefront_superpixel"]["__timestamp__"] >
+                    self.calibrations["fourier"]["__timestamp__"]
+                ):
+                    warnings.warn(
+                        f"The wavefront calibration is newer "
+                        f"({self.calibrations['wavefront_superpixel']['__time__']}) "
+                        f"than the Fourier calibration "
+                        f"({self.calibrations['fourier']['__time__']}). "
+                        "The Fourier calibration may be stale."
+                    )
+        except:
+            pass
 
     def get_farfield_spot_size(self, slm_size=None, basis="kxy"):
         """
@@ -1471,6 +1498,12 @@ class FourierSLM(CameraSLM):
         the superpixel :meth:`wavefront_calibrate_superpixel`
         and Zernike :meth:`wavefront_calibrate_zernike`
         implementations of wavefront calibration.
+
+        Important
+        ~~~~~~~~~
+        Wavefront calibration will generally shift spot centers slightly, making a
+        previous Fourier calibration "stale". It is recommended to perform Fourier
+        calibration after wavefront calibration.
         """
         if method is None:
             method = "superpixel"
@@ -1777,6 +1810,10 @@ class FourierSLM(CameraSLM):
         if np.isscalar(calibration_points):
             pitch = np.sqrt(np.prod(self.cam.shape) / calibration_points)
             calibration_points = self.wavefront_calibration_points(pitch, plot=True)
+            # wavefront_calibration_points returns "ij"; convert to "zernike" basis.
+            calibration_points = convert_vector(
+                calibration_points, from_units="ij", to_units="zernike", hardware=self
+            )
 
         calibration_points = format_vectors(np.copy(calibration_points), handle_dimension="pass")
         zernike_indices = _zernike_indices_parse(zernike_indices, calibration_points.shape[0], smaller_okay=True)
@@ -2217,7 +2254,7 @@ class FourierSLM(CameraSLM):
 
         # Next, we get the size of the window necessary to measure a spot
         # produced by the given superpixel size.
-        interference_window = self.wavefront_calibration_superpixel_window(superpixel_size)
+        interference_window = self.wavefront_calibration_superpixel_window(superpixel_size).ravel()
         interference_size = interference_window / self._wavefront_calibration_window_multiplier
 
         interference_window = (interference_window // 2) * 2 + 1
@@ -2816,14 +2853,14 @@ class FourierSLM(CameraSLM):
                 points = []
                 labels = []
                 colors = []
-                center_offset = format_2vectors((superpixel_size/2, superpixel_size/2))
+                center_offset = np.array([superpixel_size/2, superpixel_size/2])
 
                 for i in range(num_points):
                     if schedule is None or schedule[i] != -1:
                         if focus is None:
                             focus = i
-                        points.append(reference_superpixels_coords[:, [i]] * superpixel_size + center_offset)
-                        if schedule is not None: points.append(index2coord(schedule[i]) * superpixel_size + center_offset)
+                        points.append(reference_superpixels_coords[:, i] * superpixel_size + center_offset)
+                        if schedule is not None: points.append((index2coord(schedule[i]) * superpixel_size + center_offset).ravel())
                         if num_points > 1:
                             labels.append("{}".format(i))
                             if schedule is not None: labels.append("{}".format(i))
@@ -2857,7 +2894,7 @@ class FourierSLM(CameraSLM):
                 dpoint = field_point - base_point
 
                 # Assemble points and labels.
-                points = [(base_point + N * dpoint) for N in range(-2, 3)]
+                points = [(base_point + N * dpoint).ravel() for N in range(-2, 3)]
                 labels = ["-2nd", "-1st", "0th", "1st", "2nd"]
                 colors = ["b"] * 5
 
@@ -2865,7 +2902,7 @@ class FourierSLM(CameraSLM):
 
                 for i in range(num_points):
                     if schedule is None or schedule[i] != -1:
-                        points.append(calibration_points[:, [i]])
+                        points.append(calibration_points[:, i])
                         if num_points > 1:
                             labels.append("{}".format(i))
                         else:
@@ -2873,7 +2910,7 @@ class FourierSLM(CameraSLM):
                         c = (1 if i == focus else .5, 0, 0)
                         colors.append(c)
                         if i == focus:
-                            focus_point = calibration_points[:, [i]]
+                            focus_point = calibration_points[:, i]
 
                 # Plot points and labels.
                 wh = int(interference_window[0])
@@ -3040,10 +3077,10 @@ class FourierSLM(CameraSLM):
 
             results = []
             first_index = np.where(schedule != -1)[0][0]
-            
+
             # target_coords = index2coord(schedule)
             # phase_baselines = np.sum(
-            #     2 * np.pi * target_blaze_fixed * 
+            #     2 * np.pi * target_blaze_fixed *
             #     (target_coords - reference_superpixels_coords) *
             #     superpixel_size * self.slm.pitch[:, np.newaxis],
             #     axis=0,
@@ -3480,7 +3517,7 @@ class FourierSLM(CameraSLM):
                     np.stack((index % slm_supershape[1], index // slm_supershape[1]), axis=0)
                 )
 
-            reference_superpixel = index2coord(data["reference_superpixels"][index])
+            reference_superpixel = index2coord(data["reference_superpixels"][index]).ravel()
 
             correction_dict = {
                 "NX": slm_supershape[1],

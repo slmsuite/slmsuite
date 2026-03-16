@@ -203,12 +203,14 @@ def binary(
         Value at the other extreme of the binary grating.
         Defaults to zero, in which case ``a`` is the amplitude.
     :param duty_cycle:
-        Ratio of the period which is 'on'.
+        The grating value is ``a`` for ``duty_cycle * period``.
+        Then the grating value is ``b`` for ``(1 - duty_cycle) * period``.
     :return:
         The phase for this function.
     """
     grid = (x_grid, y_grid) = _process_grid(grid)
     dtype = x_grid.dtype
+    duty_cycle = np.clip(float(duty_cycle), 0, 1)
 
     # Check if we're in pixel period mode.
     if np.any(np.abs(vector) > 1):
@@ -226,7 +228,7 @@ def binary(
     if vector[0] == 0 and vector[1] == 0:
         phase = b
         if shift != 0:
-            if np.mod(shift, 2*np.pi) < (2 * np.pi * duty_cycle):
+            if np.mod(shift, 2*np.pi) > (2 * np.pi * duty_cycle):
                 phase = a
         return np.full(x_grid.shape, phase, dtype=dtype)
     elif vector[0] != 0 and vector[1] != 0:
@@ -241,11 +243,18 @@ def binary(
         if np.all(np.isclose(period, period_int)) and np.all(np.isclose(duty, duty_int)):
             pass    # Future: speed optimization.
 
+    decision = np.mod(blaze(grid, vector) + shift, 2*np.pi)
+    decision[np.isclose(decision, 2*np.pi)] = 0   # Handle edge case
+    decision -= (2 * np.pi * (1-duty_cycle))
+
     # If we have not returned, then we have to use the slow np.mod option.
     return np.where(
-        np.mod(blaze(grid, vector) + shift, 2*np.pi) < (2 * np.pi * duty_cycle),
-        b,
+        np.logical_or(
+            decision > 0,
+            np.isclose(decision, 0)
+        ),
         a,
+        b,
     )
 
 

@@ -138,7 +138,7 @@ class ScreenMirrored(SLM):
             This class currently supports SLMs with 8-bit precision or less.
             In the future, this class will also support 16-bit SLMs using RG color.
         wav_um : float
-            Wavelength of operation in microns. Defaults to 1 um.
+            Wavelength of operation in microns. Defaults to 1 μm.
         pitch_um : (float, float)
             Pixel pitch in microns. Defaults to 8 micron square pixels.
         verbose : bool
@@ -201,18 +201,27 @@ class ScreenMirrored(SLM):
         # Warn the user if wav_um > wav_design_um
         if self.phase_scaling > 1:
             print(
-                "Warning: Wavelength {} um is inaccessible to this SLM with "
-                "design wavelength {} um".format(self.wav_um, self.wav_design_um)
+                "Warning: Wavelength {} μm is inaccessible to this SLM with "
+                "design wavelength {} μm".format(self.wav_um, self.wav_design_um)
             )
 
-    def _set_phase_hw(self, data):
-        """Writes to screen. See :class:`.SLM`."""
+    def _set_phase_hw(self, display):
+        """
+        Hardware-specific implementation to use SLM's virtual display.
+
+        See :meth:`SLM._set_phase_hw` for the base class documentation.
+
+        Parameters
+        ----------
+        display
+            Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
+        """
         # Write to buffer (.buffer points to the same data as .cbuffer).
         # Unfortunately, OpenGL2.0 needs the data copied three times (I think).
         # FUTURE: For OpenGL3.0 and pyglet 2.0+, use the shader to minimize data transfer.
-        np.copyto(self.window.buffer[:,:,0], data)
-        np.copyto(self.window.buffer[:,:,1], data)
-        np.copyto(self.window.buffer[:,:,2], data)
+        np.copyto(self.window.buffer[:,:,0], display)
+        np.copyto(self.window.buffer[:,:,1], display)
+        np.copyto(self.window.buffer[:,:,2], display)
 
         self.window.render()
 

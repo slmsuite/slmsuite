@@ -79,7 +79,7 @@ class Santec(SLM):
         bitdepth : int
             Depth of SLM pixel well in bits. Defaults to 10.
         wav_um : float
-            Wavelength of operation in microns. Defaults to 1 um.
+            Wavelength of operation in microns. Defaults to 1 μm.
         pitch_um : (float, float)
             Pixel pitch in microns. Defaults to 8 micron square pixels.
         verbose : bool
@@ -411,9 +411,18 @@ class Santec(SLM):
         slm_funcs.SLM_Disp_Close(self.display_number)
         slm_funcs.SLM_Ctrl_Close(self.slm_number)
 
-    def _set_phase_hw(self, phase):
-        """See :meth:`.SLM._set_phase_hw`."""
-        matrix = phase.astype(slm_funcs.USHORT)
+    def _set_phase_hw(self, display):
+        """
+        Hardware-specific implementation for Santec SLM devices.
+
+        See :meth:`SLM._set_phase_hw` for the base class documentation.
+
+        Parameters
+        ----------
+        display
+            Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
+        """
+        matrix = display.astype(slm_funcs.USHORT)
         n_h, n_w = self.shape
 
         # Write to SLM

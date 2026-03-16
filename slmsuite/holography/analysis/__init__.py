@@ -1057,12 +1057,15 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
 
 # Helpers for phase images.
 
-def image_zernike_fit(images, grid,
-                      order=10,
-                      iterations=2,
-                      leastsquares=True,
-                      unwrap=True,
-                      **kwargs):
+def image_zernike_fit(
+    images,
+    grid,
+    order=10,
+    iterations=2,
+    leastsquares=True,
+    unwrap=True,
+    **kwargs
+):
     """
     Fits sets of Zernike polynomials to a stack of ``images``, up to a desired ``order``.
     This is done in two steps:
@@ -1106,7 +1109,7 @@ def image_zernike_fit(images, grid,
     if images.ndim == 2:
         images = images.reshape((1, *images.shape))
     image_count = images.shape[0]
-    
+
     # Unwrap
     if unwrap:
         # Adding temporary phase unwrapping solution for testing

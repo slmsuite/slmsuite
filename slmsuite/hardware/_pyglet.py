@@ -30,7 +30,7 @@ try:
 
     def get_pyglet_display():
         """
-        Get the :mod:`pyglet` display object, handling API changes between versions.
+        Get the :mod:`pyglet` display object, which handles OS-dependent display management.
 
         Returns
         -------

@@ -2,22 +2,11 @@
 Hardware control for Texas Instruments Phase Light Modulators (PLMs).
 
 This module provides GPU-accelerated control for TI PLMs via direct implementation
-of phase quantization and electrode mapping. Supports both CuPy (GPU) and NumPy (CPU)
-for maximum performance and compatibility.
+of phase quantization and electrode mapping. Supports both Cu:mod:`cupy`Py (GPU)
+and :mod:`numpy` (CPU) for maximum performance and compatibility.
 
-Also includes :class:`DLPC900`, a USB HID interface for configuring the DLPC900
-evaluation module (EVM) that drives the PLM. This automates the setup normally done
-through TI's DLPC900 GUI software. For further information, refer to the
-`DLPC900 Programmer's Guide <https://www.ti.com/lit/ug/dlpu018j/dlpu018j.pdf>`_.
-
-Device Database
----------------
-Device specifications are stored in ``texas_instruments.yaml`` in the same directory.
-Available devices can be queried with :meth:`get_device_list()`.
-
-Example
--------
-::
+.. highlight:: python
+.. code-block:: python
 
     from slmsuite.hardware.slms.texasinstruments import PLM
 
@@ -31,10 +20,11 @@ Example
     phase = np.random.rand(540, 960) * 2 * np.pi
     plm.write(phase)
 
-Attributes
-----------
-device_config : dict
-    Device configuration loaded from texas_instruments.yaml
+The USB configuration is accomplished by :class:`DLPC900`,
+a USB HID interface for configuring the DLPC900
+evaluation module (EVM) that drives the PLM. This automates the setup normally done
+through TI's DLPC900 GUI software. For further information, refer to the
+`DLPC900 Programmer's Guide <https://www.ti.com/lit/ug/dlpu018j/dlpu018j.pdf>`_.
 """
 
 import yaml
@@ -83,7 +73,7 @@ class DLPC900Command(IntEnum):
     """
     DLPC900 USB command codes.
 
-    Each value is the two byte ommand code sent over USB HID, as defined in
+    Each value is the two byte command code sent over USB HID, as defined in
     the `DLPC900 Programmer's Guide (DLPU018J)
     <https://www.ti.com/lit/ug/dlpu018j/dlpu018j.pdf>`_.
     """
@@ -107,36 +97,10 @@ class PLM(ScreenMirrored):
 
     This class combines :class:`ScreenMirrored` for display with GPU-accelerated
     phase quantization and electrode mapping. Automatically detects and uses
-    CuPy for GPU acceleration, falling back to NumPy if unavailable.
+    :mod:`cupy` for GPU acceleration, falling back to NumPy if unavailable.
 
     Optionally configures the DLPC900 EVM via USB, replacing the manual setup
     normally done through TI's GUI software.
-
-    Parameters
-    ----------
-    device_name : str
-        Device identifier from texas_instruments.yaml (e.g., ``"p47"``, ``"p67"``)
-    display_number : int
-        Monitor number for display.
-    verbose : bool, optional
-        Whether to print extra information. Defaults to True.
-    configure_usb : bool, optional
-        If True, automatically configure the DLPC900 EVM via USB before
-        initializing the display. Requires ``hidapi``
-        (see :class:`DLPC900`). Defaults to False.
-    video_input : str, optional
-        Video input source: ``"displayport"`` or ``"hdmi"``.
-        Only used when ``configure_usb=True``. Defaults to ``"displayport"``.
-    pixel_mode : str or None, optional
-        Pixel clock mode: ``"single"`` (30 Hz) or ``"dual"`` (60 Hz).
-        If None, defaults to ``"dual"`` for DisplayPort or ``"single"`` for HDMI.
-        Only used when ``configure_usb=True``.
-    usb_vendor_id : int or None, optional
-        Override USB vendor ID for DLPC900.
-    usb_product_id : int or None, optional
-        Override USB product ID for DLPC900.
-    **kwargs
-        Additional arguments for :class:`ScreenMirrored`.
 
     Attributes
     ----------
@@ -165,10 +129,43 @@ class PLM(ScreenMirrored):
         gpu=None,
         **kwargs
     ):
+        """
+        Initialize the PLM interface.
+
+        Parameters
+        ----------
+        device_name : str
+            Device identifier from ``texas_instruments.yaml` (e.g., ``"p47"``, ``"p67"``).
+            Available devices can be queried with :meth:`get_device_list()`.
+        display_number : int
+            Monitor number for display.
+            Use :func:`ScreenMirrored.info()` to list available displays and their numbers.
+        verbose : bool, optional
+            Whether to print extra information. Defaults to ``True``.
+        configure_usb : bool, optional
+            If ``True``, automatically configure the DLPC900 EVM via USB before
+            initializing the display. Requires ``hidapi``
+            (see :class:`DLPC900`). Defaults to ``False``.
+        video_input : str, optional
+            Video input source: ``"displayport"`` or ``"hdmi"``.
+            Only used when ``configure_usb=True``. Defaults to ``"displayport"``.
+        pixel_mode : str or None, optional
+            Pixel clock mode: ``"single"`` (30 Hz) or ``"dual"`` (60 Hz).
+            If None, defaults to ``"dual"`` for DisplayPort or ``"single"`` for HDMI.
+            Only used when ``configure_usb=True``.
+        usb_vendor_id : int or None, optional
+            Override USB vendor ID for DLPC900.
+        usb_product_id : int or None, optional
+            Override USB product ID for DLPC900.
+        gpu : bool or None, optional
+            Whether to use GPU acceleration via :mod:`cupy`.
+        **kwargs
+            Additional arguments for :class:`ScreenMirrored`.
+        """
         self.dlpc900 = None
         self.display_number = display_number
 
-        # Load device configuration from JSON
+        # Load device configuration from YAML database
         self.device_config = self.load_device_config(device_name)
 
         # Determine compute backend
@@ -182,7 +179,7 @@ class PLM(ScreenMirrored):
             self.xp = np
 
         if verbose:
-            backend = "GPU (CuPy)" if self.xp is not np else "CPU (NumPy)"
+            backend = "GPU (cupy)" if self.xp is not np else "CPU (numpy)"
             print(f"PLM using {backend} backend")
 
         # Extract device parameters
@@ -192,7 +189,7 @@ class PLM(ScreenMirrored):
         # Store electrode layout for later use
         self._electrode_layout_raw = np.array(self.device_config["electrode_layout"])
 
-        # USB pre-config: set up PLM as display 
+        # USB pre-config: set up PLM as display
         if configure_usb:
             self.dlpc900 = DLPC900(vendor_id=usb_vendor_id,
                                    product_id=usb_product_id)
@@ -285,7 +282,6 @@ class PLM(ScreenMirrored):
         from slmsuite.hardware.slms.screenmirrored import ScreenMirrored
 
         dlpc = self.dlpc900
-        # dlpc.reset()
 
         if verbose:
             fw = dlpc.get_firmware_version()
@@ -316,7 +312,7 @@ class PLM(ScreenMirrored):
         if verbose:
             print("DLPC900 pre-configured (video mode, display detected)")
 
-    def _usb_post_configure(self, video_input, pixel_mode, verbose):
+    def _usb_post_configure(self, video_input, pixel_mode, verbose=True):
         """
         USB setup steps that happen after the pyglet window is created.
 
@@ -349,7 +345,7 @@ class PLM(ScreenMirrored):
         dlpc.stop_pattern()
 
         # Define a single 1-bit pattern entry (copied to all bits by PLM class):
-        # - No clear 
+        # - No clear
         # - Trigger out 2 enabled (per GUI instructions)
         # - Frame change on first bit (bit_position=0)
         dlpc.define_pattern(
@@ -562,7 +558,7 @@ class PLM(ScreenMirrored):
         Combine multiple binary CGHs into single 8-bit or 24-bit image.
 
         Stacks the MSB of 8 or 24 bitmaps into a single multi-bit image.
-        Supports GPU acceleration if CuPy is available and input is on GPU.
+        Supports GPU acceleration if :mod:`cupy` is available and input is on GPU.
 
         Parameters
         ----------
@@ -646,33 +642,26 @@ class DLPC900:
 
     See :class:`DLPC900Command` for the implemented command codes and their
     DLPU018J section references.
-
-    Parameters
-    ----------
-    vendor_id : int or None
-        USB vendor ID. Defaults to ``0x0451`` (Texas Instruments).
-    product_id : int or None
-        USB product ID. Defaults to ``0xC900`` (DLPC900 EVM).
-
-    Raises
-    ------
-    ImportError
-        If the ``hidapi`` package is not installed.
-    RuntimeError
-        If the DLPC900 USB device is not found.
-
-    Example
-    -------
-    ::
-
-        from slmsuite.hardware.slms.texasinstruments import DLPC900
-
-        dlpc = DLPC900()
-        print(dlpc.get_main_status())
-        dlpc.close()
     """
 
     def __init__(self, vendor_id=None, product_id=None):
+        """
+        Initialize the DLPC900 USB interface.
+
+        Parameters
+        ----------
+        vendor_id : int or None
+            USB vendor ID. Defaults to ``0x0451`` (Texas Instruments).
+        product_id : int or None
+            USB product ID. Defaults to ``0xC900`` (DLPC900 EVM).
+
+        Raises
+        ------
+        ImportError
+            If the ``hidapi`` package is not installed.
+        RuntimeError
+            If the DLPC900 USB device is not found.
+        """
         if not HID_AVAILABLE:
             raise ImportError(
                 "hidapi is required for DLPC900 USB control. "
@@ -919,11 +908,11 @@ class DLPC900:
 
     def start_pattern(self):
         """Start the pattern display sequence."""
-        self._send('w', DLPC900Command.PAT_STARTSTOP, [2])
+        self._send('w', DLPC900Command.PAT_STARTSTOP, [0x02])
 
     def stop_pattern(self):
         """Stop the pattern display sequence."""
-        self._send('w', DLPC900Command.PAT_STARTSTOP, [0])
+        self._send('w', DLPC900Command.PAT_STARTSTOP, [0x00])
 
     def configure_pattern_lut(self, num_entries, num_repeats=0):
         """
@@ -936,9 +925,11 @@ class DLPC900:
         num_repeats : int
             Repeat count (0 = infinite).
         """
-        self._send('w', DLPC900Command.PAT_LUT_CONFIG,
-                   list(num_entries.to_bytes(2, 'little'))
-                   + list(num_repeats.to_bytes(4, 'little')))
+        self._send(
+            'w', DLPC900Command.PAT_LUT_CONFIG,
+            list(num_entries.to_bytes(2, 'little'))
+            + list(num_repeats.to_bytes(4, 'little'))
+        )
 
     def define_pattern(
         self, index, bitdepth=1, color=7,
@@ -980,14 +971,18 @@ class DLPC900:
             | (int(wait_for_trigger) & 0x01) << 7
         )
 
-        self._send('w', DLPC900Command.PAT_LUT_DEFINE,
-                   list(index.to_bytes(2, 'little'))
-                   + list(DLPC900_EXPOSURE_US.to_bytes(3, 'little'))
-                   + [options]
-                   + list(dark_time_us.to_bytes(3, 'little'))
-                   + [int(trigger_out2) & 0x01,
-                      image_index & 0xFF,
-                      (image_index >> 8) & 0x07 | (bit_position & 0x1F) << 3])
+        self._send(
+            'w', DLPC900Command.PAT_LUT_DEFINE,
+            list(index.to_bytes(2, 'little'))
+            + list(DLPC900_EXPOSURE_US.to_bytes(3, 'little'))
+            + [options]
+            + list(dark_time_us.to_bytes(3, 'little'))
+            + [
+                int(trigger_out2) & 0x01,
+                image_index & 0xFF,
+                (image_index >> 8) & 0x07 | (bit_position & 0x1F) << 3
+            ]
+        )
 
     def set_it6535_power(self, mode):
         """

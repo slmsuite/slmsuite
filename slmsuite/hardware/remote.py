@@ -411,7 +411,7 @@ class _Client(_Picklable):
         self.latency_s = t
         self.server_attributes = pickled
 
-        if not __version__ in pickled:
+        if not "__version__" in pickled:
             warnings.warn(
                 f"Server did not provide version information; "
                 f"cannot verify compatibility with client version {__version__}."

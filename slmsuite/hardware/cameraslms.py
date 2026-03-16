@@ -2146,7 +2146,7 @@ class FourierSLM(CameraSLM):
 
         return final
 
-    def wavefront_calibrate_zernike_apply(
+    def _wavefront_calibrate_zernike_apply(
         vector,
         from_units="norm",
     ):

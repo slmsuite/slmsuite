@@ -15,11 +15,10 @@ build:
 sphinx:
    configuration: docs/source/conf.py
 
-# If using Sphinx, optionally build your docs in additional formats such as PDF
-# formats:
-#    - pdf
-
-# Optionally declare the Python requirements required to build your docs
+# Install the package with docs extras
 python:
    install:
-   - requirements: docs/requirements.txt
+   - method: pip
+     path: .
+     extra_requirements:
+       - docs

@@ -304,7 +304,9 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 (see :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`).
 
         spot_amp : array_like OR None
-            The amplitude to target for each spot. See :attr:`spot_amp`.
+            The **amplitudes** to target for each spot.
+            The target **powers** are the square of the amplitudes.
+            See :attr:`spot_amp`.
             If ``None``, all spots are assumed to have the same amplitude.
             Normalization is performed automatically; the user is not required to
             normalize.
@@ -1068,7 +1070,8 @@ class SpotHologram(_AbstractSpotHologram):
         to the true computational location of a given spot.
         These vectors are floats.
     spot_amp : array_like of float
-        The target amplitude for each spot.
+        The **amplitudes** to target for each spot.
+        The target **powers** are the square of the amplitudes.
         Must have length corresponding to the number of spots.
         For instance, the user can request dimmer or brighter spots.
     external_spot_amp : array_like of float
@@ -1133,8 +1136,9 @@ class SpotHologram(_AbstractSpotHologram):
 
             Defaults to ``"kxy"``.
         spot_amp : array_like OR None
-            The amplitude to target for each spot.
-            See :attr:`SpotHologram.spot_amp`.
+            The **amplitudes** to target for each spot.
+            The target **powers** are the square of the amplitudes.
+            See :attr:`spot_amp`.
             If ``None``, all spots are assumed to have the same amplitude.
             Normalization is performed automatically; the user is not required to
             normalize.

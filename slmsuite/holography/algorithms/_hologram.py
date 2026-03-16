@@ -215,16 +215,18 @@ class Hologram(_HologramStats):
         Parameters
         ----------
         target : numpy.ndarray OR cupy.ndarray OR (int, int) OR None
-            Target to optimize to.
+            Target **amplitude** to optimize to.
+            This is the square root of the target **power**.
             The user can also pass a shape in :mod:`numpy` ``(h, w)`` form,
             and this constructor will create an empty target of all zeros.
             :meth:`.get_padded_shape()` can be of particular help for calculating the
             shape that will produce desired results (in terms of precision, etc).
             ``None`` is used internally.
         amp : array_like OR None
-            The nearfield amplitude. See :attr:`amp`. Of shape :attr:`slm_shape`.
+            The nearfield amplitude. This is the square root of the power at the SLM plane.
+            See :attr:`amp`. Of shape :attr:`slm_shape`.
         phase : array_like OR None
-            The nearfield initial phase.
+            The nearfield initial phase. This is the displayed wavefront at the SLM plane.
             See :attr:`phase`. :attr:`phase` should only be passed if the user wants to
             precondition the optimization. Of shape :attr:`slm_shape`.
         slm_shape : (int, int) OR slmsuite.hardware.FourierSLM OR slmsuite.hardware.slms.SLM OR None
@@ -807,7 +809,7 @@ class Hologram(_HologramStats):
                 return self.phase.get() + np.pi
             else:
                 return self.phase + np.pi
-            
+
     def get_amp(self):
         """
         Collects the current nearfield amplitude regardless of np/cp configuration.

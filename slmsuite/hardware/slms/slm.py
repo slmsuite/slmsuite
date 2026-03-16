@@ -171,7 +171,7 @@ class SLM(_Picklable, ABC):
         # Multiplier for when the target wavelengths differ from the design wavelength.
         self.phase_scaling = self.wav_um / self.wav_design_um
 
-        # Pixel depth of the SLM.
+        # Bit depth of SLM pixels.
         self.bitdepth = int(bitdepth)
 
         # time to delay after writing (allows SLM to stabilize).

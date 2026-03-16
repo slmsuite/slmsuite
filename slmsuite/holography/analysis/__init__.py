@@ -126,7 +126,8 @@ def take(
         size = int(size)
         size = (size, size)
     else:
-        size = (int(size[0]), int(size[1]))
+        s = np.asarray(size).ravel()
+        size = (int(s[0]), int(s[1]))
 
     vectors = np.floor(format_2vectors(vectors)).astype(int)
 
@@ -615,7 +616,7 @@ def image_normalize(images, nansum=False, remove_field=False):
     normalization = image_normalization(images, nansum=nansum)
 
     if single_image:
-        normalization = float(normalization)
+        normalization = float(normalization.item())
         if normalization == 0:
             return np.zeros_like(images)
         else:
@@ -857,7 +858,7 @@ def image_ellipticity_angle(variances):
 
     Parameters
     ----------
-    moment2 : numpy.ndarray
+    variances : numpy.ndarray
         The output of :meth:`image_variances()`. Shape ``(3, image_count)``.
 
     Returns
@@ -1260,7 +1261,8 @@ def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
     phase_image : array_like
         Image to remove vortices upon.
     mask : array_like OR None
-        Boolean mask to remove within. This is advisable for large images.
+        Removes vortices whose coordinates are inside this mask.
+        The full phase image is changed, even outside the mask.
     return_vortices_negative : bool
         If ``False``, the original image is modified in-place with vortices removed
         inside the mask and returned.
@@ -1286,13 +1288,8 @@ def image_vortices_remove(phase, mask=None, return_vortices_negative=False):
     else:
         canvas = phase
 
-
-    if mask is None:
-        for x, y, w in zip(coordinates[1], coordinates[0], weights):
-            canvas -= w * xp.arctan2(grid[0] - x, grid[1] - y)
-    else:
-        for x, y, w in zip(coordinates[1], coordinates[0], weights):
-            canvas[mask] -= w * xp.arctan2(grid[0][mask] - x, grid[1][mask] - y)
+    for x, y, w in zip(coordinates[1], coordinates[0], weights):
+        canvas -= w * xp.arctan2(grid[0] - x, grid[1] - y)
 
     return canvas
 
@@ -1968,7 +1965,7 @@ def blob_array_detect(
             # Plot a red rectangle to show the extents of the zoom region
             rect = plt.Rectangle(
                 (float(xl[0]), float(yl[0])),
-                float(np.diff(xl)), float(np.diff(yl)),
+                float(np.diff(xl).item()), float(np.diff(yl).item()),
                 ec="r", fc="none"
             )
             axs[0].add_patch(rect)
@@ -2275,7 +2272,7 @@ def blob_array_detect(
         # Plot a red rectangle to show the extents of the zoom region
         rect = plt.Rectangle(
             (float(xl[0]), float(yl[0])),
-            float(np.diff(xl)), float(np.diff(yl)),
+            float(np.diff(xl).item()), float(np.diff(yl).item()),
             ec="r", fc="none"
         )
         axs[0].add_patch(rect)

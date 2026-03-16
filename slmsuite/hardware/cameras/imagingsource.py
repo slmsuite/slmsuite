@@ -234,7 +234,7 @@ class ImagingSource(Camera):
             bpp = ctypes.c_int()    # Bits per pixel
             COLORFORMAT = ctypes.c_int()
 
-            ImagingSource.safe_call(ImagingSource.sdk.IC_GetImageDescription, self.cam, width, height, bpp, COLORFORMAT)
+            ImagingSource.safe_call(ImagingSource.sdk.IC_GetImageDescription, 1, self.cam, width, height, bpp, COLORFORMAT)
 
             width = width.value
             height = height.value

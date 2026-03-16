@@ -182,9 +182,8 @@ class SLM(_Picklable, ABC):
         # Multiplier for when the target wavelengths differ from the design wavelength.
         self.phase_scaling = self.wav_um / self.wav_design_um
 
-        # Resolution of the SLM.
+        # Bit depth of SLM pixels.
         self.bitdepth = int(bitdepth)
-        self.bitresolution = 2**bitdepth
 
         # time to delay after writing (allows SLM to stabilize).
         self.settle_time_s = float(settle_time_s)
@@ -213,7 +212,7 @@ class SLM(_Picklable, ABC):
         else:
             self.dtype = np.dtype(np.uint16)
 
-        # Display caches for user reference.
+        # Phase and display caches for user reference.
         self.phase = np.zeros(self.shape)
         self.display = np.zeros(self.shape, dtype=self.dtype)
 
@@ -226,6 +225,10 @@ class SLM(_Picklable, ABC):
         # Default settle and phase_correct behavior for set_phase.
         self.phase_correct = True
         self.settle = False
+
+    @property
+    def bitresolution(self):
+        return 2**self.bitdepth
 
     @abstractmethod
     def close(self):
@@ -289,7 +292,7 @@ class SLM(_Picklable, ABC):
         # (this should be made into a toolbox method to supplement pad, unpad)
         file_shape_error = np.sign(np.array(phase_correction.shape) - np.array(self.shape))
 
-        if np.abs(np.diff(file_shape_error)) > 1:
+        if np.any(np.abs(np.diff(file_shape_error)) > 1):
             raise ValueError(
                 "Note sure how to pad or unpad correction shape {} to SLM shape {}.".format(
                     phase_correction.shape, self.shape
@@ -955,7 +958,7 @@ class SLM(_Picklable, ABC):
             scaling = (1,1)
         # Fractions of the display
         elif units == "frac":
-            scaling = [g.ptp() for g in self.grid]
+            scaling = [g.max() - g.min() for g in self.grid]
         # Physical units
         else:
             if units in toolbox.LENGTH_FACTORS.keys():
@@ -1385,3 +1388,45 @@ class SLM(_Picklable, ABC):
         )
 
         return np.mean(psf_kxy)
+
+    # Self-test method to test everything above.
+
+    def test(self):
+        """
+        Tests the core hardware methods of :class:`SLM`.
+        Validates that the SLM is connected correctly and all hardware
+        features are supported.
+        """
+        print(f"Testing SLM: {self.name}")
+
+        print("  Testing set_phase...")
+
+
+
+        # Benchmark set_phase.
+        n_iter = 20
+        phase = np.random.rand(n_iter, *self.shape) * 2 * np.pi
+        t0 = time.time()
+        for i in range(n_iter):
+            self.set_phase(phase[i,:,:], phase_correct=False)
+        elapsed = time.time() - t0
+        fps = n_iter / elapsed
+        print(f"    set_phase benchmark: {fps:.1f} Hz ({elapsed/n_iter*1e3:.2f} ms/frame)")
+
+        print("  Testing set_input_trigger...")
+        for val in [True, False]:
+            try:
+                self.set_input_trigger(val)
+                print(f"    set_input_trigger({val}): OK")
+            except NotImplementedError:
+                print(f"    set_input_trigger({val}): NotImplementedError (expected for base SLM)")
+
+        print("  Testing set_output_trigger...")
+        for val in [True, False]:
+            try:
+                self.set_output_trigger(val)
+                print(f"    set_output_trigger({val}): OK")
+            except NotImplementedError:
+                print(f"    set_output_trigger({val}): NotImplementedError (expected for base SLM)")
+
+        return True

@@ -276,7 +276,7 @@ class Basler(Camera):
         woi : list, None
             See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
-        # Set the width and height to very small values 
+        # Set the width and height to very small values
         # such that setting the offsets will not error.
 
         # Now set the WOI.
@@ -331,10 +331,10 @@ class Basler(Camera):
             self.cam.StopGrabbing()
 
         return im
-    
+
     def is_grabbing(self):
         """
-        Printing whether or not the camera is currently grabbing images.
+        Determine whether or not the camera is actively grabbing images.
 
         Returns
         -------

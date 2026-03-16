@@ -1462,7 +1462,7 @@ class Cheetah640(Camera):
         if err != I_OK:
             print("Could not abort capture, errorCode: %lu" % (err))
 
-    def flush(self):
+    def flush(self, timeout_s=1):
         """See :meth:`.Camera.flush`"""
         time.sleep(0.1)  # Allow some time to grab free-running images
         err = self._get_image_hw(block=False, convert=False, return_img=False)

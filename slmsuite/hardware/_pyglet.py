@@ -23,7 +23,6 @@ try:
     import pyglet
     import pyglet.gl as gl
     from pyglet.window import Window as __Window
-    PYGLET_AVAILABLE = True
 
     # Helper to get display/canvas depending on pyglet version
     PYGLET_VERSION = Version(getattr(pyglet, '__version__', '0'))
@@ -46,17 +45,14 @@ except:
     gl = None
     __Window = object
     PYGLET_VERSION = None
-    PYGLET_AVAILABLE = False
     def get_pyglet_display():
         raise ImportError("pyglet not installed.")
 
 # Try to import CuPy for optimized GPU transfers
 try:
     import cupy as cp
-    CUPY_AVAILABLE = True
 except ImportError:
     cp = None
-    CUPY_AVAILABLE = False
 
 
 class _Window(__Window):

@@ -55,7 +55,7 @@ except ImportError:
 
 # PLM Constants
 LUT_SIZE = 1 << 16 # Size of quantization LUT (64 KB for 2^16 entries)
-DEVICE_DB_PATH = os.path.join(os.path.dirname(__file__), "texas_instruments.yaml")
+MODEL_DB_PATH = os.path.join(os.path.dirname(__file__), "texas_instruments.yaml")
 DLPC900_VENDOR_ID = 0x0451
 DLPC900_PRODUCT_ID = 0xC900
 DLPC900_EXPOSURE_US = 694
@@ -104,8 +104,8 @@ class PLM(ScreenMirrored):
 
     Attributes
     ----------
-    device_config : dict
-        Device configuration from texas_instruments.yaml.
+    model_config : dict
+        Model configuration from texas_instruments.yaml.
     dlpc900 : DLPC900 or None
         USB interface to DLPC900 EVM, if configured.
     electrode_layout : ndarray
@@ -118,7 +118,7 @@ class PLM(ScreenMirrored):
 
     def __init__(
         self,
-        device_name,
+        model_name,
         display_number,
         verbose=True,
         configure_usb=False,
@@ -134,9 +134,9 @@ class PLM(ScreenMirrored):
 
         Parameters
         ----------
-        device_name : str
-            Device identifier from ``texas_instruments.yaml` (e.g., ``"p47"``, ``"p67"``).
-            Available devices can be queried with :meth:`get_device_list()`.
+        model_name : str
+            Model identifier from ``texas_instruments.yaml`` (e.g., ``"p47"``, ``"p67"``).
+            Available models can be queried with :meth:`get_model_list()`.
         display_number : int
             Monitor number for display.
             Use :func:`ScreenMirrored.info()` to list available displays and their numbers.
@@ -148,7 +148,7 @@ class PLM(ScreenMirrored):
             (see :class:`DLPC900`). Defaults to ``False``.
         video_input : str, optional
             Video input source: ``"displayport"`` or ``"hdmi"``.
-            Only used when ``configure_usb=True``. Defaults to ``"displayport"``.
+            Defaults to ``"displayport"``.
         pixel_mode : str or None, optional
             Pixel clock mode: ``"single"`` (30 Hz) or ``"dual"`` (60 Hz).
             If None, defaults to ``"dual"`` for DisplayPort or ``"single"`` for HDMI.
@@ -165,8 +165,8 @@ class PLM(ScreenMirrored):
         self.dlpc900 = None
         self.display_number = display_number
 
-        # Load device configuration from YAML database
-        self.device_config = self.load_device_config(device_name)
+        # Load model configuration from YAML database
+        self.model_config = self.load_model_config(model_name)
 
         # Determine compute backend
         if gpu is None:
@@ -182,12 +182,12 @@ class PLM(ScreenMirrored):
             backend = "GPU (cupy)" if self.xp is not np else "CPU (numpy)"
             print(f"PLM using {backend} backend")
 
-        # Extract device parameters
-        self.device_shape = tuple(self.device_config["shape"])  # (rows, cols) - input phase shape
-        pitch_um = tuple(np.array(self.device_config["pitch"]) * 1e6)  # Convert m to µm
+        # Extract model parameters
+        self.model_shape = tuple(self.model_config["shape"])  # (rows, cols) - input phase shape
+        pitch_um = tuple(np.array(self.model_config["pitch"]) * 1e6)  # Convert m to µm
 
         # Store electrode layout for later use
-        self._electrode_layout_raw = np.array(self.device_config["electrode_layout"])
+        self._electrode_layout_raw = np.array(self.model_config["electrode_layout"])
 
         # USB pre-config: set up PLM as display
         if configure_usb:
@@ -196,15 +196,15 @@ class PLM(ScreenMirrored):
             self._usb_pre_configure(video_input, pixel_mode, display_number, verbose)
 
         # Compute bitdepth from number of displacement ratios
-        n_phases = len(self.device_config["displacement_ratios"])
+        n_phases = len(self.model_config["displacement_ratios"])
         bitdepth = int(np.log2(n_phases))
 
-        # Initialize parent ScreenMirrored class with device shape (vs display shape)
+        # Initialize parent ScreenMirrored class with model shape (vs display shape)
         # The SLM.shape should represent the input phase dimensions
         super().__init__(
             display_number,
             verbose=verbose,
-            resolution=self.device_shape[::-1],  # ScreenMirrored expects (width, height)
+            slm_shape=self.model_shape[::-1],  # ScreenMirrored expects (width, height)
             bitdepth=bitdepth,
             pitch_um=pitch_um,
             **kwargs
@@ -212,7 +212,7 @@ class PLM(ScreenMirrored):
 
         # Calculate display shape after electrode mapping
         elec_shape = self._electrode_layout_raw.shape
-        self.display_shape = (self.device_shape[0] * elec_shape[0], self.device_shape[1] * elec_shape[1])
+        self.display_shape = (self.model_shape[0] * elec_shape[0], self.model_shape[1] * elec_shape[1])
 
         # Update window shape and recreate buffers for electrode-mapped output.
         # Must run on the window thread to satisfy OpenGL context thread affinity.
@@ -230,46 +230,46 @@ class PLM(ScreenMirrored):
         # Pre-compute quantization LUT
         self._init_quantize_lut()
 
-        # Convert device arrays to backend (GPU or CPU)
-        self.memory_lut = self.xp.array(self.device_config["memory_lut"], dtype=np.uint8)
+        # Convert model arrays to backend (GPU or CPU)
+        self.memory_lut = self.xp.array(self.model_config["memory_lut"], dtype=np.uint8)
         self.electrode_layout = self.xp.array(self._electrode_layout_raw, dtype=np.uint8)
-        self.data_flip = tuple(self.device_config["data_flip"])
+        self.data_flip = tuple(self.model_config["data_flip"])
 
         # Re-initialize self.display with the electrode-expanded shape so that
         # _format_phase_hw can write in-place (avoiding per-frame allocations).
         self.display = self.xp.zeros(self.display_shape, dtype=self.dtype)
 
     @staticmethod
-    def load_device_config(device_name):
+    def load_model_config(model_name):
         """
-        Load device configuration from texas_instruments.yaml.
+        Load model configuration from texas_instruments.yaml.
 
         Parameters
         ----------
-        device_name : str
-            Device identifier (e.g., "p47", "p67")
+        model_name : str
+            Model identifier (e.g., "p47", "p67")
 
         Returns
         -------
         dict
-            Device configuration
+            Model configuration
 
         Raises
         ------
         ValueError
-            If device not found in database
+            If model not found in database
         """
-        with open(DEVICE_DB_PATH, 'r') as f:
-            device_db = yaml.safe_load(f)
+        with open(MODEL_DB_PATH, 'r') as f:
+            model_db = yaml.safe_load(f)
 
-        if device_name not in device_db:
-            available = list(device_db.keys())
+        if model_name not in model_db:
+            available = list(model_db.keys())
             raise ValueError(
-                f"Device '{device_name}' not found. "
-                f"Available devices: {available}"
+                f"Model '{model_name}' not found. "
+                f"Available models: {available}"
             )
 
-        return device_db[device_name]
+        return model_db[model_name]
 
     def _usb_pre_configure(self, video_input, pixel_mode, display_number, verbose=True):
         """
@@ -397,10 +397,10 @@ class PLM(ScreenMirrored):
 
         Replaces per-frame float modulo and ``searchsorted`` or ``digitize``
         with a single array index at runtime. The LUT has 2^16 entries (64 KB),
-        built once from the device's non-uniform displacement ratios.
+        built once from the model's non-uniform displacement ratios.
         """
 
-        displacement_ratios = np.array(self.device_config["displacement_ratios"])
+        displacement_ratios = np.array(self.model_config["displacement_ratios"])
 
         # Scale displacement ratios to (bitresolution - 1) / bitresolution
         ratio_scale = (self.bitresolution - 1) / self.bitresolution
@@ -506,7 +506,7 @@ class PLM(ScreenMirrored):
             Multiply final bitplane by 255 to display same CGH for full frame.
             Defaults to True.
         enforce_shape : bool, optional
-            Check that input shape matches device shape. Defaults to True.
+            Check that input shape matches model shape. Defaults to True.
 
         Returns
         -------
@@ -517,17 +517,17 @@ class PLM(ScreenMirrored):
         Raises
         ------
         ValueError
-            If enforce_shape=True and phase shape doesn't match device
+            If enforce_shape=True and phase shape doesn't match model shape
         """
         xp = self.xp
 
         # Shape validation
         if enforce_shape:
-            expected_shape = self.device_shape
+            expected_shape = self.model_shape
             if len(phase.shape) < 2 or phase.shape[-2:] != expected_shape:
                 raise ValueError(
                     f"Phase map shape {phase.shape} does not match "
-                    f"device shape {expected_shape}"
+                    f"model shape {expected_shape}"
                 )
 
         # Coerce input to match backend (e.g. numpy→cupy if gpu=True)
@@ -613,19 +613,19 @@ class PLM(ScreenMirrored):
         return result
 
     @staticmethod
-    def get_device_list():
+    def get_model_list():
         """
-        Get list of available PLM devices from database.
+        Get list of available PLM models from database.
 
         Returns
         -------
         list of str
-            Device identifiers available in texas_instruments.yaml
+            Model identifiers available in texas_instruments.yaml
         """
-        with open(DEVICE_DB_PATH, 'r') as f:
-            device_db = yaml.safe_load(f)
+        with open(MODEL_DB_PATH, 'r') as f:
+            model_db = yaml.safe_load(f)
 
-        return list(device_db.keys())
+        return list(model_db.keys())
 
 
 class DLPC900:

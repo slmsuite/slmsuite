@@ -1,4 +1,4 @@
-# Device specifications for Texas Instruments PLM EVM kits.
+# Model specifications for Texas Instruments PLM EVM kits.
 # These values are adapted from the json files provided in Texas Instruments'
 # https://github.com/TexasInstruments-Sandbox/ti-phase-light-modulator/tree/main
 # Original license below for reference:
@@ -52,7 +52,7 @@ p67:
     - [0, 2]
   data_flip: [0, 1]
 
-# The following devices are used for testing only.
+# The following models are used for testing only.
 test_single:
   name: "Test PLM"
   shape: [1, 1]

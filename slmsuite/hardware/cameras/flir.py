@@ -167,7 +167,7 @@ class FLIR(Camera):
                 self.cam.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
         except PySpin.SpinnakerException as ex:
-            raise RuntimeError(f"Failed to configure camera: {ex}")
+            warnings.warn(f"Failed to configure camera: {ex}")
 
         # Begin acquisition
         try:

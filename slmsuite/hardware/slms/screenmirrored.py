@@ -129,7 +129,7 @@ class ScreenMirrored(SLM):
             wav_um=1,
             pitch_um=(8,8),
             verbose=True,
-            resolution=None,
+            slm_shape=None,
             **kwargs
         ):
         """
@@ -169,8 +169,17 @@ class ScreenMirrored(SLM):
             Pixel pitch in microns. Defaults to 8 micron square pixels.
         verbose : bool
             Whether or not to print extra information.
-        resolution : tuple of int
-            Desired resolution as (height, width). If not provided, the display's native resolution will be used.
+        slm_shape : tuple of int or None
+            SLM resolution as ``(width, height)``, for when the SLM's
+            active area differs from the display resolution (e.g. PLM).
+            Defaults to ``None``, which uses the display's native resolution.
+            
+            Caution
+            ~~~~~~~
+            This should normally be left as ``None`` unless the SLM has a
+            different shape than the display. Note that different SLM and
+            screen resolutions are not generally supported unless explicitly
+            implemented in the associated SLM class.
         **kwargs
             See :meth:`.SLM.__init__` for permissible options.
         """
@@ -210,11 +219,9 @@ class ScreenMirrored(SLM):
         # Store as (width, height) to match SLM.__init__ convention.
         self.display_resolution = (screen.width, screen.height)
 
-        # Use custom resolution if provided, else use display resolution.
-        # resolution is (width, height) per SLM.__init__ convention.
-        if resolution is not None:
-            slm_shape = resolution
-        else:
+        # Use custom slm_shape if provided, else use display resolution.
+        # slm_shape is (width, height) per SLM.__init__ convention.
+        if slm_shape is None:
             slm_shape = self.display_resolution
 
         super().__init__(

@@ -237,6 +237,113 @@ class TestCamera:
             with pytest.raises(ValueError, match="set_z must be"):
                 camera.autofocus(set_z="not_callable")
 
+    def test_woi(self, camera, subtests):
+        """
+        WOI (window of interest) test: various sizes and offsets.
+
+        For each candidate WOI the test verifies:
+        - ``camera.woi`` is updated after ``set_woi``
+        - ``camera.shape`` is consistent with the WOI dimensions
+        - ``get_image()`` returns an array whose shape matches ``camera.shape``
+        - The WOI stays within sensor bounds
+        - The snapped WOI offset + size does not exceed the sensor boundary
+
+        Cameras that do not implement ``set_woi`` are skipped.
+        """
+        # Skip if set_woi is not implemented.
+        try:
+            camera.set_woi()
+        except NotImplementedError:
+            pytest.skip("set_woi not implemented for this camera")
+
+        orig_woi = camera.woi
+        orig_shape = camera.shape
+
+        x0, w_max, y0, h_max = orig_woi  # full-sensor WOI after reset
+
+        # Determine normal vs rotated orientation once.
+        # default_shape is (height, width) for normal, (width, height) for 90/270 rot.
+        normal_orientation = (camera.default_shape[0] == h_max)
+
+        def expected_shape(w, h):
+            """Return numpy (rows, cols) shape for a WOI of pixel dims (w, h)."""
+            return (h, w) if normal_orientation else (w, h)
+
+        def check_woi(label, woi_request):
+            """Set WOI, capture an image, and assert consistency."""
+            with subtests.test(label):
+                camera.set_woi(woi_request)
+                x, w, y, h = camera.woi
+
+                # WOI must stay inside sensor.
+                assert x >= 0, f"OffsetX {x} < 0"
+                assert y >= 0, f"OffsetY {y} < 0"
+                assert x + w <= w_max, f"x+w={x+w} exceeds sensor width {w_max}"
+                assert y + h <= h_max, f"y+h={y+h} exceeds sensor height {h_max}"
+                assert w > 0 and h > 0, "WOI dimensions must be positive"
+
+                # camera.shape must be consistent with WOI.
+                exp_shape = expected_shape(w, h)
+                assert camera.shape == exp_shape, (
+                    f"camera.shape {camera.shape} != expected {exp_shape} "
+                    f"for woi=({x},{w},{y},{h})"
+                )
+
+                # Captured image must match camera.shape.
+                img = camera.get_image()
+                assert img.shape == camera.shape, (
+                    f"get_image() shape {img.shape} != camera.shape {camera.shape}"
+                )
+
+        try:
+            # Full sensor (explicit)
+            check_woi("full sensor", (0, w_max, 0, h_max))
+
+            # Halves
+            check_woi("left half",   (0, w_max // 2, 0, h_max))
+            check_woi("right half",  (w_max // 2, w_max // 2, 0, h_max))
+            check_woi("top half",    (0, w_max, 0, h_max // 2))
+            check_woi("bottom half", (0, w_max, h_max // 2, h_max // 2))
+
+            # Quadrant corners
+            check_woi("top-left quarter",     (0,          w_max // 2, 0,          h_max // 2))
+            check_woi("top-right quarter",    (w_max // 2, w_max // 2, 0,          h_max // 2))
+            check_woi("bottom-left quarter",  (0,          w_max // 2, h_max // 2, h_max // 2))
+            check_woi("bottom-right quarter", (w_max // 2, w_max // 2, h_max // 2, h_max // 2))
+
+            # Centred half-size patch
+            check_woi("centred half", (w_max // 4, w_max // 2, h_max // 4, h_max // 2))
+
+            # Thin strips
+            check_woi("wide strip (centre rows)",  (0, w_max, h_max * 3 // 8, h_max // 4))
+            check_woi("tall strip (centre cols)",  (w_max * 3 // 8, w_max // 4, 0, h_max))
+
+            # Small patch (~1/8 sensor), offset to several positions
+            sw, sh = w_max // 8, h_max // 8
+            check_woi("small patch ; near origin",        (0,               sw, 0,               sh))
+            check_woi("small patch ; top-right corner",   (w_max - sw,      sw, 0,               sh))
+            check_woi("small patch ; bottom-left corner", (0,               sw, h_max - sh,      sh))
+            check_woi("small patch ; bottom-right corner",(w_max - sw,      sw, h_max - sh,      sh))
+            check_woi("small patch ; centre",             (w_max // 2 - sw // 2, sw,
+                                                           h_max // 2 - sh // 2, sh))
+
+            # Asymmetric: very wide but short, and very tall but narrow
+            check_woi("wide thin strip",  (0, w_max, h_max * 2 // 5, h_max // 5))
+            check_woi("narrow tall strip",(w_max * 2 // 5, w_max // 5, 0, h_max))
+
+            # Non-power-of-two offsets (stress-test snapping arithmetic)
+            check_woi("odd offset ; 10% inset",
+                      (w_max // 10, w_max * 4 // 5, h_max // 10, h_max * 4 // 5))
+            check_woi("odd offset ; 30% inset",
+                      (w_max * 3 // 10, w_max * 2 // 5, h_max * 3 // 10, h_max * 2 // 5))
+
+        finally:
+            # Always restore original WOI so subsequent tests see the full sensor.
+            camera.set_woi(orig_woi)
+            assert camera.shape == orig_shape, (
+                f"Failed to restore original shape {orig_shape}; got {camera.shape}"
+            )
+
     def test_plot(self, camera, subtests):
         """Camera plot method produces an axes."""
         import matplotlib.pyplot as plt

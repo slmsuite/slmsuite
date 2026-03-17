@@ -5,6 +5,7 @@ import warnings
 
 import pytest
 import numpy as np
+import matplotlib.pyplot as plt
 
 from slmsuite.holography import analysis
 from slmsuite.holography.analysis.fitfunctions import gaussian2d
@@ -956,8 +957,8 @@ def test_image_vortices(subtests):
         assert removed.shape == phase.shape
 
 
-def test_image_remove_blaze(subtests):
-    """Test image_remove_blaze() for global linear phase ramp removal."""
+def test_image_blaze_remove(subtests):
+    """Test image_blaze_remove() for global linear phase ramp removal."""
     y = np.arange(96)
     x = np.arange(96)
     X, Y = np.meshgrid(x, y)
@@ -969,7 +970,7 @@ def test_image_remove_blaze(subtests):
         dy_before = np.mod(np.gradient(phase, axis=0) + np.pi / 2, np.pi) - np.pi / 2
         mean_before = np.hypot(np.nanmean(dx_before), np.nanmean(dy_before))
 
-        result = analysis.image_remove_blaze(phase)
+        result = analysis.image_blaze_remove(phase)
 
         dx_after = np.mod(np.gradient(result, axis=1) + np.pi / 2, np.pi) - np.pi / 2
         dy_after = np.mod(np.gradient(result, axis=0) + np.pi / 2, np.pi) - np.pi / 2
@@ -985,27 +986,16 @@ def test_image_remove_blaze(subtests):
         mask = np.zeros_like(phase, dtype=float)
         mask[20:80, 20:80] = 1.0
 
-        result = analysis.image_remove_blaze(phase, mask=mask)
+        result = analysis.image_blaze_remove(phase, mask=mask)
         assert result.shape == phase.shape
 
     with subtests.test("plot path"):
-        import matplotlib.pyplot as plt
-        plt.ioff()
 
         phase = np.mod(0.15 * X + 0.22 * Y + 0.5, 2 * np.pi)
-        shown = {"called": False}
-        def _show():
-            shown["called"] = True
 
-        monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(analysis.plt, "show", _show)
-        try:
-            result = analysis.image_remove_blaze(phase, plot=True)
-        finally:
-            monkeypatch.undo()
-            plt.close("all")
+        result = analysis.image_blaze_remove(phase, plot=True)
+        plt.show()
 
-        assert shown["called"]
         assert result.shape == phase.shape
 
 

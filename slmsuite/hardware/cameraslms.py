@@ -20,7 +20,7 @@ from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import Hologram, SpotHologram, CompressedSpotHologram
 from slmsuite.holography.toolbox import imprint, format_2vectors, format_vectors, smallest_distance, fit_3pt, convert_vector
 from slmsuite.holography.toolbox.phase import blaze, _zernike_indices_parse, zernike, zernike_sum, binary
-from slmsuite.holography.analysis import image_remove_blaze, image_vortices_remove, image_reduce_wraps
+from slmsuite.holography.analysis import image_blaze_remove, image_vortices_remove, image_reduce_wraps
 from slmsuite.holography.analysis.files import load_h5, save_h5, generate_path, latest_path
 from slmsuite.holography.analysis.fitfunctions import cos, _sinc2d_nomod
 from slmsuite.holography.analysis.fitfunctions import _sinc2d_centered_taylor as sinc2d_centered
@@ -2030,16 +2030,59 @@ class FourierSLM(CameraSLM):
         variances = analysis.image_variances(images)
         return analysis.image_areas(variances)
 
-    def wavefront_calibrate_zernike_smooth(self, ratio=.25, smooth_xy=0.25):
+    def wavefront_calibrate_zernike_smooth(
+        self,
+        smoothing=0.25,
+        smoothing_xy=0.25,
+        smoothing_z=None,
+        plot=False,
+    ):
+        """
+        For a 2D array of Zernike-corrected spots, produces a smoothed version of the
+        spot coordinates in aberration space by averaging the coordinates of neighbors.
+        This is useful for noise reduction.
+
+        Parameters
+        ----------
+        smoothing : float
+            Smoothing factor for higher order terms.
+            This weights the original spot coordinates with the average of the
+            neighbors. Should be between 0 and 1. Zero retains the original coordinates.
+            One fully replaces it with the neighbor average.
+        smoothing_xy : float
+            Behaves similarly to ``smoothing`` for tip tilt terms. Instead of averaging the full
+            coordinate (which would result in all spots eventually converging), the
+            error between the current and expected xy position is averaged. The expected
+            xy position from an affine Fourier calibration does not account for barrel
+            and pincushion distortion, shifts from higher order Zernike terms, or other effects.
+            This correction can help mitigate those issues.
+        smoothing_z : float OR None
+            Not yet implemented. Would behave similarly to ``smoothing_xy`` for the
+            focus term. If ``None``, focus would be treated the same as the higher order
+            terms.
+        plot : bool
+            Whether to enable debug plots.
+        """
+        # Parse inputs.
+        if smoothing < 0 or smoothing > 1:
+            raise ValueError("Smoothing factor must be between 0 and 1.")
+        if smoothing_xy < 0 or smoothing_xy > 1:
+            raise ValueError("Smoothing factor must be between 0 and 1.")
+
         # Build triangulation.
         indices = self.calibrations["wavefront_zernike"]["zernike_indices"]
         I = np.arange(len(indices))
         to_smooth = I[indices > 2]
         x_smooth = I[indices == 2]
         y_smooth = I[indices == 1]
+        if smoothing_z is not None:
+            raise RuntimeError("Zernike z-smoothing not yet implemented.")
+
+            # if smoothing_z < 0 or smoothing_z > 1:
+            #     raise ValueError("Smoothing factor must be between 0 and 1.")
+            # z_smooth = I[indices == 4]
 
         vectors = self.calibrations["wavefront_zernike"]["corrected_spots"]
-        # delta_xy = self.calibrations["wavefront_zernike"]["corrected_spots"]
         final = np.zeros_like(vectors)
 
         points_ij = self.calibrations["wavefront_zernike"]["calibration_points_ij"]
@@ -2050,9 +2093,9 @@ class FourierSLM(CameraSLM):
             hardware=self,
         )
 
+        # Build triangulation (cache in future?).
         points = points_ij[:2, :].T
         tri = Delaunay(points)
-        # delaunay_plot_2d(tri)
 
         edges = np.array([(i, j) for t in tri.simplices for i, j in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])]])
         edges = np.sort(edges, axis=1)
@@ -2066,7 +2109,9 @@ class FourierSLM(CameraSLM):
                 for i, j in [(0,1),(1,2),(2,0)])
         ])
 
-        plt.scatter(*points_ij[:2], c="r", zorder=10)
+        # Average spot coordinates.
+        if plot:
+            plt.scatter(*points_ij[:2], c="r", zorder=10)
 
         for i in range(points_ij.shape[1]):
             neighbors = set()
@@ -2077,7 +2122,7 @@ class FourierSLM(CameraSLM):
 
             neighbors.discard(i)
 
-            if True:
+            if plot:
                 for n in neighbors:
                     plt.plot(
                         [points_ij[0, n], points_ij[0, i]],
@@ -2086,17 +2131,33 @@ class FourierSLM(CameraSLM):
                         linewidth=1,
                     )
 
-
-            final[x_smooth, i] = (1-smooth_xy) * (vectors[x_smooth, i] - base_xy[0, i]) + base_xy[0, i]
-            final[y_smooth, i] = (1-smooth_xy) * (vectors[y_smooth, i] - base_xy[1, i]) + base_xy[1, i]
-            final[to_smooth, i] = (1-ratio) * vectors[to_smooth, i]
+            # Handle XY terms.
+            final[x_smooth, i] = (1-smoothing_xy) * (vectors[x_smooth, i] - base_xy[0, i]) + base_xy[0, i]
+            final[y_smooth, i] = (1-smoothing_xy) * (vectors[y_smooth, i] - base_xy[1, i]) + base_xy[1, i]
 
             for n in neighbors:
-                final[x_smooth, i] += smooth_xy * (vectors[x_smooth, n] - base_xy[0, n]) / len(neighbors)
-                final[y_smooth, i] += smooth_xy * (vectors[y_smooth, n] - base_xy[1, n]) / len(neighbors)
-                final[to_smooth, i] += ratio * vectors[to_smooth, n] / len(neighbors)
+                final[x_smooth, i] += smoothing_xy * (vectors[x_smooth, n] - base_xy[0, n]) / len(neighbors)
+                final[y_smooth, i] += smoothing_xy * (vectors[y_smooth, n] - base_xy[1, n]) / len(neighbors)
+
+            # Handle higher order terms.
+            final[to_smooth, i] = (1-smoothing) * vectors[to_smooth, i]
+
+            for n in neighbors:
+                final[to_smooth, i] += smoothing * vectors[to_smooth, n] / len(neighbors)
 
         return final
+
+    def _wavefront_calibrate_zernike_apply(
+        vector,
+        from_units="norm",
+    ):
+        if from_units == "knm":
+            warnings.warn(
+                "'knm' requires shape information, which here defaults to the SLM shape. "
+                "This may give unexpected results."
+            )
+
+        pass
 
     ### Superpixel Wavefront Calibration ###
 
@@ -3839,7 +3900,7 @@ class FourierSLM(CameraSLM):
 
         # Step 3.4: Pattern cleanup.
         if remove_blaze:
-            phase = image_remove_blaze(phase=phase, mask=pwr_large)
+            phase = image_blaze_remove(phase=phase, mask=pwr_large)
 
         # Shift the final phase to minimize the effect of phase wrapping
         # (only matters when projecting patterns with small dynamic range).

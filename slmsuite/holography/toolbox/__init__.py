@@ -336,8 +336,8 @@ def convert_vector(vector, from_units="norm", to_units="norm", hardware=None, sh
         rad = cameraslm.ijcam_to_kxyslm(vector_xy)
     elif from_units in CAMERA_UNITS:
         unit = from_units.split("_")[-1]
+        if "mag_" in from_units: vector_xy *= cameraslm.mag
         rad = cameraslm.ijcam_to_kxyslm(vector_xy * LENGTH_FACTORS[unit] / cam_pitch_um)
-        if "mag_" in from_units: rad *= cameraslm.mag
 
     # Convert from normalized "kxy" units to the desired xy output units.
     if to_units == "norm" or to_units == "kxy" or to_units == "rad":

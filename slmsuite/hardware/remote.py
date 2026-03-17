@@ -198,7 +198,7 @@ class Server:
         for hw in hardware:
             if not hasattr(hw, "name"):
                 raise ValueError(f"Hardware {hw} must have a 'name' attribute.")
-            if not (hasattr(hw, "_get_image_hw") or hasattr(hw, "_set_phase_hw")):
+            if self.identify_hardware(hw) is None:
                 raise ValueError(f"Hardware {hw.name} ({hw}) must be either a camera or an SLM.")
 
         names = [hw.name for hw in hardware]
@@ -210,7 +210,7 @@ class Server:
             for hw in hardware
         }
         self.kind = {
-            hw.name : ("camera" if hasattr(hw, "_get_image_hw") else "slm")
+            hw.name : self.identify_hardware(hw)
             for hw in hardware
         }
 
@@ -233,6 +233,15 @@ class Server:
             "_get_image_hw",
             "_get_images_hw",
         ]
+
+    @staticmethod
+    def identify_hardware(hw: object) -> str:
+        if hasattr(hw, "_get_image_hw"):
+            return "camera"
+        elif hasattr(hw, "_set_phase_hw"):
+            return "slm"
+        else:
+            return None
 
     def listen(self, verbose: bool = True):
         """
@@ -402,7 +411,12 @@ class _Client(_Picklable):
         self.latency_s = t
         self.server_attributes = pickled
 
-        if pickled["__version__"] != __version__:
+        if not "__version__" in pickled:
+            warnings.warn(
+                f"Server did not provide version information; "
+                f"cannot verify compatibility with client version {__version__}."
+            )
+        elif pickled["__version__"] != __version__:
             warnings.warn(
                 f"Client version {__version__} does not match server version {pickled['__version__']}."
             )

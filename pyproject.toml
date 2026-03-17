@@ -59,6 +59,7 @@ cameras = [
 images = [
     "imageio",
     "pygifsicle",
+    "scikit-image",
     "av",
 ]
 jupyter = [

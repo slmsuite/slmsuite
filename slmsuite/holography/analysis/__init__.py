@@ -1830,7 +1830,7 @@ def blob_array_detect(
                 "- Increasing exposure time to enhance the prominence of spots,\n"
                 "- Increasing the pitch of the array in the image, "
                 "which can isolate spots from neighboring crosstalk,\n"
-                "- Create an issue at https://github.com/slmsuite/slmsuite/issues, "
+                "- Create an issue at https://github.com/holodyne/slmsuite/issues, "
                 "attaching the image data that is resulting in failure. "
                 "You can use `cam.save()` to record the last image alongside metadata."
             )

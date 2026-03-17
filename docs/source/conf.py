@@ -32,9 +32,9 @@ for module_path in module_paths:
 # -- Project information -----------------------------------------------------
 
 project = "slmsuite"
-copyright = "2025, slmsuite Developers"
-author = "slmsuite Developers"
-release = "0.3.0"
+copyright = "2021-2025 slmsuite Developers. 2026 Holodyne Labs, Inc."
+author = "Holodyne Labs, Inc."
+release = "0.4.0"
 
 # -- General configuration ---------------------------------------------------
 
@@ -58,8 +58,8 @@ extensions = [
 ]
 
 extlinks = {
-    "issue": ("https://github.com/slmsuite/slmsuite/issues/%s", "GH"),
-    "pull": ("https://github.com/slmsuite/slmsuite/pull/%s", "PR"),
+    "issue": ("https://github.com/holodyne/slmsuite/issues/%s", "GH"),
+    "pull": ("https://github.com/holodyne/slmsuite/pull/%s", "PR"),
 }
 
 # Adapted from https://github.com/DisnakeDev/disnake/blob/7853da70b13fcd2978c39c0b7efa59b34d298186/docs/conf.py#L192
@@ -83,7 +83,7 @@ def linkcode_resolve(domain, info):
         return None
 
     path = f"{path}#L{lineno}-L{lineno + len(src) - 1}"
-    return f"https://github.com/slmsuite/slmsuite/blob/main/slmsuite/" + path
+    return f"https://github.com/holodyne/slmsuite/blob/main/slmsuite/" + path
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["templates"]
@@ -160,7 +160,7 @@ html_theme_options = {
     "icon_links": [
         {
             "name": "GitHub",
-            "url": "https://github.com/slmsuite/slmsuite/",
+            "url": "https://github.com/holodyne/slmsuite/",
             "icon": "fab fa-github",
         },
         {

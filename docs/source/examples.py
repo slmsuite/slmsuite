@@ -22,7 +22,7 @@ def get_sphinx_examples():
 def download_example_notebooks(
         examples_path,
         images_path=None,
-        examples_repo_owner="slmsuite",
+        examples_repo_owner="holodyne",
         examples_repo_name="slmsuite-examples",
     ):
     """

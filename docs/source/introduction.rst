@@ -14,8 +14,10 @@ The flourishing applications of SLMs---ranging from deep-brain imaging to quantu
 control---have motivated commensurate growth in affordable, high-performance commercial hardware.
 Harnessing the **practical** advantages of these SLMs in demanding applications, however, is
 often limited by the outdated, proprietary, or otherwise incomplete control software
-available to users. Our `Quantum Photonics <https://www.rle.mit.edu/qp/>`_ research group at
-MIT developed |slmsuite|_ to address these issues.
+available to users. |slmsuite|_ grew out of our research in the
+`Quantum Photonics <https://www.rle.mit.edu/qp/>`_ group at MIT.
+It is now maintained by `Holodyne Labs, Inc. <https://holodyne.com>`_,
+a spin-out from the original developers to continue to grow and expand the software.
 
 .. So we made slmsuite
 
@@ -125,4 +127,4 @@ optimization when using |cupy|_, compared with the |numpy|_ equivalent.
 .. _cupy: https://cupy.dev/
 
 .. |slmsuite| replace:: :mod:`slmsuite`
-.. _slmsuite: https://github.com/slmsuite/slmsuite
+.. _slmsuite: https://github.com/holodyne/slmsuite

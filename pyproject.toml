@@ -48,6 +48,7 @@ gpu = ["cupy-cuda13x"]
 torch = ["torch"]
 slms = [
     "pyglet",
+    "hidapi",
 ]
 cameras = [
     "pylablib",
@@ -58,6 +59,7 @@ cameras = [
 images = [
     "imageio",
     "pygifsicle",
+    "scikit-image",
     "av",
 ]
 jupyter = [

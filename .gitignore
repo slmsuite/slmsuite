@@ -5,6 +5,10 @@
 *egg-info
 .conda/
 
+# venv
+.venv/
+*.lock
+
 # jupyter
 *.ipynb_checkpoints/
 *.ipynb

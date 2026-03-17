@@ -1414,8 +1414,8 @@ class FourierSLM(CameraSLM):
         """
         # Default to effective SLM aperture size (based on amplitude profile if measured)
         if slm_size is None:
-            psf_kxy = self.slm.get_spot_radius_kxy()[:, 0]
-            slm_size = (1 / psf_kxy[0], 1 / psf_kxy[1])
+            psf_kxy = self.slm.get_spot_radius_kxy()
+            slm_size = (1 / psf_kxy, 1 / psf_kxy)
         # Float input -> square region
         elif isinstance(slm_size, REAL_TYPES):
             slm_size = (slm_size, slm_size)
@@ -1428,6 +1428,7 @@ class FourierSLM(CameraSLM):
             size_kxy = np.linalg.inv(M / np.sqrt(np.abs(np.linalg.det(M)))) @ np.array(
                 (1 / slm_size[0], 1 / slm_size[1])
             )
+            # return np.abs(self.kxyslm_to_ijcam([0, 0]) - self.kxyslm_to_ijcam(size_kxy)).flatten()
             return np.abs(self.kxyslm_to_ijcam([0, 0]) - self.kxyslm_to_ijcam(size_kxy))
         else:
             raise ValueError('Unrecognized basis "{}".'.format(basis))

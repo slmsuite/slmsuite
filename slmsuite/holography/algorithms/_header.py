@@ -33,7 +33,7 @@ except ImportError:
 
 try:
     import torch
-except ImportError:
+except:
     torch = None
 
 # Import helper functions

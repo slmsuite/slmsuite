@@ -214,6 +214,7 @@ class PLM(ScreenMirrored):
             slm_shape=self.model_shape[::-1],  # ScreenMirrored expects (width, height)
             bitdepth=bitdepth,
             pitch_um=pitch_um,
+            name=kwargs.pop("name", model_name),
             **kwargs
         )
 
@@ -738,6 +739,9 @@ class DLPC900:
                 return ret
             except Exception:
                 print("Read command failed; ensure PLM GUI is closed.")
+
+        # A bit of time for stability
+        time.sleep(0.1)
 
         return None
 

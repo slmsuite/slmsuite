@@ -1884,12 +1884,8 @@ def blob_array_detect(
                 new = ((dnorm[i,:] < tol) | (inorm[i,:] < tol)) & np.array(tags == 0) #  | (inorm[i,:] < tol)
                 tags[new] = group
                 if np.any(new): group += 1
-
-            # Calc centers of k most populated clusters.
-            tag, count = np.unique(tags, return_counts=True)
-            best_groups = np.argsort(-count)[:k]
-            count = count[best_groups]
-
+                
+            # Get the centerpoint of each group
             def mean_group(points):
                 len0 = np.sum(np.square(points[0, :]))
                 diff = np.sum(np.square(points - points[[0], :]), axis=1)
@@ -1902,27 +1898,37 @@ def blob_array_detect(
 
                 return final
 
-            centers = np.array([
-                mean_group(points[tags == tag[group]])
-                for group in best_groups
-            ])
-
-            # Weight by orthogonality to the first vector.
-            centers_norm = np.sum(np.square(centers), 0, keepdims=True)
-            centers /= centers_norm
-            cross_product = (
-                centers_norm[:, 0] * centers_norm[0, 1] -
-                centers_norm[:, 1] * centers_norm[0, 0]
-            )
-            cross_product[0] = 2
-            count = count * (np.abs(cross_product) + 1)
-
-            # Remake centers.
+            # Filter by the k most populated clusters.
+            tag, count = np.unique(tags, return_counts=True)
+            k = min(k, len(count))
             best_groups = np.argsort(-count)[:k]
             centers = np.array([
                 mean_group(points[tags == tag[group]])
                 for group in best_groups
             ])
+            count = count[best_groups]
+
+            # Order by closest point to center. Choose the closest as our base vector.
+            distance_to_center = np.sqrt(np.square(centers[:, 0]) + np.square(centers[:, 1]))
+            distance_to_center /= np.max(distance_to_center)    # normalize
+            best_groups = np.argsort(distance_to_center)
+            count = count[best_groups]
+            centers = centers[best_groups, :]
+            
+            # Weight by orthogonality to the first vector.
+            centers_length = np.sqrt(np.sum(np.square(centers), 1, keepdims=True))
+            centers_norm = centers / centers_length
+            cross_product = (
+                centers_norm[:, 0] * centers_norm[0, 1] -
+                centers_norm[:, 1] * centers_norm[0, 0]
+            )
+            cross_product[0] = 2
+
+            # Prefer orthogal vectors most, then prefer distance to center.
+            fom = 1e4 * (np.abs(cross_product)) - distance_to_center
+            best_groups = np.argsort(-fom)
+            count = count[best_groups]
+            centers = centers[best_groups, :]
 
             return centers
 

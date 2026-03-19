@@ -2174,7 +2174,6 @@ class FourierSLM(CameraSLM):
         fresh_calibration=True,
         measure_background=False,
         corrected_amplitude=False,
-        # integrate_amplitude=True,
         plot=0,
     ):
         """
@@ -2276,7 +2275,7 @@ class FourierSLM(CameraSLM):
             if the previous was perfect. The old calibration will be stored in the
             :attr:`calibrations` under ``"previous_phase_correction"``,
             so keep in mind that this (uncompressed) image will take up significantly
-            more space.
+            more memory when saved.
         measure_background : bool
             Whether to measure the background at each point.
         corrected_amplitude : bool
@@ -2670,6 +2669,7 @@ class FourierSLM(CameraSLM):
                         )
 
             self.slm.set_phase(matrix, settle=True)
+            self.cam.flush()
             if plot:
                 plt.figure(figsize=(20, 20))
                 self.slm.plot()
@@ -3078,7 +3078,7 @@ class FourierSLM(CameraSLM):
             #     return centers + calibration_points, amps_fit
 
         def measure(schedule, plot=False):
-            self.cam.flush()
+            # self.cam.flush()
 
             # Step 0: Measure the background.
             if measure_background:
@@ -3241,7 +3241,7 @@ class FourierSLM(CameraSLM):
             }
 
         # Correct exposure and position of the reference mode(s).
-        self.cam.flush()
+        # self.cam.flush()
         base_image = superpixels(None, 0, None)
         plot_labeled(None, base_image, plot=plot_everything, title="Base Reference Diffraction")
         found_centers = find_centers(base_image)
@@ -3892,7 +3892,7 @@ class FourierSLM(CameraSLM):
 
                 # If selected, remove vortices halfway through the smoothing.
                 if remove_vortices and i == smooth//2:
-                    phase = image_remove_vortices(phase=phase)
+                    phase = image_remove_vortices(phase)
         else:
             real = np.cos(phase)
             imag = np.sin(phase)
@@ -3900,11 +3900,11 @@ class FourierSLM(CameraSLM):
 
         # Step 3.4: Pattern cleanup.
         if remove_blaze:
-            phase = image_remove_blaze(phase=phase, mask=pwr_large)
+            phase = image_remove_blaze(phase, mask=pwr_large)
 
         # Shift the final phase to minimize the effect of phase wrapping
         # (only matters when projecting patterns with small dynamic range).
-        phase = image_reduce_wraps(phase=phase, mask=pwr_large)
+        phase = image_reduce_wraps(phase, mask=pwr_large)
 
         # Add the old phase correction if it's there.
         if (

@@ -1247,7 +1247,10 @@ class Camera(_Picklable, ABC):
         while err > tol and time.perf_counter() - t < timeout_s:
             # Clip exposure steps to 0.5x -> 2x
             exp = exp / np.amax([0.5, np.amin([(im_max / set_val), 2])])
+            exp_desired = exp
             exp = np.clip(exp, exposure_bounds_s[0], exposure_bounds_s[1])
+            if exp_desired != exp:
+                raise RuntimeError(f"autoexposure has railed (exposure: {exp_desired}, bounds: {exposure_bounds_s}).")
 
             self.set_exposure(exp)
             self.flush()
@@ -1441,7 +1444,6 @@ class Camera(_Picklable, ABC):
             plt.ylabel("Figure of Merit")
             plt.title("Autofocus Sweep")
             plt.scatter(z_opt, c_opt, label="Result")
-            # plt.plot(z_list, lorentzian(z_list, *popt0), alpha=0.2, label="Guess")
 
             lfit = None
             try:
@@ -1452,8 +1454,6 @@ class Camera(_Picklable, ABC):
                 plt.plot(z_list, lfit, label="Fit")
             plt.legend()
             plt.show()
-
-            self.plot(title="Focused Image")
 
         return z_opt
 

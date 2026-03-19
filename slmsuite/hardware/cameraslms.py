@@ -20,7 +20,7 @@ from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import Hologram, SpotHologram, CompressedSpotHologram
 from slmsuite.holography.toolbox import imprint, format_2vectors, format_vectors, smallest_distance, fit_3pt, convert_vector
 from slmsuite.holography.toolbox.phase import blaze, _zernike_indices_parse, zernike, zernike_sum, binary
-from slmsuite.holography.analysis import image_blaze_remove, image_vortices_remove, image_reduce_wraps
+from slmsuite.holography.analysis import image_remove_blaze, image_remove_vortices, image_reduce_wraps
 from slmsuite.holography.analysis.files import load_h5, save_h5, generate_path, latest_path
 from slmsuite.holography.analysis.fitfunctions import cos, _sinc2d_nomod
 from slmsuite.holography.analysis.fitfunctions import _sinc2d_centered_taylor as sinc2d_centered
@@ -3892,7 +3892,7 @@ class FourierSLM(CameraSLM):
 
                 # If selected, remove vortices halfway through the smoothing.
                 if remove_vortices and i == smooth//2:
-                    phase = image_vortices_remove(phase=phase)
+                    phase = image_remove_vortices(phase=phase)
         else:
             real = np.cos(phase)
             imag = np.sin(phase)
@@ -3900,7 +3900,7 @@ class FourierSLM(CameraSLM):
 
         # Step 3.4: Pattern cleanup.
         if remove_blaze:
-            phase = image_blaze_remove(phase=phase, mask=pwr_large)
+            phase = image_remove_blaze(phase=phase, mask=pwr_large)
 
         # Shift the final phase to minimize the effect of phase wrapping
         # (only matters when projecting patterns with small dynamic range).

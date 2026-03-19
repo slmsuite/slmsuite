@@ -1252,7 +1252,7 @@ def image_vortices_coordinates(phase_image, mask=None):
     return coordinates, weights
 
 
-def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False):
+def image_remove_vortices(phase_image, mask=None, return_vortices_negative=False):
     """
     Find and then remove all the phase vortices in a phase image.
 
@@ -1296,13 +1296,13 @@ def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False
 
 def image_remove_blaze(**kwargs):
     """
-    Backwards compatible alias for :meth:`image_blaze_remove()`.
+    Backwards compatible alias for :meth:`image_remove_blaze()`.
     """
-    warnings.warn("image_remove_blaze is deprecated; use image_blaze_remove instead.", DeprecationWarning)
-    return image_blaze_remove(**kwargs)
+    warnings.warn("image_remove_blaze is deprecated; use image_remove_blaze instead.", DeprecationWarning)
+    return image_remove_blaze(**kwargs)
 
 
-def image_blaze_remove(phase_image, mask=None, plot=False):
+def image_remove_blaze(phase_image, mask=None, plot=False):
     """
     Remove a global blaze from a phase image.
 

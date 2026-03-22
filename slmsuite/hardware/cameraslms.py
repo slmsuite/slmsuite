@@ -3442,7 +3442,8 @@ class FourierSLM(CameraSLM):
             plt.scatter(
                 calibration_points[0,:],
                 calibration_points[1,:],
-                c=np.arange(calibration_points.shape[1])
+                c=np.arange(calibration_points.shape[1]),
+                cmap="Blues"
             )
 
             # Mirrors

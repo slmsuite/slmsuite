@@ -48,8 +48,8 @@ class FLIR(Camera):
             If empty, defaults to the first camera in the list
             returned by :meth:`PySpin.System.GetCameras()`.
         bitdepth : int or None
-            Desired bit depth (8, 10, 12, or 16). If ``None``, selects the
-            highest available bit depth.
+            Desired ADC bit depth (8, 10, or 12). If ``None``, selects the
+            highest available ADC bit depth.
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
             to use additional calibrations.
@@ -170,7 +170,7 @@ class FLIR(Camera):
                     warnings.warn(f"Gamma configuration failed: {ex}")
 
             # Configure pixel format
-            bitdepth = self._configure_pixel_format(bitdepth=bitdepth, verbose=verbose)
+            bitdepth = self._configure_adc_depth(bitdepth=bitdepth, verbose=verbose)
 
             # Configure frame rate
             self._configure_frame_rate(verbose=verbose)
@@ -314,27 +314,37 @@ class FLIR(Camera):
 
     ### Internal Configuration Helpers ###
 
-    def _configure_pixel_format(self, bitdepth=None, verbose=True):
+    def _configure_adc_depth(self, bitdepth=None, verbose=True):
         """
-        Configure pixel format.
+        Configure ADC bit depth and corresponding pixel format.
 
         Parameters
         ----------
         bitdepth : int or None
-            Desired bit depth (8, 10, 12, or 16). If ``None``, selects the
-            highest available bit depth.
+            Desired ADC bit depth (8, 10, or 12). If ``None``, selects the
+            highest available ADC bit depth.
 
         Returns
         -------
         int
-            The selected bit depth.
+            The selected ADC bit depth (always 8, 10, or 12).
         """
-        if self.cam.PixelFormat.GetAccessMode() != PySpin.RW:
-            # Can't change format; infer bitdepth from current setting
+        if bitdepth is not None and bitdepth not in (8, 10, 12):
+            raise ValueError(f"Unsupported bitdepth {bitdepth}. Choose from 8, 10, or 12.")
+
+        def _read_adc_depth():
             try:
-                return int(self.cam.PixelSize.ToString()[3:])
+                adc_str = self.cam.AdcBitDepth.ToString()  # e.g. "Bit12"
+                adc_val = int(adc_str.replace("Bit", ""))
+                if adc_val in (8, 10, 12):
+                    return adc_val
             except Exception:
-                return 8
+                pass
+            return 8
+
+        if self.cam.PixelFormat.GetAccessMode() != PySpin.RW:
+            # Can't change format; infer ADC depth from current setting
+            return _read_adc_depth()
 
         # Supported formats in descending bit depth order.
         # Only formats whose GetNDArray() returns a direct numpy array are listed;
@@ -349,13 +359,8 @@ class FLIR(Camera):
         ]
 
         if bitdepth is not None:
-            # Filter to the requested bit depth
+            # Filter to the requested ADC depth
             candidates = [(f, a, b, n) for f, a, b, n in all_candidates if b == bitdepth]
-            if not candidates:
-                raise ValueError(
-                    f"Unsupported bitdepth {bitdepth}. Choose from: "
-                    f"{[b for _, _, b, _ in all_candidates]}"
-                )
         else:
             candidates = all_candidates
 
@@ -377,10 +382,7 @@ class FLIR(Camera):
         # Fallback
         if verbose:
             warnings.warn("Could not set preferred pixel format; using current setting.")
-        try:
-            return int(self.cam.PixelSize.ToString()[3:])
-        except Exception:
-            return 8
+        return _read_adc_depth()
 
     def _configure_frame_rate(self, verbose=True):
         """

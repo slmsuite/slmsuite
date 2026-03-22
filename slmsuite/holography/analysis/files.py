@@ -456,6 +456,8 @@ def save_image(file_path, images, cmap=False, lut=None, normalize=True, border=N
     if extension == "gif":
         try:
             from pygifsicle import optimize
-            optimize(file_path) #, options=["--lossy=20"])
-        except:
+            optimize(file_path)
+        except ImportError:
             warnings.warn("pip install pygifsicle to optimize .gif file size.")
+        except Exception as e:
+            warnings.warn(f"pygifsicle optimization failed: {e}")

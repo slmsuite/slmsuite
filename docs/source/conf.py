@@ -18,16 +18,19 @@ import shutil
 
 import requests
 
-from examples import download_example_notebooks
 
 # import numpydoc
 
 module_paths = [
+    os.path.abspath(""),
     os.path.abspath("../.."),
     os.path.abspath("../../slmsuite"),
-    ]
+]
 for module_path in module_paths:
     sys.path.insert(0, module_path)
+
+
+from examples import download_example_notebooks
 
 # -- Project information -----------------------------------------------------
 

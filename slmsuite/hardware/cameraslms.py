@@ -1619,7 +1619,7 @@ class FourierSLM(CameraSLM):
             If ``True``, the optimized Zernike coefficients are meaned and applied to the entire SLM.
             This can be useful for the first step of calibration to remove large global aberration terms
             while avoiding noise and uncertainty on individual spots.
-            When `optimize_position` is `True`, the `fit_affine` flag of 
+            When `optimize_position` is `True`, the `fit_affine` flag of
             :meth:`~slmsuite.holography.algorithms.SpotHologram.refine_offset()` is used to extract the global shift.
         optimize_focus : bool
             If ``False``, does not optimize the focus term (ansi index 4). Useful in
@@ -1629,7 +1629,7 @@ class FourierSLM(CameraSLM):
         optimize_position : bool
             If ``False``, does not optimize the position terms (ansi indices 1 and 2).
         optimize_weights : bool OR int
-            If ``True``,  optimizes the WGS weights of the hologram one time 
+            If ``True``,  optimizes the WGS weights of the hologram one time
             at the beginning of the calibration. Defaults to 20 iterations.
             If integer, then uses this number as the number of iterations to optimize the weights.
             Must be at least 1.
@@ -1765,7 +1765,6 @@ class FourierSLM(CameraSLM):
         metric_stats = []
         position_stats = []
         weights = None
-        phase = None
         spot_integration_width_ij = None
 
         if calibration_points is None:
@@ -1817,11 +1816,6 @@ class FourierSLM(CameraSLM):
                     weights = dat["weights"]
                 else:
                     weights = None
-
-                if "phase" in dat:
-                    phase = dat["phase"]
-                else:
-                    phase = None
             else:
                 calibration_points = 100
 
@@ -1851,9 +1845,6 @@ class FourierSLM(CameraSLM):
 
             if not (weights is None):
                 hologram.set_weights(weights)
-
-            if not (phase is None):
-                hologram.set_phase(phase)
 
             if calibration_points_ij is None:
                 calibration_points_ij = hologram.spot_ij
@@ -1942,7 +1933,7 @@ class FourierSLM(CameraSLM):
                 self.calibrations["wavefront_zernike"]["weights"] = hologram.get_weights()
 
         no_perturbation = (
-            perturbation is None or 
+            perturbation is None or
             (np.isscalar(perturbation) and perturbation <= 0) or
             (not np.isscalar(perturbation) and len(perturbation) == 0)
         )
@@ -1983,7 +1974,7 @@ class FourierSLM(CameraSLM):
                     plt.show()
 
             return hologram
-        
+
         # Parse perturbation, maybe returning if perturbation is negative.
         if np.isscalar(perturbation):
             perturbation = np.linspace(-perturbation, perturbation, 11, endpoint=True)
@@ -1994,7 +1985,7 @@ class FourierSLM(CameraSLM):
         if optimize_position:
             self.slm.set_phase(tick())
             hologram.refine_offset(img=None, basis="kxy", force_affine=global_correction, plot=plot)
-            
+
         # Calibration loop.
         result = None
         self.cam.flush()
@@ -2039,7 +2030,6 @@ class FourierSLM(CameraSLM):
             "metric_stats" : metric_stats,
             # "position_stats" : position_stats,
             "weights" : hologram.get_weights(),
-            "last_phase" : hologram.get_phase(),
         }
         self.calibrations["wavefront_zernike"].update(self._get_calibration_metadata())
 
@@ -2056,7 +2046,7 @@ class FourierSLM(CameraSLM):
             calibration_points = np.copy(dat["corrected_spots"])
         calibration_points_ij = np.copy(dat["calibration_points_ij"])
         zernike_indices = np.copy(dat["zernike_indices"])
-        
+
         aberration = calibration_points[index, :]
 
         lim = np.max(np.abs(aberration))
@@ -2209,7 +2199,7 @@ class FourierSLM(CameraSLM):
         from_units="norm",
     ):
         raise NotImplementedError("Expected as a part of 0.5.0")
-    
+
         if from_units == "knm":
             warnings.warn(
                 "'knm' requires shape information, which here defaults to the SLM shape. "

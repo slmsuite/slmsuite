@@ -1722,9 +1722,6 @@ class FourierSLM(CameraSLM):
                 x[i] = popt[0]
                 dx[i] = perr[0]
 
-            # if np.any(x < np.min(sweep)) or np.any(x > np.max(sweep)):
-            #     warnings.warn("A Zernike aberration optimized out of the range of the measurement.")
-
             x = np.clip(x, np.min(sweep), np.max(sweep))
             railed = np.sum(np.logical_or(x == np.min(sweep), x == np.max(sweep))) / float(len(x))
 

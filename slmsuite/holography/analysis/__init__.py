@@ -1309,11 +1309,11 @@ def image_remove_vortices(phase_image, mask=None, return_vortices_negative=False
     return canvas
 
 
-def image_remove_blaze(**kwargs):
+def image_blaze_remove(**kwargs):
     """
     Backwards compatible alias for :meth:`image_remove_blaze()`.
     """
-    warnings.warn("image_remove_blaze is deprecated; use image_remove_blaze instead.", DeprecationWarning)
+    warnings.warn("image_blaze_remove is deprecated; use image_remove_blaze instead.", DeprecationWarning)
     return image_remove_blaze(**kwargs)
 
 

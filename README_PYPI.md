@@ -37,9 +37,7 @@ and
 are available through readthedocs.
 
 Examples can be found embedded in
-[documentation](https://slmsuite.readthedocs.io/en/latest/examples.html),
-live through
-[nbviewer](https://nbviewer.org/github/holodyne/slmsuite-examples/tree/main/examples/),
+[documentation](https://slmsuite.readthedocs.io/en/latest/examples.html)
 or directly in
 [source](https://github.com/holodyne/slmsuite-examples).
 

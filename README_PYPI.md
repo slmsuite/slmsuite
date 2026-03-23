@@ -9,7 +9,6 @@
 <a href="https://github.com/holodyne/slmsuite/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/holodyne/slmsuite?color=purple"></a>
 <!--<a href="https://pepy.tech/project/slmsuite"><img alt="Downloads" src="https://pepy.tech/badge/slmsuite"></a>-->
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
-<a href="https://arxiv.org/abs/2505.08777"><img alt="Citation" src="https://img.shields.io/badge/cite-arXiv%3A2505.08777-B31B1B.svg"></a>
 <a href="https://github.com/holodyne/slmsuite"><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/holodyne/slmsuite"></a>
 </p>
 

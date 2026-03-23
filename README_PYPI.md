@@ -40,22 +40,6 @@ Examples can be found embedded in
 or directly in
 [source](https://github.com/holodyne/slmsuite-examples).
 
-## Citation
-
-`slmsuite` is built upon the work of many others. If you used any technique in particular,
-be sure to check our [documentation](https://slmsuite.readthedocs.io/en/latest/) for links to relevant papers.
-For acknowledgement of the package or unique features such as
-aberration-space holography, please use the following citation:
-
-```
-@misc{
-    christen2025slmsuite,
-    Author = {Ian Christen and Christopher Panuski and Thomas Propson and Dirk Englund},
-    Title = {Full-volume aberration-space holography},
-    Year = {2025},
-    Eprint = {arXiv:2505.08777},
-}
-```
 
 <p align="center">
 <img alt="qp-slm" src="https://raw.githubusercontent.com/holodyne/slmsuite-examples/main/examples/ex-zernike-spots.gif" width="512">

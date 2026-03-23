@@ -55,9 +55,15 @@ live through
 or directly in
 [source](https://github.com/holodyne/slmsuite-examples).
 
+## Support
+
+Users are encouraged to submit [issues](https://github.com/holodyne/slmsuite/issues) and [discussions](https://github.com/holodyne/slmsuite/discussions) via GitHub. 
+
 <p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/holodyne/slmsuite-examples/main/examples/ex-zernike-spots-dark.gif">
 <img alt="slmsuite" src="https://raw.githubusercontent.com/holodyne/slmsuite-examples/main/examples/ex-zernike-spots.gif" width="512">
 </picture>
 </p>
+
+`slmsuite` is maintained by [Holodyne Labs, Inc](www.holodyne.com). Contact slmsuite@holodyne.com for additional information. 

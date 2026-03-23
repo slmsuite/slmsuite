@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from functools import reduce
 from scipy.optimize import curve_fit, minimize
 from scipy.ndimage import binary_erosion
@@ -203,7 +204,7 @@ def take(
             return xp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
-def take_plot(images, shape=None, separate_axes=False):
+def take_plot(images, shape=None, separate_axes=False, cbar=True):
     """
     Plots non-integrated results of :meth:`.take()` in a square array of subplots.
 
@@ -217,13 +218,14 @@ def take_plot(images, shape=None, separate_axes=False):
     separate_axes : bool
         If ``True``, each image is plotted in a separate subplot.
         If ``False``, uses :meth:`take_tile()` to plot all images on a single axes.
+    cbar : bool
+        Whether to include a colorbar. Currently only applies if ``separate_axes`` is ``False``.
     """
     # Gather helper variables and set the min and max of all the subplots.
     (img_count, sy, sx) = np.shape(images)
+    img_count, (M, N) = _take_parse_shape(images, shape)
 
     if separate_axes:
-        img_count, (M, N) = _take_parse_shape(images, shape)
-
         sx = sx / 2.0 - 0.5
         sy = sy / 2.0 - 0.5
         extent = (-sx, sx, -sy, sy)
@@ -247,13 +249,26 @@ def take_plot(images, shape=None, separate_axes=False):
             ax.axes.xaxis.set_visible(False)
             ax.axes.yaxis.set_visible(False)
     else:
-        plt.imshow(
+        im = plt.imshow(
             take_tile(images, shape),
             interpolation='none'
         )
         ax = plt.gca()
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
+
+        # Draw horizontal and vertical lines to separate the images.
+        for x in range(1, N):
+            ax.axvline(x=sx * x, color='r', linewidth=0.5)
+        for y in range(1, M):
+            ax.axhline(y=sy * y, color='r', linewidth=0.5)
+
+        if cbar:
+            cax = make_axes_locatable(ax).append_axes("right", size="2%", pad=0.05)
+            plt.gcf().colorbar(im, cax=cax, orientation="vertical")
+
+            # Return the current axes to the original one.
+            plt.sca(ax)
 
 
 def _take_parse_shape(images, shape=None):
@@ -291,7 +306,7 @@ def take_tile(images, shape=None):
     (img_count, sy, sx) = np.shape(images)
     img_count, (M, N) = _take_parse_shape(images, shape)
 
-    result = np.empty((M*N, sy, sx), images.dtype)
+    result = np.zeros((M*N, sy, sx), images.dtype)
     result[:img_count, :, :] = images[:, :, :]
 
     return result.reshape(M, N, sy, sx).transpose(0, 2, 1, 3).reshape(M*sy, N*sx)

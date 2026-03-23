@@ -67,17 +67,12 @@ class _AbstractSpotHologram(FeedbackHologram):
         # Fast version; have to iterate for accuracy.
         regions = analysis.image_remove_field(regions, deviations=None, out=regions)
         shift_vectors = analysis.image_positions(regions)
-        # shift_vectors = np.clip(
-        #     shift_vectors,
-        #     -self.spot_integration_width_ij / 4,
-        #     self.spot_integration_width_ij / 4
-        # )
 
         # Store the shift vector before we force_affine.
         sv1 = self.spot_ij[[0,1]] + shift_vectors
 
         if force_affine:
-            affine = analysis.fit_affine(self.spot_ij[[0,1]], self.spot_ij[[0,1]] + shift_vectors, plot=plot)
+            affine = analysis.fit_affine(self.spot_ij[[0,1]], self.spot_ij[[0,1]] + shift_vectors, plot=False)
             shift_vectors = (np.matmul(affine["M"], self.spot_ij[[0,1]]) + affine["b"]) - self.spot_ij[[0,1]]
 
         # Record the shift vector after we force_affine.
@@ -96,22 +91,11 @@ class _AbstractSpotHologram(FeedbackHologram):
 
             plt.figure(figsize=(12, 12))
             plt.imshow(masked)
-            plt.scatter(sv1[0, :], sv1[1, :], s=200, fc="none", ec="r")
-            plt.scatter(sv2[0, :], sv2[1, :], s=300, fc="none", ec="b")
-            plt.show()
-
-            tiled = analysis.take_tile(
-                analysis.take(
-                    img,
-                    self.spot_ij,
-                    self.spot_integration_width_ij,
-                    centered=True,
-                    integrate=False,
-                )
-            )
-
-            plt.figure(figsize=(12, 12))
-            plt.imshow(tiled)
+            plt.scatter(sv1[0, :], sv1[1, :], s=200, fc="none", ec="r", label="Before affine fit")
+            if force_affine:
+                plt.scatter(sv2[0, :], sv2[1, :], s=300, fc="none", ec="b", label="After affine fit")
+                plt.legend()
+            plt.title("Refine Offset")
             plt.show()
 
         # Handle the feedback applied from this refinement.
@@ -150,6 +134,42 @@ class _AbstractSpotHologram(FeedbackHologram):
 
         return shift_vectors
 
+    def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
+        """
+        Wrapped by :meth:`._update_stats()`.
+        """
+        if "experimental_spot" in stat_groups:
+            self.measure(basis="ij")
+
+            pwr_img = np.square(self.img_ij)
+
+            pwr_feedback = analysis.take(
+                pwr_img,
+                self.spot_ij,
+                self.spot_integration_width_ij,
+                centered=True,
+                integrate=True,
+            )
+
+            stats["experimental_spot"] = self._calculate_stats(
+                np.sqrt(pwr_feedback),
+                self.spot_amp,
+                xp=np,
+                efficiency_compensation=False,
+                total=np.sum(pwr_img),
+                raw="raw_stats" in self.flags and self.flags["raw_stats"],
+            )
+
+        if "external_spot" in stat_groups:
+            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype))
+            stats["external_spot"] = self._calculate_stats(
+                np.sqrt(pwr_feedback),
+                self.spot_amp,
+                xp=np,
+                efficiency_compensation=False,
+                total=np.sum(pwr_feedback),
+                raw="raw_stats" in self.flags and self.flags["raw_stats"],
+            )
 
 # For the cupy kernel based approach, the size of the kernel to cache.
 N_BATCH_MAX = 256   # Corresponds to ~1 GB for a megapixel SLM.
@@ -981,43 +1001,6 @@ class CompressedSpotHologram(_AbstractSpotHologram):
                 raw="raw_stats" in self.flags and self.flags["raw_stats"]
             )
 
-    def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
-        """
-        Wrapped by :meth:`SpotHologram._update_stats()`.
-        """
-        if "experimental_spot" in stat_groups:
-            self.measure(basis="ij")
-
-            pwr_img = np.square(self.img_ij)
-
-            pwr_feedback = analysis.take(
-                pwr_img,
-                self.spot_ij,
-                self.spot_integration_width_ij,
-                centered=True,
-                integrate=True
-            )
-
-            stats["experimental_spot"] = self._calculate_stats(
-                np.sqrt(pwr_feedback),
-                self.spot_amp,
-                xp=np,
-                efficiency_compensation=False,
-                total=np.sum(pwr_img),
-                raw="raw_stats" in self.flags and self.flags["raw_stats"]
-            )
-
-        if "external_spot" in stat_groups:
-            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype))
-            stats["external_spot"] = self._calculate_stats(
-                np.sqrt(pwr_feedback),
-                self.spot_amp,
-                xp=np,
-                efficiency_compensation=False,
-                total=np.sum(pwr_feedback),
-                raw="raw_stats" in self.flags and self.flags["raw_stats"]
-            )
-
     def _update_stats(self, stat_groups=[]):
         """
         Calculate statistics corresponding to the desired ``stat_groups``.
@@ -1694,40 +1677,6 @@ class SpotHologram(_AbstractSpotHologram):
                         total=np.sum(pwr_ff),
                         raw="raw_stats" in self.flags and self.flags["raw_stats"],
                     )
-
-    def _calculate_stats_experimental_spot(self, stats, stat_groups=[]):
-        """
-        Wrapped by :meth:`SpotHologram._update_stats()`.
-        """
-
-        if "experimental_spot" in stat_groups:
-            self.measure(basis="ij")
-
-            pwr_img = np.square(self.img_ij)
-
-            pwr_feedback = analysis.take(
-                pwr_img, self.spot_ij, self.spot_integration_width_ij, centered=True, integrate=True
-            )
-
-            stats["experimental_spot"] = self._calculate_stats(
-                np.sqrt(pwr_feedback),
-                self.spot_amp,
-                xp=np,
-                efficiency_compensation=False,
-                total=np.sum(pwr_img),
-                raw="raw_stats" in self.flags and self.flags["raw_stats"],
-            )
-
-        if "external_spot" in stat_groups:
-            pwr_feedback = np.square(np.array(self.external_spot_amp, copy=(False if np.__version__[0] == '1' else None), dtype=self.dtype))
-            stats["external_spot"] = self._calculate_stats(
-                np.sqrt(pwr_feedback),
-                self.spot_amp,
-                xp=np,
-                efficiency_compensation=False,
-                total=np.sum(pwr_feedback),
-                raw="raw_stats" in self.flags and self.flags["raw_stats"],
-            )
 
     def _update_stats(self, stat_groups=[]):
         """

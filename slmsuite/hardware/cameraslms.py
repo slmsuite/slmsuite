@@ -24,7 +24,7 @@ from slmsuite.holography.analysis import image_remove_blaze, image_remove_vortic
 from slmsuite.holography.analysis.files import load_h5, save_h5, generate_path, latest_path
 from slmsuite.holography.analysis.fitfunctions import cos, _sinc2d_nomod
 from slmsuite.holography.analysis.fitfunctions import _sinc2d_centered_taylor as sinc2d_centered
-from slmsuite.misc.math import REAL_TYPES
+from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 
 from slmsuite.hardware.cameras.simulated import SimulatedCamera
 from slmsuite.hardware.slms.simulated import SimulatedSLM
@@ -1539,6 +1539,7 @@ class FourierSLM(CameraSLM):
         perturbation=1,
         callback=None,
         metric=None,
+        global_correction=False,
         optimize_focus=True,
         optimize_position=True,
         optimize_weights=True,
@@ -1614,11 +1615,24 @@ class FourierSLM(CameraSLM):
             is used, which is just a wrapper for
             :meth:`~slmsuite.holography.analysis.image_areas()`, a measurement of spot
             size. The optimizer will *minimize* the figure of merit.
+        global_correction : bool
+            If ``True``, the optimized Zernike coefficients are meaned and applied to the entire SLM.
+            This can be useful for the first step of calibration to remove large global aberration terms
+            while avoiding noise and uncertainty on individual spots.
+            When `optimize_position` is `True`, the `fit_affine` flag of 
+            :meth:`~slmsuite.holography.algorithms.SpotHologram.refine_offset()` is used to extract the global shift.
         optimize_focus : bool
             If ``False``, does not optimize the focus term (ansi index 4). Useful in
             cases where the ``callback`` method is insensitive to :meth:`z`-translation
             (e.g. Stark effect of an atom) or in cases where the :meth:`z` axis should
             be unchanged.
+        optimize_position : bool
+            If ``False``, does not optimize the position terms (ansi indices 1 and 2).
+        optimize_weights : bool OR int
+            If ``True``,  optimizes the WGS weights of the hologram one time 
+            at the beginning of the calibration. Defaults to 20 iterations.
+            If integer, then uses this number as the number of iterations to optimize the weights.
+            Must be at least 1.
         plot : int or bool
             Whether to provide visual feedback, options are:
 
@@ -1649,7 +1663,7 @@ class FourierSLM(CameraSLM):
 
             iterable = list(enumerate(sweep))
             if plot >= 0:
-                iterable = tqdm(iterable, desc=desc, position=0, leave=True)
+                iterable = tqdm(iterable, desc=desc, position=0, leave=False)
 
             for i, x in iterable:
                 phase = pattern + x * term
@@ -1708,8 +1722,8 @@ class FourierSLM(CameraSLM):
                 x[i] = popt[0]
                 dx[i] = perr[0]
 
-            if np.any(x < np.min(sweep)) or np.any(x > np.max(sweep)):
-                warnings.warn("A Zernike aberration optimized out of the range of the measurement.")
+            # if np.any(x < np.min(sweep)) or np.any(x > np.max(sweep)):
+            #     warnings.warn("A Zernike aberration optimized out of the range of the measurement.")
 
             x = np.clip(x, np.min(sweep), np.max(sweep))
             railed = np.sum(np.logical_or(x == np.min(sweep), x == np.max(sweep))) / float(len(x))
@@ -1754,6 +1768,7 @@ class FourierSLM(CameraSLM):
         metric_stats = []
         position_stats = []
         weights = None
+        phase = None
         spot_integration_width_ij = None
 
         if calibration_points is None:
@@ -1805,6 +1820,11 @@ class FourierSLM(CameraSLM):
                     weights = dat["weights"]
                 else:
                     weights = None
+
+                if "phase" in dat:
+                    phase = dat["phase"]
+                else:
+                    phase = None
             else:
                 calibration_points = 100
 
@@ -1829,11 +1849,14 @@ class FourierSLM(CameraSLM):
             hologram = CompressedSpotHologram(
                 spot_vectors=calibration_points,
                 basis=zernike_indices,
-                cameraslm=self
+                cameraslm=self,
             )
 
             if not (weights is None):
                 hologram.set_weights(weights)
+
+            if not (phase is None):
+                hologram.set_phase(phase)
 
             if calibration_points_ij is None:
                 calibration_points_ij = hologram.spot_ij
@@ -1895,58 +1918,86 @@ class FourierSLM(CameraSLM):
         if perturbation is None:
             perturbation = 1
 
-        hologram.optimize(
-            "GS", maxiter=3, verbose=0,
-            # raw_stats=True,
-            # stat_groups=["computational_spot",],
+        if phase is None:
+            hologram.optimize(
+                "GS", maxiter=3, verbose=0,
+                # raw_stats=True,
+                stat_groups=["computational_spot",],
+            )
+
+        if optimize_weights:
+            if isinstance(optimize_weights, bool):
+                maxiter = 10
+            else:
+                maxiter = int(optimize_weights)
+                if maxiter < 1:
+                    raise ValueError("optimize_weights must be True, False, or a positive integer.")
+
+            hologram.optimize(
+                "WGS-Kim",
+                feedback="experimental_spot",
+                maxiter=maxiter,
+                verbose=True,
+                name="optimize_weights",
+                stat_groups=["computational_spot", "experimental_spot",],
+            )
+            if "wavefront_zernike" in self.calibrations:
+                self.calibrations["wavefront_zernike"]["weights"] = hologram.get_weights()
+
+        no_perturbation = (
+            perturbation is None or 
+            (np.isscalar(perturbation) and perturbation <= 0) or
+            (not np.isscalar(perturbation) and len(perturbation) == 0)
         )
 
-        if (
-            (np.isscalar(perturbation) and perturbation == 0) or
-            (not np.isscalar(perturbation) and len(perturbation) == 0)
-        ):
+        # If no perturbation, just project the initial spots and return.
+        if no_perturbation:
             self.slm.set_phase(tick(), settle=True, phase_correct=False)
             # self.slm.set_phase(hologram.get_phase(), settle=True, phase_correct=False)
 
             self.cam.flush()
             img = self.cam.get_image()
 
-            max = np.max(img)
-
-            if max >= self.cam.bitresolution-1:
-                warnings.warn("Image is overexposed.")
-            elif max > .5*self.cam.bitresolution:
-                warnings.warn(
-                    f"Image might become overexposed during optimization ({max}/{self.cam.bitresolution-1})."
+            if plot:
+                take = analysis.take(
+                    img,
+                    hologram.spot_ij,
+                    hologram.spot_integration_width_ij,
+                    centered=True,
+                    integrate=False,
                 )
+                max = np.max(take)
 
-            self.cam.plot(img)
+                if max >= self.cam.bitresolution-1:
+                    warnings.warn("Image is overexposed.")
+                elif max > .5*self.cam.bitresolution:
+                    warnings.warn(
+                        f"Image might become overexposed during optimization ({max}/{self.cam.bitresolution-1})."
+                    )
 
-            return
-        else:
-            # Refine hologram.
-            if optimize_position:
-                self.slm.set_phase(tick())
-                hologram.refine_offset(img=None, basis="kxy", force_affine=False, plot=plot)
-            if optimize_weights:
-                hologram.optimize(
-                    "WGS-Kim",
-                    feedback="experimental_spot",
-                    maxiter=20,
-                    verbose=True,
-                    name="optimize_weights",
-                    # stat_groups=["computational_spot", "experimental_spot",],
-                )
-                if "wavefront_zernike" in self.calibrations:
-                    self.calibrations["wavefront_zernike"]["weights"] = hologram.get_weights()
+                self.cam.plot(img, title="Zernike Calibration Status")
 
+                if plot >= 2:
+
+                    plt.figure(figsize=(12, 12))
+                    # plt.imshow(tiled)
+                    analysis.take_plot(take, separate_axes=False)
+                    plt.title("Zernike Calibration Status (Zoom)")
+                    plt.show()
+
+            return hologram
+        
+        # Parse perturbation, maybe returning if perturbation is negative.
         if np.isscalar(perturbation):
-            if perturbation < 0:
-                return hologram
             perturbation = np.linspace(-perturbation, perturbation, 11, endpoint=True)
         else:
             perturbation = np.ravel(perturbation)
 
+        # Refine hologram position.
+        if optimize_position:
+            self.slm.set_phase(tick())
+            hologram.refine_offset(img=None, basis="kxy", force_affine=global_correction, plot=plot)
+            
         # Calibration loop.
         result = None
         self.cam.flush()
@@ -1970,7 +2021,9 @@ class FourierSLM(CameraSLM):
             # Analyze the results by fitting each to a parabola.
             correction, correction_error, railed = fit_term(perturbation, result, i, calibration_points[j, :])
 
-            # Apply the correction to the spots.
+            # Apply the correction to the spots (globally if desired).
+            if global_correction:
+                correction = np.mean(correction)
             calibration_points[j, :] += correction
 
         # Record final stats.
@@ -1989,6 +2042,7 @@ class FourierSLM(CameraSLM):
             "metric_stats" : metric_stats,
             # "position_stats" : position_stats,
             "weights" : hologram.get_weights(),
+            "last_phase" : hologram.get_phase(),
         }
         self.calibrations["wavefront_zernike"].update(self._get_calibration_metadata())
 
@@ -1998,14 +2052,16 @@ class FourierSLM(CameraSLM):
 
         return self.calibrations["wavefront_zernike"]
 
-    def _wavefront_calibrate_zernike_plot_raw(self, index=0):
+    def _wavefront_calibrate_zernike_plot_raw(self, calibration_points=None, index=0):
         dat = self.calibrations["wavefront_zernike"]
 
-        calibration_points = np.copy(dat["corrected_spots"])
+        if calibration_points is None:
+            calibration_points = np.copy(dat["corrected_spots"])
         calibration_points_ij = np.copy(dat["calibration_points_ij"])
         zernike_indices = np.copy(dat["zernike_indices"])
-
+        
         aberration = calibration_points[index, :]
+
         lim = np.max(np.abs(aberration))
 
         plt.scatter(
@@ -2145,12 +2201,18 @@ class FourierSLM(CameraSLM):
             for n in neighbors:
                 final[to_smooth, i] += smoothing * vectors[to_smooth, n] / len(neighbors)
 
+        if plot:
+            plt.gca().invert_yaxis()
+            plt.title("Nearest Neighbor Smoothing")
+
         return final
 
     def _wavefront_calibrate_zernike_apply(
         vector,
         from_units="norm",
     ):
+        raise NotImplementedError("Expected as a part of 0.5.0")
+    
         if from_units == "knm":
             warnings.warn(
                 "'knm' requires shape information, which here defaults to the SLM shape. "
@@ -3458,7 +3520,7 @@ class FourierSLM(CameraSLM):
             # Future: Plot SLM FoV?
 
             plt.xlim([0, self.cam.shape[1]])
-            plt.ylim([0, self.cam.shape[0]])
+            plt.ylim([self.cam.shape[0], 0])
             plt.show()
 
         return calibration_points

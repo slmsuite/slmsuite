@@ -275,7 +275,6 @@ class FeedbackHologram(Hologram):
         else:
             raise ValueError(f"Unrecognized measurement basis '{basis}'. Options are 'ij' or 'knm'")
 
-
     # Target update.
     def update_target(self, new_target_ij, null_region=None, null_region_radius_frac=None, reset_weights=False):
         """

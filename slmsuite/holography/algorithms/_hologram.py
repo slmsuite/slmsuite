@@ -993,8 +993,8 @@ class Hologram(_HologramStats):
                 self.plot_farfield(analysis.image_vortices(self.phase_ff), title="vortices coords", limits=limits)
                 self.plot_farfield((self.target > 0).astype(float), title="target_mask", limits=limits)
                 self.plot_farfield((self.target > 0).astype(float) + analysis.image_vortices(self.phase_ff), title="vortices coords + target_mask", limits=limits)
-                self.plot_farfield(analysis.image_vortices_remove(self.phase_ff, self.target > 0, True), title="phase vortices", limits=limits)
-                analysis.image_vortices_remove(self.phase_ff, self.target > 0)
+                self.plot_farfield(analysis.image_remove_vortices(self.phase_ff, self.target > 0, True), title="phase vortices", limits=limits)
+                analysis.image_remove_vortices(self.phase_ff, self.target > 0)
                 self.plot_farfield(self.phase_ff, title="phase removal after", limits=limits)
 
     def _build_nearfield(self, phase_torch=None):

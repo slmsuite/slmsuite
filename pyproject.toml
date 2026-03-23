@@ -9,7 +9,7 @@ readme = "README_PYPI.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [
-    { name = "slmsuite developers", email = "qp-slm@mit.edu" },
+    { name = "Holodyne Labs, Inc.", email = "slmsuite@holodyne.com" },
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -102,7 +102,7 @@ dev = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/slmsuite/slmsuite"
+"Homepage" = "https://github.com/holodyne/slmsuite"
 "Documentation" = "https://slmsuite.readthedocs.io/en/latest/"
 
 [tool.setuptools.dynamic]

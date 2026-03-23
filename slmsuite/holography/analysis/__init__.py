@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from functools import reduce
 from scipy.optimize import curve_fit, minimize
 from scipy.ndimage import binary_erosion
@@ -203,7 +204,7 @@ def take(
             return xp.reshape(result, (vectors.shape[1], size[1], size[0]))
 
 
-def take_plot(images, shape=None, separate_axes=False):
+def take_plot(images, shape=None, separate_axes=False, cbar=True):
     """
     Plots non-integrated results of :meth:`.take()` in a square array of subplots.
 
@@ -217,13 +218,14 @@ def take_plot(images, shape=None, separate_axes=False):
     separate_axes : bool
         If ``True``, each image is plotted in a separate subplot.
         If ``False``, uses :meth:`take_tile()` to plot all images on a single axes.
+    cbar : bool
+        Whether to include a colorbar. Currently only applies if ``separate_axes`` is ``False``.
     """
     # Gather helper variables and set the min and max of all the subplots.
     (img_count, sy, sx) = np.shape(images)
+    img_count, (M, N) = _take_parse_shape(images, shape)
 
     if separate_axes:
-        img_count, (M, N) = _take_parse_shape(images, shape)
-
         sx = sx / 2.0 - 0.5
         sy = sy / 2.0 - 0.5
         extent = (-sx, sx, -sy, sy)
@@ -247,13 +249,26 @@ def take_plot(images, shape=None, separate_axes=False):
             ax.axes.xaxis.set_visible(False)
             ax.axes.yaxis.set_visible(False)
     else:
-        plt.imshow(
+        im = plt.imshow(
             take_tile(images, shape),
             interpolation='none'
         )
         ax = plt.gca()
         ax.axes.xaxis.set_visible(False)
         ax.axes.yaxis.set_visible(False)
+
+        # Draw horizontal and vertical lines to separate the images.
+        for x in range(1, N):
+            ax.axvline(x=sx * x, color='r', linewidth=0.5)
+        for y in range(1, M):
+            ax.axhline(y=sy * y, color='r', linewidth=0.5)
+
+        if cbar:
+            cax = make_axes_locatable(ax).append_axes("right", size="2%", pad=0.05)
+            plt.gcf().colorbar(im, cax=cax, orientation="vertical")
+
+            # Return the current axes to the original one.
+            plt.sca(ax)
 
 
 def _take_parse_shape(images, shape=None):
@@ -291,7 +306,7 @@ def take_tile(images, shape=None):
     (img_count, sy, sx) = np.shape(images)
     img_count, (M, N) = _take_parse_shape(images, shape)
 
-    result = np.empty((M*N, sy, sx), images.dtype)
+    result = np.zeros((M*N, sy, sx), images.dtype)
     result[:img_count, :, :] = images[:, :, :]
 
     return result.reshape(M, N, sy, sx).transpose(0, 2, 1, 3).reshape(M*sy, N*sx)
@@ -1252,7 +1267,7 @@ def image_vortices_coordinates(phase_image, mask=None):
     return coordinates, weights
 
 
-def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False):
+def image_remove_vortices(phase_image, mask=None, return_vortices_negative=False):
     """
     Find and then remove all the phase vortices in a phase image.
 
@@ -1294,15 +1309,15 @@ def image_vortices_remove(phase_image, mask=None, return_vortices_negative=False
     return canvas
 
 
-def image_remove_blaze(**kwargs):
+def image_blaze_remove(**kwargs):
     """
-    Backwards compatible alias for :meth:`image_blaze_remove()`.
+    Backwards compatible alias for :meth:`image_remove_blaze()`.
     """
-    warnings.warn("image_remove_blaze is deprecated; use image_blaze_remove instead.", DeprecationWarning)
-    return image_blaze_remove(**kwargs)
+    warnings.warn("image_blaze_remove is deprecated; use image_remove_blaze instead.", DeprecationWarning)
+    return image_remove_blaze(**kwargs)
 
 
-def image_blaze_remove(phase_image, mask=None, plot=False):
+def image_remove_blaze(phase_image, mask=None, plot=False):
     """
     Remove a global blaze from a phase image.
 
@@ -1830,7 +1845,7 @@ def blob_array_detect(
                 "- Increasing exposure time to enhance the prominence of spots,\n"
                 "- Increasing the pitch of the array in the image, "
                 "which can isolate spots from neighboring crosstalk,\n"
-                "- Create an issue at https://github.com/slmsuite/slmsuite/issues, "
+                "- Create an issue at https://github.com/holodyne/slmsuite/issues, "
                 "attaching the image data that is resulting in failure. "
                 "You can use `cam.save()` to record the last image alongside metadata."
             )
@@ -1884,12 +1899,8 @@ def blob_array_detect(
                 new = ((dnorm[i,:] < tol) | (inorm[i,:] < tol)) & np.array(tags == 0) #  | (inorm[i,:] < tol)
                 tags[new] = group
                 if np.any(new): group += 1
-
-            # Calc centers of k most populated clusters.
-            tag, count = np.unique(tags, return_counts=True)
-            best_groups = np.argsort(-count)[:k]
-            count = count[best_groups]
-
+                
+            # Get the centerpoint of each group
             def mean_group(points):
                 len0 = np.sum(np.square(points[0, :]))
                 diff = np.sum(np.square(points - points[[0], :]), axis=1)
@@ -1902,27 +1913,37 @@ def blob_array_detect(
 
                 return final
 
-            centers = np.array([
-                mean_group(points[tags == tag[group]])
-                for group in best_groups
-            ])
-
-            # Weight by orthogonality to the first vector.
-            centers_norm = np.sum(np.square(centers), 0, keepdims=True)
-            centers /= centers_norm
-            cross_product = (
-                centers_norm[:, 0] * centers_norm[0, 1] -
-                centers_norm[:, 1] * centers_norm[0, 0]
-            )
-            cross_product[0] = 2
-            count = count * (np.abs(cross_product) + 1)
-
-            # Remake centers.
+            # Filter by the k most populated clusters.
+            tag, count = np.unique(tags, return_counts=True)
+            k = min(k, len(count))
             best_groups = np.argsort(-count)[:k]
             centers = np.array([
                 mean_group(points[tags == tag[group]])
                 for group in best_groups
             ])
+            count = count[best_groups]
+
+            # Order by closest point to center. Choose the closest as our base vector.
+            distance_to_center = np.sqrt(np.square(centers[:, 0]) + np.square(centers[:, 1]))
+            distance_to_center /= np.max(distance_to_center)    # normalize
+            best_groups = np.argsort(distance_to_center)
+            count = count[best_groups]
+            centers = centers[best_groups, :]
+            
+            # Weight by orthogonality to the first vector.
+            centers_length = np.sqrt(np.sum(np.square(centers), 1, keepdims=True))
+            centers_norm = centers / centers_length
+            cross_product = (
+                centers_norm[:, 0] * centers_norm[0, 1] -
+                centers_norm[:, 1] * centers_norm[0, 0]
+            )
+            cross_product[0] = 2
+
+            # Prefer orthogal vectors most, then prefer distance to center.
+            fom = 1e4 * (np.abs(cross_product)) - distance_to_center
+            best_groups = np.argsort(-fom)
+            count = count[best_groups]
+            centers = centers[best_groups, :]
 
             return centers
 

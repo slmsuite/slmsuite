@@ -61,7 +61,7 @@ _SDK_MODE_NAMES = {
 # signatures (number of arguments) are defined here.
 _SLM_LIB_TRACES = {
     _SDK_MODE.NULL: [],
-    _SDK_MODE.HDMI: [(0, 2), (1, 2)],
+    _SDK_MODE.HDMI: [(0, 2), (1, 2), (0, 3)],
     _SDK_MODE.PCIE_MODERN_3: [(2, 3)],
     _SDK_MODE.PCIE_MODERN_6: [(2, 6)],
     _SDK_MODE.PCIE_MODERN_8: [(2, 8)],
@@ -105,7 +105,10 @@ class Meadowlark(SLM):
             Whether to print extra information.
         slm_number : int
             The board number of the SLM to connect to,
-            in the case of multiple PCIe SLMs. Defaults to 1. Ignored for HDMI SLMs.
+            in the case of multiple PCIe SLMs. Defaults to 1.
+            Ignored for HDMI SLMs when the suggested 1.1.4.120 version of the SDK is
+            used. For non-standard SDK version (for example in Blink 1.1.4.124),
+            the `slm_number` argument may be used if C header requires.
         sdk_path : str
             Path of the Blink SDK installation folder.
 
@@ -627,10 +630,17 @@ class Meadowlark(SLM):
         """
         slm_number = ctypes.c_uint(self.slm_number)
         if self.sdk_mode == _SDK_MODE.HDMI:
-            Meadowlark._slm_lib[self.sdk_mode].Write_image(
-                display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
-                ctypes.c_uint(self.bitdepth == 8),  # Is 8-bit
-            )
+            if Meadowlark._slm_lib_trace[_SDK_MODE.HDMI][1] == 2:       # 2 arguments
+                Meadowlark._slm_lib[self.sdk_mode].Write_image(
+                    display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                    ctypes.c_uint(self.bitdepth == 8),  # Is 8-bit
+                )
+            elif Meadowlark._slm_lib_trace[_SDK_MODE.HDMI][1] == 3:     # 3 arguments
+                Meadowlark._slm_lib[self.sdk_mode].Write_image(
+                    slm_number,
+                    display.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                    ctypes.c_uint(self.bitdepth == 8),  # Is 8-bit
+                )
         elif self.sdk_mode.is_pcie:
             wait_for_trigger = ctypes.c_bool(self._wait_for_trigger)
             # WARN: Do not change this, as doing so will loses the guarantee that

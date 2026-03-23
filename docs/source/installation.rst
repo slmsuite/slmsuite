@@ -3,10 +3,15 @@
 Installation
 ============
 
-We recommend `uv <https://docs.astral.sh/uv/>`_ as a modern, fast Python package manager.
-All commands below use ``uv``. If you are using ``pip`` instead, note that ``uv pip install``
-installs packages in editable mode by default, whereas ``pip`` does not — you will need to
-pass the ``-e`` flag explicitly (e.g. ``pip install -e .``) for an editable install.
+All commands below use ``pip``. For editable (development) installs from a local
+clone, pass the ``-e`` flag (e.g. ``pip install -e .``).
+
+.. tip::
+
+   We recommend `uv <https://docs.astral.sh/uv/>`_ as a fast, modern package
+   manager. To use it, substitute ``uv pip`` for ``pip`` in all commands below.
+   Note that ``uv pip install`` defaults to editable mode, so the ``-e`` flag
+   is not needed.
 
 PyPI
 ----
@@ -15,23 +20,23 @@ Install the stable version of |slmsuite|_ from `PyPI <https://pypi.org/project/s
 
 .. code-block:: console
 
-    uv pip install slmsuite
+    pip install slmsuite
 
 GitHub
 ------
 
-Install the latest version of |slmsuite|_ from `GitHub <https://github.com/slmsuite/slmsuite>`_ using:
+Install the latest version of |slmsuite|_ from `GitHub <https://github.com/holodyne/slmsuite>`_ using:
 
 .. code-block:: console
 
-    uv pip install git+https://github.com/slmsuite/slmsuite
+    pip install git+https://github.com/holodyne/slmsuite
 
 One can also clone |slmsuite|_ directly and add its directory to the Python path.
 *Remember to install the dependencies (next sections)*.
 
 .. code-block:: console
 
-    git clone https://github.com/slmsuite/slmsuite
+    git clone https://github.com/holodyne/slmsuite
 
 Required Dependencies
 ---------------------
@@ -52,7 +57,7 @@ the package directory.
 
 .. code-block:: console
 
-    uv pip install .
+    pip install -e .
 
 Hardware Dependencies
 ---------------------
@@ -60,18 +65,18 @@ Hardware Dependencies
 The following python packages are *optional* acceleration or hardware requirements, which
 the user can install selectively.
 
-- GPU ``uv pip install .[gpu]``
+- GPU ``pip install -e ".[gpu]"``
     - `cupy <https://cupy.dev/>`_, highly recommended for GPU-accelerated holography.
       Sometimes, installation is made complicated by a pre-installed version of CUDA.
       You can find the CUDA version with ``nvcc --version`` in a terminal, and then
       install an installation of :mod:`cupy` specific to CUDA version ``YY`` with
-      ``uv pip install cupy-cudaYYx``.
-- Gradients ``uv pip install .[torch]``
+      ``pip install cupy-cudaYYx``.
+- Gradients ``pip install -e ".[torch]"``
     - `pytorch <https://pytorch.org/>`_, required for conjugate gradient hologram
       optimization, either in GPU or CPU mode. Uses :mod:`cupy` - :mod:`torch`
       `interoperability <https://docs.cupy.dev/en/stable/user_guide/interoperability.html#pytorch>`_
       to pass data between modules without copying overhead, even on the GPU.
-- Cameras ``uv pip install .[cameras]``
+- Cameras ``pip install -e ".[cameras]"``
     - `instrumental-lib <https://github.com/mabuchilab/Instrumental>`_
     - `pylablib <https://github.com/AlexShkarin/pyLabLib>`_
     - `pymmcore <https://github.com/micro-manager/pymmcore>`_
@@ -82,10 +87,10 @@ the user can install selectively.
     - `thorlabs_tsi_sdk <https://www.thorlabs.com/software_pages/ViewSoftwarePage.cfm?Code=ThorCam>`_ (non-PyPI)
     - `VmbPy <https://github.com/alliedvision/VmbPy>`_ (non-PyPI)
     - Other cameras are loaded directly via .dll.
-- SLMs ``uv pip install .[slms]``
+- SLMs ``pip install -e ".[slms]"``
     - `pyglet <https://pyglet.org/>`_
     - Other SLMs are loaded directly via .dll.
-- Image saving ``uv pip install .[images]``
+- Image saving ``pip install -e ".[images]"``
     - For most images and videos, `imageio <https://imageio.readthedocs.io/en/stable/>`_
     - Many video formats additionally require `pyav <https://pypi.org/project/av/>`_
     - For .gif optimization, `pygifsicle <https://pypi.org/project/pygifsicle/>`_
@@ -108,11 +113,21 @@ Use the following to install recommended jupyter-related packages.
 
 .. code-block:: console
 
-    uv pip install .[jupyter]
+    pip install -e ".[jupyter]"
+
+All Dependencies
+----------------
+
+To install all optional dependencies at once (including GPU, SLMs, cameras,
+images, Jupyter, docs, and testing), use the ``dev`` extra:
+
+.. code-block:: console
+
+    pip install -e ".[dev]"
 
 
 .. |slmsuite| replace:: :mod:`slmsuite`
-.. _slmsuite: https://github.com/slmsuite/slmsuite
+.. _slmsuite: https://github.com/holodyne/slmsuite
 
 .. |autoreload| replace:: ``%autoreload 2``
 .. _autoreload: https://ipython.readthedocs.io/en/stable/config/extensions/autoreload.html

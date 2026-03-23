@@ -901,7 +901,7 @@ def test_fit_affine(subtests):
 
 
 def test_image_vortices(subtests):
-    """Test image_vortices(), image_vortices_coordinates(), and image_vortices_remove()."""
+    """Test image_vortices(), image_vortices_coordinates(), and image_remove_vortices()."""
     y = np.arange(128)
     x = np.arange(128)
     X, Y = np.meshgrid(x, y)
@@ -934,7 +934,7 @@ def test_image_vortices(subtests):
 
     with subtests.test("return_vortices_negative creates cancellation field"):
         phase = np.arctan2(Y - cy, X - cx)
-        correction = analysis.image_vortices_remove(phase, return_vortices_negative=True)
+        correction = analysis.image_remove_vortices(phase, return_vortices_negative=True)
         corrected = phase + correction
 
         before = np.count_nonzero(analysis.image_vortices(phase))
@@ -944,7 +944,7 @@ def test_image_vortices(subtests):
 
     with subtests.test("in-place removal returns same-shape phase"):
         phase = np.arctan2(Y - cy, X - cx)
-        removed = analysis.image_vortices_remove(phase.copy())
+        removed = analysis.image_remove_vortices(phase.copy())
 
         assert removed.shape == phase.shape
         assert np.isfinite(removed).all()
@@ -953,12 +953,12 @@ def test_image_vortices(subtests):
         phase = np.arctan2(Y - cy, X - cx)
         mask = np.ones_like(phase, dtype=bool)
 
-        removed = analysis.image_vortices_remove(phase.copy(), mask=mask)
+        removed = analysis.image_remove_vortices(phase.copy(), mask=mask)
         assert removed.shape == phase.shape
 
 
-def test_image_blaze_remove(subtests):
-    """Test image_blaze_remove() for global linear phase ramp removal."""
+def test_image_remove_blaze(subtests):
+    """Test image_remove_blaze() for global linear phase ramp removal."""
     y = np.arange(96)
     x = np.arange(96)
     X, Y = np.meshgrid(x, y)
@@ -970,7 +970,7 @@ def test_image_blaze_remove(subtests):
         dy_before = np.mod(np.gradient(phase, axis=0) + np.pi / 2, np.pi) - np.pi / 2
         mean_before = np.hypot(np.nanmean(dx_before), np.nanmean(dy_before))
 
-        result = analysis.image_blaze_remove(phase)
+        result = analysis.image_remove_blaze(phase)
 
         dx_after = np.mod(np.gradient(result, axis=1) + np.pi / 2, np.pi) - np.pi / 2
         dy_after = np.mod(np.gradient(result, axis=0) + np.pi / 2, np.pi) - np.pi / 2
@@ -986,14 +986,13 @@ def test_image_blaze_remove(subtests):
         mask = np.zeros_like(phase, dtype=float)
         mask[20:80, 20:80] = 1.0
 
-        result = analysis.image_blaze_remove(phase, mask=mask)
+        result = analysis.image_remove_blaze(phase, mask=mask)
         assert result.shape == phase.shape
 
     with subtests.test("plot path"):
-
         phase = np.mod(0.15 * X + 0.22 * Y + 0.5, 2 * np.pi)
 
-        result = analysis.image_blaze_remove(phase, plot=True)
+        result = analysis.image_remove_blaze(phase, plot=True)
         plt.show()
 
         assert result.shape == phase.shape

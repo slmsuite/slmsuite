@@ -17,7 +17,7 @@ import inspect
 from abc import ABC, abstractmethod
 
 from slmsuite import __version__
-from slmsuite.hardware import _Picklable
+from slmsuite.hardware._common import _Common
 from slmsuite.holography import toolbox
 from slmsuite.misc import fitfunctions
 from slmsuite.misc.math import REAL_TYPES
@@ -32,7 +32,7 @@ def _xp(array):
     return np
 
 
-class SLM(_Picklable, ABC):
+class SLM(_Common, ABC):
     r"""
     Abstract class for SLMs.
 
@@ -168,9 +168,18 @@ class SLM(_Picklable, ABC):
         settle_time_s
             See :attr:`settle_time_s`.
         """
-        self.name = str(name)
-        width, height = resolution
-        self.shape = (int(height), int(width))
+        # Initialize the common hardware attributes.
+        super().__init__(
+            resolution=resolution,
+            bitdepth=bitdepth,
+            name=name,
+            pitch_um=pitch_um,
+            is_slm=True,
+        )
+
+        # Phase and display caches for user reference.
+        self.phase = np.zeros(self.shape)
+        self.display = np.zeros(self.shape, dtype=self.dtype)
 
         # By default, target wavelength is the design wavelength
         self.wav_um = float(wav_um)
@@ -179,42 +188,19 @@ class SLM(_Picklable, ABC):
         else:
             self.wav_design_um = float(wav_design_um)
 
-        # Multiplier for when the target wavelengths differ from the design wavelength.
-        self.phase_scaling = self.wav_um / self.wav_design_um
-
-        # Bit depth of SLM pixels.
-        self.bitdepth = int(bitdepth)
-
-        # time to delay after writing (allows SLM to stabilize).
-        self.settle_time_s = float(settle_time_s)
-
-        # Spatial dimensions
-        if isinstance(pitch_um, REAL_TYPES):
-            pitch_um = [pitch_um, pitch_um]
-        self.pitch_um = np.squeeze(pitch_um)
-        if len(self.pitch_um) != 2 or np.any(self.pitch_um <= 0):
-            raise ValueError("Expected positive (float, float) for pitch_um")
-        self.pitch_um = np.array([float(self.pitch_um[0]), float(self.pitch_um[1])])
-
         self.pitch = self.pitch_um / self.wav_um
 
         # Make normalized coordinate grids.
+        height, width = self.shape
         xpix = (width  - 1) * np.linspace(-0.5, 0.5, width)
         ypix = (height - 1) * np.linspace(-0.5, 0.5, height)
         self.grid = list(np.meshgrid(self.pitch[0] * xpix, self.pitch[1] * ypix))
 
+        # Multiplier for when the target wavelengths differ from the design wavelength.
+        self.phase_scaling = self.wav_um / self.wav_design_um
+
         # Source profile dictionary
         self.source = {}
-
-        # Decide dtype
-        if self.bitdepth <= 8:
-            self.dtype = np.dtype(np.uint8)
-        else:
-            self.dtype = np.dtype(np.uint16)
-
-        # Phase and display caches for user reference.
-        self.phase = np.zeros(self.shape)
-        self.display = np.zeros(self.shape, dtype=self.dtype)
 
         # Now inspect the _set_phase_hw() method to see if it supports the execute and
         # block arguments. We need to do this in init because inspect is expensive.
@@ -222,24 +208,17 @@ class SLM(_Picklable, ABC):
         self._set_phase_hw_block = "block" in self._set_phase_hw_args
         self._set_phase_hw_execute = "execute" in self._set_phase_hw_args
 
+        # Time to delay after writing (allows SLM to stabilize).
+        self.settle_time_s = float(settle_time_s)
+
         # Default settle and phase_correct behavior for set_phase.
         self.phase_correct = True
         self.settle = False
-
-    @property
-    def bitresolution(self):
-        return 2**self.bitdepth
 
     @abstractmethod
     def close(self):
         """Abstract method to close the SLM and delete related objects."""
         raise NotImplementedError()
-
-    def __del__(self):
-        try:
-            self.close()
-        except:
-            pass
 
     @staticmethod
     def info(verbose=True):
@@ -382,21 +361,6 @@ class SLM(_Picklable, ABC):
 
     # Writing methods
 
-    def write(
-        self,
-        phase,
-        phase_correct=True,
-        settle=False,
-        **kwargs,
-    ):
-        "Backwards-compatibility alias for :meth:`set_phase()`."
-        warnings.warn(
-            "The backwards-compatible alias SLM.write will be depreciated "
-            "in favor of SLM.set_phase in a future release."
-        )
-
-        self.set_phase(phase, phase_correct, settle, **kwargs)
-
     @abstractmethod
     def _set_phase_hw(self, display):
         """
@@ -434,6 +398,96 @@ class SLM(_Picklable, ABC):
             Formatted phase data for :meth:`_set_phase_hw`.
         """
         return self._phase2gray(phase, out=self.display)
+
+    def _phase2gray(self, phase, out=None):
+        r"""
+        Helper function to convert an array of phases (units of :math:`2\pi`) to an array of
+        :attr:`~slmsuite.hardware.slms.slm.SLM.bitresolution` -scaled and -cropped integers.
+        This is used by :meth:`set_phase()`. See special cases described in :meth:`set_phase()`.
+        Supports both :mod:`numpy` and :mod:`cupy` arrays for GPU acceleration.
+
+        Parameters
+        ----------
+        phase : numpy.ndarray or cupy.ndarray
+            Array of phases in radians.
+        out : numpy.ndarray or cupy.ndarray
+            Array to store integer values scaled to SLM voltage, i.e. for in-place
+            operations.
+            If ``None``, an appropriate array will be allocated.
+
+        Returns
+        -------
+        out
+        """
+        xp = _xp(phase)
+
+        if out is None:
+            out = xp.zeros(self.shape, dtype=self.dtype)
+        elif xp is cp and not isinstance(out, cp.ndarray):
+            out = cp.zeros(self.shape, dtype=self.dtype)
+            self.display = out
+
+        if self.phase_scaling == 1:
+            # Prepare the 2pi -> integer conversion factor and convert.
+            factor = -(self.bitresolution / 2 / np.pi)
+            phase *= factor
+
+            # There is some randomness involved in casting positive floats to integers.
+            # Avoid this by going all negative.
+            maximum = xp.amax(phase)
+            if maximum >= 0:
+                toshift = self.bitresolution * 2 * float(xp.ceil(maximum / self.bitresolution))
+                phase -= toshift
+
+            # Copy and cast the data to the output (usually self.display)
+            xp.rint(phase, out=phase)
+            xp.copyto(out, phase, casting="unsafe")
+
+            # Restore phase (usually self.phase) as these operations are in-place.
+            phase *= 1 / factor
+
+            # Shift by one so that phase=0 --> display=max. That way, phase will be more continuous.
+            out -= 1
+
+            # This part (along with the choice of type), implements modulo much faster than xp.mod().
+            if self.bitresolution & (self.bitresolution - 1) == 0:
+                active_bits_mask = int(self.bitresolution - 1)
+                xp.bitwise_and(out, active_bits_mask, out=out)
+            else:
+                # Slow backup using xp.mod().
+                xp.mod(out, self.bitresolution, out=out)
+        else:
+            # phase_scaling is not included in the scaling.
+            factor = -(self.bitresolution * self.phase_scaling / 2 / np.pi)
+            phase *= factor
+
+            # Only if necessary, modulo the phase to remain within SLM bounds.
+            if xp.amin(phase) <= -self.bitresolution or xp.amax(phase) > 0:
+                # Minus 1 is to conform with the in-bound case.
+                phase -= 1
+                # xp.mod is the slowest step. It could maybe be faster if phase is converted to
+                # an integer beforehand, but there is an amount of risk for overflow.
+                # For instance, a standard double can represent numbers far larger than
+                # even a 64 bit integer. If this optimization is implemented, take care to
+                # generate checks for the conversion to long integer / etc before the final
+                # conversion to dtype of uint8 or uint16.
+                xp.mod(phase, self.bitresolution * self.phase_scaling, out=phase)
+                phase += self.bitresolution * (1 - self.phase_scaling)
+
+                # Set values still out of range to zero.
+                if self.phase_scaling > 1:
+                    phase[phase < 0] = self.bitresolution - 1
+            else:
+                # Go from negative to positive.
+                phase += self.bitresolution - 1
+
+            # Copy and cast the data to the output (usually self.display)
+            xp.copyto(out, phase, casting="unsafe")
+
+            # Restore phase (though we do not unmodulo)
+            phase *= 1 / factor
+
+        return out
 
     def set_phase(
         self,
@@ -550,6 +604,7 @@ class SLM(_Picklable, ABC):
             Whether to sleep for
             :attr:`~slmsuite.hardware.slms.slm.SLM.settle_time_s`. If ``None``,
             defaults to :attr:`settle` (which defaults to ``False``).
+            If ``block=False``, this parameter is ignored.
         execute : bool OR None
             Whether to actually send the image to the SLM. Most SLMs do not
             support this feature, and will error if ``execute`` is not
@@ -607,6 +662,9 @@ class SLM(_Picklable, ABC):
                 raise ValueError(
                     "This SLM does not support the block argument in set_phase."
                 )
+
+        # Start a counter here for the settle time blocking.
+        t0 = time.perf_counter()
 
         # Parse phase.
         if hasattr(phase, "get_phase"):
@@ -684,103 +742,38 @@ class SLM(_Picklable, ABC):
         if execute:
             self._set_phase_hw(self.display, **kwargs)
 
+            # For accurate settle, reset the time to be after the data has actually been sent to the SLM.
+            t0 = time.perf_counter()
+
+            # Maybe some of that time will be spent rendering the data in the viewer...
+            if self.viewer is not None:
+                self.viewer.render(self.display)
+
         # Optional delay.
         if settle is None:
             settle = self.settle
-        if execute and settle:
-            time.sleep(self.settle_time_s)
+        if block and settle:
+            time_elapsed = time.perf_counter() - t0
+            time_remaining = self.settle_time_s - time_elapsed
+            if time_remaining > 0:
+                time.sleep(time_remaining)
 
         return self.display
 
-    def _phase2gray(self, phase, out=None):
-        r"""
-        Helper function to convert an array of phases (units of :math:`2\pi`) to an array of
-        :attr:`~slmsuite.hardware.slms.slm.SLM.bitresolution` -scaled and -cropped integers.
-        This is used by :meth:`set_phase()`. See special cases described in :meth:`set_phase()`.
-        Supports both :mod:`numpy` and :mod:`cupy` arrays for GPU acceleration.
+    def write(
+        self,
+        phase,
+        phase_correct=True,
+        settle=False,
+        **kwargs,
+    ):
+        "Backwards-compatibility alias for :meth:`set_phase()`."
+        warnings.warn(
+            "The backwards-compatible alias SLM.write will be depreciated "
+            "in favor of SLM.set_phase in a future release."
+        )
 
-        Parameters
-        ----------
-        phase : numpy.ndarray or cupy.ndarray
-            Array of phases in radians.
-        out : numpy.ndarray or cupy.ndarray
-            Array to store integer values scaled to SLM voltage, i.e. for in-place
-            operations.
-            If ``None``, an appropriate array will be allocated.
-
-        Returns
-        -------
-        out
-        """
-        xp = _xp(phase)
-
-        if out is None:
-            out = xp.zeros(self.shape, dtype=self.dtype)
-        elif xp is cp and not isinstance(out, cp.ndarray):
-            out = cp.zeros(self.shape, dtype=self.dtype)
-            self.display = out
-
-        if self.phase_scaling == 1:
-            # Prepare the 2pi -> integer conversion factor and convert.
-            factor = -(self.bitresolution / 2 / np.pi)
-            phase *= factor
-
-            # There is some randomness involved in casting positive floats to integers.
-            # Avoid this by going all negative.
-            maximum = xp.amax(phase)
-            if maximum >= 0:
-                toshift = self.bitresolution * 2 * float(xp.ceil(maximum / self.bitresolution))
-                phase -= toshift
-
-            # Copy and cast the data to the output (usually self.display)
-            xp.rint(phase, out=phase)
-            xp.copyto(out, phase, casting="unsafe")
-
-            # Restore phase (usually self.phase) as these operations are in-place.
-            phase *= 1 / factor
-
-            # Shift by one so that phase=0 --> display=max. That way, phase will be more continuous.
-            out -= 1
-
-            # This part (along with the choice of type), implements modulo much faster than xp.mod().
-            if self.bitresolution & (self.bitresolution - 1) == 0:
-                active_bits_mask = int(self.bitresolution - 1)
-                xp.bitwise_and(out, active_bits_mask, out=out)
-            else:
-                # Slow backup using xp.mod().
-                xp.mod(out, self.bitresolution, out=out)
-        else:
-            # phase_scaling is not included in the scaling.
-            factor = -(self.bitresolution * self.phase_scaling / 2 / np.pi)
-            phase *= factor
-
-            # Only if necessary, modulo the phase to remain within SLM bounds.
-            if xp.amin(phase) <= -self.bitresolution or xp.amax(phase) > 0:
-                # Minus 1 is to conform with the in-bound case.
-                phase -= 1
-                # xp.mod is the slowest step. It could maybe be faster if phase is converted to
-                # an integer beforehand, but there is an amount of risk for overflow.
-                # For instance, a standard double can represent numbers far larger than
-                # even a 64 bit integer. If this optimization is implemented, take care to
-                # generate checks for the conversion to long integer / etc before the final
-                # conversion to dtype of uint8 or uint16.
-                xp.mod(phase, self.bitresolution * self.phase_scaling, out=phase)
-                phase += self.bitresolution * (1 - self.phase_scaling)
-
-                # Set values still out of range to zero.
-                if self.phase_scaling > 1:
-                    phase[phase < 0] = self.bitresolution - 1
-            else:
-                # Go from negative to positive.
-                phase += self.bitresolution - 1
-
-            # Copy and cast the data to the output (usually self.display)
-            xp.copyto(out, phase, casting="unsafe")
-
-            # Restore phase (though we do not unmodulo)
-            phase *= 1 / factor
-
-        return out
+        self.set_phase(phase, phase_correct, settle, **kwargs)
 
     # File saving methods
 

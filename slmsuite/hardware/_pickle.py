@@ -5,7 +5,7 @@ import datetime
 from slmsuite import __version__
 from slmsuite.misc.files import generate_path, latest_path, save_h5, load_h5
 
-class _Picklable:
+class _Picklable(object):
     """
     Class for hardware objects to handle state saving.
     """

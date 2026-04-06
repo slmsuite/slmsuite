@@ -72,7 +72,7 @@ The client connects to this hardware:
     cam.plot()
 """
 import numpy as np
-import socket, sys, json, time
+import socket, json, time
 import warnings
 import urllib.parse as urllib
 from datetime import date, datetime, timedelta
@@ -81,7 +81,7 @@ from typing import Any, List, Tuple, Dict
 import zlib
 import base64
 
-from slmsuite.hardware import _Picklable
+from slmsuite.hardware._pickle import _Picklable
 from slmsuite import __version__
 
 DEFAULT_HOST = 'localhost'
@@ -164,7 +164,7 @@ def _recv(sock, timeout):
     return False, f"Timeout: {len(buffer)} bytes received."
 
 # Server which hosts slmsuite hardware.
-class Server:
+class Server(object):
     """
     Server for handling client commands and interfacing with hardware.
     """

@@ -14,7 +14,7 @@ from tqdm.auto import tqdm
 import warnings
 
 from slmsuite import __version__
-from slmsuite.hardware import _Picklable
+from slmsuite.hardware._pickle import _Picklable
 from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
 from slmsuite.holography.algorithms import Hologram, SpotHologram, CompressedSpotHologram

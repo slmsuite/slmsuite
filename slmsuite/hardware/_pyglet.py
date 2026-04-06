@@ -563,7 +563,7 @@ class _Window(__Window):
         return screen_list
 
 
-class _WindowThread:
+class _WindowThread(object):
     """
     Manages a dedicated :class:`~threading.Thread` for a single :class:`_Window`.
 
@@ -837,7 +837,7 @@ class _WindowThread:
             self._thread.join(timeout=3.0)
 
 
-class _WindowManager:
+class _WindowManager(object):
     """
     Singleton that manages the lifecycle of all :class:`_WindowThread` instances.
 

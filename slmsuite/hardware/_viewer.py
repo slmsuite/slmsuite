@@ -303,6 +303,7 @@ class _ViewerObject(object):
                 description="Scale",
                 tooltip="Scale the image by powers of two.",
                 layout=item_layout,
+                continuous_update=False,
             ),
             "output": Output()
         }
@@ -325,6 +326,7 @@ class _ViewerObject(object):
                     description="Range",
                     tooltip="Color scale of the plot.",
                     layout=range_layout,
+                    continuous_update=False,
                 ),
                 "autorange" : Button(
                     description="AutoRange",

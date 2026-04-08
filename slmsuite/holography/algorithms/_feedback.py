@@ -10,14 +10,14 @@ class FeedbackHologram(Hologram):
 
     Attributes
     ----------
-    cameraslm : slmsuite.hardware.cameraslms.FourierSLM OR None OR (int, int)
+    cameraslm : slmsuite.hardware.cameraslms.FourierSLM OR None
         A hologram with experimental feedback needs access to an SLM and camera.
         If ``None``, no feedback is applied (mostly defaults to :class:`Hologram`).
     _cam_points : numpy.ndarray
         Array containing points corresponding to the corners of the camera in the SLM's
         k-space. At the moment, this is only used for plotting.
         First point is repeated at the end.
-    target_ij :  array_like OR None
+    target_ij : array_like OR None
         Amplitude target in the ``"ij"`` (camera) basis. Of same ``shape`` as the camera in
         :attr:`cameraslm`.  Counterpart to :attr:`target` which is in the ``"knm"``
         (computational k-space) basis.
@@ -63,7 +63,7 @@ class FeedbackHologram(Hologram):
             Array of shape :attr:`shape`. Where ``True``, sets the background to zero
             instead of ``nan``. If ``None``, has no effect.
         null_region_radius_frac : float OR None
-            Helper function to set the ``null_region`` to zero for Fourier space radius fractions above
+            Helper parameter to set the ``null_region`` to zero for Fourier space radius fractions above
             ``null_region_radius_frac``. This is useful to prevent power being deflected
             to very high orders, which are unlikely to be properly represented in
             practice on a physical SLM.
@@ -111,9 +111,9 @@ class FeedbackHologram(Hologram):
             cam_shape = self.cameraslm.cam.shape
 
             ll = [0, 0]
-            lr = [0, cam_shape[0] - 1]
+            lr = [cam_shape[1] - 1, 0]
             ur = [cam_shape[1] - 1, cam_shape[0] - 1]
-            ul = [cam_shape[1] - 1, 0]
+            ul = [0, cam_shape[0] - 1]
 
             points_ij = toolbox.format_2vectors(np.vstack((ll, lr, ur, ul, ll)).T)
             points_kxy = self.cameraslm.ijcam_to_kxyslm(points_ij)
@@ -284,13 +284,13 @@ class FeedbackHologram(Hologram):
         ----------
         new_target_ij : array_like OR None
             New :attr:`target_ij` to optimize towards *in the camera basis*.
-            should be of the same shape as the camera.
+            Should be of the same shape as the camera.
             Also updates :attr:`target` using the stored Fourier calibration.
         null_region : array_like OR None
             Array of shape :attr:`shape`. Where ``True``, sets the background to zero
             instead of ``nan``. If ``None``, has no effect.
         null_region_radius_frac : float OR None
-            Helper function to set the ``null_region`` to zero for Fourier space radius fractions above
+            Helper parameter to set the ``null_region`` to zero for Fourier space radius fractions above
             ``null_region_radius_frac``. This is useful to prevent power being deflected
             to very high orders, which are unlikely to be properly represented in
             practice on a physical SLM. If ``None``, defaults to 1 and there is no null region.
@@ -313,8 +313,8 @@ class FeedbackHologram(Hologram):
                 null_region = cp.zeros(self.shape, dtype=bool)
 
             # Make a circle, outside of which the null_region is active.
-            xl = cp.linspace(-1, 1, null_region.shape[0])
-            yl = cp.linspace(-1, 1, null_region.shape[1])
+            xl = cp.linspace(-1, 1, null_region.shape[1])
+            yl = cp.linspace(-1, 1, null_region.shape[0])
             (xg, yg) = cp.meshgrid(xl, yl)
             mask = cp.square(xg) + cp.square(yg) > null_region_radius_frac**2
             null_region[mask] = True
@@ -335,7 +335,7 @@ class FeedbackHologram(Hologram):
         target to align where the image ended up (``basis="ij"``) or by moving
         the :math:`k`-space image to target the desired camera target
         (``basis="knm"``/``basis="kxy"``). This should be run at the user's request
-        inbetween :meth:`optimize` iterations.
+        between :meth:`optimize` iterations.
 
         Parameters
         ----------

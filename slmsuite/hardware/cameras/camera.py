@@ -22,7 +22,7 @@ class Camera(_Common, ABC):
     """
     Abstract class for cameras.
     Comes with transformations, averaging and HDR,
-    and helper functions like :meth:`.autoexpose()`.
+    and helper functions like :meth:`.autoexposure()`.
 
     Attributes
     ----------
@@ -30,7 +30,7 @@ class Camera(_Common, ABC):
         Camera identifier.
     shape : (int, int)
         Stores ``(height, width)`` of the camera in pixels, the same convention as
-        :meth:`numpy.shape`.
+        :attr:`numpy.ndarray.shape`.
     bitdepth : int
         Depth of a camera pixel well in bits.
     bitresolution : int
@@ -52,7 +52,7 @@ class Camera(_Common, ABC):
         Default setting for multi-exposure High Dynamic Range imaging. See :meth:`.get_image()`.
     capture_attempts : int
         If the camera returns an error or exceeds a timeout,
-        try again for a total of `capture_attempts` attempts.
+        try again for a total of ``capture_attempts`` attempts.
         This is useful for resilience against errors that happen with low probability.
         Defaults to 5.
     woi : tuple
@@ -142,7 +142,7 @@ class Camera(_Common, ABC):
             <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
         capture_attempts : int
             If the camera returns an error or exceeds a timeout,
-            try again for a total of `capture_attempts` attempts.
+            try again for a total of ``capture_attempts`` attempts.
             This is useful for resilience against errors that happen with low probability.
             Defaults to 5.
         rot : str or int
@@ -295,7 +295,7 @@ class Camera(_Common, ABC):
 
     def set_woi(self, woi=None):
         """
-        Abstract method to narrow the imaging region to a 'window of interest'
+        Method to narrow the imaging region to a 'window of interest'
         for faster framerates.
 
         Parameters
@@ -305,7 +305,7 @@ class Camera(_Common, ABC):
             If ``None``, defaults to largest possible.
 
         Returns
-        ----------
+        -------
         woi : list
             :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """
@@ -323,7 +323,7 @@ class Camera(_Common, ABC):
         ----------
         timeout_s : float
             The time in seconds to wait for each frame.
-            The frame exposure time  is **added** to this timeout
+            The frame exposure time is **added** to this timeout
             such that there is always enough time to expose.
         """
         for _ in range(self._flush_iterations):
@@ -338,7 +338,7 @@ class Camera(_Common, ABC):
         ----------
         timeout_s : float
             The time in seconds to wait for the frame to be fetched.
-            The frame exposure time  is **NOT added** to this timeout
+            The frame exposure time is **NOT added** to this timeout
             such that there is always enough time to expose.
 
         Returns
@@ -373,7 +373,7 @@ class Camera(_Common, ABC):
             Number of frames to batch collect.
         timeout_s : float
             The time in seconds to wait for **each** frame to be fetched.
-            The frame exposure time  is **added** to this timeout
+            The frame exposure time is **added** to this timeout
             such that there is always enough time to expose.
         out : None OR numpy.ndarray
             Preallocated memory for in-place operations, if applicable.
@@ -381,7 +381,7 @@ class Camera(_Common, ABC):
         Returns
         -------
         numpy.ndarray
-            Array of shape (image_count, :attr:`~slmsuite.hardware.cameras.camera.Camera.shape`).
+            Array of shape ``(image_count, height, width)``.
         """
         # Preallocate memory if necessary
         out = self._get_out(image_count, out)
@@ -457,7 +457,7 @@ class Camera(_Common, ABC):
 
     def _parse_hdr(self, exposures=None, preserve_none=False):
         """
-        Helper function to get a valid hdr parameters.
+        Helper function to get valid hdr parameters.
         """
         # Parse inputs
         if exposures is None:
@@ -535,7 +535,7 @@ class Camera(_Common, ABC):
         ----------
         timeout_s : float
             The time in seconds to wait for the frame to be fetched.
-            The frame exposure time  is **added** to this timeout
+            The frame exposure time is **added** to this timeout
             such that there is always enough time to expose.
         transform : bool
             Whether or not to transform the output image according to
@@ -646,7 +646,7 @@ class Camera(_Common, ABC):
             Number of images to grab.
         timeout_s : float
             The time in seconds to wait **for each** frame to be fetched.
-            The frame exposure time  is **added** to this timeout
+            The frame exposure time is **added** to this timeout
             such that there is always enough time to expose.
         out : None OR numpy.ndarray
             If not ``None``, output data in this memory. Useful to avoid excessive allocation.
@@ -718,18 +718,18 @@ class Camera(_Common, ABC):
 
         Parameters
         ----------
-        exposures : int OR (int, int)
+        exposures : int OR (int, int) OR None
             The number of exposures to take.
             Each exposure increases in time multiplicatively from the base value
-            (original :meth:`get_exposure()`) by a factor :math:`p`.
+            (original :meth:`.get_exposure()`) by a factor :math:`p`.
             The :math:`i\text{th}` image has exposure time :math:`\tau \times p^i`, zero-indexed.
             The default base of :math:`p = 2` leads to ``exposures`` being equivalent to
-            `spots <https://en.wikipedia.org/wiki/Exposure_value>`_.
+            `stops <https://en.wikipedia.org/wiki/Exposure_value>`_.
             This base can be changed to another number by instead passing a tuple, where
             the second ``int`` defines the desired base.
         return_raw : bool
             If ``True``, returns the raw data (stack of images with count ``exposures``)
-            instead of the processed data. The data can be processed using :meth:`get_image_hdr_analysis`
+            instead of the processed data. The data can be processed using :meth:`.get_image_hdr_analysis`.
         **kwargs
             Passed to :meth:`.get_image()`.
 
@@ -744,8 +744,6 @@ class Camera(_Common, ABC):
         """
         (exposures, exposure_power) = self._parse_hdr(exposures)
         overexposure_threshold = self.bitresolution / 2
-        if self.averaging is not None:
-            overexposure_threshold *= self.averaging
 
         # Make empty data and grab the original exposure time.
         original_exposure = self.get_exposure()
@@ -760,7 +758,7 @@ class Camera(_Common, ABC):
 
             # Terminate the loop if our image is entirely overexposed.
             if np.all(imgs[i, :, :] > overexposure_threshold):
-                continue
+                break
 
         # Reset exposure.
         self.set_exposure(original_exposure)
@@ -795,10 +793,10 @@ class Camera(_Common, ABC):
             this threshold. If ``None``, the threshold defaults to half the maximum.
         exposure_power : int or list of float
             Each exposure increases in time multiplicatively from the base value
-            (original :meth:`get_exposure()`) by this factor :math:`p`. The :math:`i\text{th}` image has
+            (original :meth:`.get_exposure()`) by this factor :math:`p`. The :math:`i\text{th}` image has
             exposure time :math:`\tau \times p^i`, zero-indexed.
             The default value of ``2`` leads to ``exposures`` being equivalent to
-            `spots <https://en.wikipedia.org/wiki/Exposure_value>`_.
+            `stops <https://en.wikipedia.org/wiki/Exposure_value>`_.
 
         Returns
         -------
@@ -1041,7 +1039,7 @@ class Camera(_Common, ABC):
         of the dynamic range. Useful for mitigating over- or under- exposure.
 
         Parameters
-        --------
+        ----------
         set_fraction : float
             Fraction of camera dynamic range to use as a target image maximum.
         tol : float
@@ -1059,7 +1057,7 @@ class Camera(_Common, ABC):
             Whether to print exposure updates.
 
         Returns
-        --------
+        -------
         float
             Resulting exposure in seconds.
         """
@@ -1179,6 +1177,8 @@ class Camera(_Common, ABC):
             higher the FoM.
         plot : bool
             Whether to provide illustrative plots.
+        verbose : bool
+            Whether to print progress updates during the sweep.
 
         Returns
         -------

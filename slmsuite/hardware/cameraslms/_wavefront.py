@@ -112,7 +112,7 @@ class _WavefrontCalibration(
             weak superpixel in the SLM domain, the -1st order of a different
             calibration beam can act as a strong noise source if
             it is sourced from a strong central superpixel.
-            If ``True``, this flag aligns the -1st orders to be inbetween
+            If ``True``, this flag aligns the -1st orders to be between
             the 1st orders of the grid of calibration points.
         avoid_nyquist : bool
             If ``True``, omits points that are outside the first Nyquist zone.

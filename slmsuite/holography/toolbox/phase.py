@@ -117,9 +117,9 @@ def sinusoid(
     """
     if vector[0] == 0 and vector[1] == 0:
         (x_grid, _) = _process_grid(grid)
-        result = np.full_like(x_grid, (a-b)/2 * (1 + np.sin(shift)))
+        result = np.full_like(x_grid, (a-b)/2 * (1 + np.cos(shift)))
     else:
-        result = (a-b)/2 * (1 + np.sin(blaze(grid, vector) + shift))
+        result = (a-b)/2 * (1 + np.cos(blaze(grid, vector) + shift))
 
     # Add offset if provided.
     if b != 0:
@@ -177,7 +177,7 @@ def binary(
 
     Note
     ~~~~
-    When parameters are chosen to produce integer period,
+    When parameters are chosen to produce an integer period,
     this function uses speed optimizations **(implementation incomplete)**.
     Otherwise, this function uses ``np.mod`` on top of
     :meth:`~slmsuite.holography.toolbox.phase.blaze()` to compute gratings.
@@ -228,7 +228,7 @@ def binary(
     if vector[0] == 0 and vector[1] == 0:
         phase = b
         if shift != 0:
-            if np.mod(shift, 2*np.pi) > (2 * np.pi * duty_cycle):
+            if np.mod(shift, 2*np.pi) >= (2 * np.pi * duty_cycle):
                 phase = a
         return np.full(x_grid.shape, phase, dtype=dtype)
     elif vector[0] != 0 and vector[1] != 0:
@@ -243,19 +243,11 @@ def binary(
         if np.all(np.isclose(period, period_int)) and np.all(np.isclose(duty, duty_int)):
             pass    # Future: speed optimization.
 
+    # If we have not returned, then we have to use the slow np.mod option.
     decision = np.mod(blaze(grid, vector) + shift, 2*np.pi)
     decision[np.isclose(decision, 2*np.pi)] = 0   # Handle edge case
-    decision -= (2 * np.pi * (1-duty_cycle))
-
-    # If we have not returned, then we have to use the slow np.mod option.
-    return np.where(
-        np.logical_or(
-            decision > 0,
-            np.isclose(decision, 0)
-        ),
-        a,
-        b,
-    )
+    decision -= (2 * np.pi * duty_cycle)
+    return np.where((decision < 0) & ~np.isclose(decision, 0), a, b)
 
 
 def _quadrants(
@@ -444,7 +436,7 @@ def lens(grid, f=(np.inf, np.inf)):
     # Optimize phase construction based on context (for speed, to avoid square, etc).
     if np.isfinite(f[0]) and np.isfinite(f[1]):
         return (np.pi / f[0]) * np.square(x_grid) + (np.pi / f[1]) * np.square(y_grid)
-    elif np.isfinite(f[0]) and np.isfinite(f[1]):
+    elif np.isfinite(f[0]):
         return (np.pi / f[0]) * np.square(x_grid)
     elif np.isfinite(f[1]):
         return (np.pi / f[1]) * np.square(y_grid)
@@ -455,10 +447,10 @@ def lens(grid, f=(np.inf, np.inf)):
 def axicon(grid, f=(np.inf, np.inf), w=None):
     r"""
     Returns an `axicon <https://en.wikipedia.org/wiki/Axicon>`_ lens,
-    the phase farfield for a Bessel beam. A (elliptically)-cylindrical axicon blazes
+    the phase farfield for a Bessel beam. An (elliptically)-cylindrical axicon blazes
     according to :math:`\vec{k}_g = w / \vec{\,f\,} / 2` where
     :math:`w` is the radius of the axicon. With a flat input amplitude over
-    :math:`[-w, w]`, this will produce a Bessel beam focussed at :math:`z = \vec{f}`.
+    :math:`[-w, w]`, this will produce a Bessel beam focused at :math:`z = \vec{f}`.
 
     .. math:: \phi(\vec{x}) = 2\pi \cdot |\vec{k}_g \cdot \vec{x}|
 
@@ -597,7 +589,7 @@ def zernike_convert_index(indices, from_index="ansi", to_index="ansi"):
     -  ``"wyant"``
         1-dimensional (0-indexed) `Wyant indices
         <https://en.wikipedia.org/wiki/Zernike_polynomials#Wyant_indices>`_.
-        Equivalent to ``"fringe"``, except with starting with zero instead of one.
+        Equivalent to ``"fringe"``, except starting with zero instead of one.
 
     Parameters
     ----------
@@ -646,7 +638,7 @@ def zernike_convert_index(indices, from_index="ansi", to_index="ansi"):
     if from_index == "radial":
         n = indices[:,0]
         l = indices[:,1]
-    elif from_index == "noll" or to_index == "fringe" or from_index == "wyant":
+    elif from_index == "noll" or from_index == "fringe" or from_index == "wyant":
         # Inverse functions have not been implemented.
         raise NotImplementedError(f"from_index '{from_index}' is not supported currently.")
     elif from_index == "ansi":
@@ -741,7 +733,7 @@ def zernike_aperture(grid, aperture=None):
           isotropic scaling.
 
     Returns
-    ~~~~~~~
+    -------
     (float, float)
     """
     # Parse grid.
@@ -1045,7 +1037,7 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
 
     weights : array_like of float
         The weight for each given index. Of shape ``(D,)``.
-        If a stack of zernike sums is desired, then use shape ``(D, N)``.
+        If a stack of Zernike sums is desired, then use shape ``(D, N)``.
     aperture : {"circular", "elliptical", "cropped"} OR (float, float) OR float OR None
         Determines how the Zernike polynomials are laterally scaled.
         Parsed with :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`.
@@ -1196,12 +1188,12 @@ def zernike_pyramid_plot(
 
         -   ``"ansi"`` the ANSI singleton index,
         -   ``"radial"`` the radial index pair,
-        -   ``"latex"`` the cartesian representation of the polynomial,
+        -   ``"latex"`` the Cartesian representation of the polynomial,
         -   ``"name"`` the name of the aberration produced by the polynomial.
     cmap : str
         Colormap to use in plotting.
     noborder : bool
-        If ``True`` does not plot the axis border and removes color from clipped areas.
+        If ``True``, does not plot the axis border and removes color from clipped areas.
     **kwargs
         Passed to :meth:`.zernike()`.
     """
@@ -1349,7 +1341,7 @@ def _zernike_build_order(n):
 
 
 def _zernike_build_indices(indices):
-    """Pre-caches Zernike polynomial coefficients up to order :math:`n`."""
+    """Pre-caches Zernike polynomial coefficients for the given ANSI ``indices``."""
     for i in indices:
         _zernike_coefficients(i)
 
@@ -1370,7 +1362,7 @@ def _zernike_coefficients(index):
         l = -l
 
         # Define helper variables.
-        if l % 2:   # If even
+        if l % 2:   # If odd
             q = int((abs(l) - 1) / 2)
         else:
             if l > 0:
@@ -1546,7 +1538,7 @@ def _zernike_test(grid, indices):
 def _cantor_pairing(xy):
     """
     Converts a 2D index to a unique 1D index according to the
-    `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
+    `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`_.
     """
     xy = np.array(xy, dtype=int, copy=(False if np.__version__[0] == '1' else None)).reshape((-1, 2))
     return np.rint(.5 * (xy[:,0] + xy[:,1]) * (xy[:,0] + xy[:,1] + 1) + xy[:,1]).astype(int)
@@ -1555,7 +1547,7 @@ def _cantor_pairing(xy):
 def _inverse_cantor_pairing(z):
     """
     Converts a 1D index to a unique 2D index according to the
-    `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`.
+    `Cantor pairing function <https://en.wikipedia.org/wiki/Pairing_function>`_.
 
     Returns shape ``(D, 2)``
     """
@@ -1587,7 +1579,7 @@ def _term_pathing(xy):
     It may also be the case that optimizing for large-step multiplications can yield a
     speedup. (e.g. `x^5 = y * y * x` with `y = x * x` costs three multiplications instead
     of five) However, it is unlikely that users will need the very-high-order
-    polynomials would would experience an appreciable speedup.
+    polynomials would experience an appreciable speedup.
 
     Parameters
     ----------
@@ -1705,10 +1697,15 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
     out : numpy.ndarray OR cupy.ndarray
         Result of the sum.
     """
-    # Parse terms
-    terms = np.array(terms)
+    # Pre-parse weights.
+    weights = np.array(weights)
+
+    # Parse terms.
     if terms is None:
+        D = weights.shape[0] if weights.ndim >= 1 else 1
         terms = _inverse_cantor_pairing(np.arange(D))
+    else:
+        terms = np.array(terms)
 
     if terms.ndim == 1:
         terms = _inverse_cantor_pairing(terms)
@@ -1718,8 +1715,7 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
 
     D = terms.shape[0]
 
-    # Parse weights
-    weights = np.array(weights)
+    # Parse weights.
     if weights.ndim == 1:
         if len(weights) == D:
             weights = np.reshape(weights, (-1, 1))
@@ -1733,7 +1729,7 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
 
     (D, N) = weights.shape
 
-    # Parse pathing
+    # Parse pathing.
     if pathing is False:
         pathing = np.arange(terms.shape[0])
     if pathing is None:
@@ -1787,7 +1783,7 @@ def polynomial(grid, weights, terms=None, pathing=None, out=None):
                 lg = xp.arctan2(y_grid, x_grid)
 
             for i in range(N):
-                if weights[index, i] > 0:
+                if weights[index, i] != 0:
                     out[i, ...] += weights[index, i] * lg
         else:
             raise ValueError(f"Unrecognized terms {(nx, ny)} for index {index}.")
@@ -1816,7 +1812,7 @@ def _determine_source_radius(grid, w=None):
     w : float OR None
         The radius of the phase pattern in normalized :math:`\frac{x}{\lambda}` units.
         To produce perfect structured beams, this radius is equal to the radius of
-        the gaussian profile of the source (ideally not clipped by the SLM).
+        the Gaussian profile of the source (ideally not clipped by the SLM).
         If an SLM was passed as grid, retrieves the data from
         :attr:`slmsuite.hardware.slms.slm.SLM.source` and
         :meth:`slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`.
@@ -1881,7 +1877,7 @@ def laguerre_gaussian(grid, l, p=0, w=None):
 
     w = _determine_source_radius(grid, w)
 
-    theta_grid = np.arctan2(x_grid, y_grid)
+    theta_grid = np.arctan2(y_grid, x_grid)
     rr_grid = y_grid * y_grid + x_grid * x_grid
 
     canvas = 0
@@ -1992,10 +1988,10 @@ def ince_gaussian(grid, p, m, parity=1, ellipticity=1, w=None):
     raise NotImplementedError()
 
 
-def matheui_gaussian(grid, r, q, w=None):
+def mathieu_gaussian(grid, r, q, w=None):
     """
     **(NotImplemented)** Returns the phase farfield for a
-    `Matheui-Gaussian <https://doi.org/10.1364/AO.49.006903>`_ beam.
+    `Mathieu-Gaussian <https://doi.org/10.1364/AO.49.006903>`_ beam.
 
     Returns
     -------

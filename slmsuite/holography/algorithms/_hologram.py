@@ -88,11 +88,11 @@ class Hologram(_HologramStats):
     shape : (int, int)
         The shape of the computational space in the **nearfield** and **farfield**
         in :mod:`numpy` ``(h, w)`` form.
-        Corresponds to the the ``"knm"`` basis in the **farfield**.
+        Corresponds to the ``"knm"`` basis in the **farfield**.
         This often differs from :attr:`slm_shape` due to padding of the **nearfield**.
     phase : numpy.ndarray OR cupy.ndarray
         **nearfield** phase pattern to optimize.
-        Initialized to with :meth:`random.default_rng().uniform()` by default (``None``).
+        Initialized with :meth:`random.default_rng().uniform()` by default (``None``).
         This is of shape :attr:`slm_shape`
         and (upon copying to :attr:`nearfield` during optimization)
         padded to shape :attr:`shape`.
@@ -176,10 +176,10 @@ class Hologram(_HologramStats):
          - Other user-defined flags.
 
     stats : dict
-        Dictionary of useful statistics. data is stored in lists, with indices corresponding
+        Dictionary of useful statistics. Data is stored in lists, with indices corresponding
         to each iteration. Contains:
 
-         - ``"methods"`` : ``list of str``
+         - ``"method"`` : ``list of str``
             Method used for each iteration.
          - ``"flags"`` : ``dict of lists``
             Each key corresponds to a flag that was used at least once. If it is ``np.nan``
@@ -408,10 +408,10 @@ class Hologram(_HologramStats):
         if propagation_kernel is None:
             self.propagation_kernel = None
         elif isinstance(propagation_kernel, REAL_TYPES):
-            self.propagation_kernel
+            self.propagation_kernel = propagation_kernel    # Allow floats to be added to the phase.
         else:
             self.propagation_kernel = cp.array(propagation_kernel, dtype=self.dtype, copy=(False if np.__version__[0] == '1' else None))
-            if self.propagation_kernel.shape != self.slm_shape:
+            if cp.shape(self.propagation_kernel) != self.slm_shape:
                 raise ValueError("Expected the propagation kernel to be the same shape as the SLM.")
 
         # Initialize flags.
@@ -452,7 +452,7 @@ class Hologram(_HologramStats):
         ----------
         reset_phase : bool
             Whether to additionally call :meth:`reset_phase()`.
-        reset_flags : bool:
+        reset_flags : bool
             Whether to erase the information (including passed ``kwargs``) stored in :attr:`flags`.
         """
         # Reset phase to random if needed.
@@ -747,7 +747,7 @@ class Hologram(_HologramStats):
 
         Tip
         ~~~
-        Use :meth:`.plot_farfield()` on :attr:`target`` for visualization.
+        Use :meth:`.plot_farfield()` on :attr:`target` for visualization.
 
         Parameters
         ----------
@@ -801,9 +801,9 @@ class Hologram(_HologramStats):
         """
         if include_propagation and self.propagation_kernel is not None:
             if cp != np:
-                return (self.phase + self.propagation_kernel).get()
+                return (self.phase + self.propagation_kernel).get() + np.pi
             else:
-                return self.phase + self.propagation_kernel
+                return self.phase + self.propagation_kernel + np.pi
         else:
             if cp != np:
                 return self.phase.get() + np.pi
@@ -977,7 +977,7 @@ class Hologram(_HologramStats):
 
         Important
         ~~~~~~~~~
-        This callback can only applied be during a GS loop. To use for a conjugate
+        This callback can only be applied during a GS loop. To use for a conjugate
         gradient hologram, do a single iteration of GS.
 
         Parameters
@@ -1058,7 +1058,7 @@ class Hologram(_HologramStats):
     def _farfield2nearfield(self, extract=True):
         """
         Maps the farfield to the nearfield by a discrete Fourier transform.
-        This should populate populate :attr:`nearfield`.
+        This should populate :attr:`nearfield`.
         This function is overloaded by subclasses.
 
         Parameters
@@ -1084,7 +1084,7 @@ class Hologram(_HologramStats):
         **kwargs,
     ):
         r"""
-        Optimizers to solve the "phase problem": approximating the nearfield phase that
+        Optimizes to solve the "phase problem": approximating the nearfield phase that
         transforms a known nearfield source amplitude to a desired farfield
         target amplitude.
         Supported optimization methods include:
@@ -1142,7 +1142,7 @@ class Hologram(_HologramStats):
               :attr:`~slmsuite.holography.algorithms.Hologram.flags` (see ``kwargs``).
               The factor :math:`f` defaults to .1 if not passed.
 
-              Note that while Nogrette et al compares powers, this implementation
+              Note that while Nogrette et al. compare powers, this implementation
               compares amplitudes for speed. These are identical to first order.
 
             - ``'WGS-Wu'``
@@ -1290,7 +1290,7 @@ class Hologram(_HologramStats):
         GPU-accelerated optimization where significant time cost is incurred by
         moving these statistics to the CPU. This is especially apparent in the case
         of fully-computational holography, where this effect can slow what is otherwise
-        a fully-GPU-contained loop by an order magnitude.
+        a fully-GPU-contained loop by an order of magnitude.
 
         Tip
         ~~~
@@ -1321,7 +1321,7 @@ class Hologram(_HologramStats):
             be ``"computational"`` feedback. Subclasses support more types of feedback.
             Supported feedback options include the following:
 
-            - ``"computational"`` Uses the the projected farfield pattern (transform of
+            - ``"computational"`` Uses the projected farfield pattern (transform of
               the complex nearfield) as feedback.
             - ``"experimental"`` Uses a camera contained in a passed ``cameraslm`` as feedback.
               Specific to subclasses of :class:`FeedbackHologram`.
@@ -1579,7 +1579,7 @@ class Hologram(_HologramStats):
                             self.flags["fixed_phase"] = True
 
                 # Save the phase if we are going from unfixed to fixed.
-                if self.flags["fixed_phase"] and self.phase_ff is None or was_not_fixed:
+                if self.flags["fixed_phase"] and (self.phase_ff is None or was_not_fixed):
                     self.phase_ff = cp.arctan2(self.farfield.imag, self.farfield.real, out=self.phase_ff)
             else:
                 self.flags["fixed_phase"] = False
@@ -1759,7 +1759,7 @@ class Hologram(_HologramStats):
             return loss(farfield_torch, target_torch)
         elif feedback == "experimental":
             self.measure("knm")  # Make sure data is there.
-            img_knm_torch = Hologram._get_torch_tensor_from_cupy(self.target)
+            img_knm_torch = Hologram._get_torch_tensor_from_cupy(self.img_knm)
 
             # Replace the values of the farfield with the measured values, but keep the
             # gradients using detach().
@@ -1831,13 +1831,13 @@ class Hologram(_HologramStats):
         feedback_corrected *= 1 / Hologram._norm(feedback_corrected, xp=xp)
 
         if ("wu" in method or "tanh" in method):    # Additive
-            feedback_corrected *= -self.flags["feedback_exponent"]
+            feedback_corrected *= -1
             feedback_corrected += xp.array(target_amp, copy=(False if np.__version__[0] == '1' else None))
         else:                                       # Multiplicative
             xp.divide(feedback_corrected, xp.array(target_amp, copy=(False if np.__version__[0] == '1' else None)), out=feedback_corrected)
 
             if nan_checks:
-                feedback_corrected[feedback_corrected == np.inf] = 1
+                feedback_corrected[feedback_corrected == xp.inf] = 1
                 feedback_corrected[xp.array(target_amp, copy=(False if np.__version__[0] == '1' else None)) == 0] = 1
 
                 xp.nan_to_num(feedback_corrected, copy=False, nan=1)
@@ -1854,9 +1854,9 @@ class Hologram(_HologramStats):
             feedback_corrected += 1
             xp.reciprocal(feedback_corrected, out=feedback_corrected)
         elif "wu" in method:
-            feedback_corrected = np.exp(self.flags["feedback_exponent"] * feedback_corrected)
+            feedback_corrected = xp.exp(self.flags["feedback_exponent"] * feedback_corrected)
         elif "tanh" in method:
-            feedback_corrected = self.flags["feedback_factor"] * np.tanh(self.flags["feedback_exponent"] * feedback_corrected)
+            feedback_corrected = self.flags["feedback_factor"] * xp.tanh(self.flags["feedback_exponent"] * feedback_corrected)
             feedback_corrected += 1
         else:
             raise ValueError(
@@ -1864,7 +1864,7 @@ class Hologram(_HologramStats):
             )
 
         if nan_checks:
-            feedback_corrected[feedback_corrected == np.inf] = 1
+            feedback_corrected[feedback_corrected == xp.inf] = 1
 
         # Update the weights.
         weight_amp *= feedback_corrected
@@ -1902,8 +1902,8 @@ class Hologram(_HologramStats):
                 N,
                 method,
                 feedback_norm,
-                self.flags.pop("feedback_exponent", 1),
-                self.flags.pop("feedback_factor", 1)
+                self.flags.get("feedback_exponent", 1),
+                self.flags.get("feedback_factor", 1)
             )
         )
 

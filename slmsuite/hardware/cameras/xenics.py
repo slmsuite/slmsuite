@@ -267,7 +267,7 @@ XDS_UNREACHABLE = 0x2  # The device was detected but is unreachable.
 
 
 class _XDeviceInformation(Structure):
-    """Structure to be filled with camera data from the dll inteface."""
+    """Structure to be filled with camera data from the dll interface."""
 
     _fields_ = [
         ("size", c_int),
@@ -329,7 +329,7 @@ class Cheetah640(Camera):
         virtual : bool
             Whether or not the camera is virtual.
         temperature : float or None
-            Temperature in degrees celcius to set on startup. ``None`` defaults to no cooling.
+            Temperature in degrees Celsius to set on startup. ``None`` defaults to no cooling.
         pitch_um : (float, float) OR None
             Fill in extra information about the pixel pitch in ``(dx_um, dy_um)`` form
             to use additional calibrations. Defaults to 20 micron square pixels.
@@ -439,7 +439,7 @@ class Cheetah640(Camera):
         ----------
         save_file_path : str or None
             If not ``None``, the property status results will be saved to this path.
-        verbose : True
+        verbose : bool
             Prints property results if ``True``.
         """
         if self.xeneth.XC_IsInitialised(self.cam):
@@ -640,7 +640,7 @@ class Cheetah640(Camera):
 
         Parameters
         ----------
-        frame : int
+        framerate : int
             The framerate in fps.
         """
         rate = c_long(int(framerate))
@@ -737,7 +737,7 @@ class Cheetah640(Camera):
         Parameters
         ----------
         temp_c : float
-            Temperature in degrees celcius to set on startup.
+            Temperature in degrees Celsius to set on startup.
         """
         print("Setting settle temperature to %1.2fC..." % (temp_c))
         temp_current = c_double(0)
@@ -765,7 +765,7 @@ class Cheetah640(Camera):
         Returns
         -------
         float
-            Temperature in degrees celcius to set on startup. -1 if the temperature
+            Temperature in degrees Celsius to set on startup. -1 if the temperature
             could not be read.
         """
         temp = -1.0

@@ -28,7 +28,7 @@ class SimulatedSLM(SLM):
         Parameters
         ----------
         resolution
-            The width and height of the camera in ``(width, height)`` form.
+            The width and height of the SLM in ``(width, height)`` form.
 
             Important
             ~~~~~~~~~

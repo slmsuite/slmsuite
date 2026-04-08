@@ -24,11 +24,11 @@ class _Viewable(object):
         If ``True`` is passed to the ``widgets`` argument, this viewer is accompanied by
         a series of `IPython widgets
         <https://ipywidgets.readthedocs.io/en/latest/examples/Widget%20List.html>`_
-        in the form of slides and buttons
+        in the form of sliders and buttons
         for controlling the color scale, colormap, viewer scale, and live viewing.
         By toggling the ``Live`` widget button, a loop is created that continuously
-        polls the camera for new images
-        this viewer can be used as a realtime camera monitor within the jupyter notebook.
+        polls the camera for new images.
+        This viewer can be used as a realtime camera monitor within the jupyter notebook.
         However, note that any user-execution will block the monitoring loop.
         Regardless, any image polling during the blocked period will still update the viewer,
         which provides useful active feedback for what is happening during the
@@ -36,7 +36,7 @@ class _Viewable(object):
         ``Live`` mode is ignored for SLMs.
 
         This limitation is imposed by the
-        python Global Interpreter Lock (GIL) which restricts operation to a single thread,
+        Python Global Interpreter Lock (GIL) which restricts operation to a single thread,
         especially operation connecting to a diverse set of camera and SLM hardware.
         We use :mod:`asyncio` to allow the realtime monitoring loop to be
         interrupted by user-execution (e.g. running a cell in jupyter),
@@ -49,7 +49,7 @@ class _Viewable(object):
         activate : bool OR None
             If ``True``, creates a live viewer in the current cell,
             destroying any other attached viewer.
-            If ``False``, destroys  any other attached viewer.
+            If ``False``, destroys any other attached viewer.
             If ``None``, toggles the live viewer, destroying any attached viewer or
             creating one in the current cell if none is attached. Defaults to ``None``.
         widgets : bool

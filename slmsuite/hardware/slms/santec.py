@@ -70,8 +70,8 @@ class Santec(SLM):
         r"""
         Initializes an instance of a Santec SLM.
 
-        Arguments
-        ---------
+        Parameters
+        ----------
         slm_number
             See :attr:`slm_number`.
         display_number
@@ -92,7 +92,7 @@ class Santec(SLM):
         Santec SLMs can reconfigure their phase table: the correspondence between
         grayscale values and applied voltages. This is configured based upon the wavelength
         supplied to :attr:`.SLM.wav_design_um`. This allows :attr:`.SLM.phase_scaling`
-        to be one if desired, and make use of optimized routines (see :meth`.set_phase()`).
+        to be one if desired, and make use of optimized routines (see :meth:`.set_phase()`).
         However, sometimes setting the phase table runs into issues, where the maximum value
         doesn't correspond to exactly :math:`2\pi` at the target wavelength. This is noted
         in the initialization, and the user should update :attr:`.SLM.wav_design_um` or otherwise
@@ -316,7 +316,7 @@ class Santec(SLM):
             Whether to print the discovered information.
 
         Returns
-        --------
+        -------
         list of (int, str) tuples
             The number and name of each potential display.
         """
@@ -375,7 +375,7 @@ class Santec(SLM):
         This correction is only fully valid at the wavelength at which it was collected.
 
         Returns
-        ----------
+        -------
         numpy.ndarray
             :attr:`~slmsuite.hardware.slms.slm.SLM.source` ``["phase"]``,
             the Santec-provided phase correction.
@@ -531,7 +531,7 @@ class Santec(SLM):
         Returns
         -------
         (int, str, str)
-            Status in ``(name, note)`` form.
+            Status in ``(num, name, note)`` form.
         """
         # Parse status
         status = int(status)

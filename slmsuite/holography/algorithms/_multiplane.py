@@ -94,7 +94,7 @@ class MultiplaneHologram(Hologram):
         """
         From a stack of target (power) images at ``target_depths``, generate a stack
         of images at ``return_depths``, accounting for defocus blur.
-        Power is summed as if all depths were transparent; i.e. objects do no block
+        Power is summed as if all depths were transparent; i.e. objects do not block
         objects further behind.
         This is a partial farfield implementation of
         `realistic defocus blur <https://doi.org/10.48550/arXiv.2205.07030>`_.
@@ -123,7 +123,7 @@ class MultiplaneHologram(Hologram):
             If ``None``, use ``target_depths``.
         sharp_focus : bool
             If ``False``, depths at focal planes are blurred by the point spread radius
-            of a focussed spot.
+            of a focused spot.
             If ``True``, all the blurring is reduced by the focused point spread radius,
             keeping images that are in focus sharp.
         """

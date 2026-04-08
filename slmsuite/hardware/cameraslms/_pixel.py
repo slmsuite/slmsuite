@@ -280,8 +280,8 @@ class _PixelCalibration(object):
         """
         kernel = np.where(
             x >= 0,
-            np.exp(-np.power(np.abs(x) / a1_pix, n1)),
             np.exp(-np.power(np.abs(x) / a2_pix, n2)),
+            np.exp(-np.power(np.abs(x) / a1_pix, n1)),
         )
         kernel[len(kernel) // 2] = 1
         kernel /= np.sum(kernel)

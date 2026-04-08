@@ -54,7 +54,7 @@ class SLM(_Common, ABC):
         in :meth:`set_phase()`. Defaults to .3 sec for precision.
     pitch_um : (float, float)
         Pixel pitch in microns.
-    pitch : float
+    pitch : (float, float)
         Pixel pitch normalized to wavelengths ``pitch_um / wav_um``. This value is more
         useful than ``pitch_um`` when considering conversions to :math:`k`-space.
     wav_um : float
@@ -81,7 +81,7 @@ class SLM(_Common, ABC):
         :math:`x` and :math:`y` coordinates of the SLM's pixels in wavelengths
         (see :attr:`wav_um`, :attr:`pitch_um`)
         measured from the center of the SLM.
-        Of size :attr:`shape`. Produced by :meth:`numpy.meshgrid`.
+        Of size :attr:`shape`. Produced by :func:`numpy.meshgrid`.
     source : dict
         Stores data describing measured, simulated, or estimated properties of the source,
         such as amplitude and phase.
@@ -102,6 +102,8 @@ class SLM(_Common, ABC):
         far-field.
 
         When :meth:`.fit_source_amplitude()` is called,
+        additional keys (e.g. ``"amplitude_center_pix"``, ``"amplitude_radius"``,
+        ``"amplitude_extent"``, ``"amplitude_extent_radius"``) are populated.
     phase : numpy.ndarray
         Last displayed data in units of phase (radians). If wavefront calibration
         (`phase_correct=True`) is used, this includes the calibration data.
@@ -149,7 +151,7 @@ class SLM(_Common, ABC):
         Parameters
         ----------
         resolution
-            The width and height of the camera in ``(width, height)`` form.
+            The width and height of the SLM in ``(width, height)`` form.
 
             Important
             ~~~~~~~~~
@@ -242,7 +244,7 @@ class SLM(_Common, ABC):
     def load_vendor_phase_correction(self, file_path):
         """
         Loads vendor-provided phase correction from file,
-        setting :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]`.
+        setting :attr:`~slmsuite.hardware.slms.slm.SLM.source` ``["phase"]``.
         By default, this is interpreted as an image file and is padded or unpadded to
         the shape of the SLM.
         Subclasses should implement vendor-specific routines for loading and
@@ -256,7 +258,7 @@ class SLM(_Common, ABC):
         Returns
         -------
         numpy.ndarray
-            :attr:`~slmsuite.hardware.slms.slm.SLM.source["phase"]`,
+            :attr:`~slmsuite.hardware.slms.slm.SLM.source` ``["phase"]``,
             the vendor-provided phase correction.
         """
         # Load an invert the image file (see phase sign convention rules in set_phase).
@@ -564,10 +566,10 @@ class SLM(_Common, ABC):
 
         Parameters
         ----------
-        phase : numpy.ndarray OR cupy.cparray OR
+        phase : numpy.ndarray OR cupy.ndarray OR
                 slmsuite.holography.algorithms.Hologram OR None
-        Phase data to display in units of :math:`2\pi`, unless the passed
-        data is of integer type and the data is applied directly.
+            Phase data to display in units of :math:`2\pi`, unless the passed
+            data is of integer type and the data is applied directly.
 
             -  If ``None`` is passed to :meth:`.set_phase()`, data is zeroed.
             -  If a :class:`~slmsuite.holography.algorithms.Hologram` is passed,
@@ -575,7 +577,7 @@ class SLM(_Common, ABC):
                :meth:`~slmsuite.holography.algorithms.Hologram.get_phase()`.
             -  If the array has a larger shape than the SLM shape, then the data is
                cropped to size in a centered manner
-               (:attr:`~slmsuite.holography.toolbox.unpad`).
+               (:meth:`~slmsuite.holography.toolbox.unpad`).
             -  If integer data is passed with the same type as :attr:`display`
                (``np.uint8`` for <=8-bit SLMs, ``np.uint16`` otherwise),
                then this data is **directly** passed to the
@@ -589,7 +591,7 @@ class SLM(_Common, ABC):
 
             Usually, an **exact** stored copy of the data passed by the user
             under ``phase`` is stored in the attribute :attr:`phase`. However,
-            in cases where :attr:`phase_scaling` not one, this copy is modified
+            in cases where :attr:`phase_scaling` is not one, this copy is modified
             to include how the data was wrapped. If the data was cropped, then
             the cropped data is stored, etc. If integer data was passed, the
             equivalent floating point phase is computed and stored in the
@@ -597,7 +599,7 @@ class SLM(_Common, ABC):
         phase_correct : bool OR None
             Whether to add wavefront correction to the pattern. This correction
             is stored in
-            :attr:`~slmsuite.hardware.slms.slm.SLM.source```["phase"]``. If
+            :attr:`~slmsuite.hardware.slms.slm.SLM.source` ``["phase"]``. If
             ``None``, defaults to :attr:`phase_correct` (which defaults to
             ``True``).
         settle : bool OR None
@@ -892,6 +894,58 @@ class SLM(_Common, ABC):
         """
         raise NotImplementedError("This SLM does not support output triggering.")
 
+    # Segmentation
+
+    def segment(
+        self,
+        pattern,
+    ):
+        """
+        Splits the area of the SLM into a number of segments.
+
+        Parameters
+        ----------
+        pattern : int OR (int, int)
+            Segmentation pattern in ``(rows, columns)``.
+            If a single integer is passed, this is assumed to be the number of columns,
+            i.e. ``(1, pattern)``.
+        """
+        # Parse pattern
+        if np.isscalar(pattern):
+            pattern = int(np.rint(pattern))
+            pattern = (1, pattern)
+
+        pattern = toolbox.format_shape(pattern)
+
+        # Get width and height of segments in pixels.
+        h, w = segment_shape = [s // p for s, p in zip(self.shape, pattern)]
+
+        # Shift the grid so that extra area is on the edges.
+        y0, x0 = [((s - p * sp) // 2) for s, p, sp in zip(self.shape, pattern, segment_shape)]
+
+        # Import here to avoid circular imports.
+        from slmsuite.hardware.slms.segmented import SegmentedSLM
+
+        # Now make all the children and return.
+        children = []
+
+        for x in range(pattern[1]):
+            for y in range(pattern[0]):
+                x = x0 + x * w
+                y = y0 + y * h
+
+                # The last SLM should handle updates.
+                child = SegmentedSLM(
+                    parent=self,
+                    window=(x, w, y, h),
+                    name=f"{self.name}_segment_{x}_{y}",
+                    update=(x == pattern[1] - 1 and y == pattern[0] - 1)
+                )
+
+                children.append(child)
+
+        return children
+
     # Source and calibration methods
 
     def set_source_analytic(
@@ -1006,7 +1060,7 @@ class SLM(_Common, ABC):
 
         -   ``"amplitude_extent_radius"`` : float
 
-            Smallest scalar radius about the center of the that covers all amplitude
+            Smallest scalar radius about the center of the source that covers all amplitude
             larger than ``extent_threshold``, where the maximum of the distribution is
             normalized to one.
             This is used to determine the scaling for
@@ -1029,15 +1083,15 @@ class SLM(_Common, ABC):
             Guessed as 1/4 of the smallest extent.
 
         -   ``"amplitude_extent"``
-            Guessed as the the rectangle that circumscribes the SLM field.
+            Guessed as the rectangle that circumscribes the SLM field.
 
         -   ``"amplitude_extent_radius"``
-            Guessed as the the radius that circumscribes the SLM field.
+            Guessed as the radius that circumscribes the SLM field.
 
         Important
         ~~~~~~~~~
         The ``grid`` is recentered upon the detected center of the source.
-        This ``grid`` is used to generated phase functions like
+        This ``grid`` is used to generate phase functions like
         :meth:`~slmsuite.holography.toolbox.phase.lens()` or
         :meth:`~slmsuite.holography.toolbox.phase.laguerre_gaussian()`.
         Such generation works best when centered upon the source; a
@@ -1111,7 +1165,7 @@ class SLM(_Common, ABC):
             self.grid[1] += dcenter[1] * self.pitch[1]
 
             center_grid = np.array(
-                [np.argmin(self.grid[0][0,:]), np.argmin(self.grid[1][:,0])]
+                [np.argmin(np.abs(self.grid[0][0,:])), np.argmin(np.abs(self.grid[1][:,0]))]
             )
 
             extent_mask = amp > (extent_threshold * np.amax(amp))
@@ -1207,9 +1261,7 @@ class SLM(_Common, ABC):
 
     def get_source_center(self):
         """
-        Extracts the scaling for
-        :meth:`~slmsuite.holography.toolbox.phase.zernike_aperture()`
-        from the scalars computed in
+        Extracts the source amplitude center pixel computed by
         :meth:`~slmsuite.hardware.slms.slm.SLM.fit_source_amplitude()`.
         """
         self.fit_source_amplitude(force=False)
@@ -1246,7 +1298,7 @@ class SLM(_Common, ABC):
 
         Returns
         --------
-        matplotlib.pyplot.axis
+        matplotlib.axes.Axes
             Axis handles for the generated plot.
         """
         if source is None:

@@ -33,7 +33,7 @@ except:
 
 class PyLabLib(Camera):
     """
-    A wrapped :mod:`instrumental` camera.
+    A wrapped :mod:`pylablib` camera.
 
     Attributes
     ----------
@@ -160,7 +160,7 @@ class PyLabLib(Camera):
             If ``None``, defaults to largest possible.
 
         Returns
-        ----------
+        -------
         woi : list
             :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """

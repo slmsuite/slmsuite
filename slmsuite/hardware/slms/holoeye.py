@@ -37,7 +37,7 @@ except ImportError:
 
 class Holoeye(SLM):
     """
-    Interfaces with Holoeye SLMs via the the ``HEDS`` library.
+    Interfaces with Holoeye SLMs via the ``HEDS`` library.
 
     Attributes
     ----------

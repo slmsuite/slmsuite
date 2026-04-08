@@ -29,7 +29,7 @@ class _Picklable(object):
             ``"__meta__"`` value of a superdictionary which also contains:
             ``"__version__"``, the current slmsuite version,
             ``"__time__"``, the time formatted as a date string, and
-            ``"__timestamp__"``, the time formatting as a floating point timestamp.
+            ``"__timestamp__"``, the time formatted as a floating point timestamp.
             This information is used as standard metadata for calibrations and saving.
         """
         # Parse attributes.

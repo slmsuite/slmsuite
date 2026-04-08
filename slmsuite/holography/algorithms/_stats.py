@@ -109,7 +109,7 @@ class _HologramStats(object):
                 ratio_pwr_full[mask] = ratio_pwr
             else:
                 final_stats["raw_pwr"] = xp.square(feedback_amp).get()
-                ratio_pwr_full[mask] = ratio_pwr.get()
+                ratio_pwr_full[mask.get()] = ratio_pwr.get()
 
             final_stats["raw_pwr_ratio"] = ratio_pwr_full
 
@@ -226,10 +226,16 @@ class _HologramStats(object):
         """
         Uses :meth:`save_h5` to export the statistics hierarchy to a given h5 file.
 
+        Tip
+        ~~~
+        Enabling the ``"raw_stats"`` flag will save feedback data from each iteration
+        instead of only derived statistics. Consider enabling this to save more detailed
+        information.
+
         Parameters
         ----------
         file_path : str
-            Full path to the file to read the data from.
+            Full path to the file to write the data to.
         include_state : bool
             If ``True``, also includes all other attributes of :class:`Hologram`
             except for :attr:`dtype` (cannot pickle) and :attr:`amp_ff` (can regenerate).
@@ -271,13 +277,8 @@ class _HologramStats(object):
 
     def load_stats(self, file_path, include_state=True):
         """
-        Uses :meth:`save_h5` to import the statistics hierarchy from a given h5 file.
+        Uses :meth:`load_h5` to import the statistics hierarchy from a given h5 file.
 
-        Tip
-        ~~~
-        Enabling the ``"raw_stats"`` flag will export feedback data from each iteration
-        instead of only derived statistics. Consider enabling this to save more detailed
-        information upon export.
 
         Parameters
         ----------
@@ -352,6 +353,8 @@ class _HologramStats(object):
 
         Parameters
         ----------
+        source : array_like OR None
+            Source to plot. If ``None``, defaults to the current amplitude and phase.
         title : str
             Title of the plots.
         padded : bool
@@ -533,7 +536,7 @@ class _HologramStats(object):
         # Plot the full target, blurred so single pixels are visible in low res
         b = 2 * int(np.amax(self.shape) / 400) + 1  # FUTURE: fix arbitrary
         npsource_blur = cv2.GaussianBlur(npsource, (b, b), 0)
-        
+
         full = axs[0].imshow(
             npsource_blur,
             vmin=0, vmax=np.nanmax(npsource),
@@ -603,7 +606,7 @@ class _HologramStats(object):
                 ax.set_ylabel(toolbox.BLAZE_LABELS[units][1])
 
         # Scale aspect; knm might be displaying a non-square array.
-        if units == "knm":  
+        if units == "knm":
             aspect = float(npsource.shape[1]) / float(npsource.shape[0])
         else:
             aspect = 1
@@ -624,7 +627,7 @@ class _HologramStats(object):
                 np.any(_cam_points[0, :4] < 0)
                 or np.any(_cam_points[1, :4] < 0)
                 or np.any(_cam_points[0, :4] >= npsource.shape[1])
-                or np.any(_cam_points[1, :4] >= npsource.shape[1])
+                or np.any(_cam_points[1, :4] >= npsource.shape[0])
             )
 
             # If so, plot a labeled green rectangle to show the extents of knm space.
@@ -741,7 +744,7 @@ class _HologramStats(object):
             Allows the user to pass in desired y limits.
             If ``None``, the default y limits are used.
         show : bool
-            Whether or not to immediately show the plot. Defaults to false.
+            Whether or not to immediately show the plot. Defaults to ``False``.
         """
         if stats_dict is None:
             stats_dict = self.stats

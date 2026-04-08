@@ -19,7 +19,7 @@ def _blaze_offset(grid, vector, offset=0):
     return blaze(grid=grid, vector=vector) + offset
 
 
-class _SuperpixelWavefrontCalibration(object):
+class _WavefrontCalibrationSuperpixel(object):
     """
     Hidden superclass with superpixel wavefront calibration methods
     (interfere superpixel modes for relative phase measurement).
@@ -81,7 +81,7 @@ class _SuperpixelWavefrontCalibration(object):
             If ``None``, densely fills the camera field of view with calibration points.
         superpixel_size : int
             The width and height in pixels of each SLM superpixel.
-            If this is not a devisor of both dimensions in the SLM's :attr:`shape`,
+            If this is not a divisor of both dimensions in the SLM's :attr:`shape`,
             then superpixels at the edge of the SLM may be cropped and give undefined results.
             Currently, superpixels are forced to be square, and this value must be a scalar.
         reference_superpixels : (int,int) OR numpy.ndarray of int OR None
@@ -130,7 +130,7 @@ class _SuperpixelWavefrontCalibration(object):
 
             Tip
             ~~~
-            If ``phase_steps`` is ``None`, phase is not measured and only amplitude is measured.
+            If ``phase_steps`` is ``None``, phase is not measured and only amplitude is measured.
         fresh_calibration : bool
             If ``True``, the calibration is performed without an existing calibration
             (any old global calibration is wiped from the :class:`SLM` and :class:`CameraSLM`).
@@ -556,13 +556,13 @@ class _SuperpixelWavefrontCalibration(object):
             Returns
             -------
             best_phase : float
-                b
+                Phase b [rad] of maximum constructive interference.
             amp : float
-                a
+                Amplitude a of the interference fringe.
             r2 : float
                 R^2 of fit
             contrast : float
-                a / (a + c)
+                a / (a + c), where c is the background
             """
             guess = [
                 phases[np.argmax(intensities)],
@@ -622,9 +622,9 @@ class _SuperpixelWavefrontCalibration(object):
             Returns
             -------
             best_phase : float
-                b
+                Phase [rad] of maximum constructive interference.
             amp : float
-                a
+                Amplitude of the interference fringe.
             r2 : float
                 R^2 of fit
             contrast : float
@@ -1079,8 +1079,8 @@ class _SuperpixelWavefrontCalibration(object):
 
             phase_fit =     results[:, 0]
             amp_fit =       results[:, 1]
-            contrast_fit =  results[:, 2]
-            r2_fit =        results[:, 3]
+            r2_fit =        results[:, 2]
+            contrast_fit =  results[:, 3]
 
             # Step 2.5: maybe plot a picture of the correct phase.
             if plot:

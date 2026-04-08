@@ -17,7 +17,7 @@ class Template(Camera):
         Many cameras have a singleton SDK class which handles all the connected cameras
         of a certain brand. This is generally implemented as a class variable.
     cam : object
-        Most cameras will wrap some handle which connects to the the hardware.
+        Most cameras will wrap some handle which connects to the hardware.
     """
 
     # Class variable (same for all instances of Template) pointing to a singleton SDK.

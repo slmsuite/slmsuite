@@ -43,6 +43,7 @@ class ImagingSource(Camera):
     def init_sdk(cls):
         """
         Class method for initializing the sdk. Called when the first instance is instantiated or when the static method info is called.
+
         Parameters
         ----------
         cls : object
@@ -67,12 +68,12 @@ class ImagingSource(Camera):
     @staticmethod
     def safe_call(cb, to_raise, *args, **kwargs):
         """
-        Decorator method that automatically error checks the result from callback `cb`.
+        Decorator method that automatically error checks the result from callback ``cb``.
 
         Parameters
         ----------
         cb : function
-            Function that is decorated with arguments `*args` and `**kwargs`.
+            Function that is decorated with arguments ``*args`` and ``**kwargs``.
         to_raise : bool
             Whether to raise an exception or simply print out an error.
 
@@ -259,7 +260,7 @@ class ImagingSource(Camera):
         self.shape = (height, width)
 
     def _get_image_hw(self, timeout_s):
-        """See :meth:`.Camera.get_image`."""
+        """See :meth:`.Camera._get_image_hw`."""
         buffer_size = 3 * self.bitdepth * self.shape[0] * self.shape[1] # times 3 is because even Y800 is RGB
         # Starts the image acquisition
         ImagingSource.safe_call(ImagingSource.sdk.IC_StartLive, 0, self.cam, 0)

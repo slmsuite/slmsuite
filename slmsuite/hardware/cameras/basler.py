@@ -184,8 +184,8 @@ class Basler(Camera):
 
     @classmethod
     def close_sdk(cls):
-        """"
-        Close the :mod:'pylon' instance.
+        """
+        Close the :mod:`pylon` instance.
         """
         if cls.sdk is not None:
             cls.sdk = None
@@ -193,14 +193,14 @@ class Basler(Camera):
     ### Property Configuration ###
 
     def get_properties(self, properties=None):
-        """"
+        """
         Print the list of camera properties.
 
         Parameters
         ----------
-        properties: dict or None
-            The target camera's property dictionary. If ''None'', the property
-            dictionary is fetched from the camera associated with the cancelling instance.
+        properties : dict or None
+            The target camera's property dictionary. If ``None``, the property
+            dictionary is fetched from the camera associated with the calling instance.
         """
         if properties is None:
             properties = self.cam.__dict__.keys()

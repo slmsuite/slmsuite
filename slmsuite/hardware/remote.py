@@ -56,12 +56,12 @@ The client connects to this hardware:
     from slmsuite.hardware.cameras.remote import RemoteCamera
 
     slm = RemoteSLM(
-        name="remote_slm"
+        name="remote_slm",
         host="localhost",
         port=5025,
     )
     cam = RemoteCamera(
-        name="remote_camera"
+        name="remote_camera",
         host="localhost",
         port=5025,
     )
@@ -505,10 +505,10 @@ class _Client(_Picklable):
             Which port to connect to. Defaults to ``5025`` (commonly used for instrument
             control).
         :param timeout:
-            Timeout in seconds for the connection. Defaults to ``1.0``.
+            Timeout in seconds for the connection. Defaults to ``5``.
         :return:
             List of hardware at the server in ``name:kind`` pairs, where ``kind`` is
-            either ``"camera"`` or ``"slm"``. Returns empty dict if no server is found.
+            either ``"camera"`` or ``"slm"``. Raises :exc:`TimeoutError` if no server is found.
         """
         try:
             hardware = _Client.__com(None, host, port, timeout, command="ping")

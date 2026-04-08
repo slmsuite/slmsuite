@@ -42,7 +42,7 @@ DEFAULT_DLL_PATH = (
 def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
     """
     Adds Thorlabs camera DLLs to the DLL path.
-    `"32_lib"` or `"64_lib"` is appended to the default .dll path
+    ``"32_lib"`` or ``"64_lib"`` is appended to the default .dll path
     depending on the type of system.
 
     Parameters
@@ -87,7 +87,7 @@ class ThorCam(Camera):
     ----------
     sdk : TLCameraSDK
         Object to talk with the Thorlabs SDK. Shared among instances of :class:`ThorCam`.
-    cam : ThorCam
+    cam : TLCamera
         Object to talk with the desired camera.
     profile : {'free', 'single', 'single_hardware'} or None
         Current operation mode.
@@ -422,8 +422,8 @@ class ThorCam(Camera):
 
         Parameters
         ----------
-        verbose : bool
-            Whether or not to print extra information.
+        timeout_s : float
+            Timeout in seconds for flushing cached frames.
         """
         # Start the timer.
         t = time.perf_counter()

@@ -12,7 +12,7 @@ from slmsuite.holography.algorithms import CompressedSpotHologram
 from slmsuite.holography.toolbox import format_vectors, smallest_distance, convert_vector
 from slmsuite.holography.toolbox.phase import _zernike_indices_parse, zernike, zernike_sum
 
-class _ZernikeWavefrontCalibration(object):
+class _WavefrontCalibrationZernike(object):
     """
     Hidden superclass with Zernike wavefront calibration methods
     (project and analyze Zernike modes).
@@ -38,7 +38,7 @@ class _ZernikeWavefrontCalibration(object):
 
         Parameters
         ----------
-        calibration_points : (float, float) OR numpy.ndarray OR float OR None
+        calibration_points : (float, float) OR numpy.ndarray OR int OR None
             Position(s) in the camera domain where interference occurs.
             A passed array should be a standard ``(D, N)`` matrix,
             where ``D`` is the dimension of the Zernike space and ``N`` is the number of points.
@@ -103,21 +103,21 @@ class _ZernikeWavefrontCalibration(object):
             :meth:`~slmsuite.holography.analysis.image_areas()`, a measurement of spot
             size. The optimizer will *minimize* the figure of merit.
         global_correction : bool
-            If ``True``, the optimized Zernike coefficients are meaned and applied to the entire SLM.
+            If ``True``, the optimized Zernike coefficients are averaged and applied to the entire SLM.
             This can be useful for the first step of calibration to remove large global aberration terms
             while avoiding noise and uncertainty on individual spots.
-            When `optimize_position` is `True`, the `fit_affine` flag of
+            When ``optimize_position`` is ``True``, the ``fit_affine`` flag of
             :meth:`~slmsuite.holography.algorithms.SpotHologram.refine_offset()` is used to extract the global shift.
         optimize_focus : bool
             If ``False``, does not optimize the focus term (ansi index 4). Useful in
-            cases where the ``callback`` method is insensitive to :meth:`z`-translation
-            (e.g. Stark effect of an atom) or in cases where the :meth:`z` axis should
+            cases where the ``callback`` method is insensitive to :math:`z`-translation
+            (e.g. Stark effect of an atom) or in cases where the :math:`z` axis should
             be unchanged.
         optimize_position : bool
             If ``False``, does not optimize the position terms (ansi indices 1 and 2).
         optimize_weights : bool OR int
             If ``True``,  optimizes the WGS weights of the hologram one time
-            at the beginning of the calibration. Defaults to 20 iterations.
+            at the beginning of the calibration. Defaults to 10 iterations.
             If integer, then uses this number as the number of iterations to optimize the weights.
             Must be at least 1.
         plot : int or bool
@@ -684,6 +684,19 @@ class _ZernikeWavefrontCalibration(object):
         vector,
         from_units="norm",
     ):
+        """
+        Apply a Zernike-basis wavefront correction to the SLM.
+
+        .. warning::
+            Not yet implemented. Expected as part of version 0.5.0.
+
+        Parameters
+        ----------
+        vector : array_like
+            Zernike coefficients describing the wavefront correction.
+        from_units : str
+            Units of ``vector``. Defaults to ``"norm"``.
+        """
         raise NotImplementedError("Expected as a part of 0.5.0")
 
         if from_units == "knm":

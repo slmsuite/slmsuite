@@ -2,7 +2,7 @@
 Hardware control for Texas Instruments Phase Light Modulators (PLMs).
 
 This module provides GPU-accelerated control for TI PLMs via direct implementation
-of phase quantization and electrode mapping. Supports both Cu:mod:`cupy`Py (GPU)
+of phase quantization and electrode mapping. Supports both :mod:`cupy` (GPU)
 and :mod:`numpy` (CPU) for maximum performance and compatibility.
 
 .. highlight:: python

@@ -451,10 +451,10 @@ def test_zernike_convert_index(subtests):
         # Noll is 1-indexed; j=0 (piston) -> noll=1
         assert noll.ravel()[0] == 1
 
-    with subtests.test("ansi -> fringe raises NotImplementedError (known bug)"):
-        # Bug: `to_index == 'fringe'` is incorrectly checked in the from_index branch
-        with pytest.raises(NotImplementedError):
-            phase.zernike_convert_index([0, 1, 2], from_index="ansi", to_index="fringe")
+    with subtests.test("ansi -> fringe"):
+        fringe = phase.zernike_convert_index([0, 1, 2], from_index="ansi", to_index="fringe")
+        # Fringe is 1-indexed; piston j=0->1, x-tilt j=1->3 (odd), y-tilt j=2->2
+        np.testing.assert_array_equal(fringe.ravel(), [1, 3, 2])
 
     with subtests.test("ansi -> wyant"):
         wyant = phase.zernike_convert_index([0, 1, 2], from_index="ansi", to_index="wyant")
@@ -855,10 +855,10 @@ def test_ince_gaussian(simple_grid, subtests):
             phase.ince_gaussian(simple_grid, p=3, m=1, parity=-1)
 
 
-def test_matheui_gaussian_not_implemented(simple_grid):
-    """Test that matheui_gaussian() raises NotImplementedError."""
+def test_mathieu_gaussian_not_implemented(simple_grid):
+    """Test that mathieu_gaussian() raises NotImplementedError."""
     with pytest.raises(NotImplementedError):
-        phase.matheui_gaussian(simple_grid, r=1, q=1)
+        phase.mathieu_gaussian(simple_grid, r=1, q=1)
 
 
 def test_airy_not_implemented(simple_grid):
@@ -1021,6 +1021,25 @@ def test_determine_source_radius(simple_grid, subtests):
         assert _determine_source_radius(FakeCameraSLM(), w=None) == 99.0
 
 
+def test_zernike_order_number(subtests):
+    """Test zernike_order_number() formula (n+1)(n+2)//2."""
+    with subtests.test("order 0 gives 1 (only piston)"):
+        assert phase.zernike_order_number(0) == 1
+
+    with subtests.test("order 1 gives 3"):
+        assert phase.zernike_order_number(1) == 3
+
+    with subtests.test("order 2 gives 6"):
+        assert phase.zernike_order_number(2) == 6
+
+    with subtests.test("order 3 gives 10"):
+        assert phase.zernike_order_number(3) == 10
+
+    with subtests.test("order N matches formula"):
+        for n in range(8):
+            assert phase.zernike_order_number(n) == (n + 1) * (n + 2) // 2
+
+
 def test_zernike_build_and_coefficients(subtests):
     """Test _zernike_build_order, _zernike_build_indices, _zernike_coefficients."""
     with subtests.test("build_order populates cache"):
@@ -1056,31 +1075,13 @@ def test_zernike_populate_basis_map(subtests):
 
 
 def test_zernike_pyramid_plot(normalized_grid, subtests):
-    """Test zernike_pyramid_plot() (L1189-1264)."""
+    """Test zernike_pyramid_plot()."""
     with subtests.test("order=2 runs without error"):
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         plt.figure(figsize=(6, 6))
         phase.zernike_pyramid_plot(normalized_grid, order=2, use_mask=False)
-        plt.close("all")
-
-    with subtests.test("noborder and nan mask"):
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        plt.figure(figsize=(6, 6))
-        phase.zernike_pyramid_plot(normalized_grid, order=1, noborder=True,
-                                    use_mask=np.nan)
-        plt.close("all")
-
-    with subtests.test("noborder with use_mask=False"):
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        plt.figure(figsize=(6, 6))
-        phase.zernike_pyramid_plot(normalized_grid, order=1, noborder=True,
-                                    use_mask=False)
         plt.close("all")
 
 

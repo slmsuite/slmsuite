@@ -737,28 +737,44 @@ def test_take(subtests, benchmark):
         assert result.shape == (1, 10, 10)
 
 
-def test_image_positions():
-    """Test image_positions() returns (x, y)."""
-    image = np.zeros((100, 100))
-    image[30:40, 60:70] = 1
-    image = image[np.newaxis, :, :]
+def test_image_positions(subtests):
+    """Test image_positions() returns correct centroid positions."""
+    with subtests.test("off-center spot has correct position"):
+        image = np.zeros((100, 100))
+        image[30:40, 60:70] = 1  # center at row=35, col=65; offset from 50 -> x=+15, y=-15
+        image = image[np.newaxis, :, :]
+        positions = analysis.image_positions(image)
+        assert positions.shape == (2, 1)
+        assert positions[0, 0] == pytest.approx(15, abs=1)
+        assert positions[1, 0] == pytest.approx(-15, abs=1)
 
-    positions = analysis.image_positions(image)
+    with subtests.test("centered spot returns near-zero position"):
+        image = np.zeros((100, 100))
+        image[45:55, 45:55] = 1
+        image = image[np.newaxis, :, :]
+        positions = analysis.image_positions(image)
+        assert positions[0, 0] == pytest.approx(0, abs=1)
+        assert positions[1, 0] == pytest.approx(0, abs=1)
 
-    assert len(positions) == 2
 
+def test_image_std(subtests):
+    """Test image_std() returns correct standard deviations for a Gaussian blob."""
+    with subtests.test("isotropic Gaussian sigma=10 gives std≈10 in both axes"):
+        Y, X = np.ogrid[:100, :100]
+        image = np.exp(-((X - 50)**2 + (Y - 50)**2) / (2 * 10**2))
+        image = image[np.newaxis, :, :]
+        std = analysis.image_std(image)
+        assert std.shape == (2, 1)
+        assert std[0, 0] == pytest.approx(10, rel=0.01)
+        assert std[1, 0] == pytest.approx(10, rel=0.01)
 
-def test_image_std():
-    """Test image_std() returns positive standard deviations."""
-    image = np.zeros((100, 100))
-    Y, X = np.ogrid[:100, :100]
-    image = np.exp(-((X-50)**2 + (Y-50)**2) / (2 * 10**2))
-    image = image[np.newaxis, :, :]
-
-    std = analysis.image_std(image)
-
-    assert len(std) == 2
-    assert all(s > 0 for s in std)
+    with subtests.test("elliptical Gaussian has different x and y stds"):
+        Y, X = np.ogrid[:100, :100]
+        image = np.exp(-((X - 50)**2 / (2 * 5**2) + (Y - 50)**2 / (2 * 15**2)))
+        image = image[np.newaxis, :, :]
+        std = analysis.image_std(image)
+        assert std[0, 0] == pytest.approx(5, rel=0.05)
+        assert std[1, 0] == pytest.approx(15, rel=0.05)
 
 
 def test_fit_affine(subtests):
@@ -932,15 +948,13 @@ def test_image_vortices(subtests):
 
         assert len(weights) == 0
 
-    with subtests.test("return_vortices_negative creates cancellation field"):
+    with subtests.test("return_vortices_negative gives same result as in-place"):
         phase = np.arctan2(Y - cy, X - cx)
-        correction = analysis.image_remove_vortices(phase, return_vortices_negative=True)
-        corrected = phase + correction
-
-        before = np.count_nonzero(analysis.image_vortices(phase))
-        after = np.count_nonzero(analysis.image_vortices(corrected))
+        correction = analysis.image_remove_vortices(phase.copy(), return_vortices_negative=True)
+        in_place = analysis.image_remove_vortices(phase.copy())
+        # The documented contract: phase + correction == in-place-modified phase
         assert correction.shape == phase.shape
-        assert after < before
+        np.testing.assert_array_equal(phase + correction, in_place)
 
     with subtests.test("in-place removal returns same-shape phase"):
         phase = np.arctan2(Y - cy, X - cx)

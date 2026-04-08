@@ -37,14 +37,14 @@ class RemoteCamera(_Client, Camera):
         the server, as a security precaution.
 
         :param name:
-            Name of the SLM on the server to connect to.
+            Name of the camera on the server to connect to.
         :param host:
             Hostname or IP address of the server. Defaults to ``"localhost"``.
         :param port:
             Port number of the server. Defaults to ``5025`` (commonly used for instrument control).
         :param timeout:
             Timeout in seconds for the connection. Defaults to ``1.0``.
-        :param **kwargs:
+        :param \*\*kwargs:
             See :meth:`.Camera.__init__` for permissible options, except for
             ``resolution``, ``bitdepth``, and ``pitch_um`` which are set by the server.
         """

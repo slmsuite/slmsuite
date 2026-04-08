@@ -72,7 +72,7 @@ class AlliedVision(Camera):
         Caution
         ~~~~~~~
         AlliedVision cameras sometimes have different attribute names depending on the
-        model. This constructor tries to set some default properties, but if they fail, it will print
+        model. This constructor tries to set some default properties, but if they fail, it will print a
         warning and continue. The user will need to configure the :mod:`vmbpy` handle
         directly in this case, or in the case where the default configuration is not desired.
 

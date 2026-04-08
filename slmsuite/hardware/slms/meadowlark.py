@@ -280,7 +280,7 @@ class Meadowlark(SLM):
         Parameters
         ----------
         verbose : bool
-            Whether to print the information.discovered
+            Whether to print the information discovered.
         sdk_path : str
             Path of the Blink SDK installation folder to explore.
 

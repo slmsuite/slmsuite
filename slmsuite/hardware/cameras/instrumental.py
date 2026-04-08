@@ -42,7 +42,7 @@ class Instrumental(Camera):
         Object to talk with the desired camera.
     exposure_s : float
         Instrumental doesn't save exposure. It sets the exposure at each
-        :meth:`get_image`. This variable stores the desired exposure.
+        :meth:`.get_image`. This variable stores the desired exposure.
         Defaults to .001 (1 ms).
     """
 
@@ -137,7 +137,7 @@ class Instrumental(Camera):
         Returns
         -------
         list
-            An empty list.
+            Always raises :exc:`RuntimeError`.
         """
         raise RuntimeError(
             ".info() is not applicable to instrumental cameras, which must be "
@@ -164,7 +164,7 @@ class Instrumental(Camera):
             If ``None``, defaults to largest possible.
 
         Returns
-        ----------
+        -------
         woi : list
             :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
         """

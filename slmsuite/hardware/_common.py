@@ -82,8 +82,9 @@ class _Common(_Viewable, _Picklable, ABC):
 
     def _get_dtype(self, test_data=None):
         """
-        Captures a frame from the camera to make sure the datatype conforms with
-        the expected bitdepth.
+        Determines and sets the dtype appropriate for the hardware's bitdepth.
+        If ``test_data`` is not provided, attempts to get a sample image from the
+        hardware; if that also fails, infers the dtype from bitdepth alone.
         """
         if test_data is None and hasattr(self, "_get_image_hw_tolerant"):
             test_data = self._get_image_hw_tolerant

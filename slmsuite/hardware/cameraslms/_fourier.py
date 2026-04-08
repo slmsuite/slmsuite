@@ -253,10 +253,10 @@ class _FourierCalibration(object):
 
         Parameters
         ----------
-        numpy.ndarray
+        M : numpy.ndarray
             Affine matrix :math:`M`. Shape ``(2, 2)``.
-        numpy.ndarray
-            Affine vector :math:`b`. Shape ``(1, 2)``.
+        b : numpy.ndarray
+            Affine vector :math:`b`. Shape ``(2, 1)``.
 
         Returns
         -------
@@ -335,13 +335,14 @@ class _FourierCalibration(object):
         .. math:: \vec{y} = M \cdot (\vec{x} - \vec{a}) + \vec{b}
 
         where :math:`M`, :math:`\vec{b}`, and :math:`\vec{a}` are stored in
+        :attr:`~slmsuite.hardware.cameraslms.FourierSLM.calibrations` ``["fourier"]``.
 
         If the vectors are three-dimensional, the third depth dimension is treated according to:
 
         .. math:: y_z = \frac{f_\text{eff}^2}{\pi}x_z
 
         where :math:`y_z` is the normalized depth of the spot relative to the focal plane and
-        :math:`x_z` is equivalent to focal power, equivalent to the
+        :math:`x_z` is equivalent to focal power, equivalent to
         the quadratic term of a simple thin :meth:`~slmsuite.holography.toolbox.phase.lens()`.
         The constant of proportionality makes use of the normalized effective focal length
         :math:`f_\text{eff}` of the imaging system between the SLM and camera.
@@ -405,7 +406,7 @@ class _FourierCalibration(object):
         Here, :math:`\frac{\Delta_{xy} y_z}{\lambda}` is the same depth in normalized units.
         Importantly, this is depth relative to the plane of the camera, which might
         differ from the relative depth in an experimental plane.
-        Focal power is equivalent to the
+        Focal power is equivalent to
         the quadratic term of a simple thin :meth:`~slmsuite.holography.toolbox.phase.lens()`.
         The constant of proportionality makes use of the normalized effective focal length
         :math:`f_\text{eff}` of the imaging system between the SLM and camera.
@@ -518,8 +519,7 @@ class _FourierCalibration(object):
             size_kxy = np.linalg.inv(M / np.sqrt(np.abs(np.linalg.det(M)))) @ np.array(
                 (1 / slm_size[0], 1 / slm_size[1])
             )
-            # return np.abs(self.kxyslm_to_ijcam([0, 0]) - self.kxyslm_to_ijcam(size_kxy)).flatten()
-            return np.abs(self.kxyslm_to_ijcam([0, 0]) - self.kxyslm_to_ijcam(size_kxy))
+            return np.abs(self.kxyslm_to_ijcam([0, 0]) - self.kxyslm_to_ijcam(size_kxy)).flatten()
         else:
             raise ValueError('Unrecognized basis "{}".'.format(basis))
 

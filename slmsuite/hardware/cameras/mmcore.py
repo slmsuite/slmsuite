@@ -98,7 +98,7 @@ class MMCore(Camera):
         ----------
         path : str
             Path to search. This path defaults to the default Micro-Manager install location,
-            as ``.cfg`` files save there by default.
+            as ``.cfg`` files are saved there by default.
 
         Returns
         -------

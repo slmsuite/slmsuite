@@ -26,7 +26,7 @@ class Webcam(Camera):
     Attributes
     ----------
     cam : cv2.VideoCapture
-        Most cameras will wrap some handle which connects to the the hardware.
+        Most cameras will wrap some handle which connects to the hardware.
     """
 
     def __init__(

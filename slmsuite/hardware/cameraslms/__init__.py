@@ -115,7 +115,7 @@ class CameraSLM(_Picklable):
             Scales the limits by a given factor or uses the passed limits directly.
         title : str
             Super title for the axes.
-        ax : (matplotlib.pyplot.axis, matplotlib.pyplot.axis) OR None
+        axs : (matplotlib.pyplot.axis, matplotlib.pyplot.axis) OR None
             Axes to plot upon.
         cbar : bool
             Also plot a colorbar.
@@ -360,7 +360,7 @@ class FourierSLM(
 
     def save_calibration(self, calibration_type, path=".", name=None):
         """
-        to a file like ``"path/name_id.h5"``.
+        Saves the calibration to a file like ``"path/name_id.h5"``.
 
         Parameters
         ----------
@@ -400,12 +400,12 @@ class FourierSLM(
 
     def load_calibration(self, calibration_type, file_path=None):
         """
-        from a file.
+        Loads the calibration from a file.
 
         Parameters
         ----------
         calibration_type : str
-            The type of calibration to save. See :attr:`calibrations` for supported
+            The type of calibration to load. See :attr:`calibrations` for supported
             options.
         file_path : str OR None
             Full path to the calibration file. If ``None``, will

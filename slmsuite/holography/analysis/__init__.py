@@ -54,8 +54,7 @@ def _generate_grid(w_x, w_y, centered=False, integer=False):
     if centered:
         xs -= _center(w_x, integer=integer)
         ys -= _center(w_y, integer=integer)
-    grid = np.meshgrid(xs, ys)
-    return grid
+    return np.meshgrid(xs, ys)
 
 
 def take(
@@ -92,7 +91,7 @@ def take(
         If ``False``, ``vectors`` indicates the upper-left corner of the integration region.
         Defaults to ``True``.
     integrate : bool
-        If ``True``, the spatial dimension are integrated (summed), yielding a result of the
+        If ``True``, the spatial dimensions are integrated (summed), yielding a result of the
         same length as the number of vectors. Forces floating point datatype before the
         summation is done, as integer data (especially for cameras near saturation) can overflow.
         Defaults to ``False``.
@@ -337,7 +336,7 @@ def image_remove_field(images, deviations=1, out=None):
     deviations : int OR None
         Number of standard deviations above the mean to set the threshold.
         If ``None``, uses the median as the threshold instead.
-        Defaults to ``None``.
+        Defaults to ``1``.
     out : numpy.ndarray or None
         The array to place the output data into. Should be the same shape as ``images``.
         This function operates in-place if ``out`` equals ``images``.
@@ -545,11 +544,11 @@ def image_moment(images, moment=(1, 0), centers=(0, 0), grid=None, normalize=Tru
             # Handle the dx, dy option.
             if grid is not None:
                 if np.isscalar(grid):
-                    x_grid *= grid[0]
-                    y_grid *= grid[1]
-                else:
                     x_grid *= grid
                     y_grid *= grid
+                else:
+                    x_grid *= grid[0]
+                    y_grid *= grid[1]
         else:
             x_grid, y_grid = grid
 
@@ -594,21 +593,21 @@ def image_normalization(images, nansum=False):
     Returns
     -------
     numpy.ndarray
-        The normalization factor :math:`M_{11}` in an array of shape ``(image_count,)``.
+        The normalization factor :math:`M_{00}` in an array of shape ``(image_count,)``.
     """
     return image_moment(images, (0, 0), normalize=False, nansum=nansum)
 
 
 def image_normalize(images, nansum=False, remove_field=False):
     """
-    Normalizes of a stack of images via the the zeroth order moments
+    Normalizes a stack of images via the zeroth order moments
     such that each image sums to one.
 
     Parameters
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
+        ``(h, w)`` is the height and width of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed, though the returned image remains shape ``(h, w)`` in that case.
     nansum : bool
@@ -653,7 +652,7 @@ def image_positions(images, grid=None, normalize=True, nansum=False):
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
+        ``(h, w)`` is the height and width of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     grid : float OR (float, float) OR (array_like, array_like) OR None
@@ -702,12 +701,12 @@ def image_variances(images, centers=None, grid=None, normalize=True, nansum=Fals
     Specifically, this function returns a stack of the moments :math:`M_{20}` and
     :math:`M_{02}`, along with :math:`M_{11}`, which are the variance in the :math:`x`
     and :math:`y` directions, along with the so-called shear variance.
-    Recall that variance defined as
+    Recall that variance is defined as
 
     .. math:: (\Delta x)^2 = \left<(x - \left<x\right>)^2\right>.
 
     This equation is made central by subtraction of :math:`\left<x\right>`.
-    The user can of course use :meth:`take_moment` directly to access the
+    The user can of course use :meth:`image_moment` directly to access the
     non-central moments; this function is a helper to access useful quantities
     for analysis of spot size and skewness.
 
@@ -722,12 +721,12 @@ def image_variances(images, centers=None, grid=None, normalize=True, nansum=Fals
     ----------
     images : numpy.ndarray
         A matrix in the style of the output of :meth:`take()`, with shape ``(image_count, h, w)``, where
-        ``(h, w)`` is the width and height of the 2D images and ``image_count`` is the number of
+        ``(h, w)`` is the height and width of the 2D images and ``image_count`` is the number of
         images. A single image is interpreted correctly as ``(1, h, w)`` even if
         ``(h, w)`` is passed.
     centers : numpy.ndarray OR None
         If the user has already computed :math:`\left<x\right>`, for example via
-        :meth:`image_positions()`, then this can be passed though ``centers``. The default
+        :meth:`image_positions()`, then this can be passed through ``centers``. The default
         ``None`` computes ``centers`` internally.
     grid : float OR (float, float) OR (array_like, array_like) OR None
         If ``None`` (the default), the moment is reported in pixels of the image.
@@ -898,9 +897,9 @@ def image_ellipticity_angle(variances):
     # We know that M * v = eig_plus * v. This yields a system of equations:
     #   m20 * x + m11 * y = eig_plus * x
     #   m11 * x + m02 * y = eig_plus * y
-    # We're trying to solve for angle, which is just atan(x/y). We can solve for x/y:
-    #   m11 * x = (eig_plus - m02) * y        ==>         x/y = (eig_plus - m02) / m11
-    return np.arctan2(eig_plus - m02, m11, where=m11 != 0, out=np.zeros_like(m11))
+    # We're trying to solve for angle, which is atan(y/x) from the x-axis. We can solve for y/x:
+    #   m11 * x = (eig_plus - m02) * y        ==>         y/x = m11 / (eig_plus - m02)
+    return np.arctan2(m11, eig_plus - m02, where=m11 != 0, out=np.zeros_like(m11))
 
 
 def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
@@ -917,31 +916,28 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
         If ``None``, makes a grid with unit pitch centered on the images.
     function : lambda ((float, float), ... ) -> float
         Some fitfunction which accepts ``(x,y)`` coordinates as first argument.
-        Defaults to :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`.
+        Defaults to :meth:`~slmsuite.holography.analysis.fitfunctions.gaussian2d()`.
     guess : None OR True OR numpy.ndarray (``image_count``, ``parameter_count``)
         - If ``guess`` is ``None`` or ``True``, will construct a guess based on the ``function`` passed.
           Functions for which guesses are implemented include:
 
-          - :meth:`~slmsuite.misc.fitfunctions.gaussian2d()`
+          - :meth:`~slmsuite.holography.analysis.fitfunctions.gaussian2d()`
 
         - If ``guess`` is ``None`` and ``function`` does not have a guess
           implemented, no guess will be provided to the optimizer and the user will be warned.
         - If ``guess`` is ``True`` and ``function`` does not have a guess
           implemented, an error will be raised.
-        - If ``guess`` is a ``numpy.ndarray``, a column of the array will be provided
+        - If ``guess`` is a ``numpy.ndarray``, a row of the array will be provided
           to the optimizer as a guess for the fit parameters for each image.
     plot : bool
         Whether to create a plot for each fit.
-    show : bool
-        Whether or not to call :meth:`matplotlib.pyplot.show` after generating
-        the plot.
 
     Returns
     -------
     numpy.ndarray (``image_count``, ``result_count``)
-        A matrix with the fit results. The first row
+        A matrix with the fit results. The first column
         contains the rsquared quality of each fit.
-        The values in the remaining rows correspond to the parameters
+        The values in the remaining columns correspond to the parameters
         for the supplied fit function, then the errors for each of the parameters.
         Failed fits have an rsquared of ``numpy.nan`` and parameters
         are set to the provided or constructed guess or ``numpy.nan``
@@ -1038,7 +1034,7 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
         # Plot.
         if plot:
             # Data.
-            data = np.reshape(img, img_shape)
+            data = images[img_idx, :, :]
             if p0 is not None:
                 guess_ = np.reshape(function(grid_ravel, *p0), img_shape)
             else:
@@ -1176,7 +1172,7 @@ def image_zernike_fit(
         for j in range(image_count):
             # Lambda to build the function from test parameters.
             def zsum(grid, *p):
-                p = np.reshape(p, vectors_zernike.shape)
+                p = np.reshape(p, (D, 1))
 
                 return zernike_sum(
                     grid,
@@ -1189,7 +1185,7 @@ def image_zernike_fit(
             # Try the fit.
             try:
                 popt, _ = curve_fit(zsum, grid_ravel, phase_images[j].ravel(), ftol=1e-5, p0=vectors_zernike[:, j])
-                vectors_zernike = popt.reshape(vectors_zernike.shape)
+                vectors_zernike[:, j] = popt
             except RuntimeError:    # The fit failed if scipy says so.
                 pass
 
@@ -1223,7 +1219,7 @@ def image_vortices(phase_image):
 
     # Discrete derivatives, with appropriate wrapping.
     dd = [
-        xp.mod(xp.diff(phase_image, axis=a, prepend=xp.nan) - xp.pi, 2*xp.pi) for a in range(2)
+        (xp.diff(phase_image, axis=a, prepend=xp.nan) + xp.pi) % (2*xp.pi) - xp.pi for a in range(2)
     ]
 
     # Sum to compute the winding.
@@ -1286,7 +1282,7 @@ def image_remove_vortices(phase_image, mask=None, return_vortices_negative=False
     Returns
     -------
     phase_image
-        The image or vortices, depending upon ``return_vortices``
+        The image or vortices, depending upon ``return_vortices_negative``
     """
     xp = _get_module(phase_image)
 
@@ -1304,7 +1300,7 @@ def image_remove_vortices(phase_image, mask=None, return_vortices_negative=False
         canvas = phase_image
 
     for x, y, w in zip(coordinates[1], coordinates[0], weights):
-        canvas -= w * xp.arctan2(grid[0] - x, grid[1] - y)
+        canvas -= w * xp.arctan2(grid[1] - y, grid[0] - x)
 
     return canvas
 
@@ -1577,21 +1573,13 @@ def blob_detect(
         One of ``dist_to_center`` or ``max_amp``.
     plot : bool
         Whether to show a debug plot.
-    title : str
-        Plot title.
-    fig : matplotlib.figure.Figure
-        Figure for plotting.
-    axs : list of matplotlib.axes.Axis or matplotlib.axes.Axis
-        Axes for plotting.
-    show : bool
-        Whether or not to show the plot.
     **kwargs
        Extra arguments for :class:`cv2.SimpleBlobDetector`.
 
     Returns
     -------
     blobs : ndarray
-        List of blobs found by  ``detector``.
+        List of blobs found by ``detector``.
     detector : :class:`cv2.SimpleBlobDetector`
         A blob detector with customized parameters.
     """
@@ -1899,7 +1887,7 @@ def blob_array_detect(
                 new = ((dnorm[i,:] < tol) | (inorm[i,:] < tol)) & np.array(tags == 0) #  | (inorm[i,:] < tol)
                 tags[new] = group
                 if np.any(new): group += 1
-                
+
             # Get the centerpoint of each group
             def mean_group(points):
                 len0 = np.sum(np.square(points[0, :]))
@@ -1929,7 +1917,7 @@ def blob_array_detect(
             best_groups = np.argsort(distance_to_center)
             count = count[best_groups]
             centers = centers[best_groups, :]
-            
+
             # Weight by orthogonality to the first vector.
             centers_length = np.sqrt(np.sum(np.square(centers), 1, keepdims=True))
             centers_norm = centers / centers_length
@@ -2256,8 +2244,8 @@ def blob_array_detect(
             "calibration results may be improperly centered as a result."
         )
     # Also warn if computed positions approach camera FOV boundary.
-    elif np.any(np.nanmax(true_positions, axis=1) > 0.95 * np.array(img_8bit.shape)) or \
-         np.any(np.nanmin(true_positions, axis=1) < 0.05 * np.array(img_8bit.shape)):
+    elif np.any(np.nanmax(true_positions, axis=1) > 0.95 * np.flip(np.array(img_8bit.shape))) or \
+         np.any(np.nanmin(true_positions, axis=1) < 0.05 * np.flip(np.array(img_8bit.shape))):
         warnings.warn(
             "The fitted spot array approaches or exceeds the camera FOV; "
             "calibration results may be improperly centered as a result."

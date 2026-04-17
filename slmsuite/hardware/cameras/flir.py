@@ -4,14 +4,14 @@ Install PySpin using the `provided instructions
 <https://www.teledynevisionsolutions.com/support/support-center/technical-guidance/iis/installing-pyspin-for-the-spinnaker-sdk/>`_.
 
 This implementation uses the QuickSpin API for simplified property access.
-Refer to the PySpin documentation (included with installation) for 
+Refer to the PySpin documentation (included with installation) for
 details on alternative approaches using the full Spinnaker API.
 
 """
 
 import warnings
 import numpy as np
-from .camera import Camera
+from slmsuite.hardware.cameras.camera import Camera
 
 try:
     import PySpin
@@ -21,7 +21,7 @@ except ImportError:
 
 class FLIR(Camera):
     """
-    FLIR camera subclass. 
+    FLIR camera subclass.
 
     Attributes
     ----------
@@ -497,7 +497,7 @@ class FLIR(Camera):
             if verbose:
                 print(f"Error accessing properties: {ex}")
 
-        return properties if not verbose else None 
+        return properties if not verbose else None
 
     def _get_exposure_hw(self):
         """See :meth:`.Camera._get_exposure_hw`."""

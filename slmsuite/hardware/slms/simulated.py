@@ -1,9 +1,9 @@
 """
-Simulated SLM.
+A simulated SLM.
 """
 
 import numpy as np
-from .slm import SLM
+from slmsuite.hardware.slms.slm import SLM
 
 class SimulatedSLM(SLM):
     """

@@ -1,17 +1,33 @@
 """
-TODO
+A segment of a larger SLM.
+This class allows the user to work with a specific region
+of a parent SLM as if it were a separate SLM.
 """
 import numpy as np
 
 from slmsuite.hardware.slms.slm import SLM
-from slmsuite.holography.toolbox import window_extent, window_slice, imprint
+from slmsuite.holography.toolbox import window_extent, window_slice
 
 class SegmentedSLM(SLM):
     """
     A segment of a larger SLM.
 
-    This class allows you to work with a specific region of a parent SLM
+    This class allows the user to work with a specific region of a parent SLM
     as if it were a separate SLM.
+
+    Attributes
+    ----------
+    parent : SLM
+        The parent SLM of which this is a segment.
+    refresh : bool
+        If ``True``, this segment will by default project the entire parent SLM's
+        display after being updated.
+    extent_slice : tuple of slice
+        The rectangular extent of this segment on the parent SLM in slice format.
+    subwindow : None OR tuple of arrays of indices
+        If the window of this segment is non-rectangular, this stores the indices of the
+        pixels in the segment's window within the rectangular extent. If the window is
+        rectangular, this is ``None``.
     """
 
     def __init__(
@@ -19,7 +35,7 @@ class SegmentedSLM(SLM):
         parent,
         window,
         name,
-        update=False,
+        refresh=False,
     ):
         r"""
         Initialize SLM and attributes.
@@ -33,32 +49,43 @@ class SegmentedSLM(SLM):
             to define the window of interest on the parent SLM.
         name : str
             Name of this segment of the SLM.
-        update : bool, optional
-            If ``True``, this segment will update the parent SLM's display
-            data after being called.
+        refresh : bool, optional
+            If ``True``, this segment will by default project the entire parent SLM's
+            display after being updated.
         """
         # Parse parent.
         if not isinstance(parent, SLM):
             raise ValueError("Parent must be an instance of SLM.")
         self.parent = parent
-        self.update = bool(update)
+        self.refresh = bool(refresh)
 
         # Parse window.
-        self.window = window_slice(window)
-        self.extent = window_extent(window)
-        self.extent_slice = window_slice(self.extent)
-        resolution = (self.extent[1], self.extent[3])
+        window = window_slice(window, shape=parent.shape)  # 2 slice, 2 indices, or boolean array format
+
+        # Get the rectangular extent of the window.
+        extent = window_extent(window)                     # (x, w, y, h) format
+        self.extent_slice = window_slice(extent)           # 2 slice format
+
+        # Handle the case where the window is not rectangular.
+        self.subwindow = None
+        if np.ndim(window) == 2:    # Boolean array
+            self.subwindow = window[*self.extent_slice]
+        elif len(window) == 2 and not isinstance(window[0], slice):     # Lists of indices
+            self.subwindow = (
+                window[0] - extent[0],
+                window[1] - extent[2]
+            )
 
         # Error check the window against the parent SLM's shape.
         if (
-            self.extent[0] < 0 or self.extent[0] + self.extent[1] > parent.shape[1] or
-            self.extent[2] < 0 or self.extent[2] + self.extent[3] > parent.shape[0]
+            extent[0] < 0 or extent[0] + extent[1] > parent.shape[1] or
+            extent[2] < 0 or extent[2] + extent[3] > parent.shape[0]
         ):
             raise ValueError("Window is out of bounds of the parent SLM.")
 
         # Instantiate the superclass
         super().__init__(
-            resolution,
+            (extent[1], extent[3]),
             bitdepth=parent.bitdepth,
             name=name,
             wav_um=parent.wav_um,
@@ -82,11 +109,12 @@ class SegmentedSLM(SLM):
         """
         if verbose:
             print("Call slm.segment() to produce child SegmentedSLMs.")
+        return []
 
     def _set_phase_hw(
         self,
         display,
-        update=None,
+        refresh=None,
     ):
         """
         Overwrites the phase data in the parent SLM's display
@@ -96,16 +124,21 @@ class SegmentedSLM(SLM):
         ----------
         display
             Integer data to display on the SLM. See :meth:`.SLM._set_phase_hw`.
-        update : bool, optional
+        refresh : bool, optional
             Whether to update the full parent SLM.
+            If ``None``, uses the value of ``self.refresh``, which is ``True``
+            for the final segment of a segmented SLM by default.
         """
         # Update the parent SLM's display data.
-        self.parent.display[*self.extent_slice] = display
+        if self.subwindow is None:                  # Rectangular window case
+            self.parent.display[*self.extent_slice] = display
+        else:                                       # Non-rectangular window case
+            self.parent.display[*self.extent_slice][*self.subwindow] = display[*self.subwindow]
 
         # Update the parent SLM's hardware if desired.
-        if update is None:
-            update = self.update
-        if update:
+        if refresh is None:
+            refresh = self.refresh
+        if refresh:
             self.parent._set_phase_hw(self.parent.display["phase"])
 
     def set_input_trigger(self, on : bool = False):

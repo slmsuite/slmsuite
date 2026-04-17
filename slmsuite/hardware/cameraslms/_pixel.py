@@ -13,7 +13,7 @@ class _PixelCalibration(object):
     Hidden superclass with pixel calibration methods
     (gamma and crosstalk correction).
     """
-    ### Pixel Crosstalk and Vpi Calibration ###
+    ### Pixel Crosstalk and Gamma Calibration ###
 
     def pixel_calibrate(
         self,
@@ -55,14 +55,14 @@ class _PixelCalibration(object):
         Data must be acquired without wavefront calibration applied.
         If the uncalibrated SLM produces too defocussed of a spot,
         then this measurement may not be ideal. On the flip side, a
-        too-focussed spot might increase error by integration over fewer camera pixels.
+        too-focussed spot might increase error by integrating over fewer camera pixels.
 
         Parameters
         ----------
         levels : int OR array_like of int
             Which bitlevels to test, out of the :math:`2^B` levels available for a
             :math:`B`-bit SLM. Note that runtime scales with :math:`\mathcal{O}(B^2)`.
-            If an integer is passed, the integer is rounded to the next largest power of
+            If an integer is passed, the integer is rounded up to the next largest power of
             two, and this number of bitlevels are sampled.
         periods : int OR array_like of int
             List of periods (in pixels) of the binary gratings that we will apply.
@@ -85,10 +85,13 @@ class _PixelCalibration(object):
         if np.isscalar(levels):
             if levels < 1:
                 levels = 1
-            levels = 2 ** (np.ceil(np.log2(levels)))
+            levels = int(2 ** (np.ceil(np.log2(levels))))
 
             if levels > self.slm.bitresolution:
-                warnings.warn("Requested more levels than available. Rounding down.")
+                warnings.warn(
+                    f"Requested {levels} levels are more than the "
+                    f"bitresolution. Truncating to {self.slm.bitresolution}."
+                )
                 levels = self.slm.bitresolution
 
             levels = np.arange(levels) * (self.slm.bitresolution / levels)
@@ -99,7 +102,7 @@ class _PixelCalibration(object):
         if np.isscalar(periods):
             raise NotImplementedError("TODO")
 
-        periods = np.array(periods).astype(int)
+        periods = np.rint(periods).astype(int)
         periods = 2 * (periods // 2)
         P = len(periods)
 
@@ -118,6 +121,12 @@ class _PixelCalibration(object):
 
         if not 1 in orders:
             raise ValueError("1st order must be included.")
+
+        # Parse window.
+        if window is not None:
+            (_, w, _, h) = toolbox.window_extent(window)
+            if np.any(periods > w // 2) or np.any(periods > h // 2):
+                raise ValueError(f"Periods {periods} must be at least half of the window size ({w}, {h}).")
 
         # Figure out our shape.
         shape = (2, P, N, N, M)
@@ -176,7 +185,7 @@ class _PixelCalibration(object):
         if True: iterations = tqdm(range(2*P*N*N))
 
         # Big sweep.
-        for i in [0,1]:                                         # Direction
+        for i in [0,1]:                                         # Direction (x,y)
             prange = np.arange(P) + i*P
             for j in range(P):                                  # Period
                 for k in range(N):                              # Upper triangular gray level selection.
@@ -267,23 +276,29 @@ class _PixelCalibration(object):
                     plt.show()
 
     @staticmethod
-    def pixel_kernel(x, a1_pix=.1, a2_pix=.1, n1=1, n2=1):
+    def pixel_kernel(x, a_pix=.1, n=1, a_minus_pix=None, n_minus=None):
         r"""
         Blurring kernel
 
         .. math:: K(x) =    \left\{
                                 \begin{array}{ll}
-                                    \exp\left(-\left|\frac{x}{\alpha_1}\right|^{n_1}\right), & x < 0, \\
-                                    \exp\left(-\left|\frac{x}{\alpha_2}\right|^{n_2}\right), & x \ge 0.
+                                    \exp\left(-\left|\frac{x}{\alpha_+}\right|^{n_+}\right), & x \ge 0, \\
+                                    \exp\left(-\left|\frac{x}{\alpha_-}\right|^{n_-}\right), & x < 0.
                                 \end{array}
                             \right.
         """
+        # Parse minus parameters by defaulting to plus parameters.
+        if a_minus_pix is None:
+            a_minus_pix = a_pix
+        if n_minus is None:
+            n_minus = n
+
+        # Create and normalize the kernel.
         kernel = np.where(
             x >= 0,
-            np.exp(-np.power(np.abs(x) / a2_pix, n2)),
-            np.exp(-np.power(np.abs(x) / a1_pix, n1)),
+            np.exp(-np.power(np.abs(x / a_pix), n)),
+            np.exp(-np.power(np.abs(x / a_minus_pix), n_minus)),
         )
-        kernel[len(kernel) // 2] = 1
         kernel /= np.sum(kernel)
 
         return kernel
@@ -291,29 +306,36 @@ class _PixelCalibration(object):
     def _pixel_calibrate_simulate(self, period=16, supersample=16, **kwargs):
         N = int(period * supersample)
 
-        x = np.linspace(-supersample, supersample, N)
+        x = np.linspace(-period, period, N)
         x -= np.mean(x)
 
         y = np.zeros_like(x)
         y[x < 0] = 1
 
-        plt.plot(x, y)
+        blaze = np.linspace(0, 2, N)
+        # blaze -= np.mean(blaze)
 
-        x2 = np.linspace(-supersample, supersample, N-1)
+        plt.plot(x, y)
+        plt.plot(x, blaze)
+
+        x2 = np.linspace(-2, 2, 4*supersample)
         x2 -= np.mean(x2)
         K = self.pixel_kernel(x2, **kwargs)
 
         y = ndimage.convolve1d(y, K, mode="wrap")
 
         plt.plot(x, y)
-
         plt.show()
 
-        kx = np.arange(float(N))
+        kx = np.arange(float(N)) #/ supersample
         kx -= np.mean(kx)
 
         Y = np.fft.fftshift(np.fft.fft(np.exp(1j * np.pi * y)))
 
-        plt.plot(kx, np.square(np.abs(Y)))
-        plt.xlim(-10, 10)
+        Y2 = np.fft.fftshift(np.fft.fft(np.exp(1j * np.pi * blaze)))
+
+        plt.hlines(0, np.min(kx), np.max(kx))
+        plt.scatter(kx, np.square(np.abs(Y)))
+        plt.scatter(kx, np.square(np.abs(Y2)))
+        # plt.xlim(-10, 10)
         plt.show()

@@ -898,30 +898,30 @@ class SLM(_Common, ABC):
 
     def segment(
         self,
-        pattern,
+        shape,
     ):
         """
         Splits the area of the SLM into a number of segments.
 
         Parameters
         ----------
-        pattern : int OR (int, int)
+        shape : int OR (int, int)
             Segmentation pattern in ``(rows, columns)``.
             If a single integer is passed, this is assumed to be the number of columns,
-            i.e. ``(1, pattern)``.
+            i.e. ``(1, shape)``.
         """
-        # Parse pattern
-        if np.isscalar(pattern):
-            pattern = int(np.rint(pattern))
-            pattern = (1, pattern)
+        # Parse shape
+        if np.isscalar(shape):
+            shape = int(np.rint(shape))
+            shape = (1, shape)
 
-        pattern = toolbox.format_shape(pattern)
+        shape = toolbox.format_shape(shape)
 
         # Get width and height of segments in pixels.
-        h, w = segment_shape = [s // p for s, p in zip(self.shape, pattern)]
+        h, w = segment_shape = [s // p for s, p in zip(self.shape, shape)]
 
         # Shift the grid so that extra area is on the edges.
-        y0, x0 = [((s - p * sp) // 2) for s, p, sp in zip(self.shape, pattern, segment_shape)]
+        y0, x0 = [((s - p * sp) // 2) for s, p, sp in zip(self.shape, shape, segment_shape)]
 
         # Import here to avoid circular imports.
         from slmsuite.hardware.slms.segmented import SegmentedSLM
@@ -929,8 +929,8 @@ class SLM(_Common, ABC):
         # Now make all the children and return.
         children = []
 
-        for x in range(pattern[1]):
-            for y in range(pattern[0]):
+        for x in range(shape[1]):
+            for y in range(shape[0]):
                 x = x0 + x * w
                 y = y0 + y * h
 
@@ -939,7 +939,7 @@ class SLM(_Common, ABC):
                     parent=self,
                     window=(x, w, y, h),
                     name=f"{self.name}_segment_{x}_{y}",
-                    update=(x == pattern[1] - 1 and y == pattern[0] - 1)
+                    update=(x == shape[1] - 1 and y == shape[0] - 1)
                 )
 
                 children.append(child)

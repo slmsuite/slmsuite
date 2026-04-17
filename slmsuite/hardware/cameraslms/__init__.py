@@ -331,6 +331,53 @@ class FourierSLM(
 
         return fs
 
+    ### Automatic Calibration ###
+
+    def _calibrate(self, verbose=True):
+        """
+        **(Not Implemented)**
+        Attempts to autonomously calibrate the system.
+        Conducts any missing calibrations. Also looks for saved calibration files under
+        default filenames and loads them if they are found.
+
+        See
+        :meth:`~slmsuite.hardware.cameraslms.FourierSLM.fourier_calibrate()`,
+        :meth:`~slmsuite.hardware.cameraslms.FourierSLM.settle_calibrate()`,
+        :meth:`~slmsuite.hardware.cameraslms.FourierSLM.pixel_calibrate()`, and
+        :meth:`~slmsuite.hardware.cameraslms.FourierSLM.wavefront_calibrate_superpixel()`.
+        """
+        def calibration_detected(calibration_type):
+            print(calibration_type.replace("_", " ").capitalize() + " calibration...")
+            if calibration_type in self.calibrations:
+                if verbose: print(f"Found calibration from {self.calibrations[calibration_type]['timestamp']}.")
+                return True
+            else:
+                try:
+                    self.load_calibration(calibration_type)
+                    if verbose: print(f"Loaded calibration from {self.calibrations[calibration_type]['timestamp']}.")
+                    return True
+                except FileNotFoundError:
+                    return False
+                except Exception as e:
+                    warnings.warn(f"Unable to load '{calibration_type}' calibration: {e}")
+                    return False
+
+        # Fourier
+        if not calibration_detected("fourier"):
+            self.fourier_calibrate()
+
+        if not calibration_detected("settle"):
+            self.settle_calibrate()
+
+        if not calibration_detected("pixel"):
+            self.pixel_calibrate()
+
+        if not calibration_detected("wavefront_superpixel"):
+            self.wavefront_calibrate_superpixel()
+
+        print("Fourier calibration (final)...")
+        self.fourier_calibrate()
+
     ### Calibration Helpers ###
 
     def name_calibration(self, calibration_type):

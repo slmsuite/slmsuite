@@ -6,10 +6,10 @@ from slmsuite.holography import analysis
 from slmsuite.holography import toolbox
 from slmsuite.holography.toolbox import format_2vectors, fit_3pt, convert_vector
 
-
-
 from slmsuite.hardware.cameraslms._wavefront_superpixel import _WavefrontCalibrationSuperpixel
 from slmsuite.hardware.cameraslms._wavefront_zernike import _WavefrontCalibrationZernike
+
+from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
 
 class _WavefrontCalibration(
     _WavefrontCalibrationSuperpixel,
@@ -65,6 +65,21 @@ class _WavefrontCalibration(
 
     ### Wavefront Calibration Common Helper ###
 
+    def _wavefront_calibration_points_parse(self, calibration_points, **kwargs):
+
+        # Parse calibration_points.
+        if calibration_points is None or isinstance(calibration_points, INTEGER_TYPES):
+            if isinstance(calibration_points, INTEGER_TYPES):
+                if calibration_points <= 0:
+                    raise ValueError("If an integer, 'calibration_points' must be positive.")
+            # If None, then use the built-in generator.
+            calibration_points_ = self.wavefront_calibration_points(**kwargs)
+            num_points = min(calibration_points_.shape[1], calibration_points)
+            calibration_points = calibration_points_[:, :num_points]
+
+        calibration_points = np.rint(format_2vectors(calibration_points)).astype(int)
+        return calibration_points
+
     def wavefront_calibration_points(
         self,
         pitch,
@@ -82,7 +97,8 @@ class _WavefrontCalibration(
         Parameters
         ----------
         pitch : float OR (float, float)
-            The grid of points must have pitch greater than this value.
+            The grid of points in the camera plane must have pixel pitch
+            greater than this value.
         field_exclusion : float OR None
             Remove all points within ``field_exclusion`` of a ``field_point``.
             Set to zero if no removal is desired.
@@ -165,6 +181,7 @@ class _WavefrontCalibration(
         )
 
         if avoid_nyquist:
+            # knm basis with shape (1,1) maps the first Nyquist zone to 0 -> 1.
             calibration_points_knm = convert_vector(
                 calibration_points,
                 from_units="ij",

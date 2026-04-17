@@ -472,10 +472,10 @@ def window_slice(window, shape=None, centered=False, circular=False):
         - List in ``(x, w, y, h)`` format, where ``w`` and ``h`` are the width and height of
           the region and  ``(x,y)`` is the upper-left coordinate.
 
-          - If ``centered``, then ``(x,y)`` is instead the center of the region to imprint.
-          - If ``circular``, then an elliptical region circumscribed by the rectangular region is returned.
+            - If ``centered``, then ``(x,y)`` is instead the center of the region to imprint.
+            - If ``circular``, then an elliptical region circumscribed by the rectangular region is returned.
 
-        - Tuple containing arrays of identical length corresponding to y and x indices.
+        - Tuple containing arrays of identical length corresponding to y and x indices of points in the window.
           ``centered`` and ``circular`` are ignored.
         - Boolean array of same ``shape`` as ``matrix``; the window is defined where ``True`` pixels are.
           ``centered`` and ``circular`` are ignored.
@@ -496,13 +496,16 @@ def window_slice(window, shape=None, centered=False, circular=False):
     if shape is not None:
         shape = format_shape(shape)
 
-    # Case 1: (v.x, w, v.y, h) format
+    # Case 1: (x, w, y, h) format
     if len(window) == 4:
         # Prepare helper vars
         xi = int(window[0] - ((window[1] - 1) / 2 if centered else 0))
         xf = xi + int(window[1])
         yi = int(window[2] - ((window[3] - 1) / 2 if centered else 0))
         yf = yi + int(window[3])
+
+        xc = xi + int((window[1] - 1) / 2)
+        yc = yi + int((window[3] - 1) / 2)
 
         if shape is not None:
             [xi, xf] = np.clip([xi, xf], 0, shape[1])
@@ -512,9 +515,6 @@ def window_slice(window, shape=None, centered=False, circular=False):
             x_list = np.arange(xi, xf)
             y_list = np.arange(yi, yf)
             x_grid, y_grid = np.meshgrid(x_list, y_list)
-
-            xc = xi + int((window[1] - 1) / 2)
-            yc = yi + int((window[3] - 1) / 2)
 
             rr_grid = (
                 (window[3] ** 2) * np.square(x_grid.astype(float) - xc) +
@@ -548,7 +548,7 @@ def window_slice(window, shape=None, centered=False, circular=False):
 
 def window_extent(window, padding_frac=0, padding_pix=0):
     """
-    Find a square that covers the active region of the 2D boolean mask ``window``.
+    Find a rectangle that covers the active region of the 2D boolean mask ``window``.
 
     Parameters
     ----------
@@ -558,7 +558,8 @@ def window_extent(window, padding_frac=0, padding_pix=0):
         If this default window has width ``w`` and height ``h``,
         ``padding_frac`` proportionally changes these dimensions all sides.
         For instance, ``padding_frac=.5`` would modify the dimensions to be
-        ``w = 1.5w`` and ``h = 1.5h``.
+        ``w = 1.5w`` and ``h = 1.5h`` and adjust the position of the window
+        accordingly to keep it centered on the same region.
     padding_pix : float
         Additional padding to add, in pixels.
         This is applied after ``padding_frac``.
@@ -576,7 +577,10 @@ def window_extent(window, padding_frac=0, padding_pix=0):
 
     # For each axis...
     for a in [0, 1]:
-        if len(window) == 2:  # Handle two list case
+        if len(window) == 4:  # Handle the (x, w, y, h) case
+            b = 2*(1-a)
+            limit = np.array([window[b], window[b] + window[b + 1]])
+        elif len(window) == 2:  # Handle two list case
             limit = np.array([np.amin(window[a]), np.amax(window[a]) + 1])
         elif np.ndim(window) == 2:  # Handle the boolean array case
             collapsed = np.where(np.any(window, axis=a))  # Collapse the other axis

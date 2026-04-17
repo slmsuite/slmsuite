@@ -10,7 +10,7 @@ Check that the SLM Display SDK is in the default folder
 or otherwise add the installation folder to your python path.
 """
 import warnings
-from .slm import SLM
+from slmsuite.hardware.slms.slm import SLM
 
 # Set the path for the SLM Display SDK
 import os

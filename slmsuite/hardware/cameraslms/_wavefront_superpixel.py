@@ -74,11 +74,13 @@ class _WavefrontCalibrationSuperpixel(object):
 
         Parameters
         ----------
-        calibration_points : (float, float) OR numpy.ndarray OR None
+        calibration_points : (float, float) OR numpy.ndarray OR None OR int
             Position(s) in the camera domain where interference occurs.
             For multiple positions, this must be of shape ``(2, N)``.
             This is naturally in the ``"ij"`` basis.
             If ``None``, densely fills the camera field of view with calibration points.
+            If ``int``, then crops the dense filling to the given number of points,
+            prioritizing points near the center of the camera.
         superpixel_size : int
             The width and height in pixels of each SLM superpixel.
             If this is not a divisor of both dimensions in the SLM's :attr:`shape`,
@@ -223,18 +225,14 @@ class _WavefrontCalibrationSuperpixel(object):
         num_active_superpixels = int(np.sum(np.logical_not(exclude_superpixels)))
 
         # Parse calibration_points.
-        if calibration_points is None:
-            # If None, then use the built-in generator.
-            calibration_points = self.wavefront_calibration_points(
-                1.5*np.max(interference_window),
-                np.max(interference_window),
-                field_point,
-                field_point_units,
-                plot=plot
-            )
-
-        # TODO: warn if matrix is transposed.
-        calibration_points = np.rint(format_2vectors(calibration_points)).astype(int)
+        calibration_points = self._wavefront_calibration_points_parse(
+            calibration_points,
+            pitch=1.5*np.max(interference_window),
+            field_exclusion=np.max(interference_window),
+            field_point=field_point,
+            field_point_units=field_point_units,
+            plot=plot
+        )
         num_points = calibration_points.shape[1]
 
         # Clean the base and field points.

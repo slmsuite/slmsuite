@@ -9,7 +9,7 @@ from ctypes import *
 
 import numpy as np
 
-from .camera import Camera
+from slmsuite.hardware.cameras.camera import Camera
 
 CLKFREQ = 80e6
 

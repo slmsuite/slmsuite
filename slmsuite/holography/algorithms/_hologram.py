@@ -1678,7 +1678,7 @@ class Hologram(_HologramStats):
         Caution
         ~~~~~~~
         This method does not currently support
-        ``"experimental_spot"`` or ``"experimental_spot"`` feedback.
+        ``"experimental_spot"`` or ``"external_spot"`` feedback.
 
         Parameters
         ----------
@@ -1765,7 +1765,7 @@ class Hologram(_HologramStats):
             return loss(farfield_torch, target_torch)
         elif feedback == "experimental":
             self.measure("knm")  # Make sure data is there.
-            img_knm_torch = Hologram._get_torch_tensor_from_cupy(self.target)
+            img_knm_torch = Hologram._get_torch_tensor_from_cupy(self.img_knm)
 
             # Replace the values of the farfield with the measured values, but keep the
             # gradients using detach().
@@ -1938,7 +1938,7 @@ class Hologram(_HologramStats):
         """
         pass
 
-    def measure(self):
+    def measure(self, basis="ij"):
         """
         Placeholder for `FeedbackHologram` measurements.
         """

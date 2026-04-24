@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 
 from slmsuite.hardware._common import _Common
 from slmsuite.holography import analysis
-from slmsuite.holography.toolbox import BLAZE_LABELS, format_shape
+from slmsuite.holography.toolbox import BLAZE_LABELS, format_shape, window_slice
 from slmsuite.holography.toolbox.phase import zernike
 from slmsuite.misc.fitfunctions import lorentzian
 from slmsuite.misc.math import INTEGER_TYPES, REAL_TYPES
@@ -1049,7 +1049,7 @@ class Camera(_Common, ABC):
             :attr:`exposure_bounds_s`. If this attribute was not set (or not available on
             a particular camera), then ``None`` instead defaults to unbounded.
         window : array_like or None
-            See :attr:`~slmsuite.hardware.cameras.camera.Camera.woi`.
+            Passed to :meth:`~slmsuite.holography.toolbox.window_slice()`.
             If ``None``, the full camera frame will be used.
         timeout_s : float
             Stop attempting adjusting exposure after ``timeout_s`` seconds.
@@ -1069,23 +1069,14 @@ class Camera(_Common, ABC):
                 exposure_bounds_s = self.exposure_bounds_s
 
         # Parse window
-        if window is None:
-            wxi = 0
-            wxf = self.shape[1]
-            wyi = 0
-            wyf = self.shape[0]
-        else:
-            wxi = int(window[0] - window[1] / 2)
-            wxf = int(window[0] + window[1] / 2)
-            wyi = int(window[2] - window[3] / 2)
-            wyf = int(window[2] + window[3] / 2)
+        sliced = window_slice(window)
 
         # Initialize loop
         set_val = 0.5 * self.bitresolution
         exp = self.get_exposure()
         self.flush()
         img = self.get_image()
-        im_max = np.amax(img[wyi:wyf, wxi:wxf])
+        im_max = np.amax(img[sliced])
 
         # Calculate the error as a percent of the camera's bitresolution
         err = np.abs(im_max - set_val) / self.bitresolution
@@ -1104,7 +1095,7 @@ class Camera(_Common, ABC):
             self.flush()
             img = self.get_image()
 
-            im_max = np.amax(img[wyi:wyf, wxi:wxf])
+            im_max = np.amax(img[sliced])
             err = np.abs(im_max - set_val) / self.bitresolution
 
             if verbose:

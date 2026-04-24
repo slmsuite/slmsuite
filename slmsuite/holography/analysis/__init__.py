@@ -79,6 +79,7 @@ def take(
     ----------
     images : array_like OR (int, int)
         2D image of shape ``(h, w)`` or stack of 2D images of shape ``(image_count, h, w)``.
+        If a shape ``(int, int)`` is given, then ``return_mask`` is forced to ``True``.
     vectors : array_like of floats
         2-vector (or 2-vector array).
         Location(s) of integration region anchor(s) in pixels, see ``centered``.

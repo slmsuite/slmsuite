@@ -87,16 +87,16 @@ class CameraSLM(_Picklable):
         self.calibrations = {}
 
     def plot(
-            self,
-            phase=None,
-            image=None,
-            slm_limits=None,
-            cam_limits=None,
-            title="",
-            axs=None,
-            cbar=True,
-            **kwargs
-        ):
+        self,
+        phase=None,
+        image=None,
+        slm_limits=None,
+        cam_limits=None,
+        title="",
+        axs=None,
+        cbar=True,
+        **kwargs
+    ):
         """
         Plots the provided phase and image for the child hardware on a pair of subplot axes.
 

@@ -1126,8 +1126,9 @@ def image_zernike_fit(
     grid : (array_like, array_like) OR None
         Components of the meshgrid describing coordinates over the phase_images.
         If ``None``, makes a grid with unit pitch centered on the phase_images.
-    order : int
+    order : int OR list of int
         Maximal radial Zernike order for the fitting basis.
+        If a list of int is provided, these are the ANSI indices of the Zernike polynomials to fit.
     iterations : int
         Number of times to iterate the subtractive approach.
     leastsquares : bool
@@ -1153,8 +1154,11 @@ def image_zernike_fit(
         phase_images = [unwrap_phase(im) for im in phase_images]
 
     # Generate Zernike terms and norms.
-    order = int(order + 1)
-    indices_ansi = np.arange((order * (order + 1)) // 2)
+    if np.isscalar(order):
+        order = int(order + 1)
+        indices_ansi = np.arange((order * (order + 1)) // 2)
+    else:
+        indices_ansi = np.array(order, dtype=int)
     D = len(indices_ansi)
     phases = zernike_sum(
         grid,

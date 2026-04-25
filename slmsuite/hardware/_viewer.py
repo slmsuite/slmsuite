@@ -313,7 +313,7 @@ class _ViewerObject(object):
                 step=1,
                 description="Scale",
                 tooltip="Scale the image by powers of two.",
-                layout=Layout(width="30%"),
+                layout=(Layout(width="30%") if self.parent.is_slm else item_layout),
                 continuous_update=False,
             ),
             "output": Output()

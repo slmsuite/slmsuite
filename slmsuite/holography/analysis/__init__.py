@@ -1156,7 +1156,7 @@ def image_zernike_fit(
     # Generate Zernike terms and norms.
     if np.isscalar(order):
         order = int(order + 1)
-        indices_ansi = np.arange((order * (order + 1)) // 2)
+        indices_ansi = np.arange((order * (order + 1)) // 2)[1:]    # Omit the piston term
     else:
         indices_ansi = np.array(order, dtype=int)
     D = len(indices_ansi)
@@ -1214,7 +1214,7 @@ def image_zernike_fit(
                 pass
 
     # Return the fit with the piston term omitted.
-    return vectors_zernike[1:, :]
+    return vectors_zernike
 
 
 def _get_module(matrix):

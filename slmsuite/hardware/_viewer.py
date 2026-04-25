@@ -313,7 +313,7 @@ class _ViewerObject(object):
                 step=1,
                 description="Scale",
                 tooltip="Scale the image by powers of two.",
-                layout=range_layout,
+                layout=Layout(width="30%"),
                 continuous_update=False,
             ),
             "output": Output()

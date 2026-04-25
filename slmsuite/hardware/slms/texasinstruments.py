@@ -398,7 +398,7 @@ class PLM(ScreenMirrored):
             self.dlpc900 = None
         super().close()
 
-    def _init_quantize_lut(self):
+    def _init_quantize_lut(self, displacement_ratios=None):
         """
         Pre-compute a quantization lookup table (LUT) that maps discretized
         phase values directly to phase state indices.
@@ -407,8 +407,14 @@ class PLM(ScreenMirrored):
         with a single array index at runtime. The LUT has 2^16 entries (64 KB),
         built once from the model's non-uniform displacement ratios.
         """
-
-        displacement_ratios = np.array(self.model_config["displacement_ratios"])
+        if displacement_ratios is None:
+            displacement_ratios = np.array(self.model_config["displacement_ratios"])
+        else:
+            if len(displacement_ratios) != self.bitresolution:
+                raise ValueError(
+                    f"Expected {self.bitresolution} displacement ratios, "
+                    f"got {len(displacement_ratios)}."
+                )
 
         # Scale displacement ratios to (bitresolution - 1) / bitresolution
         ratio_scale = (self.bitresolution - 1) / self.bitresolution

@@ -106,10 +106,7 @@ class _ViewerObject(object):
             cmap=True,
             scale=1,
             border=None,
-            cmap_options=[
-                "default", "gray", "Blues", "turbo",
-                'viridis', 'plasma', 'inferno', 'magma', 'cividis'
-            ],
+            cmap_options=None,
             crosshair=False,
             centroid=False,
         ):
@@ -124,11 +121,21 @@ class _ViewerObject(object):
         range = [min, max]
         range = [np.min(range), np.max(range)]
 
-        if cmap is True: cmap = "default"
-        if cmap is False: cmap = "grayscale"
-
         # Parse scale
         scale = 2 ** np.round(np.log2(scale))
+
+        # Parse colormap options.
+        if cmap_options is None:
+            if self.parent.is_slm:
+                cmap_options = ["twilight", "twilight_shifted", "gray", "hsv"]
+            else:
+                cmap_options = [
+                    "default", "gray", "Blues", "turbo",
+                    'viridis', 'plasma', 'inferno', 'magma', 'cividis'
+                ]
+
+        if cmap is True: cmap = cmap_options[0]
+        if cmap is False: cmap = "gray"
 
         self.state = {
             "backend" : backend,
@@ -269,8 +276,10 @@ class _ViewerObject(object):
         from ipywidgets import Image
         from IPython.display import display
 
+        self.prev_img = np.zeros(self.parent.shape, dtype=self.parent.dtype)
+
         self.image = Image(
-            value=np.zeros(self.parent.shape, dtype=self.parent.dtype),
+            value=self.prev_img,
             format="png"
         )
         self.image.on_click = self.on_click
@@ -304,7 +313,7 @@ class _ViewerObject(object):
                 step=1,
                 description="Scale",
                 tooltip="Scale the image by powers of two.",
-                layout=item_layout,
+                layout=range_layout,
                 continuous_update=False,
             ),
             "output": Output()

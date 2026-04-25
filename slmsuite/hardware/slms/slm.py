@@ -757,10 +757,12 @@ class SLM(_Common, ABC):
 
             # Maybe some of that time will be spent rendering the data in the viewer...
             if self.viewer is not None:
+                xp = _xp(self.phase)
+                factor = (self.phase_scaling * self.bitresolution / (2 * np.pi))
                 if xp == np:
-                    self.viewer.render(self.display)
+                    self.viewer.render((self.phase * factor).astype(self.dtype))
                 else:
-                    self.viewer.render(self.display.get())
+                    self.viewer.render((self.phase.get() * factor).astype(self.dtype))
 
         # Optional delay.
         if settle is None:

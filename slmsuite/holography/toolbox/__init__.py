@@ -742,7 +742,7 @@ def imprint(
     **kwargs,
 ):
     r"""
-    Imprints a region (defined by ``window``) of a ``matrix`` with a ``function``.
+    Imprints a region (defined by ``window``) of a ``matrix`` with a ``function`` in-place.
     This ``function`` must be in the style of :mod:`~slmsuite.holography.toolbox.phase`
     phase helper functions, which expect a ``grid`` parameter to define the coordinate basis
     (see :meth:`~slmsuite.holography.toolbox.phase.blaze()` or
@@ -764,6 +764,7 @@ def imprint(
     ----------
     matrix : numpy.ndarray
         The data to imprint a ``function`` onto.
+        This operation occurs in-place (original array is modified).
     window
         Passed to :meth:`~slmsuite.holography.toolbox.window_slice()`.
         See :meth:`~slmsuite.holography.toolbox.window_slice()` for various options.

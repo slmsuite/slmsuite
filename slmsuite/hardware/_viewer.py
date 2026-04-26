@@ -157,7 +157,7 @@ class _ViewerObject(object):
 
     def parse(self, img=None):
         is_cam = not self.parent.is_slm
-        
+
         if img is not None:
             self.prev_img = img
         if self.prev_img is None:
@@ -272,6 +272,24 @@ class _ViewerObject(object):
 
         self.render()
 
+    def copy(self, event):
+        """
+        TODO: copy self.image.value to clipboard.
+        """
+        pass
+
+    def save(self, event):
+        """
+        TODO: save .png / .jpg, etc. fname?
+        """
+        pass
+
+    def save_raw(self, event):
+        """
+        TODO: save .h5. fname?
+        """
+        pass
+
     def init_image(self):
         from ipywidgets import Image
         from IPython.display import display
@@ -315,6 +333,21 @@ class _ViewerObject(object):
                 tooltip="Scale the image by powers of two.",
                 layout=(Layout(width="30%") if self.parent.is_slm else item_layout),
                 continuous_update=False,
+            ),
+            "copy" : Button(
+                description="Copy",
+                tooltip="Copy the displayed image to clipboard.",
+                layout=item_layout,
+            ),
+            "save" : Button(
+                description="Save",
+                tooltip="Save the displayed image to .png.",
+                layout=item_layout,
+            ),
+            "save_raw" : Button(
+                description="Save Raw",
+                tooltip="Save the raw image to .h5.",
+                layout=item_layout,
             ),
             "output": Output()
         }
@@ -370,6 +403,12 @@ class _ViewerObject(object):
         for k, w in self.widgets.items():
             if k == "autorange":
                 w.on_click(self.autorange)
+            elif k == "copy":
+                w.on_click(self.copy)
+            elif k == "save":
+                w.on_click(self.save)
+            elif k == "save_raw":
+                w.on_click(self.save_raw)
             elif k == "live":
                 w.observe(self.live, "value")
             else:
@@ -384,6 +423,9 @@ class _ViewerObject(object):
                     self.widgets["name"],
                     self.widgets["cmap"],
                     self.widgets["scale"],
+                    self.widgets["copy"],
+                    self.widgets["save"],
+                    self.widgets["save_raw"],
                 ]),
                 self.widgets["output"],
             ])
@@ -392,13 +434,19 @@ class _ViewerObject(object):
                 display="flex",
                 flex_flow="auto",
                 align_items="stretch",
-                width="70%"
+                width="65%"
             )
             box_layout2 = Layout(
                 display="flex",
                 flex_flow="auto",
                 align_items="stretch",
-                width="30%"
+                width="25%"
+            )
+            box_layout3 = Layout(
+                display="flex",
+                flex_flow="auto",
+                align_items="stretch",
+                width="10%"
             )
 
             self.widgets["layout"] = HBox([
@@ -427,6 +475,14 @@ class _ViewerObject(object):
                         self.widgets["autorange"],
                     ],
                     layout=box_layout2,
+                ),
+                VBox(
+                    [
+                        self.widgets["copy"],
+                        self.widgets["save"],
+                        self.widgets["save_raw"],
+                    ],
+                    layout=box_layout3,
                 )
             ])
 

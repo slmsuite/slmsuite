@@ -55,6 +55,14 @@ class Camera(_Picklable, ABC):
         Default setting for averaging (sums repeated measurements). See :meth:`.get_image()`.
     hdr : (int, int) OR None
         Default setting for multi-exposure High Dynamic Range imaging. See :meth:`.get_image()`.
+    color_handling : None OR int OR list of float
+        Determines how to convert color images to grayscale.
+        If  ``int``, returns the corresponding color channel.
+        If ``list``, returns the weighted sum of the color channels with the corresponding weights.
+        This list must have the same length as the number of color channels returned by the camera.
+        If ``None``, defaults to unweighted sum.
+        Note that this summation may overflow the datatype. 
+        The same rules as averaging apply for when the return type is promoted to float.
     capture_attempts : int
         If the camera returns an error or exceeds a timeout,
         try again for a total of `capture_attempts` attempts.
@@ -108,8 +116,9 @@ class Camera(_Picklable, ABC):
         name="camera",
         exposure_bounds_s=None,
         averaging=None,
-        capture_attempts=5,
         hdr=None,
+        color_handling=None,
+        capture_attempts=5,
         rot="0",
         fliplr=False,
         flipud=False,
@@ -137,7 +146,7 @@ class Camera(_Picklable, ABC):
         name : str
             Defaults to ``"camera"``.
         exposure_bounds_s : (float, float) OR None
-            Exposure bounds in seconds for the camera. If ``None``, no bounds are applied.
+            Exposure bounds in seconds for the camera. If ``None``, no software bounds are applied.
         averaging : int or None
             Number of frames to average. Used to increase the effective bit depth of a camera by using
             pre-quantization noise (e.g. dark current, read-noise, etc.) to "dither" the pixel output
@@ -145,6 +154,14 @@ class Camera(_Picklable, ABC):
         hdr : int OR (int, int) OR None OR False
             Exposure information for `Multi-exposure High Dynamic Range (HDR) imaging
             <https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture>`_
+        color_handling : None OR int OR list of float
+            Determines how to convert color images to grayscale.
+            If  ``int``, returns the corresponding color channel.
+            If ``None``, defaults to 0.
+            If ``list``, returns the weighted sum of the color channels with the corresponding weights (NotImplemented).
+            This list must have the same length as the number of color channels returned by the camera.
+            Note that this summation may overflow the datatype. 
+            The same rules as averaging apply for when the return type is promoted to float.
         capture_attempts : int
             If the camera returns an error or exceeds a timeout,
             try again for a total of `capture_attempts` attempts.
@@ -209,6 +226,7 @@ class Camera(_Picklable, ABC):
         # Frame averaging variables.
         self.averaging = self._parse_averaging(averaging, preserve_none=True)
         self.hdr = self._parse_hdr(hdr, preserve_none=True)
+        self.color_handling = color_handling
         self._flush_iterations = 2  # Hidden variable: how many frames to capture for a flush.
 
         # Spatial dimensions.
@@ -425,13 +443,35 @@ class Camera(_Picklable, ABC):
 
     # Capture methods one level of abstraction above _get_image_hw().
 
+    def _parse_color_image(self, img):
+        """
+        Helper function to parse color images according to :attr:`color_handling`.
+        """
+        color_handling = self.color_handling
+        if color_handling is None:
+            color_handling = 0
+    
+        if isinstance(color_handling, int):
+            return img[:, :, color_handling]
+        elif isinstance(color_handling, (list, np.ndarray)):
+            raise NotImplementedError("Weighted color handling is not implemented yet.")
+        else:
+            raise ValueError(f"Expected color_handling to be None, int, or list of floats. Found {self.color_handling}.")
+
     def _get_image_hw_tolerant(self, *args, **kwargs):
         err = None
         failures = 0
 
         for _ in range(self.capture_attempts):
             try:
-                img =  self._get_image_hw(*args, **kwargs)
+                img = np.array(self._get_image_hw(*args, **kwargs))
+
+                if len(img.shape) == 2:     # All good!
+                    pass    
+                elif len(img.shape) == 3:     # Need to convert to grayscale.
+                    img = self._parse_color_image(img)
+                else:
+                    raise ValueError(f"Expected a 2D or 3D (color) image. Found {img.shape}.")
 
                 if failures > 0:
                     warnings.warn(f"'{self.name}' _get_image_hw() failed {failures} times before succeeding.")
@@ -1439,19 +1479,21 @@ class Camera(_Picklable, ABC):
 
         # Show result if desired
         if plot:
-            plt.plot(z_list, counts, label="Data")
+            plt.scatter(z_list, counts, color="k", label="Data")
             plt.xlabel(r"$z$")
             plt.ylabel("Figure of Merit")
             plt.title("Autofocus Sweep")
-            plt.scatter(z_opt, c_opt, label="Result")
+            plt.scatter(z_opt, c_opt, color="r", label="Result")
+
+            z_list_fine = np.linspace(np.min(z_list), np.max(z_list), 1000)
 
             lfit = None
             try:
-                lfit = lorentzian(z_list, *popt)
+                lfit = lorentzian(z_list_fine, *popt)
             except BaseException:
                 lfit = None
             if lfit is not None:
-                plt.plot(z_list, lfit, label="Fit")
+                plt.plot(z_list_fine, lfit, color="r", label="Fit")
             plt.legend()
             plt.show()
 

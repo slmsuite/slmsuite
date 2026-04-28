@@ -22,6 +22,7 @@ Note
 ~~~~
 Color camera functionality is not currently implemented, and will lead to undefined behavior.
 """
+import numpy as np
 import warnings
 from slmsuite.hardware.cameras.camera import Camera
 
@@ -109,8 +110,8 @@ class PyLabLib(Camera):
 
         super().__init__(
             (width, height),
-            bitdepth=8,         # Currently defaults to 8 because pylablib doesn't cache this. Update in the future, maybe.
-            pitch_um=pitch_um,  # Currently unset because pylablib doesn't cache this. Update in the future, maybe.
+            bitdepth=kwargs.pop("bitdepth", 8),     # Currently defaults to 8 because pylablib doesn't cache this for most cameras. Update in the future, maybe.
+            pitch_um=pitch_um,                      # Currently unset because pylablib doesn't cache this. Update in the future, maybe.
             name=name,
             **kwargs
         )
@@ -184,4 +185,4 @@ class PyLabLib(Camera):
 
     def _get_images_hw(self, image_count, timeout_s, out=None):
         """See :meth:`.Camera._get_images_hw`."""
-        return self.cam.grab(nframes=image_count, frame_timeout=timeout_s)
+        return np.array(self.cam.grab(nframes=image_count, frame_timeout=timeout_s))

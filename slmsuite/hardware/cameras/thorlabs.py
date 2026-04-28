@@ -58,6 +58,11 @@ def _configure_tlcam_dll_path(dll_path=DEFAULT_DLL_PATH):
         else:
             dll_path += "32_lib"
 
+    if not os.path.exists(dll_path) or not os.path.isdir(dll_path):
+        warnings.warn(
+            f"Thorlabs camera DLL path does not exist.\n'{dll_path}'"
+        )
+
     if hasattr(os, "add_dll_directory"):
         try:
             os.add_dll_directory(dll_path)

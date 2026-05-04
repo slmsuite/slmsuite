@@ -254,6 +254,9 @@ class ScreenMirrored(SLM):
                 "design wavelength {} μm".format(self.wav_um, self.wav_design_um)
             )
 
+        # Variable to keep track of the last thread future.
+        self._window_thread_future = None
+
     def _set_phase_hw(self, display, execute=True, block=True):
         """
         Writes phase data from `display` to the screen via the window's
@@ -279,10 +282,13 @@ class ScreenMirrored(SLM):
 
         # Submit render to the window's dedicated thread.
         if execute:
-            future = self._window_thread.submit(self._render, self.window,
-                                                display)
-            if block:
-                _WindowThread.wait(future)
+            self._window_thread_future = self._window_thread.submit(
+                self._render, 
+                self.window,
+                display
+            )
+        if block and self._window_thread_future is not None:
+            _WindowThread.wait(self._window_thread_future)
 
     @staticmethod
     def _render(window, display):

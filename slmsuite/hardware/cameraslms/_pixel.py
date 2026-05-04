@@ -19,14 +19,14 @@ class _PixelCalibration(object):
         self,
         levels=2,
         periods=2,
-        orders=3,
+        orders=2,
+        directions="xy",
         window=None,
         field_period=10,
+        plot=True,
     ):
         r"""
-        Measure the pixel crosstalk and phase response of the SLM.
-
-        **(This feature is experimental.)**
+        Measure the pixel crosstalk (blurring) and phase response (gamma) of the SLM.
 
         Physical SLMs do not produce perfectly sharp and discrete blocks of a desired
         phase at each pixel. Rather, the realized phase might deviate from the desired
@@ -71,7 +71,8 @@ class _PixelCalibration(object):
             periods is chosen, based upon the field of view of the camera.
         orders : int OR array_like of int
             Orders (..., -1st, 0th, 1st, ...) of the binary gratings to measure data at.
-            If scalar is provided, measures orders between -nth and nth order, inclusive.
+            If scalar :math:`o` is provided, 
+            measures orders between :math:`-o`th and :math:`o`th order, inclusive.
         window
             If not ``None``, the pixel calibration is only done over the region of the SLM
             defined by ``window``.
@@ -97,21 +98,7 @@ class _PixelCalibration(object):
             levels = np.arange(levels) * (self.slm.bitresolution / levels)
         levels = np.mod(levels, self.slm.bitresolution).astype(self.slm.display.dtype)
         N = len(levels)
-
-        # Parse periods by forcing integer.
-        if np.isscalar(periods):
-            raise NotImplementedError("TODO")
-
-        periods = np.rint(periods).astype(int)
-        periods = 2 * (periods // 2)
-        P = len(periods)
-
-        if len(np.unique(periods)) != len(periods):
-            raise RuntimeError(f"Repeated periods in {periods}")
-
-        if np.any(periods <= 0):
-            raise ValueError("period should not be negative.")
-
+        
         # Parse orders by forcing integer.
         if np.isscalar(orders):
             orders = int(orders)
@@ -121,6 +108,51 @@ class _PixelCalibration(object):
 
         if not 1 in orders:
             raise ValueError("1st order must be included.")
+        
+        # Find the minimum period based on the FoV size.
+        camera_extent_knm = toolbox.convert_vector(
+            np.array([
+                (0,0),    # top left
+                (self.cam.width - 1, 0),    # top right
+                (0, self.cam.height - 1),    # bottom left
+                (self.cam.width - 1, self.cam.height - 1),    # bottom right
+            ]).T,
+            from_units="ij",
+            to_units="knm",
+            shape=(1,1),
+            hardware=self,
+        )
+        camera_extent_kspace = (camera_extent_knm - toolbox.format_2vectors((.5, .5))) * 2
+        max_order = np.max(np.abs(orders))
+        min_periods = max_order / np.max(np.abs(camera_extent_kspace), axis=1)
+        min_period = 8 * int(np.floor(np.max(min_periods)/2))
+
+        # Parse periods by forcing positive even integer.
+        if np.isscalar(periods):
+            periods = min_period + 2 * np.arange(periods)
+
+        periods = np.rint(periods).astype(int)  # Force integer.
+        P = len(periods)
+
+        # Error check periods.
+        if np.any(periods % 2 != 0):
+            raise ValueError(f"Periods {periods} must be even integers.")
+
+        if len(np.unique(periods)) != len(periods):
+            raise ValueError(f"Repeated periods in {periods}")
+
+        if np.any(periods <= 0):
+            raise ValueError(f"Periods {periods} must be positive.")
+
+        # Parse directions.
+        if directions is None:
+            directions = "xy"
+        directions_ = directions
+        directions = []
+        if "x" in directions_ or "X" in directions_ or 0 in directions_:
+            directions.append(0)
+        if "y" in directions_ or "Y" in directions_ or 1 in directions_:
+            directions.append(1)
 
         # Parse window.
         if window is not None:
@@ -173,19 +205,44 @@ class _PixelCalibration(object):
             order_ij.append(center + orders * dorder[:, [i]])
 
         integration_size = int(np.ceil(np.min([
-            np.min(np.max(dorder, axis=1)),
-            np.min(np.max(dfield, axis=1))
+            np.min(np.max(np.abs(dorder), axis=0)),
+            np.min(np.max(np.abs(dfield), axis=0))
         ])))
 
-        # FUTURE: Warn the user if any order is outside the field of view.
-        if False:
-            warnings.warn("FUTURE")
+        canvas = np.zeros(self.cam.shape)
+
+        # Figure out if we exceed the camera's field of view, and if so, raise an error.
+        try:
+            for i in range(2*P):
+                mask = analysis.take(
+                    images=canvas,
+                    vectors=order_ij[i],
+                    size=integration_size,
+                )
+        except IndexError:
+            raise ValueError(
+                f"Some orders are too far from the center to be captured by the camera. "
+                f"Try increasing the period or decreasing the order."
+            )
+
+        if plot:
+            for i in range(2*P):
+                mask = analysis.take(
+                    images=canvas,
+                    vectors=order_ij[i],
+                    size=integration_size,
+                    return_mask=True,
+                )
+                canvas += mask
+
+            self.cam.plot(canvas, title="Order integration mask")
+            plt.show()
 
         # if True: iterations = tqdm(range(P*(N-1)*N))
         if True: iterations = tqdm(range(2*P*N*N))
 
         # Big sweep.
-        for i in [0,1]:                                         # Direction (x,y)
+        for i in directions:                                        # Direction (x,y)
             prange = np.arange(P) + i*P
             for j in range(P):                                  # Period
                 for k in range(N):                              # Upper triangular gray level selection.
@@ -237,43 +294,183 @@ class _PixelCalibration(object):
             "levels" : levels,
             "periods" : periods,
             "orders" : orders,
+            "directions" : directions,
+            "vectors_kxy" : vectors_kxy,
+            "order_ij" : order_ij,
             "data": data
         }
         self.calibrations["pixel"].update(self._get_calibration_metadata())
 
-        # Process by default because we currently don't have any arguments.
-        # self.pixel_calibration_process()
-
         return self.calibrations["pixel"]
 
-    def pixel_calibration_process(self):
+    def _pixel_calibration_process_get_summed(self, orders=None, transpose=False):
         """
-        Currently, this method only displays debug plots of the measurements.
-        In the future, the measurements will be fit in a way that can be applied to
-        propagation.
+        Helper function to get summed data for gamma calibration.
+
+        Parameters
+        ----------
+        orders : int OR array_like of int
+            Which orders to sum over. If an integer is passed, then defaults to the corresponding positive and negative order.
+        transpose : bool
+            If ``True``, then the summed data is averaged with its transpose across the diagonal. This can help reduce noise by enforcing symmetry.
         """
         cal = self.calibrations["pixel"]
         periods = cal["periods"]
-        orders = cal["orders"]
+        orders_ = cal["orders"]
         levels = cal["levels"]
+        leveli = np.arange(len(levels))
         data = cal["data"]
 
-        first_order = np.arange(len(orders))[orders == 1][0]
+        # Parse orders.
+        if orders is None:
+            orders = [-1, 1]
+        if np.isscalar(orders):
+            orders = int(orders)
+            orders = [-orders, orders]
 
-        rolled = data.copy()
+        orders = [o for o in orders_ if (o in orders)]
+        mask = [(o in orders) for o in orders_]
 
-        # rolled /= rolled[:,:,:,:,[first_order]]
+        # Actually do the sum.
+        data_summed = np.sum(data[:,:,:,:,mask], axis=(0,1,4))
 
-        # for i in range(1, len(levels)):
-        #     rolled[:,:,[i],:,:] = np.roll(rolled[:,:,[i],:,:], -i, axis=3)
+        # Average across diagonals to reduce noise.
+        if transpose:
+            data_summed = (data_summed + np.transpose(data_summed)) / 2
 
-        for i, direction in enumerate(["x"]): #, "y"]):
-            for j, period in enumerate(periods[[0]]):
-                for o, order in enumerate(orders):
-                    plt.imshow(rolled[i,j,:,:,o], vmin=0)
-                    plt.title(f"{period}-pixel, ${direction}$ grating; measuring order {order}")
-                    # plt.clim(0,1)
+        return data_summed
+
+    def pixel_calibration_plot(self, summed=False, orders=None):
+        """
+        Plot the pixel calibration data as a series of square heatmaps.
+        The :math:`x` and :math:`y` axes of the heatmaps correspond to 
+        the levels :math:`a` and :math:`b` of the binary grating.
+
+        Parameters
+        ----------
+        summed : bool
+            If ``False``, then the raw data for each order and period is plotted.
+            If ``True``, then the data is summed across orders and periods.
+            This is the data that is used for gamma calibration.
+        orders : int OR array_like of int
+            If ``summed=False``, then which orders to plot.
+            If ``summed=True``, then which orders to sum over.
+            If an integer is passed, then defaults to the corresponding positive and negative order.
+        """
+        cal = self.calibrations["pixel"]
+        periods = cal["periods"]
+        orders_ = cal["orders"]
+        levels = cal["levels"]
+        leveli = np.arange(len(levels))
+        data = cal["data"]
+
+        # Parse orders.
+        if orders is None:
+            if summed:
+                orders = [-1, 1]
+            else:
+                orders = orders_
+        if np.isscalar(orders):
+            orders = int(orders)
+            orders = [-orders, orders]
+        orders =  [o for o in orders_ if o in orders]
+
+        if not summed:
+            cmin = np.min(data)
+            cmax = np.max(data)
+            for i, direction in enumerate(["x", "y"]):
+                for j, period in enumerate(periods[[0]]):
+                    M = len(orders)
+                    fig, axs = plt.subplots(1, M, figsize=(5*M, 5))
+                    for o, order in enumerate(orders):
+                        im = axs[o].imshow(data[i,j,:,:,o])
+                        im.set_clim(cmin, cmax)
+                        
+                        axs[o].set_xlabel("Level b")
+                        axs[o].set_ylabel("Level a")
+                        axs[o].set_xticks(leveli)
+                        axs[o].set_yticks(leveli)
+
+                        axs[o].set_title(f"Order ${order:+d}$")
+                        
+                    fig.suptitle(f"${direction}$-grating, {period} pixel period")
                     plt.show()
+        else:
+            data_summed = self._pixel_calibration_process_get_summed(orders=orders)
+            cmin = np.min(data_summed)
+            cmax = np.max(data_summed)
+            fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+
+            im = ax.imshow(data_summed)
+            im.set_clim(cmin, cmax)
+            
+            ax.set_xlabel("Level b")
+            ax.set_ylabel("Level a")
+            ax.set_xticks(leveli)
+            ax.set_yticks(leveli)
+
+            ax.set_title(f"Summed Orders")
+    
+            plt.show()
+
+    def pixel_calibration_process_gamma(self, plot=False):
+        """
+        Process the pixel calibration data to extract the phase response curve (gamma).
+
+        Parameters
+        ----------
+        plot : bool
+            If ``True``, then the extracted gamma curve is plotted, as well as the fit of the
+            model to the data.
+        """
+        # Construct x data.
+        cal = self.calibrations["pixel"]
+        levels = cal["levels"].astype(int)
+        leveli = np.arange(len(levels))
+        xy = [l.ravel().astype(int) for l in np.meshgrid(leveli, leveli, indexing="ij")]
+
+        # Construct y data.
+        data_summed = self._pixel_calibration_process_get_summed(orders=[-1, +1])
+        data_ravel = data_summed.ravel()
+
+        # Construct the model.
+        def model(_, a, c, *gamma):
+            gamma = np.array(gamma)
+            dphase = gamma[xy[0].astype(int)] - gamma[xy[1].astype(int)]
+            intensity = np.sin(np.pi * dphase) ** 2
+            return a * intensity + c
+        
+        # Make a guess for the model.
+        c_guess = np.min(data_summed)
+        a_guess = np.max(data_summed) - c_guess
+        gamma_guess = levels / self.slm.bitresolution
+        guess = [a_guess, c_guess, *gamma_guess]
+
+        # Now run the fit.
+        from scipy.optimize import curve_fit
+        popt, pcov = curve_fit(model, None, data_ravel, p0=guess)
+
+        # Extract the gamma values from the fit parameters, and normalize so that the minimum is 0.
+        gamma = popt[2:]
+        gamma -= np.min(gamma)
+
+
+        if plot:
+            plt.plot(levels, gamma, "o-", label="calibrated")
+            plt.show()
+
+            fig, axs = plt.subplots(1, 3, figsize=(10, 5))
+            data_fit = model(None, *popt).reshape(data_summed.shape)
+            data_resid = data_summed - data_fit
+            M = np.max(np.abs(data_resid))
+            axs[0].imshow(data_summed)
+            axs[1].imshow(data_fit)
+            axs[2].imshow(data_resid, cmap="bwr", vmin=-M, vmax=M)
+            plt.show()
+
+        # TODO: store data...
+
+        return gamma
 
     @staticmethod
     def pixel_kernel(x, a_pix=.1, n=1, a_minus_pix=None, n_minus=None):

@@ -339,13 +339,13 @@ class _HologramStats(object):
         return limits
 
     def plot_nearfield(
-            self,
-            source=None,
-            title="",
-            padded=False,
-            figsize=(8,4),
-            cbar=False
-        ):
+        self,
+        source=None,
+        title="",
+        padded=False,
+        figsize=(8,4),
+        cbar=False
+    ):
         """
         Plots the amplitude (left) and phase (right) of the nearfield (plane of the SLM).
         The amplitude is assumed (whether uniform, assumed, or measured) while the
@@ -425,16 +425,16 @@ class _HologramStats(object):
         plt.show()
 
     def plot_farfield(
-            self,
-            source=None,
-            title="",
-            limits=None,
-            units="knm",
-            limit_padding=0.1,
-            figsize=(8,4),
-            cbar=False,
-            axs=None
-        ):
+        self,
+        source=None,
+        title="",
+        limits=None,
+        units="knm",
+        limit_padding=0.1,
+        figsize=(8,4),
+        cbar=False,
+        axs=None
+    ):
         """
         Plots an overview (left) and zoom (right) view of ``source``.
 

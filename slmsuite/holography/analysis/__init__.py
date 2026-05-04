@@ -243,6 +243,9 @@ def take_plot(images, shape=None, separate_axes=False, cbar=True):
     # Gather helper variables and set the min and max of all the subplots.
     (img_count, sy, sx) = np.shape(images)
     img_count, (M, N) = _take_parse_shape(images, shape)
+    
+    if isinstance(images, cp.ndarray):
+        images = cp.asnumpy(images)
 
     if separate_axes:
         sx = sx / 2.0 - 0.5

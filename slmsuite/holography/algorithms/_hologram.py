@@ -1,5 +1,6 @@
 from slmsuite.holography.algorithms._header import *
 from slmsuite.holography.algorithms._stats import _HologramStats
+from slmsuite.holography.toolbox.phase import zernike_order_number
 
 
 if torch is not None:
@@ -1359,6 +1360,8 @@ class Hologram(_HologramStats):
             self.optimize_gs(iterations, callback)
         elif "CG" in method:
             self.optimize_cg(iterations, callback)
+        elif "ZG" in method:
+            self._optimize_zg(iterations, callback)
         else:
             raise ValueError(f"Unsupported optimization method '{method}'")
 
@@ -1744,6 +1747,94 @@ class Hologram(_HologramStats):
             self.iter += 1
 
         self.phase = cp.asarray(phase_torch.detach())
+
+        # Update the final farfield using phase and amp.
+        self._populate_results()
+
+    # Conjugate gradient optimization (Zernike source).
+    def _optimize_zg(self, iterations, callback):
+        """
+        Hack to get CG phase retrieval applied to Zernike (Zernike gradient).
+
+        **(This feature is very experimental.)**
+        """
+        # pytorch is optional in case some users are allergic to bloat.
+        if torch is None:
+            raise ValueError("pytorch is required for conjugate gradient optimization.")
+
+        # Get radial_order flag
+        radial_order = self.flags.get("radial_order", 4)
+        num_zernike = zernike_order_number(radial_order)
+
+        # Build the Zernike kernel cache.
+        zernike_indices = np.arange(num_zernike)
+        self.zernike_kernels = cp.array(
+            zernike_sum(
+                grid,
+                indices=zernike_indices,
+                weights=np.eye(num_zernike),
+            )
+        )
+        zernike_kernels_torch = Hologram._get_torch_tensor_from_cupy(self.zernike_kernels)
+
+        #
+        self.zernike_weights = cp.zeros((num_zernike,), self.dtype)
+        zernike_weights_torch = Hologram._get_torch_tensor_from_cupy(self.zernike_weights)
+        zernike_weights_torch.requires_grad_(True)
+
+        # Create the optimizer.
+        try:
+            optim_class = getattr(torch.optim, self.flags["optimizer"])
+        except:
+            raise ValueError(f"'{self.flags['optimizer']}' is not a valid torch optimizer")
+
+        self.optimizer = optim_class([zernike_weights_torch], **self.flags["optimizer_kwargs"])
+
+        for _ in iterations:
+            # (A) Project the phase on the SLM if it is expected by the feedback method and stat groups.
+            self._update_slm(force=True, cleanup_images=True)
+
+            # (B) Step the Conjugate Gradient Optimization
+            # (B.1) Reset the gradients for this step.
+            self.optimizer.zero_grad()
+
+            # (B.2) Compute the loss for this phase pattern.
+            # This computes the farfield (and potentially experimental results)
+            # and then passes these values to the current ``loss`` function.
+            phase_torch = torch.sum(
+                zernike_weights_torch.reshape(-1, 1, 1) * zernike_kernels_torch,
+                axis=0
+            )
+            result = self._cg_loss(phase_torch)
+
+            self.flags["loss_result"] = float(result.detach())
+
+            if hasattr(iterations, "set_description"):
+                iterations.set_description("loss="+str(self.flags["loss_result"]))
+
+            # (B.3) Compute the gradients of the phase pattern with respect to loss.
+            result.backward(retain_graph=True)
+
+            # (B.4) Step the optimization of zernike_weights_torch according to the gradients calculated.
+            self.optimizer.step()
+
+            # (C) Midloop Routines
+            # (C.1) Run step function if present and check termination conditions.
+            if callback is not None:
+                if callback(self):
+                    break
+
+            # (C.2) Update statistics.
+            self._update_stats(self.flags["stat_groups"])
+
+            # Increment iteration.
+            self.iter += 1
+
+        self.zernike_weights = cp.asarray(zernike_weights_torch.detach())
+        self.phase = cp.sum(
+            self.zernike_weights.reshape(-1, 1, 1) * self.zernike_kernels,
+            axis=0
+        )
 
         # Update the final farfield using phase and amp.
         self._populate_results()

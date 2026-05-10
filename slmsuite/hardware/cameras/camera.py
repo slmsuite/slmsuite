@@ -1075,6 +1075,8 @@ class Camera(_Common, ABC):
             Resulting exposure in seconds.
         """
         # Parse set_fraction
+        if set_fraction is True:
+            set_fraction = 0.5
         set_fraction = float(set_fraction)
         if set_fraction <= 0:
             raise ValueError("set_fraction must be positive.")

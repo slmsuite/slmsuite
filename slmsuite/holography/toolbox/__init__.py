@@ -499,7 +499,7 @@ def window_slice(window, shape=None, centered=False, circular=False):
 
     # Case 0: No window, so return the full slice.
     if window is None:
-        slice_ = (slice(), slice())
+        slice_ = (slice(None), slice(None))
     # Case 1: (x, w, y, h) format
     elif len(window) == 4:
         # Prepare helper vars

@@ -495,6 +495,153 @@ def _zernike_indices_parse(indices=None, D=None, smaller_okay=False):
     return indices
 
 
+def _zernike_xp(array):
+    """Return the array module (``cupy`` or ``numpy``) backing ``array``."""
+    if cp is not np and isinstance(array, cp.ndarray):
+        return cp
+    return np
+
+
+class ZernikeBasis:
+    r"""
+    A precomputed, reusable basis of Zernike polynomial images.
+
+    Building Zernike images is the expensive part of :meth:`zernike_sum` and
+    :meth:`~slmsuite.holography.analysis.image_zernike_fit`: the polynomial
+    coefficients must be gathered and evaluated across the grid. When the same
+    grid and basis are used many times -- as in iterative wavefront retrieval --
+    this work should be done **once**. A :class:`ZernikeBasis` does exactly that,
+    holding the flattened basis images (and, lazily, their Gram matrix) on the
+    array module (:mod:`numpy` or :mod:`cupy`) of the grid it was built from.
+
+    The resulting object is a pure cache: it carries no fitting or synthesis
+    logic. Pass it to :meth:`zernike_sum` to synthesize a weighted sum, or to
+    :meth:`~slmsuite.holography.analysis.image_zernike_fit` to fit coefficients.
+
+    Parameters
+    ----------
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+        Meshgrids of normalized coordinates, in the same form accepted by
+        :meth:`zernike_sum`. If the grid arrays are :mod:`cupy` arrays, the basis
+        is built and stored on the GPU.
+    indices : array_like of int OR None
+        ANSI indices of the Zernike polynomials in the basis, of shape ``(D,)``.
+        Parsed with :meth:`_zernike_indices_parse`.
+    aperture : see :meth:`zernike_aperture`
+        Lateral scaling of the Zernike polynomials.
+    use_mask : bool
+        Whether to zero the region outside the standard Zernike pupil. Defaults
+        to ``True`` so that overlap integrals reduce to plain matrix products.
+
+    Attributes
+    ----------
+    indices : numpy.ndarray
+        ANSI indices of the basis modes, of shape ``(D,)``.
+    aperture : object
+        The ``aperture`` argument, retained for reference.
+    grid_shape : tuple of int
+        The ``(h, w)`` shape of the grid.
+    basis : numpy.ndarray OR cupy.ndarray
+        The basis images, of shape ``(D, h, w)``.
+    basis_flat : numpy.ndarray OR cupy.ndarray
+        The basis images flattened to ``(D, h*w)``.
+    mask : numpy.ndarray OR cupy.ndarray
+        Boolean ``(h, w)`` mask of the standard Zernike pupil.
+    """
+
+    def __init__(self, grid, indices, aperture=None, use_mask=True):
+        indices = np.ravel(_zernike_indices_parse(indices))
+        (x_grid, _) = _process_grid(grid)
+        xp = _zernike_xp(x_grid)
+        D = len(indices)
+
+        # One single-mode Zernike image per basis index, stacked as (D, h, w).
+        basis = zernike_sum(
+            grid,
+            indices[np.newaxis, :],
+            np.eye(D),
+            aperture=aperture,
+            use_mask=bool(use_mask),
+        )
+        mask = zernike_sum(grid, 0, 0, aperture=aperture, use_mask="return")
+
+        self.indices = indices
+        self.aperture = aperture
+        self.grid_shape = tuple(x_grid.shape)
+        self.basis = basis
+        self.basis_flat = basis.reshape(D, -1)
+        self.mask = mask
+        self._xp = xp
+        self._gram = None
+        self._norm = None
+
+    @property
+    def gram(self):
+        """Lazily-computed Gram matrix ``basis_flat @ basis_flat.T``, shape ``(D, D)``."""
+        if self._gram is None:
+            self._gram = self.basis_flat @ self.basis_flat.T
+        return self._gram
+
+    @property
+    def norm(self):
+        """Lazily-computed per-mode self-overlap ``<Z_i, Z_i>``, shape ``(D,)``."""
+        if self._norm is None:
+            self._norm = self._xp.einsum("dp,dp->d", self.basis_flat, self.basis_flat)
+        return self._norm
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, key):
+        """Return a sub-basis view selecting modes positionally (slice/fancy index)."""
+        sub = object.__new__(ZernikeBasis)
+        sub.indices = np.atleast_1d(self.indices[key])
+        sub.basis = self.basis[key]
+        if sub.basis.ndim == 2:     # A single mode was selected; restore the stack axis.
+            sub.basis = sub.basis[np.newaxis, :, :]
+        sub.aperture = self.aperture
+        sub.grid_shape = self.grid_shape
+        sub.basis_flat = sub.basis.reshape(len(sub.indices), -1)
+        sub.mask = self.mask
+        sub._xp = self._xp
+        sub._gram = None
+        sub._norm = None
+        return sub
+
+
+def _zernike_sum_from_basis(basis, weights, out=None):
+    """Synthesize a weighted sum of polynomials from a precomputed :class:`ZernikeBasis`."""
+    xp = basis._xp
+    weights = xp.asarray(weights)
+    D = len(basis)
+
+    if weights.ndim == 0:
+        weights = weights.reshape(1)
+    if weights.ndim == 1:
+        if len(weights) != D:
+            raise ValueError("Expected weights to have a common dimension with the basis.")
+        weights = weights.reshape(D, 1)
+    elif weights.ndim == 2:
+        if weights.shape[0] != D:
+            raise ValueError("Expected weights to have a common dimension with the basis.")
+    else:
+        raise ValueError("Expected weights to be 1D or 2D.")
+
+    N = weights.shape[1]
+
+    # (N, D) @ (D, h*w) -> (N, h*w).
+    result = weights.T @ basis.basis_flat
+    if N == 1:
+        result = result.reshape(basis.grid_shape)
+    else:
+        result = result.reshape((N,) + basis.grid_shape)
+
+    if out is not None:
+        out[...] = result.reshape(out.shape)
+        return out
+    return result
+
+
 def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative=(0,0), out=None):
     r"""
     Returns a summation of
@@ -551,11 +698,16 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
 
     Parameters
     ----------
-    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM`
+    grid : (array_like, array_like) OR :class:`~slmsuite.hardware.slms.slm.SLM` OR :class:`ZernikeBasis`
         Meshgrids of normalized :math:`\frac{x}{\lambda}` coordinates
         corresponding to SLM pixels, in ``(x_grid, y_grid)`` form.
         These are precalculated and stored in any :class:`~slmsuite.hardware.slms.slm.SLM`, so
         such a class can be passed instead of the grids directly.
+
+        A precomputed :class:`ZernikeBasis` may also be passed. In this case the
+        sum is evaluated as a single matrix product against the cached basis
+        images, and ``indices``, ``aperture``, ``use_mask``, and ``derivative``
+        are ignored (they are fixed when the basis is built).
     indices : array_like of int OR None
         Which Zernike polynomials to sum, defined by ANSI indices. Of shape ``(D,)``.
 
@@ -611,11 +763,24 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     numpy.ndarray
         The phase for this function. Optionally returns the 2D Zernike mask.
     """
+    if len(derivative) != 2:
+        raise ValueError("Expected derivative to be a (int, int)")
+
+    # Fast path: synthesize directly from a precomputed ZernikeBasis. The basis
+    # images are already evaluated, so the sum is a single matrix product. The
+    # indices, aperture, and masking are baked into the basis and thus ignored.
+    if isinstance(grid, ZernikeBasis):
+        if any(derivative):
+            raise ValueError(
+                "derivative is not supported when grid is a ZernikeBasis; "
+                "build the basis from a coordinate grid instead."
+            )
+        return _zernike_sum_from_basis(grid, weights, out)
+
     # Parse passed simple values.
     (x_grid, y_grid) = _process_grid(grid)
     (x_scale, y_scale) = zernike_aperture(grid, aperture)
-    if len(derivative) != 2:
-        raise ValueError("Expected derivative to be a (int, int)")
+    xp = _zernike_xp(x_grid)
 
     # Parse weights.
     weights = np.squeeze(weights)
@@ -654,14 +819,14 @@ def zernike_sum(grid, indices, weights, aperture=None, use_mask=True, derivative
     if use_mask is False:
         mask = None
     else:
-        mask = np.square(x_grid * x_scale) + np.square(y_grid * y_scale) <= 1
+        mask = xp.square(x_grid * x_scale) + xp.square(y_grid * y_scale) <= 1
         if use_mask == "return":
             return mask
         mask_value = 0
         if np.isnan(use_mask):
             use_mask = True
             mask_value = np.nan
-        use_mask = use_mask and np.any(mask == 0)
+        use_mask = use_mask and bool(xp.any(mask == 0))
 
     # Make the new grids.
     if use_mask:
@@ -1029,6 +1194,10 @@ except:
     _zernike_test_kernel = None
 
 
+# NOTE: the populate_basis CUDA kernel below is not yet wired into zernike_sum.
+# It would only accelerate one-time basis construction (ZernikeBasis.__init__),
+# not repeated synthesis/fitting, which is already a plain matrix product. Kept
+# here for a possible future basis-build fast path.
 def _zernike_test(grid, indices):
     _zernike_test_kernel = cp.RawKernel(_load_cuda(), 'zernike_test')
     _zernike_test_kernel.compile()

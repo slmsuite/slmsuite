@@ -541,51 +541,50 @@ def test_image_fit(subtests, benchmark):
 
 def test_image_zernike_fit(subtests):
     """Test image_zernike_fit() Zernike polynomial fitting."""
-    x_small = np.linspace(-1, 1, 32)
-    y_small = np.linspace(-1, 1, 32)
-    X_small, Y_small = np.meshgrid(x_small, y_small)
+    x_small = np.linspace(-1, 1, 64)
+    X_small, Y_small = np.meshgrid(x_small, x_small)
     grid_small = (X_small, Y_small)
 
-    with subtests.test("3D input tilt phase"):
-        phase_image = 0.5 * X_small + 0.3 * Y_small
-        phase_image = phase_image[np.newaxis, :, :]
+    with subtests.test("exact least-squares recovers a known combination"):
+        indices = [1, 2, 3, 4, 5]
+        weights = np.array([0.3, -0.4, 0.2, 0.5, -0.1])
+        phase_image = analysis.zernike_sum(grid_small, indices, weights)
+        coeffs = analysis.image_zernike_fit(phase_image, grid_small, order=indices)
+        assert coeffs.shape == (len(indices), 1)
+        assert np.allclose(coeffs[:, 0], weights, atol=1e-6)
 
-        try:
-            zernike_coeffs = analysis.image_zernike_fit(
-                phase_image, grid_small, order=3,
-                iterations=1, leastsquares=False,
-            )
-            expected_coeffs = (3 + 1) * (3 + 2) // 2 - 1
-            assert zernike_coeffs.shape == (expected_coeffs, 1)
-            assert np.any(np.abs(zernike_coeffs[:, 0]) > 0.01)
-        except Exception as e:
-            pytest.skip(f"Zernike fit raised {type(e).__name__}: {e}")
+    with subtests.test("scalar order omits piston"):
+        phase_2d = 0.5 * X_small + 0.3 * Y_small
+        coeffs = analysis.image_zernike_fit(phase_2d, grid_small, order=3)
+        expected = (3 + 1) * (3 + 2) // 2 - 1
+        assert coeffs.shape == (expected, 1)
 
-    with subtests.test("2D input"):
-        phase_2d = 0.2 * X_small
-        try:
-            zernike_coeffs_2d = analysis.image_zernike_fit(
-                phase_2d, grid_small, order=2,
-                iterations=1, leastsquares=False,
-            )
-            expected_coeffs_2d = (2 + 1) * (2 + 2) // 2 - 1
-            assert zernike_coeffs_2d.shape == (expected_coeffs_2d, 1)
-        except Exception:
-            pass
+    with subtests.test("leastsquares=False does a per-mode projection"):
+        phase_2d = 0.5 * X_small + 0.3 * Y_small
+        coeffs = analysis.image_zernike_fit(
+            phase_2d, grid_small, order=3, leastsquares=False
+        )
+        expected = (3 + 1) * (3 + 2) // 2 - 1
+        assert coeffs.shape == (expected, 1)
+        assert np.any(np.abs(coeffs[:, 0]) > 0.01)
 
-    with subtests.test("leastsquares=True refines fit"):
-        phase_tilt = 0.5 * X_small + 0.3 * Y_small
-        phase_tilt = phase_tilt[np.newaxis, :, :]
+    with subtests.test("accepts a prebuilt ZernikeBasis without rebuilding"):
+        indices = [1, 2, 4]
+        weights = np.array([0.2, -0.3, 0.4])
+        basis = analysis.ZernikeBasis(grid_small, indices)
+        phase_image = analysis.zernike_sum(basis, None, weights)
+        coeffs = analysis.image_zernike_fit(phase_image, basis)
+        assert coeffs.shape == (len(indices), 1)
+        assert np.allclose(coeffs[:, 0], weights, atol=1e-6)
 
-        try:
-            coeffs_ls = analysis.image_zernike_fit(
-                phase_tilt, grid_small, order=3,
-                iterations=2, leastsquares=True,
-            )
-            expected = (3 + 1) * (3 + 2) // 2 - 1
-            assert coeffs_ls.shape == (expected, 1)
-        except Exception as e:
-            print(f"leastsquares fit error (may be expected): {e}")
+    with subtests.test("fits a stack of images at once"):
+        indices = [1, 2, 4]
+        basis = analysis.ZernikeBasis(grid_small, indices)
+        weights_stack = np.array([[0.1, 0.2], [-0.3, 0.4], [0.5, -0.1]])
+        phase_stack = analysis.zernike_sum(basis, None, weights_stack)
+        coeffs = analysis.image_zernike_fit(phase_stack, basis)
+        assert coeffs.shape == (len(indices), 2)
+        assert np.allclose(coeffs, weights_stack, atol=1e-6)
 
 
 def test_take(subtests, benchmark):

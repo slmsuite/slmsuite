@@ -631,6 +631,55 @@ def test_zernike_sum(normalized_grid, subtests, benchmark):
         assert np.std(result) < 1e-8
 
 
+def test_zernike_basis(normalized_grid, subtests):
+    """Test the ZernikeBasis cache and the zernike_sum/image_zernike_fit paths consuming it."""
+    from slmsuite.holography.toolbox.phase import ZernikeBasis
+    from slmsuite.holography.analysis import image_zernike_fit
+
+    indices = [2, 1, 4, 3, 5, 6, 7, 8]
+    D = len(indices)
+    basis = ZernikeBasis(normalized_grid, indices)
+
+    with subtests.test("basis shapes"):
+        assert basis.basis.shape == (D, *normalized_grid[0].shape)
+        assert basis.basis_flat.shape == (D, normalized_grid[0].size)
+        assert basis.mask.shape == normalized_grid[0].shape
+        assert len(basis) == D
+        assert basis.gram.shape == (D, D)
+        assert basis.norm.shape == (D,)
+
+    rng = np.random.default_rng(0)
+    weights = rng.normal(0, 0.3, D)
+
+    with subtests.test("zernike_sum(basis) matches zernike_sum(grid)"):
+        from_basis = phase.zernike_sum(basis, None, weights)
+        from_grid = phase.zernike_sum(normalized_grid, indices, weights)
+        assert np.allclose(from_basis, from_grid, atol=1e-9)
+
+    with subtests.test("image_zernike_fit recovers synthesized weights"):
+        synthesized = phase.zernike_sum(basis, None, weights)
+        coeffs = image_zernike_fit(synthesized, basis, leastsquares=True)
+        assert coeffs.shape == (D, 1)
+        assert np.allclose(coeffs[:, 0], weights, atol=1e-6)
+
+    with subtests.test("stacked weights synthesize a stack"):
+        weights_stack = rng.normal(0, 0.3, (D, 3))
+        stacked = phase.zernike_sum(basis, None, weights_stack)
+        assert stacked.shape == (3, *normalized_grid[0].shape)
+
+    with subtests.test("sub-basis selects modes positionally"):
+        sub = basis[2:]
+        assert len(sub) == D - 2
+        np.testing.assert_array_equal(sub.indices, np.array(indices[2:]))
+        sub_synth = phase.zernike_sum(sub, None, weights[2:])
+        ref = phase.zernike_sum(normalized_grid, indices[2:], weights[2:])
+        assert np.allclose(sub_synth, ref, atol=1e-9)
+
+    with subtests.test("derivative with ZernikeBasis raises"):
+        with pytest.raises(ValueError, match="derivative"):
+            phase.zernike_sum(basis, None, weights, derivative=(1, 0))
+
+
 def test_polynomial(simple_grid, subtests):
     """Test polynomial() monomial summation."""
     with subtests.test("constant term (x^0 * y^0)"):
@@ -1345,3 +1394,36 @@ def test_zernike_sum_gpu(benchmark, has_cupy):
 
     result = benchmark(run)
     assert grid[0].shape == (256, 256)
+
+
+@pytest.mark.gpu
+def test_zernike_basis_gpu(has_cupy):
+    """ZernikeBasis on the GPU: cupy-resident basis, and numpy/cupy parity."""
+    import cupy as cp
+    from slmsuite.holography.toolbox.phase import ZernikeBasis
+    from slmsuite.holography.analysis import image_zernike_fit
+
+    indices = [2, 1, 4, 3, 5, 6]
+    D = len(indices)
+    x = np.linspace(-1, 1, 128)
+    grid_np = np.meshgrid(x, x)
+    grid_cp = (cp.asarray(grid_np[0]), cp.asarray(grid_np[1]))
+
+    basis_np = ZernikeBasis(grid_np, indices)
+    basis_cp = ZernikeBasis(grid_cp, indices)
+    assert isinstance(basis_cp.basis_flat, cp.ndarray)
+    assert isinstance(basis_cp.mask, cp.ndarray)
+
+    rng = np.random.default_rng(1)
+    weights = rng.normal(0, 0.3, D)
+
+    # Synthesis parity between numpy and cupy.
+    synth_np = phase.zernike_sum(basis_np, None, weights)
+    synth_cp = phase.zernike_sum(basis_cp, None, weights)
+    assert isinstance(synth_cp, cp.ndarray)
+    assert np.allclose(synth_np, cp.asnumpy(synth_cp), atol=1e-6)
+
+    # Exact least-squares fit recovers the weights on the GPU.
+    coeffs_cp = image_zernike_fit(synth_cp, basis_cp, leastsquares=True)
+    assert isinstance(coeffs_cp, cp.ndarray)
+    assert np.allclose(cp.asnumpy(coeffs_cp)[:, 0], weights, atol=1e-5)

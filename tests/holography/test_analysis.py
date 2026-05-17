@@ -586,6 +586,41 @@ def test_image_zernike_fit(subtests):
         assert coeffs.shape == (len(indices), 2)
         assert np.allclose(coeffs, weights_stack, atol=1e-6)
 
+    with subtests.test("gradient mode recovers weights from an unwrapped phase"):
+        indices = [2, 1, 4, 3, 5]
+        weights = np.array([1.5, -1.0, 3.0, 0.4, -0.6])
+        basis = analysis.ZernikeBasis(grid_small, indices)
+        phase_image = analysis.zernike_sum(basis, None, weights)
+        coeffs = analysis.image_zernike_fit(phase_image, basis, gradient=True)
+        assert coeffs.shape == (len(indices), 1)
+        assert np.allclose(coeffs[:, 0], weights, atol=1e-2)
+
+    with subtests.test("gradient mode recovers weights through phase wraps"):
+        indices = [2, 1, 4, 3, 5]
+        weights = np.array([1.5, -1.0, 3.0, 0.4, -0.6])
+        basis = analysis.ZernikeBasis(grid_small, indices)
+        phase_image = analysis.zernike_sum(basis, None, weights)
+        wrapped = np.mod(phase_image, 2 * np.pi)
+        # The synthesized phase must actually wrap for this test to mean anything.
+        assert np.ptp(phase_image[basis.mask.astype(bool)]) > 2 * np.pi
+
+        grad_coeffs = analysis.image_zernike_fit(wrapped, basis, gradient=True)
+        plain_coeffs = analysis.image_zernike_fit(wrapped, basis)
+
+        grad_err = np.max(np.abs(grad_coeffs[:, 0] - weights))
+        plain_err = np.max(np.abs(plain_coeffs[:, 0] - weights))
+        # The gradient fit sees through the wraps; the plain fit is corrupted.
+        assert grad_err < 1e-2
+        assert plain_err > 10 * grad_err
+
+    with subtests.test("gradient mode requires a ZernikeBasis"):
+        import pytest
+
+        with pytest.raises(ValueError):
+            analysis.image_zernike_fit(
+                0.5 * X_small + 0.3 * Y_small, grid_small, order=3, gradient=True
+            )
+
 
 def test_take(subtests, benchmark):
     """Test take(), take_tile(), take_plot(), and _take_parse_shape()."""

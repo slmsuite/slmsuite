@@ -574,6 +574,10 @@ class ZernikeBasis:
         self._xp = xp
         self._gram = None
         self._norm = None
+        self._grad_mask = None
+        self._grad_basis_flat = None
+        self._grad_gram = None
+        self._grad_norm = None
 
     @property
     def gram(self):
@@ -588,6 +592,65 @@ class ZernikeBasis:
         if self._norm is None:
             self._norm = self._xp.einsum("dp,dp->d", self.basis_flat, self.basis_flat)
         return self._norm
+
+    @property
+    def grad_mask(self):
+        """
+        Lazily-computed boolean ``(h, w)`` mask of pupil pixels whose four
+        nearest neighbours are also inside the pupil. This is the pupil
+        :attr:`mask` eroded by one pixel: the boundary ring is dropped because a
+        central-difference gradient there would mix in-pupil values with the
+        zeroed exterior.
+        """
+        if self._grad_mask is None:
+            xp = self._xp
+            m = self.mask.astype(bool)
+            e = xp.zeros_like(m)
+            # Interior pixel kept iff it and all four neighbours are in-pupil.
+            e[1:-1, 1:-1] = (
+                m[1:-1, 1:-1]
+                & m[2:, 1:-1] & m[:-2, 1:-1]
+                & m[1:-1, 2:] & m[1:-1, :-2]
+            )
+            self._grad_mask = e
+        return self._grad_mask
+
+    @property
+    def grad_basis_flat(self):
+        """
+        Lazily-computed gradient basis, of shape ``(D, 2P)``, where ``P`` is the
+        number of :attr:`grad_mask` pixels. Each row is the raw two-pixel
+        central-difference gradient of a basis image -- the same stencil applied
+        to the data in :meth:`~slmsuite.holography.analysis.image_zernike_fit`'s
+        gradient mode -- with the ``x`` and ``y`` components concatenated.
+        """
+        if self._grad_basis_flat is None:
+            xp = self._xp
+            m = self.grad_mask
+            # Raw central differences; grad_mask only selects interior pixels,
+            # so m[:, 1:-1] and m[1:-1, :] enumerate the same P pixels in order.
+            bx = self.basis[..., :, 2:] - self.basis[..., :, :-2]   # (D, h, w-2)
+            by = self.basis[..., 2:, :] - self.basis[..., :-2, :]   # (D, h-2, w)
+            gx = bx[:, m[:, 1:-1]]                                  # (D, P)
+            gy = by[:, m[1:-1, :]]                                  # (D, P)
+            self._grad_basis_flat = xp.concatenate([gx, gy], axis=1)
+        return self._grad_basis_flat
+
+    @property
+    def grad_gram(self):
+        """Lazily-computed gradient Gram matrix ``grad_basis_flat @ grad_basis_flat.T``, shape ``(D, D)``."""
+        if self._grad_gram is None:
+            self._grad_gram = self.grad_basis_flat @ self.grad_basis_flat.T
+        return self._grad_gram
+
+    @property
+    def grad_norm(self):
+        """Lazily-computed per-mode gradient self-overlap, shape ``(D,)``."""
+        if self._grad_norm is None:
+            self._grad_norm = self._xp.einsum(
+                "dp,dp->d", self.grad_basis_flat, self.grad_basis_flat
+            )
+        return self._grad_norm
 
     def __len__(self):
         return len(self.indices)
@@ -606,6 +669,10 @@ class ZernikeBasis:
         sub._xp = self._xp
         sub._gram = None
         sub._norm = None
+        sub._grad_mask = None
+        sub._grad_basis_flat = None
+        sub._grad_gram = None
+        sub._grad_norm = None
         return sub
 
 

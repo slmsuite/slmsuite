@@ -1427,3 +1427,12 @@ def test_zernike_basis_gpu(has_cupy):
     coeffs_cp = image_zernike_fit(synth_cp, basis_cp, leastsquares=True)
     assert isinstance(coeffs_cp, cp.ndarray)
     assert np.allclose(cp.asnumpy(coeffs_cp)[:, 0], weights, atol=1e-5)
+
+    # Gradient-mode fit: numpy/cupy parity, and recovery through phase wraps.
+    wrapped_np = np.mod(synth_np, 2 * np.pi)
+    wrapped_cp = cp.asarray(wrapped_np)
+    grad_np = image_zernike_fit(wrapped_np, basis_np, gradient=True)
+    grad_cp = image_zernike_fit(wrapped_cp, basis_cp, gradient=True)
+    assert isinstance(grad_cp, cp.ndarray)
+    assert np.allclose(cp.asnumpy(grad_cp), grad_np, atol=1e-5)
+    assert np.allclose(cp.asnumpy(grad_cp)[:, 0], weights, atol=1e-2)

@@ -1092,6 +1092,27 @@ def image_fit(images, grid=None, function=gaussian2d, guess=None, plot=False):
 
 # Helpers for phase images.
 
+def _wrapped_gradient(phase_images, xp):
+    r"""
+    Wrap-aware central differences of stacked ``phase_images``.
+
+    Returns ``(dx, dy)``, the raw two-pixel central differences along the last
+    and second-to-last axes, cropped to the interior (shapes ``(..., h, w-2)``
+    and ``(..., h-2, w)``). Each is reduced modulo :math:`2\pi` and centred on
+    zero, which folds out :math:`2\pi` phase wraps: where the true phase change
+    over two pixels stays within :math:`(-\pi, \pi)` the result equals the true
+    (unwrapped) central difference, so it is correct everywhere except across
+    vortices. There is no division by two -- the gradient Zernike basis uses the
+    same raw stencil, so the common factor cancels in the fit. Plain slicing is
+    used (not :func:`numpy.gradient`) to keep this per-iteration call cheap.
+    """
+    dx = phase_images[..., :, 2:] - phase_images[..., :, :-2]
+    dy = phase_images[..., 2:, :] - phase_images[..., :-2, :]
+    dx = xp.mod(dx + np.pi, 2 * np.pi) - np.pi
+    dy = xp.mod(dy + np.pi, 2 * np.pi) - np.pi
+    return dx, dy
+
+
 def image_zernike_fit(
     phase_images,
     grid,
@@ -1099,6 +1120,7 @@ def image_zernike_fit(
     leastsquares=True,
     aperture=None,
     use_mask=True,
+    gradient=False,
 ):
     r"""
     Fits sets of Zernike polynomials to a stack of ``phase_images``.
@@ -1109,6 +1131,19 @@ def image_zernike_fit(
     :math:`G\vec{c} = B\vec{\phi}`, where :math:`B` is the (flattened) Zernike
     basis and :math:`G = BB^T` is its Gram matrix. This runs on the GPU when
     ``phase_images`` (or ``grid``) are :mod:`cupy` arrays.
+
+    Gradient mode
+    ~~~~~~~~~~~~~
+    When ``gradient=True``, the fit is performed against the *gradient* of the
+    phase rather than the phase itself. The wrap-aware gradient of a wrapped
+    phase equals the gradient of the true unwrapped phase everywhere except at
+    vortices, so this recovers accurate coefficients from a phase-wrapped image
+    without any (expensive, fragile) 2D unwrapping. The gradient basis is the
+    discrete central-difference gradient of the Zernike basis -- the same
+    stencil applied to the data -- so the fit stays an exact linear
+    least-squares problem. Piston is unrecoverable (its gradient is zero) but is
+    omitted from the return anyway, so the contract is unchanged. Requires
+    ``grid`` to be a precomputed :class:`ZernikeBasis`.
 
     Note
     ~~~~
@@ -1143,6 +1178,12 @@ def image_zernike_fit(
     use_mask : bool
         Whether to mask the region outside the Zernike pupil. Ignored if ``grid``
         is a :class:`ZernikeBasis`.
+    gradient : bool
+        If ``True``, fit the wrap-aware phase gradient against the gradient
+        Zernike basis instead of fitting the phase directly. This recovers
+        accurate coefficients from a phase-wrapped ``phase_images`` without
+        unwrapping. Requires ``grid`` to be a :class:`ZernikeBasis`. See the
+        *Gradient mode* note above.
 
     Returns
     -------
@@ -1168,6 +1209,35 @@ def image_zernike_fit(
     # Work on the basis's array module (GPU when the basis is GPU-resident).
     xp = _get_module(basis.basis_flat)
     phase_images = xp.asarray(phase_images)
+
+    if gradient:
+        if not isinstance(grid, ZernikeBasis):
+            raise ValueError(
+                "image_zernike_fit(gradient=True) requires grid to be a "
+                "precomputed ZernikeBasis so the gradient basis can be cached."
+            )
+        # Wrap-aware phase gradient: equals the true unwrapped gradient
+        # everywhere except at vortices, so no phase unwrapping is needed.
+        dx, dy = _wrapped_gradient(phase_images, xp)
+        m = basis.grad_mask
+        # Restrict to the eroded pupil and stack x/y to match grad_basis_flat.
+        # dx/dy are cropped one pixel per differenced axis, so the matching
+        # interior masks are m[:, 1:-1] and m[1:-1, :].
+        stacked = xp.concatenate(
+            [dx[:, m[:, 1:-1]].T, dy[:, m[1:-1, :]].T], axis=0
+        )                                                               # (2P, image_count)
+
+        # Project the gradient onto the gradient basis.
+        b = basis.grad_basis_flat @ stacked                             # (D, image_count)
+
+        if leastsquares:
+            # Exact least-squares fit: solve the gradient normal equations.
+            vectors_zernike = xp.linalg.solve(basis.grad_gram, b)
+        else:
+            # Cheaper per-mode projection (the gradient basis is not orthonormal).
+            vectors_zernike = b / basis.grad_norm[:, np.newaxis]
+
+        return vectors_zernike
 
     # Mask the phase images to the pupil and flatten to match the basis.
     phase_flat = (phase_images * basis.mask).reshape(image_count, -1)   # (image_count, h*w)

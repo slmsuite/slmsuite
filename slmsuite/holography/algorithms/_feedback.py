@@ -313,8 +313,8 @@ class FeedbackHologram(Hologram):
                 null_region = cp.zeros(self.shape, dtype=bool)
 
             # Make a circle, outside of which the null_region is active.
-            xl = cp.linspace(-1, 1, null_region.shape[0])
-            yl = cp.linspace(-1, 1, null_region.shape[1])
+            xl = cp.linspace(-1, 1, null_region.shape[1])
+            yl = cp.linspace(-1, 1, null_region.shape[0])
             (xg, yg) = cp.meshgrid(xl, yl)
             mask = cp.square(xg) + cp.square(yg) > null_region_radius_frac**2
             null_region[mask] = True

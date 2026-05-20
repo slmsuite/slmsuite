@@ -336,7 +336,7 @@ class _PixelCalibration(object):
                                 size=integration_size,
                                 return_mask=True,
                             )
-                            self.cam.auto_expose(
+                            self.cam.autoexpose(
                                 set_fraction=autoexpose,
                                 window=mask,
                                 verbose=True,
@@ -367,7 +367,7 @@ class _PixelCalibration(object):
                             self.cam.plot(
                                 title=(
                                     f"Pixel Calibrate index {index} "
-                                    f"at direction {["x", "y"][i]}, period {periods[j]}, "
+                                    f"at direction {['x', 'y'][i]}, period {periods[j]}, "
                                     f"levels {levels[k]}, {levels[l]}"
                                 )
                             )
